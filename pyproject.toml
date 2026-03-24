@@ -1,0 +1,21 @@
+[project]
+name = "luthi"
+version = "0.1.0"
+description = "Living weights: self-modifying neural network parameters"
+requires-python = ">=3.11"
+dependencies = [
+    "torch>=2.0",
+    "cryptography>=44.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
