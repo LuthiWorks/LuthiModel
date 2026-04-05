@@ -13,7 +13,7 @@ import os
 import sys
 import pandas as pd
 
-CORPUS_DIR = os.path.join(os.path.dirname(__file__), "gutenberg")
+CORPUS_DIR = os.path.join(os.path.expanduser("~"), "Desktop", "gutenberg")
 METADATA_PATH = os.path.join(os.path.dirname(__file__), "metadata.csv")
 LOG_PATH = os.path.join(os.path.dirname(__file__), "download_log.txt")
 

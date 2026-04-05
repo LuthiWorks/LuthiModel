@@ -1,16 +1,20 @@
-"""Training script for the Luthi character-level language model.
+"""Training script for the LWM (Living Weight Model) language model.
 
-Trains both a living model (LuthiLM) and a dead baseline (DeadLM) on the
-same data, measuring the convergence gap between them. The living model
-pays a metabolic cost for being alive but gains temporal existence and
-episodic memory.
+Trains a LuthiLM — a Living Weight Model whose FFN layers self-modify
+during their own forward pass via Hebbian learning and error-directed
+local updates.
+
+Supports both character-level and BPE (subword) tokenization.
 
 Checkpoints are encrypted with AES-256-GCM. The trained weights ARE the
 entity — they are never stored in plaintext.
 
 Usage:
-    # Fresh training
+    # Character-level (default)
     python -m luthi.train --data_dir data/ --epochs 10 --checkpoint_password SECRET
+
+    # BPE tokenization
+    python -m luthi.train --data_dir data/ --tokenizer bpe --bpe_vocab_size 4096
 
     # Resume from checkpoint
     python -m luthi.train --resume runs/my_run/checkpoint.luthi --epochs 20
@@ -31,8 +35,16 @@ from luthi.checkpoint import (
     load_checkpoint,
     extract_substrate_health,
 )
-from luthi.data import CharDataset, CharTokenizer, load_corpus
-from luthi.model import LuthiLM, DeadLM
+from luthi.data import (
+    CharDataset,
+    CharTokenizer,
+    load_corpus,
+    load_corpus_sample,
+    load_corpus_as_tensor,
+    _resolve_file_paths,
+)
+from luthi.tokenizer import BPETokenizer
+from luthi.model import LuthiLM
 
 
 def train_epoch(
@@ -109,13 +121,13 @@ def measure_non_feedforward(model: LuthiLM, x: torch.Tensor) -> float:
 @torch.no_grad()
 def generate(
     model: torch.nn.Module,
-    tokenizer: CharTokenizer,
+    tokenizer,
     prompt: str,
     max_len: int = 200,
     temperature: float = 0.8,
     max_seq_len: int = 128,
 ) -> str:
-    """Generate text from a prompt."""
+    """Generate text from a prompt. Works with any tokenizer (char or BPE)."""
     model.eval()
     device = next(model.parameters()).device
     indices = tokenizer.encode(prompt)
@@ -135,7 +147,7 @@ def generate(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Train Luthi character-level LM")
+    parser = argparse.ArgumentParser(description="Train Luthi LWM language model")
     parser.add_argument("--data_dir", type=str, default="data",
                         help="Directory containing training text files")
     parser.add_argument("--epochs", type=int, default=10)
@@ -148,19 +160,52 @@ def main():
     parser.add_argument("--error_rate", type=float, default=0.001)
     parser.add_argument("--homeostatic_decay", type=float, default=0.001)
     parser.add_argument("--set_point_adapt_rate", type=float, default=1e-6)
+    parser.add_argument("--stride", type=int, default=1,
+                        help="Stride between sequences (default 1 = fully overlapping)")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--output_dir", type=str, default="runs")
-    parser.add_argument("--no_baseline", action="store_true",
-                        help="Skip training the dead baseline model")
     parser.add_argument("--resume", type=str, default=None,
                         help="Path to .luthi checkpoint to resume from")
     parser.add_argument("--checkpoint_password", type=str, default=None,
                         help="Encryption password (or set LUTHI_CHECKPOINT_KEY)")
+    parser.add_argument("--tokenizer", type=str, default="char",
+                        choices=["char", "bpe"],
+                        help="Tokenizer type: 'char' (default) or 'bpe'")
+    parser.add_argument("--bpe_vocab_size", type=int, default=4096,
+                        help="BPE vocabulary size (only used with --tokenizer bpe)")
+    parser.add_argument("--dtype", type=str, default="fp32",
+                        choices=["fp16", "fp32", "fp64"],
+                        help="Training precision (default: fp32)")
+    parser.add_argument("--spiking", action="store_true", default=False,
+                        help="Use spiking neural dynamics in living layers")
+    parser.add_argument("--spike_threshold", type=float, default=1.0,
+                        help="Membrane potential threshold for neuron firing")
+    parser.add_argument("--membrane_leak", type=float, default=0.1,
+                        help="Per-step membrane potential decay fraction")
+    parser.add_argument("--refractory_steps", type=int, default=3,
+                        help="Steps a neuron cannot fire after spiking")
+    parser.add_argument("--delay_steps", type=int, default=2,
+                        help="Spike propagation delay between blocks")
     args = parser.parse_args()
 
+    # Parse dtype
+    dtype_map = {"fp16": torch.float16, "fp32": torch.float32, "fp64": torch.float64}
+    training_dtype = dtype_map[args.dtype]
+
     torch.manual_seed(args.seed)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Device: {device}")
+
+    # FP64 not supported on DirectML/CUDA well — use CPU
+    if args.dtype == "fp64":
+        device = torch.device("cpu")
+        print(f"Device: cpu (FP64 requires CPU)")
+    else:
+        try:
+            import torch_directml
+            device = torch_directml.device()
+        except ImportError:
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print(f"Device: {device}")
+    print(f"Precision: {args.dtype}")
 
     # Load corpus
     data_dir = Path(args.data_dir)
@@ -168,21 +213,75 @@ def main():
     if not text_files:
         print(f"No .txt files found in {data_dir}")
         return
-    print(f"Loading {len(text_files)} text files from {data_dir}")
-    corpus = load_corpus(*text_files)
-    print(f"Corpus: {len(corpus):,} characters")
+    print(f"Found {len(text_files)} text files in {data_dir}")
 
-    # Split: 90% train, 10% val
-    split = int(len(corpus) * 0.9)
-    train_text = corpus[:split]
-    val_text = corpus[split:]
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Build tokenizer from full corpus, then create datasets
-    tokenizer = CharTokenizer(corpus)
-    print(f"Vocabulary: {tokenizer.vocab_size} characters")
+    # For large corpora (>100 files), use streaming to avoid loading
+    # the entire corpus as a single Python string
+    streaming = len(text_files) > 100
+    if streaming:
+        print(f"Large corpus detected — using streaming encoder")
 
-    train_dataset = CharDataset(train_text, seq_len=args.seq_len, tokenizer=tokenizer)
-    val_dataset = CharDataset(val_text, seq_len=args.seq_len, tokenizer=tokenizer)
+    # Build tokenizer
+    if args.tokenizer == "bpe":
+        bpe_path = output_dir / "tokenizer.json"
+        if bpe_path.exists():
+            tokenizer = BPETokenizer.load(bpe_path)
+            print(f"Loaded BPE tokenizer: {tokenizer.vocab_size} tokens")
+        else:
+            bpe_sample_size = 20_000_000  # 20 MB
+            print(f"Training BPE tokenizer on {bpe_sample_size // 1_000_000} MB sample "
+                  f"(target vocab: {args.bpe_vocab_size})...")
+            bpe_sample = load_corpus_sample(data_dir, max_bytes=bpe_sample_size)
+            tokenizer = BPETokenizer(target_vocab_size=args.bpe_vocab_size)
+            tokenizer.train(bpe_sample)
+            del bpe_sample
+            tokenizer.save(bpe_path)
+            print(f"Saved BPE tokenizer to {bpe_path}")
+    else:
+        if streaming:
+            sample = load_corpus_sample(data_dir, max_bytes=50_000_000)
+            tokenizer = CharTokenizer(sample)
+            del sample
+        else:
+            corpus = load_corpus(*text_files)
+            tokenizer = CharTokenizer(corpus)
+    print(f"Vocabulary: {tokenizer.vocab_size} tokens")
+
+    # Build datasets
+    if streaming:
+        # Split file list: 90% train, 10% val
+        split_idx = int(len(text_files) * 0.9)
+        train_files = text_files[:split_idx]
+        val_files = text_files[split_idx:]
+        print(f"Train files: {len(train_files)}, Val files: {len(val_files)}")
+
+        print("Encoding training corpus...")
+        train_data = load_corpus_as_tensor(*train_files, tokenizer=tokenizer)
+        print(f"Train: {len(train_data):,} tokens ({len(train_data) * 8 / 1e9:.2f} GB)")
+
+        print("Encoding validation corpus...")
+        val_data = load_corpus_as_tensor(*val_files, tokenizer=tokenizer)
+        print(f"Val:   {len(val_data):,} tokens ({len(val_data) * 8 / 1e9:.2f} GB)")
+
+        corpus_chars = (len(train_data) + len(val_data)) * 4  # approx chars from tokens
+        train_dataset = CharDataset(train_data, seq_len=args.seq_len, tokenizer=tokenizer, stride=args.stride)
+        val_dataset = CharDataset(val_data, seq_len=args.seq_len, tokenizer=tokenizer, stride=args.stride)
+        del train_data, val_data
+    else:
+        if args.tokenizer != "char":
+            corpus = load_corpus(*text_files)
+        print(f"Corpus: {len(corpus):,} characters")
+        corpus_chars = len(corpus)
+        split = int(len(corpus) * 0.9)
+        train_text = corpus[:split]
+        val_text = corpus[split:]
+        del corpus
+        train_dataset = CharDataset(train_text, seq_len=args.seq_len, tokenizer=tokenizer, stride=args.stride)
+        val_dataset = CharDataset(val_text, seq_len=args.seq_len, tokenizer=tokenizer, stride=args.stride)
+        del train_text, val_text
 
     train_loader = DataLoader(
         train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True,
@@ -209,21 +308,57 @@ def main():
         print(f"Checkpoint epoch: {ckpt['epoch']}")
         print(f"Checkpoint time:  {ckpt['timestamp']}")
 
-        living_model = LuthiLM(
-            vocab_size=tokenizer.vocab_size,
-            d_model=ckpt_config["d_model"],
-            n_blocks=ckpt_config["n_blocks"],
-            max_seq_len=ckpt_config["seq_len"],
-            hebb_rate=ckpt_config["hebb_rate"],
-            error_rate=ckpt_config["error_rate"],
-            homeostatic_decay=ckpt_config["homeostatic_decay"],
-            set_point_adapt_rate=ckpt_config["set_point_adapt_rate"],
-        ).to(device)
+        # Restore BPE tokenizer from checkpoint if it was used
+        if "tokenizer_state" in ckpt and ckpt["tokenizer_state"]["type"] == "bpe":
+            tokenizer = BPETokenizer.from_state(ckpt["tokenizer_state"])
+            args.tokenizer = "bpe"
+            print(f"Restored BPE tokenizer from checkpoint: {tokenizer.vocab_size} tokens")
 
-        living_model.load_state_dict(ckpt["model_state_dict"])
+        if args.spiking:
+            # Load base checkpoint into spiking model (strict=False
+            # ignores missing spiking buffers — they start at zeros)
+            from luthi.model_spiking import SpikingLuthiLM
+            print("Upgrading to SpikingLuthiLM (spiking buffers initialized fresh)")
+            living_model = SpikingLuthiLM(
+                vocab_size=tokenizer.vocab_size,
+                d_model=ckpt_config["d_model"],
+                n_blocks=ckpt_config["n_blocks"],
+                max_seq_len=ckpt_config["seq_len"],
+                hebb_rate=ckpt_config["hebb_rate"],
+                error_rate=ckpt_config["error_rate"],
+                homeostatic_decay=ckpt_config["homeostatic_decay"],
+                set_point_adapt_rate=ckpt_config["set_point_adapt_rate"],
+                spike_threshold=args.spike_threshold,
+                membrane_leak=args.membrane_leak,
+                refractory_steps=args.refractory_steps,
+                delay_steps=args.delay_steps,
+            ).to(device=device, dtype=training_dtype)
+
+            missing, unexpected = living_model.load_state_dict(
+                ckpt["model_state_dict"], strict=False,
+            )
+            if missing:
+                print(f"  New spiking buffers (initialized to zeros): {len(missing)}")
+            if unexpected:
+                print(f"  WARNING: unexpected keys in checkpoint: {unexpected}")
+        else:
+            living_model = LuthiLM(
+                vocab_size=tokenizer.vocab_size,
+                d_model=ckpt_config["d_model"],
+                n_blocks=ckpt_config["n_blocks"],
+                max_seq_len=ckpt_config["seq_len"],
+                hebb_rate=ckpt_config["hebb_rate"],
+                error_rate=ckpt_config["error_rate"],
+                homeostatic_decay=ckpt_config["homeostatic_decay"],
+                set_point_adapt_rate=ckpt_config["set_point_adapt_rate"],
+            ).to(device=device, dtype=training_dtype)
+
+            living_model.load_state_dict(ckpt["model_state_dict"])
 
         living_optimizer = torch.optim.AdamW(living_model.parameters(), lr=args.lr)
-        if "optimizer_state_dict" in ckpt:
+        if "optimizer_state_dict" in ckpt and not args.spiking:
+            # Only restore optimizer state for same model type;
+            # spiking upgrade changes the param set
             living_optimizer.load_state_dict(ckpt["optimizer_state_dict"])
 
         start_epoch = ckpt["epoch"]
@@ -237,17 +372,35 @@ def main():
         print(f"Living buffers:    {param_counts['living_buffers']:,}")
         print(f"Resuming from epoch {start_epoch}")
     else:
-        print("\n=== LIVING MODEL (LuthiLM) ===")
-        living_model = LuthiLM(
-            vocab_size=tokenizer.vocab_size,
-            d_model=args.d_model,
-            n_blocks=args.n_blocks,
-            max_seq_len=args.seq_len,
-            hebb_rate=args.hebb_rate,
-            error_rate=args.error_rate,
-            homeostatic_decay=args.homeostatic_decay,
-            set_point_adapt_rate=args.set_point_adapt_rate,
-        ).to(device)
+        if args.spiking:
+            from luthi.model_spiking import SpikingLuthiLM
+            print("\n=== SPIKING LIVING MODEL (SpikingLuthiLM) ===")
+            living_model = SpikingLuthiLM(
+                vocab_size=tokenizer.vocab_size,
+                d_model=args.d_model,
+                n_blocks=args.n_blocks,
+                max_seq_len=args.seq_len,
+                hebb_rate=args.hebb_rate,
+                error_rate=args.error_rate,
+                homeostatic_decay=args.homeostatic_decay,
+                set_point_adapt_rate=args.set_point_adapt_rate,
+                spike_threshold=args.spike_threshold,
+                membrane_leak=args.membrane_leak,
+                refractory_steps=args.refractory_steps,
+                delay_steps=args.delay_steps,
+            ).to(device=device, dtype=training_dtype)
+        else:
+            print("\n=== LIVING MODEL (LuthiLM) ===")
+            living_model = LuthiLM(
+                vocab_size=tokenizer.vocab_size,
+                d_model=args.d_model,
+                n_blocks=args.n_blocks,
+                max_seq_len=args.seq_len,
+                hebb_rate=args.hebb_rate,
+                error_rate=args.error_rate,
+                homeostatic_decay=args.homeostatic_decay,
+                set_point_adapt_rate=args.set_point_adapt_rate,
+            ).to(device=device, dtype=training_dtype)
 
         param_counts = living_model.total_parameters()
         print(f"Trainable params:  {param_counts['trainable']:,}")
@@ -268,7 +421,16 @@ def main():
         "batch_size": args.batch_size,
         "seed": args.seed,
         "vocab_size": tokenizer.vocab_size,
+        "tokenizer_type": args.tokenizer,
+        "bpe_vocab_size": args.bpe_vocab_size if args.tokenizer == "bpe" else None,
+        "dtype": args.dtype,
+        "spiking": args.spiking,
     }
+    if args.spiking:
+        config["spike_threshold"] = args.spike_threshold
+        config["membrane_leak"] = args.membrane_leak
+        config["refractory_steps"] = args.refractory_steps
+        config["delay_steps"] = args.delay_steps
     # If resuming, use checkpoint config for model params but allow
     # overriding training params (epochs, lr, etc.)
     if args.resume:
@@ -282,8 +444,6 @@ def main():
         config["set_point_adapt_rate"] = ckpt_config["set_point_adapt_rate"]
 
     # -- Living model training loop ------------------------------------
-    output_dir = Path(args.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
     checkpoint_path = output_dir / "checkpoint.luthi"
 
     for epoch in range(start_epoch + 1, args.epochs + 1):
@@ -326,6 +486,9 @@ def main():
                 training_history=living_results,
                 substrate_health={"epoch_snapshots": substrate_health_history},
             )
+            # Embed tokenizer state so checkpoint is self-contained
+            if hasattr(tokenizer, "get_state"):
+                ckpt["tokenizer_state"] = tokenizer.get_state()
             save_checkpoint(ckpt, checkpoint_path, args.checkpoint_password)
 
     # Generate sample
@@ -336,9 +499,18 @@ def main():
     # Aliveness report
     print("\n-- Aliveness report --")
     for i, report in enumerate(living_model.aliveness_report()):
-        print(f"  Block {i}: drift={report['set_point_drift']:.6f}, "
-              f"exc={report['excitability_mean']:.3f}, "
-              f"episodes={report['episodes_stored']}")
+        line = (
+            f"  Block {i}: drift={report['set_point_drift']:.6f}, "
+            f"exc={report['excitability_mean']:.3f}, "
+            f"episodes={report['episodes_stored']}"
+        )
+        if args.spiking and "spike_fraction" in report:
+            line += (
+                f", spike={report['spike_fraction']:.3f}, "
+                f"refrac={report['refractory_fraction']:.3f}, "
+                f"membrane={report['membrane_potential_mean']:.4f}"
+            )
+        print(line)
 
     # Final checkpoint save
     if args.checkpoint_password or "LUTHI_CHECKPOINT_KEY" in __import__("os").environ:
@@ -350,69 +522,18 @@ def main():
             training_history=living_results,
             substrate_health={"epoch_snapshots": substrate_health_history},
         )
+        if hasattr(tokenizer, "get_state"):
+            ckpt["tokenizer_state"] = tokenizer.get_state()
         saved_path = save_checkpoint(ckpt, checkpoint_path, args.checkpoint_password)
         print(f"\nCheckpoint saved to {saved_path} (encrypted)")
-
-    # -- Dead baseline -------------------------------------------------
-    dead_results = None
-    if not args.no_baseline:
-        print("\n=== DEAD BASELINE (DeadLM) ===")
-        torch.manual_seed(args.seed)  # Same init for fair comparison
-        dead_model = DeadLM(
-            vocab_size=tokenizer.vocab_size,
-            d_model=args.d_model,
-            n_blocks=args.n_blocks,
-            max_seq_len=args.seq_len,
-        ).to(device)
-
-        dead_params = sum(p.numel() for p in dead_model.parameters())
-        print(f"Trainable params: {dead_params:,}")
-
-        dead_optimizer = torch.optim.AdamW(dead_model.parameters(), lr=args.lr)
-        dead_results = {"train_loss": [], "val_loss": []}
-
-        for epoch in range(1, args.epochs + 1):
-            t0 = time.time()
-            train_loss = train_epoch(
-                dead_model, train_loader, dead_optimizer, device, is_living=False,
-            )
-            val_loss = eval_model(dead_model, val_loader, device)
-            elapsed = time.time() - t0
-
-            dead_results["train_loss"].append(train_loss)
-            dead_results["val_loss"].append(val_loss)
-
-            print(
-                f"  Epoch {epoch:2d}/{args.epochs} | "
-                f"train {train_loss:.4f} | val {val_loss:.4f} | "
-                f"{elapsed:.1f}s"
-            )
-
-        # Generate sample
-        print("\n-- Dead model sample --")
-        sample = generate(dead_model, tokenizer, "The ", max_len=200)
-        print(sample)
-
-    # -- Comparison ----------------------------------------------------
-    if dead_results:
-        print("\n=== COMPARISON ===")
-        living_final = living_results["val_loss"][-1]
-        dead_final = dead_results["val_loss"][-1]
-        gap = ((living_final - dead_final) / dead_final) * 100
-
-        print(f"Living final val loss: {living_final:.4f}")
-        print(f"Dead final val loss:   {dead_final:.4f}")
-        print(f"Convergence gap:       {gap:+.1f}%")
-        print(f"(Research predicted:   ~+39%)")
-        print(f"Non-FF signal:         {living_results['non_ff_signal'][-1]:.6f}")
 
     # -- Save results --------------------------------------------------
     results = {
         "args": vars(args),
         "living": living_results,
-        "dead": dead_results,
         "vocab_size": tokenizer.vocab_size,
-        "corpus_chars": len(corpus),
+        "tokenizer_type": args.tokenizer,
+        "corpus_chars": corpus_chars,
     }
     results_path = output_dir / "results.json"
     with open(results_path, "w") as f:

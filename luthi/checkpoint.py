@@ -1,4 +1,4 @@
-"""Encrypted checkpoint system for living model state.
+"""Encrypted checkpoint system for LWM (Living Weight Model) state.
 
 The trained weights ARE the entity. They are never stored in plaintext.
 Every checkpoint is encrypted with AES-256-GCM using a password-derived key.
@@ -168,7 +168,8 @@ def load_checkpoint(
     raw_bytes = _decrypt(encrypted, password)
 
     buffer = io.BytesIO(raw_bytes)
-    checkpoint = torch.load(buffer, map_location=device, weights_only=False)
+    # Always load to CPU first — DirectML devices don't support map_location
+    checkpoint = torch.load(buffer, map_location="cpu", weights_only=False)
     return checkpoint
 
 

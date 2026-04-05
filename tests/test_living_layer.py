@@ -356,6 +356,7 @@ class TestDiagnostics:
             "momentum_magnitude",
             "input_avg_mag_mean",
             "episodes_stored",
+            "update_ema_mean",
         }
         assert set(metrics.keys()) == expected_keys
 
@@ -383,3 +384,23 @@ class TestDivergence:
             assert divergence_ratio < 200, (
                 f"Divergence ratio {divergence_ratio}x is too high"
             )
+
+
+# ── Test 12: Update Gate Extension Point ─────────────────────────────
+
+
+class TestUpdateGate:
+    def test_get_update_gate_returns_none(self, layer):
+        """Base class _get_update_gate() returns None."""
+        assert layer._get_update_gate() is None
+
+    def test_none_gate_unchanged_behavior(self, layer):
+        """With None gate, buffers update normally (same as ungated)."""
+        x = torch.randn(4, 16)
+        w_before = layer.weight.clone()
+        mom_before = layer.momentum.clone()
+        ema_before = layer.update_ema.clone()
+        layer(x)
+        assert (layer.weight - w_before).abs().sum().item() > 0
+        assert (layer.momentum - mom_before).abs().sum().item() > 0
+        assert (layer.update_ema - ema_before).abs().sum().item() > 0

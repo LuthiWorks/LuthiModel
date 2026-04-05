@@ -1,8 +1,9 @@
 """LivingLayerV6: A self-modifying linear layer.
 
-The forward pass IS learning. Weights carry per-parameter history, plasticity,
-momentum, excitability, and context-gated retrieval. Processing changes the
-processor — same input produces different output on consecutive passes.
+Core component of the LWM (Living Weight Model) architecture. The forward
+pass IS learning. Weights carry per-parameter history, plasticity, momentum,
+excitability, and context-gated retrieval. Processing changes the processor
+— same input produces different output on consecutive passes.
 
 This is neither feedforward nor recurrent. It is a third kind of computation.
 """
@@ -39,6 +40,8 @@ class LivingLayerV6(nn.Module):
         num_episodes: int = 32,
         context_dim: int = 64,
         episode_blend: float = 0.1,
+        eval_hebb_fraction: float = 0.33,
+        update_ema_decay: float = 0.99,
     ):
         super().__init__()
         self.in_features = in_features
@@ -55,6 +58,8 @@ class LivingLayerV6(nn.Module):
         self.num_episodes = num_episodes
         self.context_dim = context_dim
         self.episode_blend = episode_blend
+        self.eval_hebb_fraction = eval_hebb_fraction
+        self.update_ema_decay = update_ema_decay
 
         # --- Core weight state (all buffers, not parameters) ---
 
@@ -96,12 +101,32 @@ class LivingLayerV6(nn.Module):
         self.register_buffer("episode_saliences", torch.zeros(num_episodes))
         self.register_buffer("episode_count", torch.tensor(0, dtype=torch.long))
 
+        # --- Metaplasticity: per-weight update history ---
+        # Running average of Hebbian update magnitudes. Each weight tracks
+        # how much it typically changes, enabling self-regulation: unusual
+        # spikes get dampened, normal updates pass through.
+        self.register_buffer(
+            "update_ema", torch.ones(out_features, in_features) * 1e-4
+        )
+
         # --- Cached input for error-directed learning ---
         self._cached_input: torch.Tensor | None = None
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def _get_update_gate(self) -> torch.Tensor | None:
+        """Return a per-weight gate for activity-dependent updates.
+
+        Base class returns None (all updates ungated). Subclasses override
+        to provide selective gating (e.g., spike mask for spiking layers).
+
+        When not None, the returned tensor has shape [out_features, in_features]
+        with values in [0, 1]. Gated operations use delta formulation so
+        elements with gate=0 are frozen (retain their last state).
+        """
+        return None
 
     def _excitability_factor(self) -> torch.Tensor:
         """Compute effective excitability from accumulator via sigmoid.
@@ -267,13 +292,55 @@ class LivingLayerV6(nn.Module):
                 * self.hebb_rate
             )  # [out, in]
 
-            # Apply Hebbian update to weights
-            self.weight.add_(hebb_update)
+            # --- Metaplasticity: adaptive Hebbian gating ---
+            # Each weight compares its current update to its recent history.
+            # Wild updates get suppressed; normal ones pass through.
+            update_mag = hebb_update.abs()
+            ratio = update_mag / (self.update_ema + 1e-8)
+
+            # Adaptive factor: smooth suppression of unusually large updates
+            #   ratio ≈ 1.0 → factor ≈ 1.0 (normal, no suppression)
+            #   ratio = 2.0 → factor ≈ 0.67 (moderate)
+            #   ratio = 5.0 → factor ≈ 0.33 (strong)
+            #   ratio = 10  → factor ≈ 0.18 (emergency brake)
+            adaptive_factor = (2.0 / (1.0 + ratio)).clamp(max=1.0)
+
+            # Activity-dependent gating (subclass extension point).
+            # When gate is not None, only active elements get Hebbian/
+            # momentum/update_ema updates; quiescent elements are frozen.
+            gate = self._get_update_gate()
+
+            # Update the running average of update magnitudes
+            if gate is not None:
+                self.update_ema.add_(
+                    (update_mag - self.update_ema)
+                    * (1.0 - self.update_ema_decay) * gate
+                )
+            else:
+                self.update_ema.mul_(self.update_ema_decay).add_(
+                    update_mag, alpha=1.0 - self.update_ema_decay
+                )
+
+            # In eval mode, also apply base reduction — belt and suspenders
+            if not self.training:
+                adaptive_factor = adaptive_factor * self.eval_hebb_fraction
+
+            # Apply gated Hebbian update to weights
+            if gate is not None:
+                self.weight.add_(hebb_update * adaptive_factor * gate)
+            else:
+                self.weight.add_(hebb_update * adaptive_factor)
 
             # Update momentum (exponential moving average of updates)
-            self.momentum.mul_(self.momentum_decay).add_(
-                hebb_update, alpha=1.0 - self.momentum_decay
-            )
+            if gate is not None:
+                self.momentum.add_(
+                    (hebb_update - self.momentum)
+                    * (1.0 - self.momentum_decay) * gate
+                )
+            else:
+                self.momentum.mul_(self.momentum_decay).add_(
+                    hebb_update, alpha=1.0 - self.momentum_decay
+                )
 
             # Homeostatic regulation: decay toward set point
             homeostatic_force = self.set_point - self.weight
@@ -367,6 +434,7 @@ class LivingLayerV6(nn.Module):
             "momentum_magnitude": self.momentum.abs().mean().item(),
             "input_avg_mag_mean": self.input_avg_mag.mean().item(),
             "episodes_stored": self.episode_count.item(),
+            "update_ema_mean": self.update_ema.mean().item(),
         }
 
     def non_feedforward_signal(self, x: torch.Tensor) -> float:

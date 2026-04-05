@@ -1,8 +1,8 @@
-"""Character-level language model built from hybrid blocks.
+"""LWM (Living Weight Model) — Character-level language model.
 
-The first real test: can the hybrid architecture (attention + living FFN
-+ episode store) learn to predict the next character while simultaneously
-maintaining temporal existence and accumulating episodic memory?
+The first real test: can a Living Weight Model learn to predict the next
+character while simultaneously maintaining temporal existence and
+accumulating episodic memory?
 
 The model stacks N hybrid blocks between a character embedding and an
 output projection. Attention layers train via backprop. Living FFN layers
@@ -18,7 +18,7 @@ from luthi.hybrid_block import HybridBlock
 
 
 class LuthiLM(nn.Module):
-    """Character-level language model with living weights.
+    """LWM (Living Weight Model) character-level language model.
 
     Architecture:
         char -> embedding -> [HybridBlock x N] -> layer_norm -> projection -> logits
@@ -40,6 +40,7 @@ class LuthiLM(nn.Module):
         set_point_adapt_rate: float = 1e-6,
         num_episodes: int = 64,
         episode_blend: float = 0.3,
+        eval_hebb_fraction: float = 0.33,
     ):
         super().__init__()
         self.d_model = d_model
@@ -61,6 +62,7 @@ class LuthiLM(nn.Module):
                 set_point_adapt_rate=set_point_adapt_rate,
                 num_episodes=num_episodes,
                 episode_blend=episode_blend,
+                eval_hebb_fraction=eval_hebb_fraction,
             )
             for _ in range(n_blocks)
         ])
