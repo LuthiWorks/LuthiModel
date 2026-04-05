@@ -1,6 +1,9 @@
 # Corpus data (too large for GitHub)
 corpus_build/gutenberg*/
 
+# Training run checkpoints (backed up to E:\)
+runs/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
