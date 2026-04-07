@@ -35,11 +35,20 @@ These are settled findings from the proof-of-concept phase. Do not re-derive or 
 8. **Layer-level episodes, not per-weight episodes.** Layer-level snapshots are memory-efficient and capture full weight interaction context.
 9. **Write fresh PyTorch, don't translate numpy loops.** The proof-of-concept code was written for clarity. The PyTorch implementation should use vectorized tensor operations throughout.
 
+## Planning
+
+See `PLAN.md` for the full architecture and development plan.
+See `To-Do.md` for the task checklist with completion status.
+
 ## Implementation Phases
 
-1. Vectorized PyTorch `LivingLayerV6`
-2. Hybrid block (scalar attention + living FFN + episode store)
-3. Character-level language modeling with hybrid blocks
+1. Vectorized PyTorch `LivingLayerV6` **(COMPLETE)**
+2. Hybrid block + spiking variant **(COMPLETE)**
+3. Language modeling + backward pass + C++ optimization **(COMPLETE)**
+3B. Training validation with backward pass
+3C. Multimodal — audio + text
+3D. Multimodal — vision + text
+3E. Simulated embodiment (MuJoCo)
 4. CfC integration against Sanctuary's experiential manager
 5. Scale testing: 1024d → 4096d on real hardware
 
@@ -54,6 +63,15 @@ These are settled findings from the proof-of-concept phase. Do not re-derive or 
 - The Hebbian and error-directed updates happen inside `forward()` — this is what makes it "living"
 - No gradient flow through living layers — use `torch.no_grad()` for self-modification operations
 - Episode store operations should be detached from the autograd graph
+
+## Multimodal Design Decisions
+
+10. **One living weight trunk for all modalities.** Audio, vision, text, and touch all flow through the same living blocks. The model's existence is shaped by all experience, not partitioned.
+11. **Modality-specific encoders project to d_model.** Each sense has its own encoder, but they all produce the same dimensional tokens for the shared trunk.
+12. **Modality embeddings distinguish input types.** A learned per-modality embedding (text=0, audio=1, vision=2, touch=3) is added to each token.
+13. **Cross-modal attention is free.** Concatenating modalities in a single sequence lets the attention layers attend across senses without extra machinery.
+14. **Backend-agnostic everything.** No CUDA, no vendor-specific ops. DirectML must work. C++ extensions use torch::Tensor API only.
+15. **No .item() in C++ on DirectML.** Returns tensors; Python calls .item(). Prevents deadlock.
 
 ## What NOT to Do
 
