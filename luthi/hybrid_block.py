@@ -104,6 +104,27 @@ class HybridBlock(nn.Module):
 
         return x
 
+    def top_down_pass(
+        self, signal, block_input: torch.Tensor,
+    ):
+        """Apply top-down modulation and compute signal for the block below.
+
+        Args:
+            signal: TopDownSignal from the block above (or initial signal).
+            block_input: [batch, seq_len, d_model] this block's input
+                from the forward pass.
+
+        Returns:
+            Refined TopDownSignal for the block below.
+        """
+        from luthi.backward_pass import compute_block_top_down
+
+        # Modulate this block's living weights
+        self.living_ffn.apply_top_down(signal)
+
+        # Compute refined signal for the block below
+        return compute_block_top_down(signal, block_input)
+
     def apply_living_error(self) -> None:
         """Apply error-directed learning using the gradient at the FFN output.
 

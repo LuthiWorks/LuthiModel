@@ -46,10 +46,12 @@ class SpikingLuthiLM(nn.Module):
         spike_scale: float = 0.1,
         reset_mode: str = "zero",
         spike_baseline: float = 0.3,
+        backward_pass_enabled: bool = True,
     ):
         super().__init__()
         self.d_model = d_model
         self.max_seq_len = max_seq_len
+        self.backward_pass_enabled = backward_pass_enabled
 
         # Token embedding
         self.embedding = nn.Embedding(vocab_size, d_model)
@@ -84,7 +86,11 @@ class SpikingLuthiLM(nn.Module):
         self.output_proj = nn.Linear(d_model, vocab_size)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Forward pass with inter-block spike propagation.
+        """Forward pass with inter-block spike propagation and top-down sweep.
+
+        Phase 1 (bottom-up): Forward through blocks with spike propagation.
+        Phase 2 (top-down): If training, backward sweep with top-down
+            modulation and backward spike propagation.
 
         Args:
             x: [batch, seq_len] integer token indices.
@@ -101,17 +107,35 @@ class SpikingLuthiLM(nn.Module):
         positions = torch.arange(seq_len, device=x.device).unsqueeze(0)
         h = self.embedding(x) + self.pos_embedding(positions)
 
-        # Pass through spiking hybrid blocks with spike propagation
+        # Phase 1: Bottom-up with spike propagation
+        block_inputs = []
         prev_spikes = None
         for block in self.blocks:
+            block_inputs.append(h.detach())
             h, delayed_spikes = block(
                 h, incoming_spikes=prev_spikes, causal=True
             )
             prev_spikes = delayed_spikes
 
         # Project to vocabulary
-        h = self.final_norm(h)
-        logits = self.output_proj(h)
+        h_final = self.final_norm(h)
+        logits = self.output_proj(h_final)
+
+        # Phase 2: Top-down backward sweep with backward spike propagation
+        if self.training and self.backward_pass_enabled:
+            from luthi.backward_pass import create_initial_signal
+
+            with torch.no_grad():
+                signal = create_initial_signal(h.detach())
+                for i in reversed(range(len(self.blocks))):
+                    signal, backward_spikes = self.blocks[i].top_down_pass(
+                        signal, block_inputs[i],
+                    )
+                    # Feed backward spikes into the block below's membrane
+                    if i > 0:
+                        self.blocks[i - 1].living_ffn.membrane_potential.add_(
+                            backward_spikes * self.blocks[i - 1].living_ffn.spike_scale * 0.3
+                        )
 
         return logits
 

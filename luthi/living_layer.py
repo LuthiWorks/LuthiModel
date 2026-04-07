@@ -255,112 +255,20 @@ class LivingLayerV6(nn.Module):
 
         # --- Self-modification (no gradient flow) ---
         with torch.no_grad():
-            # Excitability factor: [out, in]
-            exc = self._excitability_factor()
+            from luthi.fused_ops import living_self_modify
 
-            # Salience: mean absolute activation per output dimension
-            salience_per_dim = output.abs().mean(dim=0)  # [out]
-            salience_scalar = salience_per_dim.mean().item()
-
-            # Update input magnitude running average (synaptic scaling, V5)
-            input_mag = x_flat.abs().mean(dim=0)  # [in]
-            self.input_avg_mag.mul_(self.input_mag_decay).add_(
-                input_mag, alpha=1.0 - self.input_mag_decay
-            )
-
-            # Normalized input for Hebbian update
-            normalized_input = x_flat / self.input_avg_mag.clamp(min=0.01)
-
-            # Per-weight salience: how much was this specific weight used?
-            # Normalized by mean weight magnitude to prevent positive feedback:
-            # larger-than-average weights still get more update (biologically
-            # sensible), but growing ALL weights doesn't increase total update
-            # magnitude. Fixes the runaway instability in deeper blocks.
-            weight_norm = self.weight.abs() / self.weight.abs().mean().clamp(min=0.01)
-            per_weight_salience = (
-                weight_norm * x_flat.abs().mean(dim=0).unsqueeze(0)
-            )  # [out, in]
-
-            # Input signal: mean normalized input per dimension, broadcast
-            # to [out, in]. Each weight w[i,j] receives input from dim j.
-            input_signal = normalized_input.mean(dim=0).unsqueeze(0)  # [1, in]
-
-            # Hebbian update: per-weight, proportional to how unusual the
-            # input is and how much this weight was activated
-            hebb_update = (
-                input_signal * per_weight_salience * exc * self.plasticity
-                * self.hebb_rate
-            )  # [out, in]
-
-            # --- Metaplasticity: adaptive Hebbian gating ---
-            # Each weight compares its current update to its recent history.
-            # Wild updates get suppressed; normal ones pass through.
-            update_mag = hebb_update.abs()
-            ratio = update_mag / (self.update_ema + 1e-8)
-
-            # Adaptive factor: smooth suppression of unusually large updates
-            #   ratio ≈ 1.0 → factor ≈ 1.0 (normal, no suppression)
-            #   ratio = 2.0 → factor ≈ 0.67 (moderate)
-            #   ratio = 5.0 → factor ≈ 0.33 (strong)
-            #   ratio = 10  → factor ≈ 0.18 (emergency brake)
-            adaptive_factor = (2.0 / (1.0 + ratio)).clamp(max=1.0)
-
-            # Activity-dependent gating (subclass extension point).
-            # When gate is not None, only active elements get Hebbian/
-            # momentum/update_ema updates; quiescent elements are frozen.
             gate = self._get_update_gate()
-
-            # Update the running average of update magnitudes
-            if gate is not None:
-                self.update_ema.add_(
-                    (update_mag - self.update_ema)
-                    * (1.0 - self.update_ema_decay) * gate
-                )
-            else:
-                self.update_ema.mul_(self.update_ema_decay).add_(
-                    update_mag, alpha=1.0 - self.update_ema_decay
-                )
-
-            # In eval mode, also apply base reduction — belt and suspenders
-            if not self.training:
-                adaptive_factor = adaptive_factor * self.eval_hebb_fraction
-
-            # Apply gated Hebbian update to weights
-            if gate is not None:
-                self.weight.add_(hebb_update * adaptive_factor * gate)
-            else:
-                self.weight.add_(hebb_update * adaptive_factor)
-
-            # Update momentum (exponential moving average of updates)
-            if gate is not None:
-                self.momentum.add_(
-                    (hebb_update - self.momentum)
-                    * (1.0 - self.momentum_decay) * gate
-                )
-            else:
-                self.momentum.mul_(self.momentum_decay).add_(
-                    hebb_update, alpha=1.0 - self.momentum_decay
-                )
-
-            # Homeostatic regulation: decay toward set point
-            homeostatic_force = self.set_point - self.weight
-            self.weight.add_(homeostatic_force, alpha=self.homeostatic_decay)
-
-            # Slowly adapt set point toward current weight position
-            set_point_delta = self.weight - self.set_point
-            self.set_point.add_(set_point_delta, alpha=self.set_point_adapt_rate)
-
-            # Excitability dynamics: sensitize on high salience, habituate on low
-            # Broadcast salience [out] -> [out, in] for per-weight update
-            salience_broadcast = salience_per_dim.unsqueeze(1).expand_as(
-                self.excitability_acc
+            salience_scalar = living_self_modify(
+                self.weight, self.set_point, self.momentum,
+                self.input_avg_mag, self.excitability_acc, self.plasticity,
+                self.update_ema, x_flat, output, gate,
+                self.hebb_rate, self.homeostatic_decay,
+                self.set_point_adapt_rate, self.momentum_decay,
+                self.input_mag_decay, self.salience_threshold,
+                self.excitability_min, self.excitability_max,
+                self.update_ema_decay, self.eval_hebb_fraction,
+                self.training,
             )
-            exc_update = torch.where(
-                salience_broadcast > self.salience_threshold,
-                torch.tensor(0.01, device=x.device, dtype=x.dtype),
-                torch.tensor(-0.005, device=x.device, dtype=x.dtype),
-            )
-            self.excitability_acc.add_(exc_update)
 
             # Store episode if salient enough
             self._store_episode(context, salience_scalar)
@@ -370,6 +278,49 @@ class LivingLayerV6(nn.Module):
             output = output.reshape(batch, seq_len, self.out_features)
 
         return output
+
+    # ------------------------------------------------------------------
+    # Top-down modulation (backward pass)
+    # ------------------------------------------------------------------
+
+    def apply_top_down(self, signal) -> None:
+        """Modulate self-modification parameters based on downstream feedback.
+
+        Called during the top-down backward pass. Adjusts this layer's
+        plasticity and homeostatic set points based on what later blocks
+        found important and unexpected.
+
+        This modifies state for the NEXT forward pass — it does not
+        change the current pass's output.
+
+        Args:
+            signal: TopDownSignal with salience, prediction_error, and
+                modulation_strength fields.
+        """
+        with torch.no_grad():
+            strength = signal.modulation_strength
+
+            # 1. Plasticity modulation: boost learning rate for weights
+            # connected to dimensions that downstream found important.
+            # importance is [d_model] -> broadcast to [1, in_features]
+            importance = signal.salience.unsqueeze(0)  # [1, in]
+
+            # Gently adjust plasticity: mostly retain current, slightly
+            # bias toward what downstream needs
+            self.plasticity.mul_(1.0 - 0.01 * strength).add_(
+                importance * 0.01 * strength
+            )
+            # Clamp plasticity to prevent runaway or death
+            self.plasticity.clamp_(0.1, 10.0)
+
+            # 2. Set point drift: nudge homeostatic targets toward what
+            # downstream consistently needs. Prediction error tells us
+            # the mismatch between what this layer produced and what
+            # was useful above.
+            error_signal = signal.prediction_error.unsqueeze(0)  # [1, in]
+            self.set_point.add_(
+                error_signal * self.set_point_adapt_rate * 10.0 * strength
+            )
 
     # ------------------------------------------------------------------
     # Error-directed learning (V6)

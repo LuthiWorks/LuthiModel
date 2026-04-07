@@ -1,5 +1,8 @@
 # Corpus data (too large for GitHub)
 corpus_build/gutenberg*/
+data/LibriSpeech/
+data/*.tar.gz
+data/*.flac
 
 # Training run checkpoints (backed up to E:\)
 runs/

@@ -147,6 +147,26 @@ class SpikingLivingLayer(LivingLayerV6):
         """
         return self.spike_mask
 
+    def apply_top_down(self, signal) -> None:
+        """Modulate living weights AND prime membrane from downstream feedback.
+
+        Extends the base class top-down modulation with spiking-specific
+        membrane priming: weights connected to dimensions that downstream
+        found important get a nudge toward their spike threshold, making
+        them more likely to fire on the next forward pass.
+
+        This is top-down priming — later layers tell earlier layers
+        "be ready for this kind of input."
+        """
+        # Base modulation: plasticity and set point adjustment
+        super().apply_top_down(signal)
+
+        with torch.no_grad():
+            # 3. Membrane priming: bias membrane potential toward firing
+            # for weights aligned with downstream salience
+            prime = signal.salience.unsqueeze(0) * signal.modulation_strength
+            self.membrane_potential.add_(prime * self.spike_scale * 0.5)
+
     def get_delayed_spikes(self) -> torch.Tensor:
         """Return the spike mask from delay_steps ago for propagation."""
         return self.delay_buffer[self._delay_pos % self.delay_steps]

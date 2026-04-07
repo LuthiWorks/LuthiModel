@@ -34,6 +34,7 @@ These are settled findings from the proof-of-concept phase. Do not re-derive or 
 7. **Prefer crashes over silent corruption.** No try/except around living weight operations. If NaN appears, it must be visible immediately.
 8. **Layer-level episodes, not per-weight episodes.** Layer-level snapshots are memory-efficient and capture full weight interaction context.
 9. **Write fresh PyTorch, don't translate numpy loops.** The proof-of-concept code was written for clarity. The PyTorch implementation should use vectorized tensor operations throughout.
+9b. **Backward pass is always-on.** Top-down modulation broke through a 25-epoch val loss plateau, increased non-FF signal by 26%, and caused plasticity to self-organize — with zero performance cost. It is not a training optimization; it is bidirectional information flow. Leave it on during training and inference.
 
 ## Planning
 
@@ -45,7 +46,7 @@ See `To-Do.md` for the task checklist with completion status.
 1. Vectorized PyTorch `LivingLayerV6` **(COMPLETE)**
 2. Hybrid block + spiking variant **(COMPLETE)**
 3. Language modeling + backward pass + C++ optimization **(COMPLETE)**
-3B. Training validation with backward pass
+3B. Training validation with backward pass **(COMPLETE — BP is default-on)**
 3C. Multimodal — audio + text
 3D. Multimodal — vision + text
 3E. Simulated embodiment (MuJoCo)

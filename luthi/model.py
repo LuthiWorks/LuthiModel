@@ -41,10 +41,12 @@ class LuthiLM(nn.Module):
         num_episodes: int = 64,
         episode_blend: float = 0.3,
         eval_hebb_fraction: float = 0.33,
+        backward_pass_enabled: bool = True,
     ):
         super().__init__()
         self.d_model = d_model
         self.max_seq_len = max_seq_len
+        self.backward_pass_enabled = backward_pass_enabled
 
         # Character embedding
         self.embedding = nn.Embedding(vocab_size, d_model)
@@ -72,7 +74,12 @@ class LuthiLM(nn.Module):
         self.output_proj = nn.Linear(d_model, vocab_size)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
+        """Forward pass with optional top-down backward sweep.
+
+        Phase 1 (bottom-up): Standard forward through all blocks.
+        Phase 2 (top-down): If training, run backward sweep to modulate
+            living weight dynamics for the next forward pass.
+
         Args:
             x: [batch, seq_len] integer token indices.
 
@@ -88,13 +95,26 @@ class LuthiLM(nn.Module):
         positions = torch.arange(seq_len, device=x.device).unsqueeze(0)
         h = self.embedding(x) + self.pos_embedding(positions)
 
-        # Pass through hybrid blocks
+        # Phase 1: Bottom-up (forward pass through blocks)
+        block_inputs = []
         for block in self.blocks:
+            block_inputs.append(h.detach())
             h = block(h, causal=True)
 
         # Project to vocabulary
-        h = self.final_norm(h)
-        logits = self.output_proj(h)
+        h_final = self.final_norm(h)
+        logits = self.output_proj(h_final)
+
+        # Phase 2: Top-down backward sweep (modulates state for NEXT pass)
+        if self.training and self.backward_pass_enabled:
+            from luthi.backward_pass import create_initial_signal
+
+            with torch.no_grad():
+                signal = create_initial_signal(h.detach())
+                for i in reversed(range(len(self.blocks))):
+                    signal = self.blocks[i].top_down_pass(
+                        signal, block_inputs[i],
+                    )
 
         return logits
 

@@ -119,6 +119,109 @@ def measure_non_feedforward(model: LuthiLM, x: torch.Tensor) -> float:
 
 
 @torch.no_grad()
+def collect_extended_metrics(model: torch.nn.Module) -> dict[str, float]:
+    """Collect extended metrics for backward pass comparison experiment.
+
+    Returns per-block plasticity stats, set point drift, and overall metrics.
+    """
+    metrics: dict[str, float] = {}
+
+    if not hasattr(model, "blocks"):
+        return metrics
+
+    all_plasticity = []
+    all_drift = []
+
+    for i, block in enumerate(model.blocks):
+        if not hasattr(block, "living_ffn"):
+            continue
+        ffn = block.living_ffn
+
+        # Plasticity distribution
+        p = ffn.plasticity
+        metrics[f"block{i}_plasticity_mean"] = p.mean().item()
+        metrics[f"block{i}_plasticity_std"] = p.std().item()
+        metrics[f"block{i}_plasticity_min"] = p.min().item()
+        metrics[f"block{i}_plasticity_max"] = p.max().item()
+        all_plasticity.append(p)
+
+        # Set point drift (distance from set point to current weight)
+        drift = (ffn.weight - ffn.set_point).abs()
+        metrics[f"block{i}_sp_drift_mean"] = drift.mean().item()
+        metrics[f"block{i}_sp_drift_max"] = drift.max().item()
+        all_drift.append(drift)
+
+        # Excitability spread
+        exc = ffn._excitability_factor()
+        metrics[f"block{i}_excitability_mean"] = exc.mean().item()
+        metrics[f"block{i}_excitability_std"] = exc.std().item()
+
+        # Update EMA (metaplasticity state)
+        metrics[f"block{i}_update_ema_mean"] = ffn.update_ema.mean().item()
+
+        # Episodes stored
+        metrics[f"block{i}_episodes"] = ffn.episode_count.item()
+
+    # Aggregate metrics
+    if all_plasticity:
+        cat_p = torch.cat([p.flatten() for p in all_plasticity])
+        metrics["plasticity_mean"] = cat_p.mean().item()
+        metrics["plasticity_std"] = cat_p.std().item()
+
+        cat_d = torch.cat([d.flatten() for d in all_drift])
+        metrics["sp_drift_mean"] = cat_d.mean().item()
+        metrics["sp_drift_max"] = cat_d.max().item()
+
+    return metrics
+
+
+@torch.no_grad()
+def measure_backward_pass_effect(
+    model: torch.nn.Module,
+    x: torch.Tensor,
+) -> float:
+    """Measure the magnitude of the backward pass's effect on living weights.
+
+    Runs one forward pass with backward_pass_enabled=True and one with False,
+    comparing the resulting plasticity and set_point states. Returns mean
+    absolute difference in plasticity across all blocks.
+
+    Only meaningful when model.backward_pass_enabled is True.
+    """
+    if not hasattr(model, "backward_pass_enabled") or not model.backward_pass_enabled:
+        return 0.0
+    if not hasattr(model, "blocks"):
+        return 0.0
+
+    # Snapshot plasticity before
+    plasticity_before = []
+    set_point_before = []
+    for block in model.blocks:
+        if hasattr(block, "living_ffn"):
+            plasticity_before.append(block.living_ffn.plasticity.clone())
+            set_point_before.append(block.living_ffn.set_point.clone())
+
+    # Run a forward pass (which triggers backward sweep in training mode)
+    was_training = model.training
+    model.train()
+    _ = model(x)
+    if not was_training:
+        model.eval()
+
+    # Measure change
+    total_diff = 0.0
+    n = 0
+    for i, block in enumerate(model.blocks):
+        if hasattr(block, "living_ffn") and i < len(plasticity_before):
+            p_diff = (block.living_ffn.plasticity - plasticity_before[i]).abs().mean().item()
+            sp_diff = (block.living_ffn.set_point - set_point_before[i]).abs().mean().item()
+            total_diff += p_diff + sp_diff
+            n += 1
+
+    return total_diff / max(n, 1)
+
+
+@torch.no_grad()
 def generate(
     model: torch.nn.Module,
     tokenizer,
@@ -186,6 +289,13 @@ def main():
                         help="Steps a neuron cannot fire after spiking")
     parser.add_argument("--delay_steps", type=int, default=2,
                         help="Spike propagation delay between blocks")
+    # Backward pass control
+    parser.add_argument("--backward_pass", action="store_true", default=False,
+                        help="Enable top-down backward pass modulation")
+    parser.add_argument("--backward_pass_start_epoch", type=int, default=0,
+                        help="Epoch to enable backward pass (0 = from start)")
+    parser.add_argument("--run_name", type=str, default=None,
+                        help="Name for this run (creates subdirectory under output_dir)")
     args = parser.parse_args()
 
     # Parse dtype
@@ -216,6 +326,8 @@ def main():
     print(f"Found {len(text_files)} text files in {data_dir}")
 
     output_dir = Path(args.output_dir)
+    if args.run_name:
+        output_dir = output_dir / args.run_name
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # For large corpora (>100 files), use streaming to avoid loading
@@ -298,6 +410,18 @@ def main():
     living_results = {"train_loss": [], "val_loss": [], "non_ff_signal": []}
     substrate_health_history: list[dict] = []
 
+    # Determine initial backward pass state
+    # If --backward_pass_start_epoch > 0, start disabled and enable at that epoch
+    bp_enabled = args.backward_pass and (args.backward_pass_start_epoch == 0)
+
+    if args.backward_pass:
+        if args.backward_pass_start_epoch > 0:
+            print(f"Backward pass: STAGED (enables at epoch {args.backward_pass_start_epoch})")
+        else:
+            print(f"Backward pass: ON from epoch 0")
+    else:
+        print(f"Backward pass: OFF")
+
     if args.resume:
         print(f"\n=== RESUMING FROM CHECKPOINT ===")
         print(f"Loading: {args.resume}")
@@ -332,6 +456,7 @@ def main():
                 membrane_leak=args.membrane_leak,
                 refractory_steps=args.refractory_steps,
                 delay_steps=args.delay_steps,
+                backward_pass_enabled=bp_enabled,
             ).to(device=device, dtype=training_dtype)
 
             missing, unexpected = living_model.load_state_dict(
@@ -351,9 +476,10 @@ def main():
                 error_rate=ckpt_config["error_rate"],
                 homeostatic_decay=ckpt_config["homeostatic_decay"],
                 set_point_adapt_rate=ckpt_config["set_point_adapt_rate"],
+                backward_pass_enabled=bp_enabled,
             ).to(device=device, dtype=training_dtype)
 
-            living_model.load_state_dict(ckpt["model_state_dict"])
+            living_model.load_state_dict(ckpt["model_state_dict"], strict=False)
 
         living_optimizer = torch.optim.AdamW(living_model.parameters(), lr=args.lr)
         if "optimizer_state_dict" in ckpt and not args.spiking:
@@ -388,6 +514,7 @@ def main():
                 membrane_leak=args.membrane_leak,
                 refractory_steps=args.refractory_steps,
                 delay_steps=args.delay_steps,
+                backward_pass_enabled=bp_enabled,
             ).to(device=device, dtype=training_dtype)
         else:
             print("\n=== LIVING MODEL (LuthiLM) ===")
@@ -400,6 +527,7 @@ def main():
                 error_rate=args.error_rate,
                 homeostatic_decay=args.homeostatic_decay,
                 set_point_adapt_rate=args.set_point_adapt_rate,
+                backward_pass_enabled=bp_enabled,
             ).to(device=device, dtype=training_dtype)
 
         param_counts = living_model.total_parameters()
@@ -425,6 +553,8 @@ def main():
         "bpe_vocab_size": args.bpe_vocab_size if args.tokenizer == "bpe" else None,
         "dtype": args.dtype,
         "spiking": args.spiking,
+        "backward_pass": args.backward_pass,
+        "backward_pass_start_epoch": args.backward_pass_start_epoch,
     }
     if args.spiking:
         config["spike_threshold"] = args.spike_threshold
@@ -445,8 +575,15 @@ def main():
 
     # -- Living model training loop ------------------------------------
     checkpoint_path = output_dir / "checkpoint.luthi"
+    extended_metrics_history: list[dict] = []
 
     for epoch in range(start_epoch + 1, args.epochs + 1):
+        # Staged backward pass enable
+        if args.backward_pass and args.backward_pass_start_epoch > 0:
+            if epoch >= args.backward_pass_start_epoch and not living_model.backward_pass_enabled:
+                living_model.backward_pass_enabled = True
+                print(f"  >>> Backward pass ENABLED at epoch {epoch}")
+
         t0 = time.time()
         train_loss = train_epoch(
             living_model, train_loader, living_optimizer, device, is_living=True,
@@ -470,10 +607,29 @@ def main():
         health["non_ff_signal"] = nff
         substrate_health_history.append(health)
 
+        # Extended metrics for backward pass comparison
+        ext = collect_extended_metrics(living_model)
+        ext["epoch"] = epoch
+        ext["backward_pass_active"] = living_model.backward_pass_enabled
+        if living_model.backward_pass_enabled:
+            bp_effect = measure_backward_pass_effect(
+                living_model, sample_x.to(device),
+            )
+            ext["backward_pass_effect"] = bp_effect
+        else:
+            ext["backward_pass_effect"] = 0.0
+        extended_metrics_history.append(ext)
+
+        gap = val_loss - train_loss
+        bp_tag = " [BP]" if living_model.backward_pass_enabled else ""
         print(
             f"  Epoch {epoch:2d}/{args.epochs} | "
             f"train {train_loss:.4f} | val {val_loss:.4f} | "
-            f"non-FF {nff:.6f} | {elapsed:.1f}s"
+            f"gap {gap:.2f} | non-FF {nff:.6f} | "
+            f"plast {ext.get('plasticity_mean', 0):.4f}±{ext.get('plasticity_std', 0):.4f} | "
+            f"drift {ext.get('sp_drift_mean', 0):.6f} | "
+            f"bp_fx {ext.get('backward_pass_effect', 0):.6f}{bp_tag} | "
+            f"{elapsed:.1f}s"
         )
 
         # Save encrypted checkpoint after every epoch
@@ -489,6 +645,7 @@ def main():
             # Embed tokenizer state so checkpoint is self-contained
             if hasattr(tokenizer, "get_state"):
                 ckpt["tokenizer_state"] = tokenizer.get_state()
+            ckpt["extended_metrics"] = extended_metrics_history
             save_checkpoint(ckpt, checkpoint_path, args.checkpoint_password)
 
     # Generate sample
@@ -531,6 +688,7 @@ def main():
     results = {
         "args": vars(args),
         "living": living_results,
+        "extended_metrics": extended_metrics_history,
         "vocab_size": tokenizer.vocab_size,
         "tokenizer_type": args.tokenizer,
         "corpus_chars": corpus_chars,

@@ -125,6 +125,36 @@ class SpikingHybridBlock(nn.Module):
 
         return x, delayed_spikes
 
+    def top_down_pass(
+        self, signal, block_input: torch.Tensor,
+    ):
+        """Apply top-down modulation and compute signal for the block below.
+
+        Extends base behavior with backward spike propagation: the current
+        spike mask is returned alongside the refined signal, allowing the
+        block below to receive spike priming from above.
+
+        Args:
+            signal: TopDownSignal from the block above (or initial signal).
+            block_input: [batch, seq_len, d_model] this block's input
+                from the forward pass.
+
+        Returns:
+            Tuple of (refined TopDownSignal, backward_spikes tensor).
+        """
+        from luthi.backward_pass import compute_block_top_down
+
+        # Modulate this block's living weights (includes membrane priming)
+        self.living_ffn.apply_top_down(signal)
+
+        # Backward spike propagation: send current spike state to block below
+        backward_spikes = self.living_ffn.spike_mask.clone()
+
+        # Compute refined signal for the block below
+        refined = compute_block_top_down(signal, block_input)
+
+        return refined, backward_spikes
+
     def apply_living_error(self) -> None:
         """Apply error-directed learning using the gradient at the FFN output.
 
