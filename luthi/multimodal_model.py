@@ -1,12 +1,14 @@
-"""Multimodal Living Weight Model — audio + text through shared living trunk.
+"""Multimodal Living Weight Model — audio + vision + text through shared living trunk.
 
 Extends the spiking architecture to process multiple modalities through a
 single set of living weights. The model's existence is shaped by everything
-it experiences — audio and text flow through the same self-modifying blocks.
+it experiences — audio, images, and text flow through the same self-modifying
+blocks.
 
 Architecture:
-    audio  → AudioEncoder → [d_model tokens] ─┐
-    text   → TextEmbedding → [d_model tokens] ─┤→ + modality_emb
+    vision → VisionEncoder → [d_model tokens] ─┐
+    audio  → AudioEncoder  → [d_model tokens] ─┤→ + modality_emb
+    text   → TextEmbedding → [d_model tokens] ─┤
                                                 ↓
                                   [SpikingHybridBlock x N]  (shared trunk)
                                     ↑ bottom-up  ↓ top-down
@@ -21,17 +23,20 @@ import torch
 import torch.nn as nn
 
 from luthi.audio_encoder import AudioEncoder
+from luthi.vision_encoder import VisionEncoder
 from luthi.hybrid_block_spiking import SpikingHybridBlock
 
 
 class MultimodalLuthiLM(nn.Module):
     """Multimodal spiking living weight language model.
 
-    Processes audio + text through shared living weight blocks. Audio tokens
-    precede text tokens in the sequence, so text can attend to all audio
-    context via natural causal masking.
+    Processes audio + vision + text through shared living weight blocks.
+    Perceptual tokens precede text tokens in the sequence, so text can
+    attend to all sensory context via natural causal masking.
 
-    Loss is computed on text tokens only. The audio encoder learns entirely
+    Sequence order: [vision, audio, text]
+
+    Loss is computed on text tokens only. The sensory encoders learn entirely
     through gradients flowing back from text prediction through cross-modal
     attention.
     """
@@ -59,13 +64,17 @@ class MultimodalLuthiLM(nn.Module):
         reset_mode: str = "zero",
         spike_baseline: float = 0.3,
         # Multimodal parameters
-        n_modalities: int = 2,
+        n_modalities: int = 3,
         max_audio_tokens: int = 1000,
         audio_sample_rate: int = 16000,
         audio_n_mels: int = 80,
         audio_hop_length: int = 160,
         audio_n_fft: int = 400,
         audio_patch_frames: int = 16,
+        # Vision parameters
+        vision_image_size: int = 224,
+        vision_patch_size: int = 16,
+        max_vision_tokens: int = 256,
         # Backward pass
         backward_pass_enabled: bool = True,
     ):
@@ -91,7 +100,15 @@ class MultimodalLuthiLM(nn.Module):
             max_audio_tokens=max_audio_tokens,
         )
 
-        # Modality embeddings: text=0, audio=1 (extensible for vision=2, touch=3)
+        # Vision encoder
+        self.vision_encoder = VisionEncoder(
+            d_model=d_model,
+            image_size=vision_image_size,
+            patch_size=vision_patch_size,
+            max_vision_tokens=max_vision_tokens,
+        )
+
+        # Modality embeddings: text=0, audio=1, vision=2
         self.modality_embedding = nn.Embedding(n_modalities, d_model)
 
         # Shared living weight trunk — identical blocks to SpikingLuthiLM
@@ -125,12 +142,14 @@ class MultimodalLuthiLM(nn.Module):
         text_tokens: torch.Tensor,
         audio_waveform: torch.Tensor | None = None,
         audio_tokens: torch.Tensor | None = None,
+        image: torch.Tensor | None = None,
+        vision_tokens: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        """Forward pass with optional audio input.
+        """Forward pass with optional audio and/or vision input.
 
-        Audio tokens are prepended to text tokens in the sequence. Causal
-        masking lets text attend to all audio context. Loss should be
-        computed on the returned logits (text positions only).
+        Sensory tokens are prepended to text tokens: [vision, audio, text].
+        Causal masking lets text attend to all sensory context. Loss should
+        be computed on the returned logits (text positions only).
 
         Args:
             text_tokens: [batch, text_seq_len] integer token indices.
@@ -138,6 +157,10 @@ class MultimodalLuthiLM(nn.Module):
                 by the audio encoder into tokens.
             audio_tokens: Optional [batch, n_audio_tokens, d_model]
                 pre-encoded audio tokens (skip encoder, for efficiency).
+            image: Optional [batch, 3, H, W] normalized RGB images.
+                Encoded by the vision encoder into tokens.
+            vision_tokens: Optional [batch, n_vision_tokens, d_model]
+                pre-encoded vision tokens (skip encoder, for efficiency).
 
         Returns:
             [batch, text_seq_len, vocab_size] logits for text positions.
@@ -145,7 +168,7 @@ class MultimodalLuthiLM(nn.Module):
         batch, text_len = text_tokens.shape
         device = text_tokens.device
 
-        # --- Encode text ---
+        # --- Encode text (modality 0) ---
         text_positions = torch.arange(text_len, device=device).unsqueeze(0)
         text_emb = (
             self.embedding(text_tokens)
@@ -155,7 +178,20 @@ class MultimodalLuthiLM(nn.Module):
             )
         )
 
-        # --- Encode audio (if provided) ---
+        # --- Encode vision (modality 2, if provided) ---
+        if vision_tokens is not None:
+            vision_emb = vision_tokens + self.modality_embedding(
+                torch.full((1,), 2, dtype=torch.long, device=device)
+            )
+        elif image is not None:
+            vision_emb = self.vision_encoder(image)
+            vision_emb = vision_emb + self.modality_embedding(
+                torch.full((1,), 2, dtype=torch.long, device=device)
+            )
+        else:
+            vision_emb = None
+
+        # --- Encode audio (modality 1, if provided) ---
         if audio_tokens is not None:
             audio_emb = audio_tokens + self.modality_embedding(
                 torch.ones(1, dtype=torch.long, device=device)
@@ -168,12 +204,18 @@ class MultimodalLuthiLM(nn.Module):
         else:
             audio_emb = None
 
-        # --- Concatenate: [audio, text] ---
+        # --- Concatenate: [vision, audio, text] ---
+        sensory_parts = []
+        if vision_emb is not None:
+            sensory_parts.append(vision_emb)
         if audio_emb is not None:
-            n_audio = audio_emb.shape[1]
-            h = torch.cat([audio_emb, text_emb], dim=1)
+            sensory_parts.append(audio_emb)
+
+        if sensory_parts:
+            n_sensory = sum(p.shape[1] for p in sensory_parts)
+            h = torch.cat(sensory_parts + [text_emb], dim=1)
         else:
-            n_audio = 0
+            n_sensory = 0
             h = text_emb
 
         # --- Phase 1: Bottom-up with spike propagation ---
@@ -187,7 +229,7 @@ class MultimodalLuthiLM(nn.Module):
             prev_spikes = delayed_spikes
 
         # --- Extract text positions and project ---
-        h_text = h[:, n_audio:, :]
+        h_text = h[:, n_sensory:, :]
         h_text = self.final_norm(h_text)
         logits = self.output_proj(h_text)
 

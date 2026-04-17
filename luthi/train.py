@@ -11,13 +11,13 @@ entity — they are never stored in plaintext.
 
 Usage:
     # Character-level (default)
-    python -m luthi.train --data_dir data/ --epochs 10 --checkpoint_password SECRET
+    python -m luthi.train --data_dir E:/data/gutenberg --epochs 10 --checkpoint_password SECRET
 
     # BPE tokenization
-    python -m luthi.train --data_dir data/ --tokenizer bpe --bpe_vocab_size 4096
+    python -m luthi.train --data_dir E:/data/gutenberg --tokenizer bpe --bpe_vocab_size 4096
 
     # Resume from checkpoint
-    python -m luthi.train --resume runs/my_run/checkpoint.luthi --epochs 20
+    python -m luthi.train --resume E:/runs/my_run/checkpoint.luthi --epochs 20
 """
 
 import argparse
@@ -45,6 +45,7 @@ from luthi.data import (
 )
 from luthi.tokenizer import BPETokenizer
 from luthi.model import LuthiLM
+from luthi.optimizer import DirectMLAdamW
 
 
 def train_epoch(
@@ -53,11 +54,17 @@ def train_epoch(
     optimizer: torch.optim.Optimizer,
     device: torch.device,
     is_living: bool = False,
+    log_every: int = 50,
+    epoch: int = 0,
 ) -> float:
     """Train for one epoch. Returns average loss."""
     model.train()
     total_loss = 0.0
     n_batches = 0
+    running_loss = 0.0
+    t_start = time.time()
+    t_batch = t_start
+    total_batches = len(dataloader)
 
     for x, y in dataloader:
         x, y = x.to(device), y.to(device)
@@ -79,8 +86,25 @@ def train_epoch(
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
 
-        total_loss += loss.item()
+        batch_loss = loss.item()
+        total_loss += batch_loss
+        running_loss += batch_loss
         n_batches += 1
+
+        if n_batches % log_every == 0:
+            avg_running = running_loss / log_every
+            elapsed = time.time() - t_batch
+            total_elapsed = time.time() - t_start
+            batches_per_sec = log_every / max(elapsed, 1e-6)
+            remaining = (total_batches - n_batches) / max(batches_per_sec, 1e-6)
+            print(
+                f"    [E{epoch}] batch {n_batches}/{total_batches} | "
+                f"loss {avg_running:.4f} | "
+                f"{batches_per_sec:.1f} batch/s | "
+                f"~{remaining:.0f}s remaining"
+            )
+            running_loss = 0.0
+            t_batch = time.time()
 
     return total_loss / max(n_batches, 1)
 
@@ -266,7 +290,7 @@ def main():
     parser.add_argument("--stride", type=int, default=1,
                         help="Stride between sequences (default 1 = fully overlapping)")
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--output_dir", type=str, default="runs")
+    parser.add_argument("--output_dir", type=str, default="E:/runs")
     parser.add_argument("--resume", type=str, default=None,
                         help="Path to .luthi checkpoint to resume from")
     parser.add_argument("--checkpoint_password", type=str, default=None,
@@ -481,7 +505,7 @@ def main():
 
             living_model.load_state_dict(ckpt["model_state_dict"], strict=False)
 
-        living_optimizer = torch.optim.AdamW(living_model.parameters(), lr=args.lr)
+        living_optimizer = DirectMLAdamW(living_model.parameters(), lr=args.lr)
         if "optimizer_state_dict" in ckpt and not args.spiking:
             # Only restore optimizer state for same model type;
             # spiking upgrade changes the param set
@@ -534,7 +558,7 @@ def main():
         print(f"Trainable params:  {param_counts['trainable']:,}")
         print(f"Living buffers:    {param_counts['living_buffers']:,}")
 
-        living_optimizer = torch.optim.AdamW(living_model.parameters(), lr=args.lr)
+        living_optimizer = DirectMLAdamW(living_model.parameters(), lr=args.lr)
 
     # -- Training config for checkpoint metadata -----------------------
     config = {
@@ -586,7 +610,8 @@ def main():
 
         t0 = time.time()
         train_loss = train_epoch(
-            living_model, train_loader, living_optimizer, device, is_living=True,
+            living_model, train_loader, living_optimizer, device,
+            is_living=True, epoch=epoch,
         )
         val_loss = eval_model(living_model, val_loader, device)
         elapsed = time.time() - t0

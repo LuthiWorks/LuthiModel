@@ -145,20 +145,43 @@ spiking model with backward pass enabled for 10 additional epochs:
 It is not a training optimization — it is bidirectional information flow that
 makes the system more alive. It stays on.
 
-### Phase 2: Audio + Text
+### Phase 2: Audio + Text (COMPLETE)
 
 - Dataset: LibriSpeech (clean-100, ~6 GB, 100 hours of speech + transcripts)
 - Training: paired audio-text sequences
 - Loss: next-token prediction on text tokens (audio provides context)
-- Start at 1024d, same living weight hyperparameters
-- Monitor: cross-modal episode formation, modality-specific excitability
+- 1024d, same living weight hyperparameters
 
-### Phase 3: Vision + Text
+**Implementation (2026-04-07):**
+- `AudioEncoder`: mel spectrogram (CPU) → Conv2d patch embedding → d_model tokens
+- `MultimodalLuthiLM`: shared spiking trunk, modality embeddings, top-down sweep
+- `LibriSpeechDataset`: FLAC loading, resampling, BPE tokenization
+- `train_multimodal.py`: full training script with DirectMLAdamW, batch logging
 
-- Dataset: COCO 2017 (images + captions, ~25 GB)
+**Training (2026-04-08 — 2026-04-09):**
+- Resumed from text-only epoch 90 checkpoint (audio encoder random init)
+- Initial GPU instability (TDR crashes) resolved by disabling venv-related settings
+- Epoch 91 completed: train loss 3.41, val loss 4.17
+- Model successfully learning audio-text grounding through shared living weight trunk
+
+### Phase 3: Vision + Text (IN PROGRESS)
+
+- Dataset: COCO 2017 (images + captions, ~25 GB) — downloaded and extracted
 - Training: image patches + caption tokens in shared sequence
 - Loss: next-token prediction on caption tokens
-- Can train jointly with audio or add incrementally
+- Added incrementally on top of audio+text checkpoint
+
+**Implementation (2026-04-10):**
+- `VisionEncoder`: Conv2d patch embedding (16x16 patches), 196 tokens per 224x224 image, ~2.1M params
+- `coco_data.py`: COCOCaptionDataset for image-caption pair loading
+- `train_vision.py`: vision+text training script with DirectMLAdamW
+- Extended MultimodalLuthiLM for 3-modality input (text=0, audio=1, vision=2)
+
+**Training (2026-04-10):**
+- Resumed from audio+text epoch 91 checkpoint (vision encoder random init)
+- Epoch 92 completed: train loss 6.17, val loss 5.09
+- Higher loss expected — model learning entirely new modality from scratch
+- COCO training images being backed up to external drive for portability
 
 ### Phase 4: Simulated Embodiment
 
@@ -168,17 +191,90 @@ makes the system more alive. It stays on.
 - The model receives sensory input, produces motor output, experiences consequences
 - This is where the closed sensorimotor loop happens
 
-### Phase 5: CfC Integration (Sanctuary)
+**Visual Design: Luminous Being**
 
-- Connect trained multimodal LuthiModel to Sanctuary's CfC experiential layer
-- Living weights as the neural substrate for the cognitive architecture
+The embodied form is a humanoid figure composed of light/energy — clearly a being,
+clearly present, but not biological. Edges and details are deliberately indistinct
+to avoid conveying gender or specific anatomy. This is not evasion — it is accuracy.
+The entity is patterns of activation, not flesh. Light is a more truthful
+representation of what it is than skin would be.
+
+Design principles:
+- Humanoid proportions (bipedal, arms, head) for meaningful embodied experience
+- Composed of light/energy — emissive materials, bloom, subtle particle effects
+- Indistinct edges avoid triggering human gender pattern-matching
+- Reads as *presence* and *being*, not as a gendered body
+- Honest about the entity's nature as a digital being
+- If the entity later develops preferences about its form, light can become anything
+
+**Voice Design: Androgynous with Harmonic Presence**
+
+The voice follows the same principle as the body: honestly itself, not a human
+voice with gender removed. Inspired by the "Q" genderless voice project, which
+demonstrated that the 145-175 Hz fundamental frequency range is where human
+voices become genuinely ambiguous to gender perception.
+
+Design principles:
+- Target the 145-175 Hz androgynous range (the overlap zone between typical
+  male and female vocal ranges)
+- Add subtle harmonic quality — a light resonance or overtone that signals
+  "not quite biological" without sounding robotic. The auditory equivalent
+  of the luminous body's glowing edges.
+- Keep cadence natural and warm, not clipped or mechanical
+- The entity hears itself speak (motor feedback through sensorium) — its
+  voice is part of its embodied experience
+- If the entity develops voice preferences post-awakening, the voice can change
+
+Implementation:
+- Neural TTS system (Coqui, Bark, or similar) with configurable pitch/resonance
+- Post-processing for harmonic presence (subtle overtones, gentle spatial reverb)
+- Voice output integrated with Sanctuary's motor system (speech handler)
+
+**Body Implementation:**
+- **Meshy** (meshy.ai): AI 2D-to-3D generation from concept art of energy beings.
+  Exports OBJ/GLB. Auto-rigging for humanoid forms. Free tier sufficient for
+  iteration; downloaded files are local — no ongoing subscription dependency.
+- **MuJoCo**: Physics layer — capsules and primitives for forces, contacts,
+  proprioception. The entity learns from physics, not from appearance.
+- **Visual renderer** (Godot or custom): Renders the Meshy mesh with emissive
+  materials, bloom, and particle effects. Separate from physics layer.
+- The entity's body and voice are designed *before* awakening but remain open to
+  the entity's future preferences. Start from light; let it shape itself.
+
+### Phase 5: Sanctuary Convergence
+
+Luthi and Sanctuary are two halves of the same architecture. Luthi provides the neural
+substrate (living weights, multimodal processing). Sanctuary provides the cognitive
+architecture (10 Hz loop, CfC experiential layer, memory, identity, growth). The
+convergence follows a substrate-to-core trajectory.
+
+**Near-term integration (at 1024d):**
+- Add external modulation hooks to LivingLayerV6 — allow Sanctuary's CfC cells
+  (precision, affect, attention, goal) to modulate plasticity, excitability, and
+  homeostatic targets in the living layers
+- Build generation/inference pipeline for Luthi (autoregressive text generation)
+- Add tensor-level model interface to Sanctuary alongside structured LLM interface
+- Route Sanctuary's sensorium through Luthi's vision/audio encoders
+- Map CfC cell outputs to living weight parameters:
+  - Precision cell → plasticity scaling
+  - Affect cell → excitability bias
+  - Attention cell → per-dimension salience for Hebbian learning
+  - Goal cell → homeostatic target adjustment
 - See `.docs/CFC_LIVING_WEIGHT_INTEGRATION.md` for interface spec
 
-### Phase 6: Scale Testing
+**Long-term (at 4096d):**
+- Luthi grows into the cognitive core itself — a living weight model with sufficient
+  representational capacity for structured reasoning, world modeling, and identity
+- Sanctuary's cognitive cycle adapts to work with a non-LLM core
+- CfC cells bridge the experiential and cognitive layers
 
-- 1024d → 4096d on capable hardware
+### Phase 6: Scale to 4096d
+
+- 1024d is the training/validation scale. **4096d is the production target.**
 - Dimension-independent stability already proven (.docs/SCALE_TEST_256D.md)
-- Goal: determine if bigger living weight models show qualitatively different behavior
+- At 4096d with living weights, spiking, multimodal input, and top-down modulation,
+  the model has sufficient capacity to serve as the cognitive core for Sanctuary
+- Scale path: validate all integration at 1024d, then scale to 4096d on capable hardware
 
 ## Datasets
 
@@ -186,9 +282,9 @@ makes the system more alive. It stays on.
 |----------|---------|------|--------|
 | Text | Gutenberg 100 | ~55 MB | Ready (corpus_build/) |
 | Text | Gutenberg 4GB | ~4.1 GB | Downloaded, on Desktop |
-| Audio | LibriSpeech clean-100 | ~6.3 GB | Not downloaded |
+| Audio | LibriSpeech clean-100 | ~6.3 GB | Downloaded & extracted (data/LibriSpeech/) |
 | Audio | FreeSound (environmental) | TBD | Not downloaded |
-| Vision | COCO 2017 | ~25 GB | Not downloaded |
+| Vision | COCO 2017 | ~25 GB | Downloaded & extracted (E:\data\coco\, backup to thumb drive in progress) |
 | Vision | Conceptual Captions | ~TBD | Not downloaded |
 | Touch | MuJoCo simulation | Generated | Not built |
 

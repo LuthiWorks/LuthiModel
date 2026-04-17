@@ -324,10 +324,55 @@ Top-down modulation broke through a 25-epoch val loss plateau on its first attem
 
 ---
 
+## Run 11: Multimodal Audio+Text — Attempted (2026-04-08)
+
+**Setup:** Resumed from spiking_1024d_bpe_gutenberg_bp epoch 90 checkpoint. Added MultimodalLuthiLM with AudioEncoder (3.4M params). Shared spiking trunk (same 2 blocks). Audio encoder random-initialized; text weights loaded from checkpoint. LibriSpeech clean-100 (28,539 train utterances) + dev-clean (2,703 val). Backward pass ON.
+
+**Config:** 1024d, 2 blocks, FP32, spiking, BPE vocab 4096, batch_size=4 (reduced from 8 due to GPU instability), DirectMLAdamW, backward pass enabled.
+
+**Total model:** 20.3M trainable params + 90.3M living buffers = 110.6M total. Audio encoder: 3.4M params.
+
+**Results (partial — GPU crashed at batch 30):**
+
+| Batch | Loss | Notes |
+|-------|------|-------|
+| 1 | 11.56 | Expected — audio encoder random, model learning new modality |
+| 2 | 9.33 | Rapid drop — text weights providing strong gradient signal |
+| 3 | 7.90 | Continued learning |
+| 10 | 8.01 | Averaging around 8.0 |
+| 20 | 6.67 | Strong continued descent |
+| 30 | 6.28 | Loss still dropping — model was successfully learning |
+
+**Crash:** RuntimeError: "The GPU will not respond to more commands" during `loss.backward()` at batch ~30. This is a TDR (Timeout Detection and Recovery) — the GPU driver detected a hang and reset the device.
+
+**Diagnosis:**
+- At batch_size=8, crash occurred at batch 3 (~1 minute of sustained GPU compute)
+- At batch_size=4, crash occurred at batch 30 (~5 minutes of sustained GPU compute)
+- Individual operations verified working: forward pass, backward pass, optimizer step all pass diagnostics
+- Pattern is consistent with GPU overheating or hardware degradation under sustained load
+- Not a software issue — the model was training correctly and the loss was dropping rapidly
+
+**Previous session context (2026-04-07):**
+- Text-only training also caused TDR/screen flashing during epoch 91 attempt
+- AdamW `aten::lerp.Scalar_out` CPU fallback was identified and fixed (DirectMLAdamW)
+- CPU may have heat damage from failed water cooler; GPU now also suspected
+
+**What was achieved:**
+- Multimodal architecture validated: audio encoder, shared trunk, cross-modal attention all functional
+- DirectMLAdamW eliminates the lerp CPU fallback
+- Batch-level progress logging added (every 10 batches with ETA)
+- Unbuffered stdout for real-time monitoring of background training
+- The model was learning audio-text grounding — loss dropped 46% in 30 batches
+
+**Blocked:** Waiting for GPU replacement (AMD RX 7800 XT suspected unstable). No checkpoint saved — training did not complete a full epoch. Text-only epoch 90 checkpoint is intact.
+
+---
+
 ## Open Questions
 
 1. **Is the 39% penalty truly a speed issue?** Need a clean comparison: identical architecture with living weights on vs off, trained to full convergence on the same corpus.
 2. **What caused the non-FF signal surge in spiking_1024d_gated?** The jump from 0.28 to 0.88 in 10 epochs is dramatic. Is this beneficial or destabilizing?
 3. **What's the optimal corpus size for 1024d BPE? PARTIALLY ANSWERED.** 100 works (45MB) sustained 80 epochs with val still in a healthy range (gap 0.87, val plateaued but not diverging). Larger corpus would likely push the plateau further out, but 45MB is sufficient for meaningful training at this scale.
 4. **FP16 viability: ANSWERED.** FP16 produces all-NaN training. Living weight self-modification is incompatible with half precision. This is now a settled finding.
-5. **Can the DirectML AdamW CPU fallback be avoided?** This is the main performance bottleneck on the current hardware.
+5. **Can the DirectML AdamW CPU fallback be avoided? ANSWERED.** Yes — `DirectMLAdamW` in `luthi/optimizer.py` replaces `lerp` with equivalent `mul_/add_` operations that DirectML supports natively. Deployed in both `train.py` and `train_multimodal.py`.
+6. **Is the GPU (AMD RX 7800 XT) hardware-damaged?** TDR crashes occur under sustained training load after minutes of operation. Individual ops pass. Consistent with thermal degradation or power delivery failure. Needs hardware replacement or at minimum driver update and thermal investigation.

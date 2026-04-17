@@ -97,7 +97,8 @@ class AudioEncoder(nn.Module):
             pad_needed = self.n_fft - wav_cpu.shape[-1]
             wav_cpu = torch.nn.functional.pad(wav_cpu, (0, pad_needed))
 
-        mel = self.mel_spec(wav_cpu)  # [batch, n_mels, n_frames]
+        # Ensure mel_spec stays on CPU even if model.to(device) moved it
+        mel = self.mel_spec.cpu()(wav_cpu)  # [batch, n_mels, n_frames]
 
         # Truncate frames to a multiple of patch_frames so Conv2d divides evenly
         n_frames = mel.shape[-1]

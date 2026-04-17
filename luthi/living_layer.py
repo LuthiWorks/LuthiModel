@@ -165,7 +165,7 @@ class LivingLayerV6(nn.Module):
         stored = self.episode_contexts[:n]  # [n, context_dim]
 
         # Cosine similarity (contexts are already L2-normalized)
-        sims = stored @ context  # [n]
+        sims = torch.mm(stored, context.unsqueeze(-1)).squeeze(-1)  # [n]
         best_idx = sims.argmax()
         best_sim = sims[best_idx]
 

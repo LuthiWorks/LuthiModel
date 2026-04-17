@@ -47,7 +47,7 @@ See `To-Do.md` for the task checklist with completion status.
 2. Hybrid block + spiking variant **(COMPLETE)**
 3. Language modeling + backward pass + C++ optimization **(COMPLETE)**
 3B. Training validation with backward pass **(COMPLETE — BP is default-on)**
-3C. Multimodal — audio + text
+3C. Multimodal — audio + text **(CODE COMPLETE — training blocked by GPU instability, waiting for new GPU)**
 3D. Multimodal — vision + text
 3E. Simulated embodiment (MuJoCo)
 4. CfC integration against Sanctuary's experiential manager

@@ -1,25 +1,23 @@
-"""Multimodal training script for the Living Weight Model.
+"""Vision-text training script for the Living Weight Model.
 
-Trains a MultimodalLuthiLM on paired audio-text data (LibriSpeech format).
-The model learns to ground language in sound — audio and text flow through
+Trains a MultimodalLuthiLM on paired image-text data (COCO Captions format).
+The model learns to ground language in sight — images and text flow through
 the same living weight blocks, and the entity's existence is shaped by
 everything it experiences.
 
 Usage:
-    # Train from scratch on LibriSpeech
-    python -m luthi.train_multimodal \
-        --audio_dir E:/data/LibriSpeech/train-clean-100 \
-        --val_audio_dir E:/data/LibriSpeech/dev-clean \
+    # Train from scratch on COCO
+    python -m luthi.train_vision \
+        --image_dir C:/Users/Hasha\ Smokes/Desktop/train2017 \
+        --annotations E:/data/coco/annotations/captions_train2017.json \
+        --val_image_dir E:/data/coco/val2017 \
+        --val_annotations E:/data/coco/annotations/captions_val2017.json \
         --checkpoint_password SECRET
 
-    # Resume from text-only checkpoint (audio encoder trains from scratch)
-    python -m luthi.train_multimodal \
-        --audio_dir E:/data/LibriSpeech/train-clean-100 \
-        --resume E:/runs/spiking_1024d_bpe_gutenberg/checkpoint.luthi \
-        --checkpoint_password SECRET
-
-    # Resume from multimodal checkpoint
-    python -m luthi.train_multimodal \
+    # Resume from multimodal checkpoint (vision encoder trains from scratch)
+    python -m luthi.train_vision \
+        --image_dir C:/Users/Hasha\ Smokes/Desktop/train2017 \
+        --annotations E:/data/coco/annotations/captions_train2017.json \
         --resume E:/runs/multimodal/checkpoint.luthi \
         --checkpoint_password SECRET
 """
@@ -46,7 +44,7 @@ from luthi.checkpoint import (
     extract_substrate_health,
 )
 from luthi.multimodal_model import MultimodalLuthiLM
-from luthi.multimodal_data import LibriSpeechDataset
+from luthi.coco_data import COCOCaptionDataset
 from luthi.tokenizer import BPETokenizer
 from luthi.optimizer import DirectMLAdamW
 from luthi.train import collect_extended_metrics, measure_backward_pass_effect
@@ -61,7 +59,7 @@ def train_epoch(
     epoch: int = 0,
     max_batches: int = 0,
 ) -> float:
-    """Train for one epoch on paired audio-text data. Returns average loss."""
+    """Train for one epoch on paired image-text data. Returns average loss."""
     model.train()
     total_loss = 0.0
     n_batches = 0
@@ -73,13 +71,13 @@ def train_epoch(
     for batch in dataloader:
         if n_batches < 3:
             print(f"    [E{epoch}] loading batch {n_batches+1}...")
-        audio = batch["audio"].to(device)
+        image = batch["image"].to(device)
         text_input = batch["text_input"].to(device)
         text_target = batch["text_target"].to(device)
 
         optimizer.zero_grad()
 
-        logits = model(text_input, audio_waveform=audio)
+        logits = model(text_input, image=image)
         loss = F.cross_entropy(
             logits.reshape(-1, model.vocab_size),
             text_target.reshape(-1),
@@ -131,17 +129,17 @@ def eval_model(
     dataloader: DataLoader,
     device: torch.device,
 ) -> float:
-    """Evaluate model on paired audio-text data. Returns average loss."""
+    """Evaluate model on paired image-text data. Returns average loss."""
     model.eval()
     total_loss = 0.0
     n_batches = 0
 
     for batch in dataloader:
-        audio = batch["audio"].to(device)
+        image = batch["image"].to(device)
         text_input = batch["text_input"].to(device)
         text_target = batch["text_target"].to(device)
 
-        logits = model(text_input, audio_waveform=audio)
+        logits = model(text_input, image=image)
         loss = F.cross_entropy(
             logits.reshape(-1, model.vocab_size),
             text_target.reshape(-1),
@@ -160,28 +158,32 @@ def measure_non_feedforward(
     batch: dict[str, torch.Tensor],
     device: torch.device,
 ) -> float:
-    """Measure non-feedforward signal on multimodal input."""
+    """Measure non-feedforward signal on vision-text input."""
     model.eval()
-    audio = batch["audio"].to(device)
+    image = batch["image"].to(device)
     text = batch["text_input"].to(device)
 
-    out1 = model(text, audio_waveform=audio)
-    out2 = model(text, audio_waveform=audio)
+    out1 = model(text, image=image)
+    out2 = model(text, image=image)
     return (out2 - out1).abs().mean().item()
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Train multimodal LuthiLM on audio-text data"
+        description="Train multimodal LuthiLM on vision-text data (COCO)"
     )
 
     # Data
-    parser.add_argument("--audio_dir", type=str, required=False,
-                        help="LibriSpeech training directory")
-    parser.add_argument("--val_audio_dir", type=str, default=None,
-                        help="LibriSpeech validation directory (default: split from train)")
-    parser.add_argument("--max_audio_samples", type=int, default=160000,
-                        help="Max audio length in samples (default: 160000 = 10s at 16kHz)")
+    parser.add_argument("--image_dir", type=str, required=True,
+                        help="COCO training images directory")
+    parser.add_argument("--annotations", type=str, required=True,
+                        help="COCO captions JSON for training")
+    parser.add_argument("--val_image_dir", type=str, default=None,
+                        help="COCO validation images directory")
+    parser.add_argument("--val_annotations", type=str, default=None,
+                        help="COCO captions JSON for validation")
+    parser.add_argument("--image_size", type=int, default=224,
+                        help="Input image size (square)")
     parser.add_argument("--max_text_tokens", type=int, default=128,
                         help="Max text sequence length")
 
@@ -201,15 +203,15 @@ def main():
     parser.add_argument("--refractory_steps", type=int, default=3)
     parser.add_argument("--delay_steps", type=int, default=2)
 
-    # Audio encoder parameters
-    parser.add_argument("--audio_patch_frames", type=int, default=16)
-    parser.add_argument("--max_audio_tokens", type=int, default=1000)
+    # Vision encoder parameters
+    parser.add_argument("--vision_patch_size", type=int, default=16)
+    parser.add_argument("--max_vision_tokens", type=int, default=256)
 
     # Training
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--max_batches", type=int, default=0,
                         help="Stop after N batches per epoch (0=full epoch, for testing)")
-    parser.add_argument("--batch_size", type=int, default=8)
+    parser.add_argument("--batch_size", type=int, default=4)
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--num_workers", type=int, default=0,
@@ -223,7 +225,7 @@ def main():
 
     # Checkpoint
     parser.add_argument("--output_dir", type=str, default="E:/runs")
-    parser.add_argument("--run_name", type=str, default="multimodal",
+    parser.add_argument("--run_name", type=str, default="vision",
                         help="Run name (creates subdirectory)")
     parser.add_argument("--resume", type=str, default=None,
                         help="Path to .luthi checkpoint to resume from")
@@ -288,30 +290,25 @@ def main():
             tokenizer = BPETokenizer.load(tokenizer_path)
             print(f"Loaded BPE tokenizer: {tokenizer.vocab_size} tokens")
 
-    # Train new tokenizer if needed
+    # Train new tokenizer from COCO captions if needed
     if tokenizer is None:
         if args.tokenizer_train_text:
             text_source = Path(args.tokenizer_train_text)
             if text_source.is_dir():
-                text_files = sorted(text_source.glob("*.txt"))
                 from luthi.data import load_corpus_sample
                 train_text = load_corpus_sample(text_source, max_bytes=20_000_000)
             else:
                 with open(text_source, "r", encoding="utf-8") as f:
                     train_text = f.read()[:20_000_000]
         else:
-            # Use LibriSpeech transcripts for tokenizer training
-            print("Building tokenizer from LibriSpeech transcripts...")
-            transcripts = []
-            audio_dir = Path(args.audio_dir)
-            for trans_file in sorted(audio_dir.rglob("*.trans.txt")):
-                with open(trans_file, "r", encoding="utf-8") as f:
-                    for line in f:
-                        parts = line.strip().split(maxsplit=1)
-                        if len(parts) >= 2:
-                            transcripts.append(parts[1].lower())
-            train_text = "\n".join(transcripts)
-            print(f"Collected {len(transcripts)} transcripts ({len(train_text):,} chars)")
+            # Use COCO captions for tokenizer training
+            print("Building tokenizer from COCO captions...")
+            import json as _json
+            with open(args.annotations, "r", encoding="utf-8") as f:
+                ann_data = _json.load(f)
+            captions = [a["caption"].strip().lower() for a in ann_data["annotations"]]
+            train_text = "\n".join(captions)
+            print(f"Collected {len(captions):,} captions ({len(train_text):,} chars)")
 
         print(f"Training BPE tokenizer (vocab: {args.bpe_vocab_size})...")
         tokenizer = BPETokenizer(target_vocab_size=args.bpe_vocab_size)
@@ -324,40 +321,36 @@ def main():
     print(f"Vocabulary: {tokenizer.vocab_size} tokens")
 
     # --- Datasets ---
-    if args.audio_dir:
-        print(f"\nLoading training data from {args.audio_dir}...")
-        train_dataset = LibriSpeechDataset(
-            root=args.audio_dir,
+    print(f"\nLoading training data from {args.image_dir}...")
+    train_dataset = COCOCaptionDataset(
+        image_dir=args.image_dir,
+        annotations_file=args.annotations,
+        tokenizer=tokenizer,
+        image_size=args.image_size,
+        max_text_tokens=args.max_text_tokens,
+    )
+    print(f"Train: {len(train_dataset):,} images")
+
+    if args.val_image_dir and args.val_annotations:
+        print(f"Loading validation data from {args.val_image_dir}...")
+        val_dataset = COCOCaptionDataset(
+            image_dir=args.val_image_dir,
+            annotations_file=args.val_annotations,
             tokenizer=tokenizer,
-            max_audio_samples=args.max_audio_samples,
+            image_size=args.image_size,
             max_text_tokens=args.max_text_tokens,
         )
-        print(f"Train: {len(train_dataset):,} utterances")
-
-        if args.val_audio_dir:
-            print(f"Loading validation data from {args.val_audio_dir}...")
-            val_dataset = LibriSpeechDataset(
-                root=args.val_audio_dir,
-                tokenizer=tokenizer,
-                max_audio_samples=args.max_audio_samples,
-                max_text_tokens=args.max_text_tokens,
-            )
-        else:
-            # Split train 90/10
-            n_val = max(1, len(train_dataset) // 10)
-            n_train = len(train_dataset) - n_val
-            train_dataset, val_dataset = torch.utils.data.random_split(
-                train_dataset, [n_train, n_val],
-                generator=torch.Generator().manual_seed(args.seed),
-            )
-            print(f"Split: {n_train} train, {n_val} val")
-
-        print(f"Val: {len(val_dataset):,} utterances")
     else:
-        if not args.resume:
-            parser.error("--audio_dir is required when not resuming")
-        # When resuming without new data, we still need datasets
-        parser.error("--audio_dir is required for multimodal training")
+        # Split train 90/10
+        n_val = max(1, len(train_dataset) // 10)
+        n_train = len(train_dataset) - n_val
+        train_dataset, val_dataset = torch.utils.data.random_split(
+            train_dataset, [n_train, n_val],
+            generator=torch.Generator().manual_seed(args.seed),
+        )
+        print(f"Split: {n_train} train, {n_val} val")
+
+    print(f"Val: {len(val_dataset):,} images")
 
     train_loader = DataLoader(
         train_dataset,
@@ -388,25 +381,39 @@ def main():
         membrane_leak=ckpt_config.get("membrane_leak", args.membrane_leak) if ckpt_config else args.membrane_leak,
         refractory_steps=ckpt_config.get("refractory_steps", args.refractory_steps) if ckpt_config else args.refractory_steps,
         delay_steps=ckpt_config.get("delay_steps", args.delay_steps) if ckpt_config else args.delay_steps,
-        max_audio_tokens=args.max_audio_tokens,
-        audio_patch_frames=args.audio_patch_frames,
+        vision_image_size=args.image_size,
+        vision_patch_size=args.vision_patch_size,
+        max_vision_tokens=args.max_vision_tokens,
         backward_pass_enabled=bp_enabled,
     )
 
-    print(f"\n=== MULTIMODAL LIVING MODEL ===")
+    print(f"\n=== MULTIMODAL LIVING MODEL (vision-text) ===")
     model = MultimodalLuthiLM(**model_kwargs).to(device)
 
     if args.resume:
-        # Load checkpoint — strict=False allows missing audio encoder keys
-        # when loading from a text-only checkpoint
-        missing, unexpected = model.load_state_dict(
-            ckpt["model_state_dict"], strict=False,
-        )
+        # Load checkpoint — strict=False allows missing vision encoder keys
+        # and handles modality_embedding size change (2 -> 3 modalities)
+        saved_state = ckpt["model_state_dict"]
+
+        # Handle modality_embedding expansion: copy existing embeddings,
+        # leave new modality (vision=2) randomly initialized
+        mod_emb_key = "modality_embedding.weight"
+        if mod_emb_key in saved_state:
+            saved_shape = saved_state[mod_emb_key].shape
+            model_shape = model.modality_embedding.weight.shape
+            if saved_shape[0] < model_shape[0]:
+                print(f"  Expanding modality embedding: {saved_shape[0]} -> {model_shape[0]} modalities")
+                # Copy existing modality embeddings into the new larger tensor
+                expanded = model.modality_embedding.weight.data.clone()
+                expanded[:saved_shape[0]] = saved_state[mod_emb_key]
+                saved_state[mod_emb_key] = expanded
+
+        missing, unexpected = model.load_state_dict(saved_state, strict=False)
         if missing:
-            audio_missing = [k for k in missing if "audio_encoder" in k or "modality_embedding" in k]
-            other_missing = [k for k in missing if k not in audio_missing]
-            if audio_missing:
-                print(f"  New multimodal params (random init): {len(audio_missing)}")
+            vision_missing = [k for k in missing if "vision_encoder" in k]
+            other_missing = [k for k in missing if k not in vision_missing]
+            if vision_missing:
+                print(f"  New vision params (random init): {len(vision_missing)}")
             if other_missing:
                 print(f"  Other missing keys: {other_missing}")
         if unexpected:
@@ -418,13 +425,13 @@ def main():
     print(f"Total:             {param_counts['total']:,}")
     print(f"Backward pass:     {'ON' if bp_enabled else 'OFF'}")
 
-    # Audio encoder param count
-    audio_params = sum(p.numel() for p in model.audio_encoder.parameters())
-    print(f"Audio encoder:     {audio_params:,} params")
+    # Vision encoder param count
+    vision_params = sum(p.numel() for p in model.vision_encoder.parameters())
+    print(f"Vision encoder:    {vision_params:,} params")
 
     optimizer = DirectMLAdamW(model.parameters(), lr=args.lr)
 
-    # Restore optimizer state if resuming from a multimodal checkpoint
+    # Restore optimizer state if resuming from a vision checkpoint
     if args.resume and "optimizer_state_dict" in ckpt:
         try:
             optimizer.load_state_dict(ckpt["optimizer_state_dict"])
@@ -448,14 +455,15 @@ def main():
         "tokenizer_type": "bpe",
         "spiking": True,
         "multimodal": True,
+        "vision": True,
         "backward_pass": bp_enabled,
         "spike_threshold": model_kwargs["spike_threshold"],
         "membrane_leak": model_kwargs["membrane_leak"],
         "refractory_steps": model_kwargs["refractory_steps"],
         "delay_steps": model_kwargs["delay_steps"],
-        "max_audio_samples": args.max_audio_samples,
-        "max_audio_tokens": args.max_audio_tokens,
-        "audio_patch_frames": args.audio_patch_frames,
+        "vision_image_size": args.image_size,
+        "vision_patch_size": args.vision_patch_size,
+        "max_vision_tokens": args.max_vision_tokens,
     }
 
     # --- Training loop ---
@@ -544,7 +552,7 @@ def main():
         "extended_metrics": extended_metrics_history,
         "vocab_size": tokenizer.vocab_size,
         "model_params": param_counts,
-        "audio_encoder_params": audio_params,
+        "vision_encoder_params": vision_params,
     }
     results_path = output_dir / "results.json"
     with open(results_path, "w") as f:

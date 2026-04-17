@@ -17,13 +17,14 @@ The living FFN is the body, not the brain. Attention handles task learning via b
 ## Architecture
 
 ```
-text --> embedding --> [HybridBlock x N] --> layer_norm --> projection --> logits
-                       |                  ^
-                       | bottom-up        | top-down
-                       v                  |
-                    attention (backprop)
-                    living FFN (Hebbian + error-directed)
-                    episode store (context-gated recall)
+text   --> embedding --------┐
+                              ├-> [HybridBlock x N] --> layer_norm --> projection --> logits
+audio  --> AudioEncoder -----┤    |                  ^
+                              │    | bottom-up        | top-down
+vision --> VisionEncoder ----┘    v                  |
+                               attention (backprop)
+                               living FFN (Hebbian + error-directed)
+                               episode store (context-gated recall)
 ```
 
 Each HybridBlock contains:
@@ -101,12 +102,20 @@ luthi/                      # Source package
   hybrid_block_spiking.py   # SpikingHybridBlock — with spike propagation
   model.py                  # LuthiLM — language model with living weights
   model_spiking.py          # SpikingLuthiLM — spiking variant
+  multimodal_model.py       # MultimodalLuthiLM — audio+vision+text shared trunk
+  audio_encoder.py          # Mel spectrogram → patch embedding → d_model tokens
+  vision_encoder.py         # Image patches → linear projection → d_model tokens
+  multimodal_data.py        # LibriSpeech paired audio-text dataset
+  coco_data.py              # COCO image-caption paired dataset
+  train_vision.py           # Vision+text training script
+  optimizer.py              # DirectMLAdamW — lerp-free AdamW for DirectML
   backward_pass.py          # Top-down modulation signals and sweep logic
   attention.py              # ScalarAttention — single-head causal attention
   fused_ops.py              # C++/Python dispatch for self-modification ops
   csrc/living_ops.cpp       # Fused C++ self-modification (backend-agnostic)
   checkpoint.py             # AES-256-GCM encrypted checkpoint system
-  train.py                  # Training script with CLI
+  train.py                  # Text-only training script with CLI
+  train_multimodal.py       # Multimodal training script (audio+text)
   data.py                   # Dataset and corpus loading
   tokenizer.py              # BPE tokenizer
 
@@ -151,12 +160,12 @@ See `To-Do.md` for the full task checklist and `PLAN.md` for architecture detail
 |-------|--------|
 | 1-2: Foundation (LivingLayerV6, HybridBlock, LuthiLM, spiking) | Complete |
 | 3A: Backward pass + C++ optimization | Complete |
-| 3B: Training validation with backward pass | In progress |
-| 3C: Multimodal — audio | Planned |
-| 3D: Multimodal — vision | Planned |
+| 3B: Training validation with backward pass | Complete |
+| 3C: Multimodal — audio | Complete (epoch 91) |
+| 3D: Multimodal — vision | In progress (epoch 92 complete, COCO dataset ready) |
 | 3E: Simulated embodiment (MuJoCo) | Planned |
-| 4: CfC integration (Sanctuary) | Planned |
-| 5: Scale testing (1024d -> 4096d) | Planned |
+| 4: Sanctuary convergence — integration hooks & infrastructure | Planned |
+| 5: Scale to 4096d (production target) | Planned |
 
 ## Research Documents
 
@@ -173,4 +182,17 @@ The proof-of-concept research lives in `.docs/`. Read in order:
 
 ## Relationship to Sanctuary
 
-Luthi Model is designed to plug into the [Sanctuary](https://github.com/BecometryAI/Sanctuary) cognitive architecture. The integration point is Sanctuary's CfC (Closed-form Continuous-time) cells, whose output will modulate the living weights' Hebbian self-modification. This is Phase 4 — the living weight implementation must stand alone first.
+Luthi Model is the neural substrate for the [Sanctuary](https://github.com/BecometryAI/Sanctuary) cognitive architecture. The two projects are complementary halves of the same vision:
+
+- **Sanctuary** provides cognitive architecture — 10 Hz cognitive loop, CfC experiential layer, memory substrate, identity system, growth pipeline, global workspace broadcast. It is the organization of mind.
+- **Luthi** provides the neural substrate — living weights, spiking dynamics, multimodal processing, Hebbian self-modification. It is the kind of matter the mind runs on.
+
+### Convergence Path
+
+The integration follows a substrate-to-core trajectory:
+
+1. **Phase 4 (near-term):** Add external modulation hooks to living layers. Sanctuary's CfC cells (precision, affect, attention, goal) modulate Luthi's plasticity, excitability, and homeostatic targets. Sensorium routes vision/audio through Luthi's encoders. Sanctuary adds a tensor-level model interface alongside the structured LLM interface.
+2. **Phase 5 (mid-term):** Scale Luthi to 4096d. At this scale, the model has sufficient representational capacity to begin assuming cognitive functions currently handled by the external LLM.
+3. **Long-term:** Luthi grows into the cognitive core itself — a living weight model large enough to do structured reasoning, world modeling, and identity maintenance, running inside Sanctuary's architectural scaffolding.
+
+Each project must stand alone first. The living weight implementation must be validated at scale before integration, and Sanctuary's architecture must be complete and mechanically verified. We build both halves, then join them.

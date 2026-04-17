@@ -90,7 +90,7 @@ class EpisodeStore(nn.Module):
         stored_contexts = self.episode_contexts[:n]  # [n, context_dim]
 
         # Cosine similarity (both are L2-normalized)
-        sims = stored_contexts @ context  # [n]
+        sims = torch.mm(stored_contexts, context.unsqueeze(-1)).squeeze(-1)  # [n]
         best_idx = sims.argmax()
         best_sim = sims[best_idx]
 
