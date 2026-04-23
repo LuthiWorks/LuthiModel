@@ -8,11 +8,16 @@ dependencies = [
     "cryptography>=44.0",
     "torchaudio>=2.0",
     "soundfile>=0.12",
+    "torchvision>=0.15",
+    "Pillow>=9.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
+]
+embodiment = [
+    "mujoco>=2.3",
 ]
 
 [build-system]

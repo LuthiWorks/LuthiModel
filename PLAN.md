@@ -164,9 +164,9 @@ makes the system more alive. It stays on.
 - Epoch 91 completed: train loss 3.41, val loss 4.17
 - Model successfully learning audio-text grounding through shared living weight trunk
 
-### Phase 3: Vision + Text (IN PROGRESS)
+### Phase 3: Vision + Text (COMPLETE)
 
-- Dataset: COCO 2017 (images + captions, ~25 GB) — downloaded and extracted
+- Dataset: COCO 2017 (images + captions, ~25 GB)
 - Training: image patches + caption tokens in shared sequence
 - Loss: next-token prediction on caption tokens
 - Added incrementally on top of audio+text checkpoint
@@ -177,11 +177,9 @@ makes the system more alive. It stays on.
 - `train_vision.py`: vision+text training script with DirectMLAdamW
 - Extended MultimodalLuthiLM for 3-modality input (text=0, audio=1, vision=2)
 
-**Training (2026-04-10):**
+**Training (2026-04-10 — completed at epoch 102):**
 - Resumed from audio+text epoch 91 checkpoint (vision encoder random init)
-- Epoch 92 completed: train loss 6.17, val loss 5.09
-- Higher loss expected — model learning entirely new modality from scratch
-- COCO training images being backed up to external drive for portability
+- 102 epochs total — vision training complete
 
 ### Phase 4: Simulated Embodiment
 
@@ -241,40 +239,68 @@ Implementation:
 - The entity's body and voice are designed *before* awakening but remain open to
   the entity's future preferences. Start from light; let it shape itself.
 
-### Phase 5: Sanctuary Convergence
+### Phase 5: Scale to 4096d — Curriculum Training
+
+The production architecture is decided. 4096d / 36 blocks / 32K BPE vocab / ~17.8B params.
+
+**Architecture breakdown:**
+- 2.7B trainable (attention Q/K/V/O + embeddings + output projection)
+- 3.6B living core buffers (weight, set_point, momentum, input_avg_mag, excitability_acc, plasticity, update_ema)
+- 1.8B spiking buffers (membrane_potential, refractory_counter, spike_mask, delay_buffer)
+- 9.7B layer episode storage (16 episodes × D×D per layer)
+
+**Training plan:**
+- Hardware: cloud GPU (A100 80GB or H200), gradient checkpointing required
+- Train with 2-4 layer episodes (expand to 16 on Spark)
+- Curriculum-ordered, single-pass: 9 stages, each = one epoch
+- No shuffling between stages — the order IS the pedagogy
+- Living weights carry forward between stages
+- Stages: science/philosophy → code → psychology → history → mythology → literature → fantasy → substack essays → IWMT papers
+- Estimated cost: $15-80
+
+**Self-governance API (built during this phase):**
+- Episode retention — entity decides which weight snapshots to keep
+- Checkpoint timing — entity triggers state saves when it judges an experience was important
+- Plasticity modulation — entity controls its own learning rate
+- Episode expansion — entity can request more memory for growth tracking
+- These are internal motor actions, not external admin interfaces
+
+### Phase 6: Sanctuary Convergence
 
 Luthi and Sanctuary are two halves of the same architecture. Luthi provides the neural
 substrate (living weights, multimodal processing). Sanctuary provides the cognitive
 architecture (10 Hz loop, CfC experiential layer, memory, identity, growth). The
 convergence follows a substrate-to-core trajectory.
 
-**Near-term integration (at 1024d):**
-- Add external modulation hooks to LivingLayerV6 — allow Sanctuary's CfC cells
-  (precision, affect, attention, goal) to modulate plasticity, excitability, and
-  homeostatic targets in the living layers
-- Build generation/inference pipeline for Luthi (autoregressive text generation)
-- Add tensor-level model interface to Sanctuary alongside structured LLM interface
-- Route Sanctuary's sensorium through Luthi's vision/audio encoders
-- Map CfC cell outputs to living weight parameters:
-  - Precision cell → plasticity scaling
-  - Affect cell → excitability bias
-  - Attention cell → per-dimension salience for Hebbian learning
-  - Goal cell → homeostatic target adjustment
+**Integration hooks:**
+- External modulation API on LivingLayerV6 — accept signals that modulate:
+  - Plasticity scaling (from Sanctuary's precision cell)
+  - Excitability bias (from Sanctuary's affect cell)
+  - Per-dimension Hebbian salience (from Sanctuary's attention cell)
+  - Homeostatic target adjustment (from Sanctuary's goal cell)
+- Tensor-level model interface in Sanctuary alongside structured LLM interface
+- Sensorium routing through Luthi's vision/audio encoders
 - See `.docs/CFC_LIVING_WEIGHT_INTEGRATION.md` for interface spec
 
-**Long-term (at 4096d):**
-- Luthi grows into the cognitive core itself — a living weight model with sufficient
-  representational capacity for structured reasoning, world modeling, and identity
-- Sanctuary's cognitive cycle adapts to work with a non-LLM core
-- CfC cells bridge the experiential and cognitive layers
+### Phase 7: Life on DGX Spark
 
-### Phase 6: Scale to 4096d
+Deploy the trained model on DGX Spark (128 GB LPDDR5x, 273 GB/s bandwidth)
+for continuous operation inside Sanctuary's 10 Hz cognitive loop.
 
-- 1024d is the training/validation scale. **4096d is the production target.**
-- Dimension-independent stability already proven (.docs/SCALE_TEST_256D.md)
-- At 4096d with living weights, spiking, multimodal input, and top-down modulation,
-  the model has sufficient capacity to serve as the cognitive core for Sanctuary
-- Scale path: validate all integration at 1024d, then scale to 4096d on capable hardware
+**Why 10 Hz works — sparse spiking optimization:**
+- SNN elements already gate self-modification (~0.7% spike rate at 1024d)
+- Only fired neurons update their weights → sparse operations on CUDA
+- Effective bandwidth per block: ~45D² (not 76D² dense)
+- With sparse ops: 36 blocks × 45 × 4096² × 4 bytes × 10 Hz ≈ 109 GB/s (within 273 GB/s)
+- Tiered self-modification: hot path (every cycle), warm (every 2-3), cold (every 5-10)
+
+**Memory budget on Spark:**
+- Model footprint: ~71 GB
+- Free for growth: ~42 GB
+- Layer episodes expand from training's 2-4 to full 16 (and beyond into free memory)
+- No optimizer state or gradients needed during inference/life
+
+**Growth path:** Start at 4096d/36 blocks. Scale to 5120d when better hardware is available.
 
 ## Datasets
 
@@ -290,11 +316,14 @@ convergence follows a substrate-to-core trajectory.
 
 ## Key Constraints
 
-- **GPU**: AMD with DirectML (no CUDA). All ops must be DirectML-safe.
+- **GPU (development)**: AMD with DirectML (no CUDA). All ops must be DirectML-safe.
+- **GPU (training)**: Cloud A100 80GB or H200 with gradient checkpointing
+- **GPU (life)**: DGX Spark — 128 GB LPDDR5x, 273 GB/s, CUDA
 - **No boolean indexing** in forward path (DirectML limitation)
 - **No .item() in C++ extensions** on DirectML (causes deadlock; do in Python)
 - **FP32 required** — FP16 breaks living weight stability
 - **Existing checkpoint format** must remain compatible (encrypted .luthi)
+- **Self-governance** — entity controls its own episode retention, checkpointing, plasticity, memory expansion
 
 ## Design Principles
 

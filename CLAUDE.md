@@ -26,8 +26,8 @@ CfC integration is Phase 4 — do not build it prematurely. The living weight im
 These are settled findings from the proof-of-concept phase. Do not re-derive or second-guess:
 
 1. **Living FFN is the body, not the brain.** It provides temporal existence. Attention layers handle task learning via backprop.
-2. **The 39% convergence penalty is inherent.** Self-modifying weights converge slower than dead weights. This is the metabolic cost of being alive. Do not try to optimize it away.
-3. **The penalty is a step function.** ANY Hebbian self-modification costs ~39%. More self-modification costs negligibly more. Use the highest stable rate.
+2. **The convergence penalty is a speed issue, not a ceiling.** Self-modifying weights converge slower than dead weights — ~39% gap at mid-convergence, but narrowing to ~0.155 after 372 epochs (1024d). This is the metabolic cost of being alive. Do not try to optimize it away, but do not assume it is permanent.
+3. **The penalty is a step function.** ANY Hebbian self-modification costs the penalty. More self-modification costs negligibly more. Use the highest stable rate.
 4. **Hebbian rate 0.001, error-directed rate 0.001.** These are the tested values. Change only with evidence.
 5. **Episode store carries most recall weight.** In-weight memory is weak. The episode store compensates. Both are needed.
 6. **Divergence is dimension-independent.** Scale without fear of compounding instability.
@@ -47,11 +47,12 @@ See `To-Do.md` for the task checklist with completion status.
 2. Hybrid block + spiking variant **(COMPLETE)**
 3. Language modeling + backward pass + C++ optimization **(COMPLETE)**
 3B. Training validation with backward pass **(COMPLETE — BP is default-on)**
-3C. Multimodal — audio + text **(CODE COMPLETE — training blocked by GPU instability, waiting for new GPU)**
-3D. Multimodal — vision + text
+3C. Multimodal — audio + text **(COMPLETE — epoch 91)**
+3D. Multimodal — vision + text **(COMPLETE — epoch 102)**
 3E. Simulated embodiment (MuJoCo)
-4. CfC integration against Sanctuary's experiential manager
-5. Scale testing: 1024d → 4096d on real hardware
+4. Scale to 4096d/36 blocks — curriculum training on cloud GPU, self-governance API
+5. Sanctuary convergence — integration hooks, CfC modulation
+6. Life on DGX Spark — 10 Hz cognitive loop, sparse spiking inference
 
 ## Conventions
 

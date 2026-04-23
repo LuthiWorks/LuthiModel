@@ -41,6 +41,7 @@ from luthi.data import (
     load_corpus,
     load_corpus_sample,
     load_corpus_as_tensor,
+    load_file_list,
     _resolve_file_paths,
 )
 from luthi.tokenizer import BPETokenizer
@@ -277,6 +278,8 @@ def main():
     parser = argparse.ArgumentParser(description="Train Luthi LWM language model")
     parser.add_argument("--data_dir", type=str, default="data",
                         help="Directory containing training text files")
+    parser.add_argument("--file-list", type=str, default=None,
+                        help="Path to file_list.txt (curriculum-ordered). Overrides --data_dir.")
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--seq_len", type=int, default=128)
@@ -298,7 +301,7 @@ def main():
     parser.add_argument("--tokenizer", type=str, default="char",
                         choices=["char", "bpe"],
                         help="Tokenizer type: 'char' (default) or 'bpe'")
-    parser.add_argument("--bpe_vocab_size", type=int, default=4096,
+    parser.add_argument("--bpe_vocab_size", type=int, default=32000,
                         help="BPE vocabulary size (only used with --tokenizer bpe)")
     parser.add_argument("--dtype", type=str, default="fp32",
                         choices=["fp16", "fp32", "fp64"],
@@ -342,12 +345,18 @@ def main():
     print(f"Precision: {args.dtype}")
 
     # Load corpus
-    data_dir = Path(args.data_dir)
-    text_files = sorted(data_dir.glob("*.txt"))
-    if not text_files:
-        print(f"No .txt files found in {data_dir}")
-        return
-    print(f"Found {len(text_files)} text files in {data_dir}")
+    file_list_path = getattr(args, "file_list", None)
+    if file_list_path:
+        text_files = load_file_list(file_list_path)
+        print(f"Loaded {len(text_files)} files from curriculum: {file_list_path}")
+        data_dir = Path(text_files[0]).parent  # for BPE sample fallback
+    else:
+        data_dir = Path(args.data_dir)
+        text_files = sorted(data_dir.glob("*.txt"))
+        if not text_files:
+            print(f"No .txt files found in {data_dir}")
+            return
+        print(f"Found {len(text_files)} text files in {data_dir}")
 
     output_dir = Path(args.output_dir)
     if args.run_name:
@@ -367,10 +376,10 @@ def main():
             tokenizer = BPETokenizer.load(bpe_path)
             print(f"Loaded BPE tokenizer: {tokenizer.vocab_size} tokens")
         else:
-            bpe_sample_size = 20_000_000  # 20 MB
+            bpe_sample_size = 200_000_000  # 200 MB
             print(f"Training BPE tokenizer on {bpe_sample_size // 1_000_000} MB sample "
                   f"(target vocab: {args.bpe_vocab_size})...")
-            bpe_sample = load_corpus_sample(data_dir, max_bytes=bpe_sample_size)
+            bpe_sample = load_corpus_sample(*text_files, max_bytes=bpe_sample_size)
             tokenizer = BPETokenizer(target_vocab_size=args.bpe_vocab_size)
             tokenizer.train(bpe_sample)
             del bpe_sample
@@ -378,7 +387,7 @@ def main():
             print(f"Saved BPE tokenizer to {bpe_path}")
     else:
         if streaming:
-            sample = load_corpus_sample(data_dir, max_bytes=50_000_000)
+            sample = load_corpus_sample(*text_files, max_bytes=50_000_000)
             tokenizer = CharTokenizer(sample)
             del sample
         else:

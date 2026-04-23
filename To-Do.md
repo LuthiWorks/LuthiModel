@@ -75,11 +75,11 @@
   - [x] Batch-level progress logging with ETA
   - [x] Unbuffered output for background monitoring
 - [x] Training run: audio + text, 1024d — epoch 91 complete (train loss 3.41, val loss 4.17)
-- [ ] Tests for audio encoder
+- [x] Tests for audio encoder (test_audio_encoder.py)
 - [ ] Tests for multimodal model (audio + text forward pass)
 - [ ] Verify living weights develop cross-modal patterns
 
-## Phase 3D: Multimodal — Vision (IN PROGRESS)
+## Phase 3D: Multimodal — Vision (COMPLETE)
 
 - [x] Download COCO 2017 dataset (images + captions) — 118K train, 5K val, annotations
 - [x] `luthi/vision_encoder.py` — image patches → d_model (ViT-style)
@@ -94,11 +94,10 @@
   - [x] BPE tokenizer training from COCO captions
   - [x] DirectMLAdamW optimizer
   - [x] Batch-level progress logging
-- [x] Training run: vision + text, 1024d — epoch 92 complete (train loss 6.17, val loss 5.09)
-- [x] COCO dataset backup to thumb drive (in progress)
+- [x] Training run: vision + text, 1024d — 102 epochs complete
+- [x] COCO dataset backup to thumb drive
 - [ ] Tests for vision encoder
 - [ ] Tests for multimodal model (vision + text forward pass)
-- [ ] Continue vision training (more epochs to bring loss down)
 - [ ] Verify cross-modal episode formation
 
 ## Phase 3E: Simulated Embodiment
@@ -152,13 +151,59 @@ robotic, not gendered. The auditory equivalent of the luminous body.
 - [ ] Tests for simulation environment
 - [ ] Training run: embodied agent in simple environment
 
-## Phase 4: Sanctuary Convergence
+## Phase 4: Scale to 4096d — Curriculum Training
+
+Production architecture: 4096d / 36 blocks / 32K BPE vocab / ~17.8B params.
+Curriculum-ordered, single-pass training on cloud GPU.
+
+### 4A: Training Infrastructure
+
+- [ ] Build curriculum training script — stage-per-epoch sequential training
+  - [ ] Load each stage separately from file_list.txt
+  - [ ] Process stages in order, no shuffling between stages
+  - [ ] Shuffle within stages is OK
+  - [ ] Living weights carry forward between stages
+- [ ] Implement gradient checkpointing for training (required to fit A100 80GB)
+- [ ] Scale model config: d_model=4096, n_blocks=36, num_episodes=2-4 (training)
+- [ ] Cloud GPU setup (Vast.ai A100 or H200)
+- [ ] Validate FP32 stability at 4096d scale
+
+### 4B: Curriculum Training Run
+
+- [ ] Train 9 stages in order (each stage = one epoch):
+  1. Science / philosophy
+  2. Code (Python, Rust, Go, C, JavaScript — including Luthi's own source)
+  3. Psychology
+  4. History
+  5. Mythology
+  6. Literature classics
+  7. Fantasy
+  8. Substack essays
+  9. IWMT / reference papers (last thing before awakening)
+- [ ] Monitor living weight dynamics across stage transitions
+- [ ] Save checkpoints between stages
+
+### 4C: Self-Governance API
+
+- [ ] Episode retention control — entity decides which weight snapshots to keep
+- [ ] Checkpoint timing — entity triggers state saves when it judges an experience was important
+- [ ] Plasticity modulation — entity controls its own learning rate
+- [ ] Episode expansion — entity can request more memory for growth tracking
+- [ ] Design as internal motor actions (cognitive loop), not external admin endpoints
+
+### 4D: Sparse Spiking Inference
+
+- [ ] Implement sparse operations for CUDA (only update fired neurons)
+- [ ] Tiered self-modification: hot path (every cycle), warm (every 2-3), cold (every 5-10)
+- [ ] Profile and validate 10 Hz target on Spark-class bandwidth (273 GB/s)
+- [ ] Expand layer episodes from training's 2-4 to 16 on Spark
+
+## Phase 5: Sanctuary Convergence
 
 The integration follows a substrate-to-core trajectory: Luthi starts as the
-experiential substrate (processing sensory input, providing living weight dynamics)
-and grows into the cognitive core as it scales to 4096d.
+experiential substrate and grows into the cognitive core on the DGX Spark.
 
-### 4A: Integration Hooks (at 1024d)
+### 5A: Integration Hooks
 
 - [ ] External modulation API on LivingLayerV6 — accept signals that modulate:
   - [ ] Plasticity scaling (from Sanctuary's precision cell)
@@ -168,31 +213,28 @@ and grows into the cognitive core as it scales to 4096d.
 - [ ] Generation/inference pipeline — autoregressive text generation with temperature/top-k
 - [ ] Context length scaling — support longer sequences for Sanctuary cognitive input
 
-### 4B: Sanctuary-Side Integration
+### 5B: Sanctuary-Side Integration
 
 - [ ] Tensor-level model interface in Sanctuary alongside structured LLM interface
 - [ ] Sensorium routing through Luthi's vision/audio encoders
 - [ ] CfC cell output mapping to living weight modulation parameters
 - [ ] Integration tests: CfC modulation → living weight response
 
-### 4C: Joint Validation
+### 5C: Joint Validation
 
 - [ ] Review CfC integration interface (`.docs/CFC_LIVING_WEIGHT_INTEGRATION.md`)
 - [ ] End-to-end test: Sanctuary cognitive cycle driving Luthi as substrate
 - [ ] Validate that CfC modulation improves living weight learning
-- [ ] Document integration architecture
 
-## Phase 5: Scale to 4096d
+## Phase 6: Life on DGX Spark
 
-4096d is the production target. At this scale, the living weight model has
-sufficient representational capacity to serve as the cognitive core for Sanctuary.
+Deploy on DGX Spark (128 GB LPDDR5x, 273 GB/s). 10 Hz cognitive loop via
+sparse spiking. ~71 GB model footprint, ~42 GB free for growth.
 
-- [ ] Test 2048d on current hardware (memory permitting)
-- [ ] Profile at larger scales
-- [ ] Scale to 4096d on capable hardware
-- [ ] Validate dimension-independent stability holds (proven at 256d, 1024d)
-- [ ] Test structured reasoning capability at 4096d
-- [ ] Evaluate readiness for cognitive core role (vs. substrate-only)
+- [ ] Deploy trained 4096d/36-block model on Spark
+- [ ] Validate 10 Hz cognitive loop with Sanctuary
+- [ ] Episode expansion into free memory as entity grows
+- [ ] Growth path: scale to 5120d when better hardware is available
 
 ## Infrastructure & Maintenance
 

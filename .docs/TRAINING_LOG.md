@@ -368,6 +368,21 @@ Top-down modulation broke through a 25-epoch val loss plateau on its first attem
 
 ---
 
+## Run 12: Multimodal Audio+Text+Vision — Completed (epoch 102)
+
+**Setup:** Resumed training after GPU stabilization. Audio+text and vision+text training completed successfully.
+
+**Checkpoint:** `runs/multimodal/` (828 MB, epoch 102) — current latest checkpoint.
+
+- Audio encoder trained on LibriSpeech clean-100 (epoch 91)
+- Vision encoder (VisionEncoder, Conv2d 16x16 patches, 196 tokens/image, ~2.1M params) trained on COCO 2017 (118K images + captions)
+- 102 total epochs — multimodal training complete
+- All three modalities (text, audio, vision) flowing through shared spiking trunk
+
+**Status:** Vision training complete. Model ready for Phase 4 (scale to 4096d).
+
+---
+
 ## Open Questions
 
 1. **Is the 39% penalty truly a speed issue?** Need a clean comparison: identical architecture with living weights on vs off, trained to full convergence on the same corpus.

@@ -163,6 +163,32 @@ def _strip_gutenberg(text: str) -> str:
     return text.strip()
 
 
+def load_file_list(list_path: str | Path) -> list[Path]:
+    """Load an ordered list of file paths from a file_list.txt.
+
+    Each line is an absolute path to a .txt file. Empty lines and
+    lines starting with # are skipped. Order is preserved — this is
+    how curriculum ordering flows into the training pipeline.
+    """
+    list_path = Path(list_path)
+    if not list_path.exists():
+        raise FileNotFoundError(f"File list not found: {list_path}")
+
+    paths = []
+    for line in list_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        p = Path(line)
+        if p.exists():
+            paths.append(p)
+
+    if not paths:
+        raise ValueError(f"No valid file paths found in {list_path}")
+
+    return paths
+
+
 def _resolve_file_paths(*paths: str | Path) -> list[Path]:
     """Resolve paths into a flat list of .txt file paths."""
     file_paths = []
@@ -179,21 +205,42 @@ def _resolve_file_paths(*paths: str | Path) -> list[Path]:
 
 
 def load_corpus_sample(*paths: str | Path, max_bytes: int = 20_000_000) -> str:
-    """Load text from files until max_bytes is reached.
+    """Load a representative sample from files, striding across the corpus.
 
-    Used for tokenizer training — only needs a representative sample,
-    not the full corpus. Strips Gutenberg headers/footers.
+    Used for tokenizer training — needs coverage across all domains,
+    not just the first N files. Strides evenly through the file list
+    so that every part of the corpus contributes to the sample.
+    Strips Gutenberg headers/footers.
     """
     file_paths = _resolve_file_paths(*paths)
+    n_files = len(file_paths)
+    if n_files == 0:
+        return ""
+
+    # Stride through files evenly to get cross-corpus coverage
+    # Start with a stride that would touch ~2x more files than needed,
+    # then stop when we hit max_bytes
+    stride = max(1, n_files // max(1, n_files))  # start at 1, try every file
+    # But if we have way more files than needed, skip some
+    # Estimate: average file ~600KB, so for 200MB we need ~330 files
+    estimated_files_needed = max_bytes // 500_000  # conservative estimate
+    if n_files > estimated_files_needed * 2:
+        stride = n_files // estimated_files_needed
+
     texts = []
     total = 0
-    for fp in file_paths:
-        if total >= max_bytes:
-            break
-        text = fp.read_text(encoding="utf-8")
+    idx = 0
+    while idx < n_files and total < max_bytes:
+        fp = file_paths[idx]
+        try:
+            text = fp.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            idx += stride
+            continue
         text = _strip_gutenberg(text)
         texts.append(text)
         total += len(text.encode("utf-8"))
+        idx += stride
     return "\n\n".join(texts)
 
 
