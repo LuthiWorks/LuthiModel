@@ -352,9 +352,11 @@ DOC_REPOS = [
 # Uncomment these when Luthi and Sanctuary are feature-complete.
 
 # LOCAL_REPOS = [
+#     # Set $LUTHI_PATH and $SANCTUARY_PATH (or substitute literal paths
+#     # appropriate to your checkout) before uncommenting these.
 #     RepoConfig(
 #         name="luthi",
-#         url="local:C:/Users/Hasha Smokes/Desktop/LuthiModel/LuthiModel",
+#         url="local:${LUTHI_PATH}",
 #         license="Proprietary",
 #         description="Luthi Model — the entity's own architecture",
 #         extensions=[".py"],
@@ -364,7 +366,7 @@ DOC_REPOS = [
 #     ),
 #     RepoConfig(
 #         name="sanctuary",
-#         url="local:C:/Users/Hasha Smokes/Desktop/Sanctuary/Sanctuary",
+#         url="local:${SANCTUARY_PATH}",
 #         license="Proprietary",
 #         description="Sanctuary — the entity's cognitive scaffold",
 #         extensions=[".py"],

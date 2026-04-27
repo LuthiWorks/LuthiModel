@@ -8,9 +8,13 @@ This is an active research implementation. The proof-of-concept phase (numpy, CP
 
 ## Relationship to Sanctuary
 
-Luthi Model is designed to plug into the Sanctuary cognitive architecture (`C:\Users\Hasha Smokes\Desktop\Sanctuary\Sanctuary`). The integration point is Sanctuary's CfC (Closed-form Continuous-time) cells, whose output modulates the living weights' Hebbian self-modification. The key interface is `ModelProtocol` with `CognitiveInput`/`CognitiveOutput` schemas defined in `sanctuary/core/schema.py`.
+Luthi Model is designed to plug into the Sanctuary cognitive architecture. By default Sanctuary discovers Luthi via the `LUTHI_PATH` environment variable, falling back to a sibling-checkout heuristic. The contract surface that Sanctuary calls into is `luthi/sanctuary_interface.py` (load, generate, get_introspection, apply_external_modulation, snapshot/restore, and a `modulated()` context manager). Sanctuary should not reach past that adapter into Luthi internals — the adapter is the promise.
 
-CfC integration is Phase 4 — do not build it prematurely. The living weight implementation must stand alone first.
+The cognitive-side schemas (`ModelProtocol`, `CognitiveInput`, `CognitiveOutput`) live in Sanctuary at `sanctuary/core/schema.py`. CfC modulation of the living weights is Phase 4 — do not build it prematurely. The living weight implementation must stand alone first.
+
+## Fresh-Instance Audits
+
+This project's audit protocol — when to run periodic fresh-eyes reviews and how to prompt them — lives in the Sanctuary repo at `docs/AUDIT_PROTOCOL.md`. Read it before spawning an audit of either repo. Brian is the sole human in the loop, so audits compensate for the blind spots that pattern produces.
 
 ## Build & Test
 

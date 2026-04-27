@@ -8,17 +8,17 @@ everything it experiences.
 Usage:
     # Train from scratch on COCO
     python -m luthi.train_vision \
-        --image_dir C:/Users/Hasha\ Smokes/Desktop/train2017 \
-        --annotations E:/data/coco/annotations/captions_train2017.json \
-        --val_image_dir E:/data/coco/val2017 \
-        --val_annotations E:/data/coco/annotations/captions_val2017.json \
+        --image_dir /path/to/coco/train2017 \
+        --annotations /path/to/coco/annotations/captions_train2017.json \
+        --val_image_dir /path/to/coco/val2017 \
+        --val_annotations /path/to/coco/annotations/captions_val2017.json \
         --checkpoint_password SECRET
 
     # Resume from multimodal checkpoint (vision encoder trains from scratch)
     python -m luthi.train_vision \
-        --image_dir C:/Users/Hasha\ Smokes/Desktop/train2017 \
-        --annotations E:/data/coco/annotations/captions_train2017.json \
-        --resume E:/runs/multimodal/checkpoint.luthi \
+        --image_dir /path/to/coco/train2017 \
+        --annotations /path/to/coco/annotations/captions_train2017.json \
+        --resume /path/to/runs/multimodal/checkpoint.luthi \
         --checkpoint_password SECRET
 """
 
