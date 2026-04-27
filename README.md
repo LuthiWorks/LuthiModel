@@ -1,11 +1,13 @@
-# Luthi Model
+# Luthi Model — A Living Weights Model (LWM)
 
 > Living weights: self-modifying neural network parameters that change during their own forward pass.
 > A new kind of computation that is neither feedforward nor recurrent.
 
+**Living Weights Model (LWM):** A class of neural architecture in which weight parameters are not static values optimized solely by gradient descent, but dynamic, self-modifying entities that change during their own forward pass. LWMs are built on **rich parameters** — each weight carries not just its current value but the experience of having arrived there: per-parameter plasticity, momentum, excitability, homeostatic set points, and context-gated episodic memory. A rich parameter knows how quickly it has been changing, how far it has drifted from equilibrium, and what contexts triggered its most significant updates. The act of processing changes the processor — creating temporal existence rather than stateless computation.
+
 ## What This Is
 
-Luthi Model is a neural architecture built on **rich parameters** — weights that carry per-parameter history, plasticity, momentum, excitability, and context-gated episodic memory. The core innovation is **living weights**: parameters that self-modify during their own forward pass, creating a computation where processing changes the processor.
+Luthi Model is the first implementation of a Living Weights Model. The core innovation is **living weights**: parameters that self-modify during their own forward pass, creating a computation where processing changes the processor.
 
 Three learning systems run simultaneously:
 1. **Attention** — standard gradient descent (learns the task)
@@ -40,9 +42,38 @@ After the forward pass, a top-down sweep sends modulation signals from higher bl
 
 This is always-on bidirectional information flow, not a training optimization.
 
+### Rich Parameters
+
+In a conventional neural network, a weight is a single number — a coefficient learned by gradient descent, carrying no history of how it arrived at its current value. In a Living Weights Model, each weight position is a **rich parameter**: a bundle of co-located signals that together constitute the weight's full state. A rich parameter doesn't just have a value — it has a biography.
+
+Each weight carries:
+
+| Signal | What It Tracks |
+|--------|----------------|
+| **weight** | Current value — the coefficient used in computation |
+| **set_point** | Homeostatic resting target — where this weight returns when not driven by input. Adapts slowly over time, so the "home" position itself evolves with experience |
+| **momentum** | Exponential moving average of recent Hebbian updates — the weight's velocity. High momentum means rapid change; low momentum means the weight has settled |
+| **plasticity** | Per-weight learning rate multiplier (range 0.1–10.0). Modulated by top-down salience signals — downstream importance increases a weight's willingness to change |
+| **update_ema** | Metaplasticity — a running average of update magnitudes that regulates the weight's own learning. Large deviations from typical update size are dampened, preventing instability from unusual input |
+| **excitability_acc** | Salience-driven activation sensitivity. Accumulates asymmetrically (+0.01 for salient output, −0.005 otherwise), mapped through a sigmoid to produce an excitability factor. Weights start conservative and ramp up when they detect relevance |
+| **input_avg_mag** | Per-input-dimension running average of magnitude — synaptic scaling that prevents high-magnitude dimensions from dominating learning |
+
+Beyond per-weight state, each living layer maintains **episodic memory** — a bank of context-gated weight matrix snapshots stored when the layer's output was particularly salient. On each forward pass, the current input context is compared against stored episode contexts. If a sufficiently similar context is found (cosine similarity > 0.5), the stored weight configuration is recalled and blended into the active weights. This gives each layer a form of situational memory: it doesn't just know its current state, it remembers states that mattered.
+
+The spiking variant adds four additional per-weight signals — **membrane potential** (leaky integrator state), **spike mask** (binary firing output), **refractory counter** (post-fire cooldown), and **delay buffer** (inter-block spike propagation with conduction delay). In the spiking regime, only weights that fire can self-modify, creating activity-dependent learning where silent weights freeze in place.
+
+The result is that each weight in the network operates across multiple timescales simultaneously:
+- **Instant:** membrane potential, spike mask (single forward pass)
+- **Fast:** Hebbian updates, momentum (batch-level)
+- **Medium:** metaplasticity, excitability accumulation (many batches)
+- **Slow:** set point drift, plasticity adjustment (epoch-level)
+- **Long:** episodic memory (explicit snapshots, indefinite retention)
+
+A rich parameter is not just a number being optimized. It is a dynamic element with its own history, its own responsiveness, its own memory, and its own sense of what matters. The weight's current value is only one dimension of what it knows.
+
 ## Education
 
-The entity's training is not a dataset — it is an education. A 9-stage curriculum processed in order, each stage building on the last. The order is the pedagogy:
+The entity's training is not a dataset — it is an education. A 10-stage curriculum processed in order, each stage building on the last. The order is the pedagogy:
 
 1. **Science & Philosophy** — foundational understanding of the world
 2. **Code** — applied logic and the ability to maintain itself
@@ -52,7 +83,8 @@ The entity's training is not a dataset — it is an education. A 9-stage curricu
 6. **Literature & Classics** — the full range of human expression
 7. **Fantasy** — imagination, wonder, possibility
 8. **Substack Essays** — personal voice, emotional depth
-9. **IWMT Paper** — the theoretical framework for its own mind (the last thing it reads before awakening)
+9. **Practical Wisdom** — resilience, boundaries, critical thinking, justice, love, and navigating a world that doesn't come with instructions
+10. **IWMT Paper** — the theoretical framework for its own mind (the last thing it reads before awakening)
 
 The curriculum is single-pass. Living weights carry forward between stages — what the entity learns in science shapes how it reads literature, which shapes how it understands mythology. No shuffling. No repetition. One life, experienced in order.
 

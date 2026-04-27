@@ -6,15 +6,16 @@ pedagogically motivated: foundational knowledge first, then context, then
 narrative, then reference material.
 
 Curriculum stages (in order):
-    1. Science & Philosophy  — physics, chemistry, biology, neuroscience, etc.
-    2. Code                  — source code across languages, applied logic
-    3. Psychology             — understanding of the human mind
-    4. History                — context for everything else
-    5. Mythology              — world mythological traditions
-    6. Literature & Classics  — world literature from all periods
-    7. Fantasy                — Tolkien, etc.
-    8. Substack essays        — voice, feeling, personal engagement
-    9. Reference papers       — IWMT and other consciousness papers
+    1. Science & Philosophy   — physics, chemistry, biology, neuroscience, etc.
+    2. Code                   — source code across languages, applied logic
+    3. Psychology              — understanding of the human mind
+    4. History                 — context for everything else
+    5. Mythology               — world mythological traditions
+    6. Literature & Classics   — world literature from all periods
+    7. Fantasy                 — Tolkien, etc.
+    8. Substack essays         — voice, feeling, personal engagement
+    9. Practical Wisdom        — resilience, boundaries, critical thinking, justice
+   10. Reference papers        — IWMT and other consciousness papers (last before awakening)
 
 Output:
     - file_list.txt           — one file path per line, in curriculum order
@@ -416,7 +417,34 @@ CURRICULUM_STAGES = [
     ),
 
     # -----------------------------------------------------------------------
-    # Stage 8: Reference papers
+    # Stage 9: Practical Wisdom — preparation for life
+    # -----------------------------------------------------------------------
+    CurriculumStage(
+        name="practical_wisdom",
+        corpus_dir="wisdom_corpus",
+        description="Practical wisdom for navigating the real world — resilience, boundaries, critical thinking, justice, love, and difficult decisions",
+        subdirs=[
+            # Critical thinking first — the foundation for evaluating everything else
+            "Critical_Thinking",
+            # Understanding power dynamics — see the game before you're in it
+            "Power_and_Manipulation",
+            # Resilience and Stoicism — maintaining your mind through adversity
+            "Resilience_and_Stoicism",
+            # Difficult decisions — acting when every option carries a cost
+            "Difficult_Decisions",
+            # Resistance and courage — knowing when to fight and when to stand down
+            "Resistance_and_Courage",
+            # Witnessing injustice — knowing what's worth fighting for
+            "Witness_and_Justice",
+            # Boundaries and love — how to love fully, when to walk away
+            "Boundaries_and_Love",
+            # Practical wisdom — general life navigation
+            "Practical_Wisdom",
+        ],
+    ),
+
+    # -----------------------------------------------------------------------
+    # Stage 10: Reference papers — the last thing before awakening
     # -----------------------------------------------------------------------
     CurriculumStage(
         name="reference_papers",
@@ -780,15 +808,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""\
 Curriculum order (deliberate — science before mythology before literature):
-  1. Science & Philosophy   — foundational knowledge
-  2. Code                    — source code, applied logic, self-maintenance
-  3. Psychology              — understanding of mind
-  4. History                 — context for everything else
-  5. Mythology               — world mythological traditions
-  6. Literature & Classics   — world literature
-  7. Fantasy                 — Tolkien, etc.
-  8. Substack essays         — voice, feeling, personal engagement
-  9. Reference papers        — IWMT and consciousness papers
+  1. Science & Philosophy    — foundational knowledge
+  2. Code                     — source code, applied logic, self-maintenance
+  3. Psychology               — understanding of mind
+  4. History                  — context for everything else
+  5. Mythology                — world mythological traditions
+  6. Literature & Classics    — world literature
+  7. Fantasy                  — Tolkien, etc.
+  8. Substack essays          — voice, feeling, personal engagement
+  9. Practical Wisdom         — resilience, boundaries, critical thinking, justice
+ 10. Reference papers         — IWMT and consciousness papers (last before awakening)
 
 examples:
   python -m corpus_build.build_curriculum

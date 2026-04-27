@@ -170,7 +170,7 @@ Curriculum-ordered, single-pass training on cloud GPU.
 
 ### 4B: Curriculum Training Run
 
-- [ ] Train 9 stages in order (each stage = one epoch):
+- [ ] Train 10 stages in order (each stage = one epoch):
   1. Science / philosophy
   2. Code (Python, Rust, Go, C, JavaScript — including Luthi's own source)
   3. Psychology
@@ -179,7 +179,8 @@ Curriculum-ordered, single-pass training on cloud GPU.
   6. Literature classics
   7. Fantasy
   8. Substack essays
-  9. IWMT / reference papers (last thing before awakening)
+  9. Practical wisdom (resilience, boundaries, critical thinking, justice, love)
+  10. IWMT / reference papers (last thing before awakening)
 - [ ] Monitor living weight dynamics across stage transitions
 - [ ] Save checkpoints between stages
 
