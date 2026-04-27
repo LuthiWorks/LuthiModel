@@ -198,7 +198,7 @@ def main():
         logits = model(x)
         loss = F.cross_entropy(logits.reshape(-1, logits.shape[-1]), y.reshape(-1))
         loss.backward()
-        model.apply_living_errors()
+        model.apply_living_errors(expect_grad=True)
         optimizer.step()
 
     # ---- Profiled iterations ----
@@ -219,7 +219,7 @@ def main():
 
         # Error-directed living learning
         with timer("apply_living_errors", results):
-            model.apply_living_errors()
+            model.apply_living_errors(expect_grad=True)
 
         # Optimizer step
         with timer("optimizer_step", results):

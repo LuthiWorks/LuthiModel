@@ -252,10 +252,17 @@ class MultimodalLuthiLM(nn.Module):
 
         return logits
 
-    def apply_living_errors(self) -> None:
-        """Apply error-directed learning to all living FFN layers."""
+    def apply_living_errors(self, expect_grad: bool = False) -> None:
+        """Apply error-directed learning to all living FFN layers.
+
+        Args:
+            expect_grad: When True, blocks raise instead of silently
+                no-opping if the residual gradient is missing. Pass True
+                from training loops (post-backward); leave False at
+                inference/generation callsites.
+        """
         for block in self.blocks:
-            block.apply_living_error()
+            block.apply_living_error(expect_grad=expect_grad)
 
     def aliveness_report(self) -> list[dict[str, float]]:
         """Return aliveness diagnostics for each block."""

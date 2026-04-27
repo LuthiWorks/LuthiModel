@@ -187,6 +187,37 @@ class TestErrorDirected:
         diff = (block.living_ffn.weight - weights_before).abs().sum().item()
         assert diff > 0, "Direct error should update living weights"
 
+    def test_apply_living_error_expect_grad_silent_when_default(self, block):
+        """With default expect_grad=False, missing grad is a silent no-op.
+
+        This preserves the inference/generation contract where
+        apply_living_errors() may be called without backward() having run
+        (e.g. from luthi.generate.generate_text in living mode).
+        """
+        x = torch.randn(2, 4, 16)
+        with torch.no_grad():
+            block(x)
+        # No backward — _ffn_output.grad is None. Default call must not raise.
+        block.apply_living_error()
+
+    def test_apply_living_error_expect_grad_raises_on_missing(self, block):
+        """With expect_grad=True, missing grad raises — catches broken residual.
+
+        The training callsites pass expect_grad=True so a refactor that
+        breaks the residual gradient pathway crashes loud rather than
+        silently no-opping (which would mean error-directed learning
+        stops working without anyone noticing).
+        """
+        x = torch.randn(2, 4, 16, requires_grad=True)
+        out = block(x)
+        # Forward ran with grad enabled, so _ffn_output is stored and
+        # retain_grad() was called. But no backward() — grad stays None.
+        assert block._ffn_output is not None
+        assert block._ffn_output.grad is None
+
+        with pytest.raises(RuntimeError, match="residual gradient path"):
+            block.apply_living_error(expect_grad=True)
+
 
 # ── Stacking ─────────────────────────────────────────────────────────
 

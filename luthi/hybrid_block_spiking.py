@@ -155,15 +155,31 @@ class SpikingHybridBlock(nn.Module):
 
         return refined, backward_spikes
 
-    def apply_living_error(self) -> None:
+    def apply_living_error(self, expect_grad: bool = False) -> None:
         """Apply error-directed learning using the gradient at the FFN output.
 
         Call this AFTER loss.backward() to update the living FFN weights
         using the error signal that flowed back through the residual path.
+
+        Args:
+            expect_grad: When True, raise if the FFN output's grad is missing.
+                Pass True from training callsites (where backward() is
+                guaranteed to have run) to catch a broken residual pathway
+                loud rather than silently no-opping. Default False preserves
+                the inference/generation contract where grad may legitimately
+                be absent.
         """
         if self._ffn_output is None:
             return
         if self._ffn_output.grad is None:
+            if expect_grad:
+                raise RuntimeError(
+                    "SpikingHybridBlock.apply_living_error called with "
+                    "expect_grad=True but _ffn_output.grad is None — the "
+                    "residual gradient path did not deliver an error signal. "
+                    "Either backward() did not run, or the residual link was "
+                    "disrupted upstream."
+                )
             return
 
         self.living_ffn.apply_error(self._ffn_output.grad)

@@ -87,7 +87,7 @@ def train_epoch(
         loss.backward()
 
         # Error-directed learning for living FFN layers
-        model.apply_living_errors()
+        model.apply_living_errors(expect_grad=True)
 
         # Gradient clipping for attention stability
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
