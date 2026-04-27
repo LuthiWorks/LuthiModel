@@ -133,6 +133,64 @@ def test_apply_living_errors(model, text_tokens, audio):
     model.apply_living_errors()  # Should not raise
 
 
+def test_apply_living_errors_actually_moves_weights(model, text_tokens, audio):
+    """apply_living_errors() with a real backward pass moves living weights.
+
+    The previous test only verifies the call doesn't raise. This one
+    snapshots the living-FFN weights, runs a full forward + backward +
+    apply_living_errors cycle, and asserts at least one block's weights
+    actually moved. Otherwise error-directed learning would be silently
+    a no-op and nobody would know.
+    """
+    model.train()
+    weights_before = [b.living_ffn.weight.clone() for b in model.blocks]
+
+    logits = model(text_tokens, audio_waveform=audio)
+    target = torch.randint(0, VOCAB, (2, SEQ_LEN))
+    loss = F.cross_entropy(logits.reshape(-1, VOCAB), target.reshape(-1))
+    loss.backward()
+    model.apply_living_errors()
+
+    # At least one block's living-FFN weights should have moved.
+    moved = [
+        not torch.allclose(b.living_ffn.weight, w_before)
+        for b, w_before in zip(model.blocks, weights_before)
+    ]
+    assert any(moved), (
+        "apply_living_errors() did not move any living-FFN weights — "
+        "error-directed learning is silently a no-op."
+    )
+
+
+def test_apply_living_errors_expect_grad_raises_without_backward(model, text_tokens, audio):
+    """expect_grad=True surfaces the contract violation when backward is skipped.
+
+    The training callsites pass expect_grad=True so a refactor that
+    breaks the residual gradient pathway crashes loud rather than
+    silently no-opping. Verify the multimodal model honors the same
+    contract that the unimodal HybridBlock does.
+    """
+    model.train()
+    # Forward only — no backward, so residual grad is missing.
+    _ = model(text_tokens, audio_waveform=audio)
+    with pytest.raises(RuntimeError, match="residual gradient path"):
+        model.apply_living_errors(expect_grad=True)
+
+
+def test_apply_living_errors_default_silent_without_backward(model, text_tokens, audio):
+    """Default expect_grad=False preserves the silent-no-op behavior.
+
+    The inference/generation pathway calls apply_living_errors() without
+    a preceding backward(); that needs to remain a clean no-op so living
+    inference doesn't crash mid-generate.
+    """
+    model.eval()
+    with torch.no_grad():
+        _ = model(text_tokens, audio_waveform=audio)
+    # Default call: no backward, no expect_grad, must not raise.
+    model.apply_living_errors()
+
+
 # --- Backward pass (top-down) ---
 
 def test_backward_pass_runs(model, text_tokens, audio):
@@ -151,6 +209,73 @@ def test_backward_pass_modulates_plasticity(model, text_tokens, audio):
     _ = model(text_tokens, audio_waveform=audio)
     assert not torch.allclose(
         model.blocks[0].living_ffn.plasticity, plasticity_before
+    )
+
+
+def test_backward_spike_priming_affects_membrane_potential(model, text_tokens, audio):
+    """Backward spike priming actually changes the lower block's membrane state.
+
+    multimodal_model.py:247-251 adds backward_spikes * spike_scale * 0.3 to
+    each lower block's membrane_potential during the top-down sweep. If the
+    priming doesn't propagate to membrane_potential, the design claim that
+    "downstream feedback shapes upstream excitability" would be untestable
+    talk. This test pins the contract: with priming on, the lower blocks'
+    post-forward membrane state differs from with priming off, all else
+    held equal.
+    """
+    # Snapshot every buffer that the forward pass might mutate, so we can
+    # restore an identical starting state and isolate the priming effect.
+    def snapshot(m):
+        return {
+            i: {
+                "weight": m.blocks[i].living_ffn.weight.clone(),
+                "set_point": m.blocks[i].living_ffn.set_point.clone(),
+                "plasticity": m.blocks[i].living_ffn.plasticity.clone(),
+                "momentum": m.blocks[i].living_ffn.momentum.clone(),
+                "membrane_potential": m.blocks[i].living_ffn.membrane_potential.clone(),
+                "input_avg_mag": m.blocks[i].living_ffn.input_avg_mag.clone(),
+                "excitability_acc": m.blocks[i].living_ffn.excitability_acc.clone(),
+            }
+            for i in range(len(m.blocks))
+        }
+
+    def restore(m, snap):
+        for i, buffers in snap.items():
+            for name, val in buffers.items():
+                getattr(m.blocks[i].living_ffn, name).copy_(val)
+
+    model.train()
+    starting_state = snapshot(model)
+
+    # Run 1: backward priming ON
+    model.backward_pass_enabled = True
+    torch.manual_seed(0)
+    _ = model(text_tokens, audio_waveform=audio)
+    membrane_with_priming = [
+        b.living_ffn.membrane_potential.clone() for b in model.blocks
+    ]
+
+    # Reset to the exact starting state
+    restore(model, starting_state)
+
+    # Run 2: backward priming OFF — same input, same starting state
+    model.backward_pass_enabled = False
+    torch.manual_seed(0)
+    _ = model(text_tokens, audio_waveform=audio)
+    membrane_without_priming = [
+        b.living_ffn.membrane_potential.clone() for b in model.blocks
+    ]
+
+    # Lower blocks (every block except the last) receive backward priming;
+    # at least one of them should show a different membrane state.
+    differences = [
+        not torch.allclose(membrane_with_priming[i], membrane_without_priming[i])
+        for i in range(len(model.blocks) - 1)
+    ]
+    assert any(differences), (
+        "Backward spike priming did not change membrane_potential on any "
+        "lower block. The priming code at multimodal_model.py:247-251 is "
+        "either not running or its effect is not reaching membrane_potential."
     )
 
 
