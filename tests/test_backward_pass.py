@@ -460,3 +460,93 @@ def test_measure_backward_pass_effect_zero_when_disabled():
 
     effect = measure_backward_pass_effect(model, x)
     assert effect == 0.0
+
+
+# --- Shape-contract tests for the top-down signal ---
+
+class TestTopDownSignalShapeContract:
+    """Top-down signals live in input-dim space.
+
+    These tests pin down the contract that ``salience`` and
+    ``prediction_error`` are vectors of length ``in_features`` (== d_model
+    for the FFN trunk), and that a wrong-shape signal raises immediately
+    rather than silently corrupting set_point/plasticity along the wrong
+    axis. Without this guard, a future refactor that flips the convention
+    would not crash — it would just slowly push homeostatic state in the
+    wrong direction across training, which is exactly the kind of bug the
+    "crash loud over silent corruption" rule exists to prevent.
+    """
+
+    def test_correct_shape_signal_is_accepted(self):
+        layer = LivingLayerV6(in_features=8, out_features=8)
+        signal = TopDownSignal(
+            salience=torch.ones(8),
+            prediction_error=torch.zeros(8),
+            modulation_strength=0.5,
+        )
+        # Should not raise.
+        layer.apply_top_down(signal)
+
+    def test_wrong_salience_size_raises(self):
+        layer = LivingLayerV6(in_features=8, out_features=8)
+        signal = TopDownSignal(
+            salience=torch.ones(7),  # wrong size
+            prediction_error=torch.zeros(8),
+            modulation_strength=0.5,
+        )
+        with pytest.raises(ValueError, match="salience"):
+            layer.apply_top_down(signal)
+
+    def test_wrong_prediction_error_size_raises(self):
+        layer = LivingLayerV6(in_features=8, out_features=8)
+        signal = TopDownSignal(
+            salience=torch.ones(8),
+            prediction_error=torch.zeros(7),  # wrong size
+            modulation_strength=0.5,
+        )
+        with pytest.raises(ValueError, match="prediction_error"):
+            layer.apply_top_down(signal)
+
+    def test_spiking_layer_inherits_shape_contract(self):
+        """SpikingLivingLayer.apply_top_down delegates to super(); same guard fires."""
+        layer = SpikingLivingLayer(in_features=8, out_features=8)
+        signal = TopDownSignal(
+            salience=torch.ones(7),  # wrong size
+            prediction_error=torch.zeros(8),
+            modulation_strength=0.5,
+        )
+        with pytest.raises(ValueError, match="salience"):
+            layer.apply_top_down(signal)
+
+    def test_set_point_drift_is_uniform_across_output_axis(self):
+        """Document the broadcasting semantics: per-input-dim error is
+        applied identically to every output row of set_point.
+
+        Zeros the set_point baseline before nudging so the comparison is
+        free of fp32 subtraction noise from a non-zero starting state.
+        """
+        layer = LivingLayerV6(in_features=4, out_features=6)
+        # Zero the set_point so apply_top_down's contribution is the
+        # entire post-state (no rounding noise from subtracting a
+        # heterogeneous baseline).
+        with torch.no_grad():
+            layer.set_point.zero_()
+
+        # Construct a prediction error with a clearly distinct value in
+        # one input dim. After apply_top_down, every output row's
+        # column-i value should match — that's what input-dim
+        # broadcasting means.
+        prediction_error = torch.tensor([1.0, 0.0, 0.0, 0.0])
+        signal = TopDownSignal(
+            salience=torch.zeros(4),
+            prediction_error=prediction_error,
+            modulation_strength=1.0,
+        )
+        layer.apply_top_down(signal)
+
+        # Column 0 should hold the same nonzero value in every row.
+        col0 = layer.set_point[:, 0]
+        assert torch.allclose(col0, torch.full_like(col0, col0[0].item()))
+        assert col0[0].item() != 0.0
+        # Other columns should be untouched (prediction_error was zero there).
+        assert torch.allclose(layer.set_point[:, 1:], torch.zeros_like(layer.set_point[:, 1:]))

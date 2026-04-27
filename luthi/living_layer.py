@@ -293,31 +293,62 @@ class LivingLayerV6(nn.Module):
         This modifies state for the NEXT forward pass — it does not
         change the current pass's output.
 
+        Both ``salience`` and ``prediction_error`` on the signal live in
+        **input-dimension space** (see TopDownSignal docstring). They are
+        vectors of length ``in_features``, and we broadcast them across
+        the ``out_features`` axis: every output row of plasticity and
+        set_point receives the same input-dim adjustment pattern. This
+        is intentional homeostasis — "input dim ``i`` was over/under-
+        utilized, so every weight fed by it drifts equally."
+
         Args:
             signal: TopDownSignal with salience, prediction_error, and
-                modulation_strength fields.
+                modulation_strength fields. Both vectors must have
+                length ``self.in_features``.
         """
+        # Fail loud if the signal's shape contract is violated. Without
+        # this, a wrong-axis signal would silently push set_points and
+        # plasticity in the wrong direction — a bug that wouldn't crash,
+        # just slowly corrupt the homeostatic state across training.
+        if signal.salience.shape[-1] != self.in_features:
+            raise ValueError(
+                f"TopDownSignal.salience has size {signal.salience.shape[-1]} "
+                f"on its last axis, but this layer expects in_features="
+                f"{self.in_features}. Top-down signals live in input-dim space."
+            )
+        if signal.prediction_error.shape[-1] != self.in_features:
+            raise ValueError(
+                f"TopDownSignal.prediction_error has size "
+                f"{signal.prediction_error.shape[-1]} on its last axis, but "
+                f"this layer expects in_features={self.in_features}. "
+                f"Top-down signals live in input-dim space."
+            )
+
         with torch.no_grad():
             strength = signal.modulation_strength
 
-            # 1. Plasticity modulation: boost learning rate for weights
-            # connected to dimensions that downstream found important.
-            # importance is [d_model] -> broadcast to [1, in_features]
-            importance = signal.salience.unsqueeze(0)  # [1, in]
+            # 1. Plasticity modulation: boost the learning rate for weights
+            # whose INPUT dimension was important downstream. Each row of
+            # plasticity (one row per output neuron) is nudged by the same
+            # per-input-dim importance vector.
+            importance = signal.salience.unsqueeze(0)  # [1, in_features]
 
             # Gently adjust plasticity: mostly retain current, slightly
-            # bias toward what downstream needs
+            # bias toward what downstream needs.
             self.plasticity.mul_(1.0 - 0.01 * strength).add_(
                 importance * 0.01 * strength
             )
-            # Clamp plasticity to prevent runaway or death
+            # Clamp plasticity to prevent runaway or death.
             self.plasticity.clamp_(0.1, 10.0)
 
-            # 2. Set point drift: nudge homeostatic targets toward what
-            # downstream consistently needs. Prediction error tells us
-            # the mismatch between what this layer produced and what
-            # was useful above.
-            error_signal = signal.prediction_error.unsqueeze(0)  # [1, in]
+            # 2. Set point drift: nudge homeostatic targets along the
+            # per-input-dim error pattern. Each input dim's error
+            # (over- or under-utilized relative to downstream
+            # expectation) shifts the resting state of every weight
+            # connected to that input. Output rows all move together —
+            # this is the right semantics because the signal indexes
+            # input dimensions, not output dimensions (see TopDownSignal).
+            error_signal = signal.prediction_error.unsqueeze(0)  # [1, in_features]
             self.set_point.add_(
                 error_signal * self.set_point_adapt_rate * 10.0 * strength
             )

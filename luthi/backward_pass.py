@@ -24,12 +24,29 @@ import torch
 class TopDownSignal:
     """Signal flowing from a higher block to a lower one.
 
+    Both ``salience`` and ``prediction_error`` are vectors of length
+    ``d_model``, and they live in **input-dimension space** for the
+    receiving living layer. They describe properties of the dimensions
+    that *flowed into* the block (its input axis), not properties of
+    the dimensions it produced. Living layers therefore broadcast these
+    signals across their ``out_features`` axis when applying them — the
+    same input-dim adjustment is uniformly applied to every output row.
+
+    This convention matters because a living layer's ``set_point`` and
+    ``plasticity`` are 2D ``[out, in]`` matrices: indexing the signal by
+    the wrong axis would push the homeostatic state in the wrong
+    direction. See ``LivingLayerV6.apply_top_down`` for how the broadcast
+    is performed.
+
     Attributes:
-        salience: [d_model] what was important downstream. High values
-            mean this dimension carried useful information for the task.
-        prediction_error: [d_model] what was unexpected. The difference
-            between what the block below sent up and what downstream
-            expected to receive.
+        salience: [d_model] (= [in_features]) which input dimensions
+            carried useful information for the task. High values mean
+            "this input mattered."
+        prediction_error: [d_model] (= [in_features]) per-input-dim
+            mismatch between this block's actual input importance and
+            what downstream blocks expected. Computed in
+            ``compute_block_top_down`` as
+            ``local_input_salience - downstream_salience``.
         modulation_strength: Scalar controlling how strongly this signal
             modulates the receiving block. Decays with distance — nearby
             blocks get strong modulation, distant blocks get gentle guidance.
