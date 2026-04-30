@@ -14,6 +14,15 @@ import torch.nn.functional as F
 from luthi.hybrid_block_spiking import SpikingHybridBlock
 
 
+def _run_block(block, x, prev_spikes):
+    """Module-level wrapper so torch.utils.checkpoint can pickle/replay it.
+
+    Closures over `block` are awkward for checkpoint's saved-tensor hooks,
+    but a plain function with the block as a positional argument is fine.
+    """
+    return block(x, incoming_spikes=prev_spikes, causal=True)
+
+
 class SpikingLuthiLM(nn.Module):
     """Spiking LWM character-level language model.
 
@@ -47,11 +56,18 @@ class SpikingLuthiLM(nn.Module):
         reset_mode: str = "zero",
         spike_baseline: float = 0.3,
         backward_pass_enabled: bool = True,
+        gradient_checkpointing: bool = False,
     ):
         super().__init__()
         self.d_model = d_model
         self.max_seq_len = max_seq_len
         self.backward_pass_enabled = backward_pass_enabled
+        # When True, wrap each block's forward in torch.utils.checkpoint
+        # to recompute activations during backward instead of storing them.
+        # Required to fit the 4096d/36-block production model on A100 80GB.
+        # Living-layer state mutations are gated by is_recomputing() so the
+        # Hebbian update fires exactly once per step regardless of this flag.
+        self.gradient_checkpointing = gradient_checkpointing
 
         # Token embedding
         self.embedding = nn.Embedding(vocab_size, d_model)
@@ -110,11 +126,21 @@ class SpikingLuthiLM(nn.Module):
         # Phase 1: Bottom-up with spike propagation
         block_inputs = []
         prev_spikes = None
+        use_ckpt = self.gradient_checkpointing and self.training
         for block in self.blocks:
             block_inputs.append(h.detach())
-            h, delayed_spikes = block(
-                h, incoming_spikes=prev_spikes, causal=True
-            )
+            if use_ckpt:
+                from torch.utils.checkpoint import checkpoint
+                from luthi.grad_checkpoint import luthi_context_fn
+                h, delayed_spikes = checkpoint(
+                    _run_block, block, h, prev_spikes,
+                    use_reentrant=False,
+                    context_fn=luthi_context_fn,
+                )
+            else:
+                h, delayed_spikes = block(
+                    h, incoming_spikes=prev_spikes, causal=True,
+                )
             prev_spikes = delayed_spikes
 
         # Project to vocabulary

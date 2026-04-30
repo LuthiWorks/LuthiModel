@@ -76,7 +76,7 @@
   - [x] Unbuffered output for background monitoring
 - [x] Training run: audio + text, 1024d — epoch 91 complete (train loss 3.41, val loss 4.17)
 - [x] Tests for audio encoder (test_audio_encoder.py)
-- [ ] Tests for multimodal model (audio + text forward pass)
+- [x] Tests for multimodal model (audio + text forward pass) — `tests/test_multimodal_model.py`
 - [ ] Verify living weights develop cross-modal patterns
 
 ## Phase 3D: Multimodal — Vision (COMPLETE)
@@ -96,8 +96,8 @@
   - [x] Batch-level progress logging
 - [x] Training run: vision + text, 1024d — 102 epochs complete
 - [x] COCO dataset backup to thumb drive
-- [ ] Tests for vision encoder
-- [ ] Tests for multimodal model (vision + text forward pass)
+- [x] Tests for vision encoder — `tests/test_vision_encoder.py` (14 tests)
+- [x] Tests for multimodal model (vision + text forward pass) — `tests/test_multimodal_model.py` (8 vision tests added in Track 1D)
 - [ ] Verify cross-modal episode formation
 
 ## Phase 3E: Simulated Embodiment
@@ -204,28 +204,28 @@ Curriculum-ordered, single-pass training on cloud GPU.
 The integration follows a substrate-to-core trajectory: Luthi starts as the
 experiential substrate and grows into the cognitive core on the DGX Spark.
 
-### 5A: Integration Hooks
+### 5A: Integration Hooks — COMPLETE (Track 1, 2026-04-27)
 
-- [ ] External modulation API on LivingLayerV6 — accept signals that modulate:
-  - [ ] Plasticity scaling (from Sanctuary's precision cell)
-  - [ ] Excitability bias (from Sanctuary's affect cell)
-  - [ ] Per-dimension Hebbian salience (from Sanctuary's attention cell)
-  - [ ] Homeostatic target adjustment (from Sanctuary's goal cell)
-- [ ] Generation/inference pipeline — autoregressive text generation with temperature/top-k
-- [ ] Context length scaling — support longer sequences for Sanctuary cognitive input
+- [x] External modulation API on LivingLayerV6 — accept signals that modulate:
+  - [x] Plasticity scaling (arousal → hebb_rate, 0.5x-2.0x multiplicative)
+  - [x] Excitability bias (valence → excitability_acc, additive ±0.1 through sigmoid)
+  - [x] Salience threshold (attention → salience_threshold, 0.5x-1.0x multiplicative)
+  - [ ] Homeostatic target adjustment (goal → set_point_adapt_rate) — deferred, lower priority
+- [x] Generation/inference pipeline — `generate_with_context()` accepts pre-encoded audio/vision tokens
+- [ ] Context length scaling — support longer sequences for Sanctuary cognitive input (needed at 4096d)
 
-### 5B: Sanctuary-Side Integration
+### 5B: Sanctuary-Side Integration — COMPLETE (Track 1, 2026-04-27)
 
-- [ ] Tensor-level model interface in Sanctuary alongside structured LLM interface
-- [ ] Sensorium routing through Luthi's vision/audio encoders
-- [ ] CfC cell output mapping to living weight modulation parameters
-- [ ] Integration tests: CfC modulation → living weight response
+- [x] Tensor-level model interface in Sanctuary alongside structured LLM interface
+- [x] Sensorium routing through Luthi's vision/audio encoders (`encode_audio`, `encode_vision` via sanctuary_interface)
+- [x] CfC cell output mapping to living weight modulation parameters (4 independent channels)
+- [x] Integration tests: CfC modulation → living weight response (26 interface tests + 44 bridge tests)
 
-### 5C: Joint Validation
+### 5C: Joint Validation — COMPLETE (Track 1, 2026-04-27)
 
-- [ ] Review CfC integration interface (`.docs/CFC_LIVING_WEIGHT_INTEGRATION.md`)
-- [ ] End-to-end test: Sanctuary cognitive cycle driving Luthi as substrate
-- [ ] Validate that CfC modulation improves living weight learning
+- [x] Review CfC integration interface (`.docs/CFC_LIVING_WEIGHT_INTEGRATION.md`)
+- [x] End-to-end test: Sanctuary cognitive cycle driving Luthi as substrate (5 cycles, real 1024d checkpoint, DirectML)
+- [ ] Validate that CfC modulation improves living weight learning (requires longer runs — future work)
 
 ## Phase 6: Life on DGX Spark
 

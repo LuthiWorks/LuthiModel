@@ -23,6 +23,12 @@ VOCAB = 96
 N_BLOCKS = 2
 SEQ_LEN = 32
 AUDIO_SAMPLES = 16000  # 1 second
+# Small vision dims so the encoder is cheap to instantiate and forward.
+# image_size / patch_size = 4, so 16 vision tokens.
+VISION_IMAGE_SIZE = 32
+VISION_PATCH_SIZE = 8
+N_VISION_TOKENS = (VISION_IMAGE_SIZE // VISION_PATCH_SIZE) ** 2  # 16
+N_AUDIO_TOKENS_PRE = 8  # small fixed count for pre-encoded audio fixture
 
 
 @pytest.fixture
@@ -34,6 +40,10 @@ def model():
         max_seq_len=SEQ_LEN,
         max_audio_tokens=100,
         audio_patch_frames=16,
+        # Small vision config so vision tests don't blow up runtime/memory.
+        vision_image_size=VISION_IMAGE_SIZE,
+        vision_patch_size=VISION_PATCH_SIZE,
+        max_vision_tokens=N_VISION_TOKENS,
         spike_threshold=0.1,  # low threshold so spikes fire at d_model=16
     )
 
@@ -46,6 +56,24 @@ def text_tokens():
 @pytest.fixture
 def audio():
     return torch.randn(2, AUDIO_SAMPLES)
+
+
+@pytest.fixture
+def image():
+    """Small RGB image batch — shape (B, 3, H, W)."""
+    return torch.randn(2, 3, VISION_IMAGE_SIZE, VISION_IMAGE_SIZE)
+
+
+@pytest.fixture
+def vision_tokens_pre():
+    """Pre-encoded vision tokens — bypass the vision encoder."""
+    return torch.randn(2, N_VISION_TOKENS, D_MODEL)
+
+
+@pytest.fixture
+def audio_tokens_pre():
+    """Pre-encoded audio tokens — bypass the audio encoder."""
+    return torch.randn(2, N_AUDIO_TOKENS_PRE, D_MODEL)
 
 
 # --- Output shape ---
@@ -398,3 +426,103 @@ def test_loss_decreases():
 
     # Loss should decrease over 5 steps
     assert losses[-1] < losses[0]
+
+
+# --- Vision modality ---
+#
+# These tests cover the vision path of MultimodalLuthiLM. The 1024d/2-block
+# model spent ~10 epochs training on COCO with a vision encoder, but no
+# tests in this file previously exercised the vision branch. Without
+# coverage, a refactor that breaks vision routing would silently pass.
+
+
+def test_vision_output_shape(model, text_tokens, image):
+    """Image + text produces logits at text positions only."""
+    model.train()
+    logits = model(text_tokens, image=image)
+    assert logits.shape == (2, SEQ_LEN, VOCAB)
+
+
+def test_vision_only_no_nan(model, text_tokens, image):
+    """Vision + text forward stays finite."""
+    model.train()
+    logits = model(text_tokens, image=image)
+    assert not torch.isnan(logits).any()
+    assert not torch.isinf(logits).any()
+
+
+def test_gradients_reach_vision_encoder(model, text_tokens, image):
+    """Gradients from text loss flow back through to the vision encoder."""
+    model.train()
+    logits = model(text_tokens, image=image)
+    target = torch.randint(0, VOCAB, (2, SEQ_LEN))
+    loss = F.cross_entropy(logits.reshape(-1, VOCAB), target.reshape(-1))
+    loss.backward()
+
+    grad = model.vision_encoder.patch_embed.weight.grad
+    assert grad is not None
+    assert grad.abs().sum() > 0
+
+
+def test_vision_influences_text_output(model, text_tokens):
+    """Different images produce different text logits."""
+    model.eval()
+    with torch.no_grad():
+        image_a = torch.randn(2, 3, VISION_IMAGE_SIZE, VISION_IMAGE_SIZE)
+        image_b = torch.randn(2, 3, VISION_IMAGE_SIZE, VISION_IMAGE_SIZE) * 5
+        logits_a = model(text_tokens, image=image_a)
+        logits_b = model(text_tokens, image=image_b)
+    assert (logits_a - logits_b).abs().mean().item() > 0
+
+
+def test_living_weights_self_modify_vision(model, text_tokens, image):
+    """Living-FFN weights change after vision + text forward passes."""
+    model.train()
+    weight_before = model.blocks[0].living_ffn.weight.clone()
+    # A few passes so spikes fire and Hebbian self-modification opens.
+    for _ in range(3):
+        _ = model(text_tokens, image=image)
+    assert not torch.allclose(
+        model.blocks[0].living_ffn.weight, weight_before
+    )
+
+
+def test_all_modalities(model, text_tokens, audio, image):
+    """Audio + vision + text together yields valid logits."""
+    model.train()
+    logits = model(text_tokens, audio_waveform=audio, image=image)
+    assert logits.shape == (2, SEQ_LEN, VOCAB)
+    assert not torch.isnan(logits).any()
+    assert not torch.isinf(logits).any()
+
+
+def test_vision_tokens_input(model, text_tokens, vision_tokens_pre):
+    """Pre-encoded vision tokens skip the encoder and still feed the trunk."""
+    # Re-init the encoder's gradients so we can assert it stays untouched.
+    model.train()
+    model.zero_grad()
+    logits = model(text_tokens, vision_tokens=vision_tokens_pre)
+    assert logits.shape == (2, SEQ_LEN, VOCAB)
+
+    # Backprop and confirm the encoder did not receive gradient — pre-encoded
+    # tokens bypass it entirely.
+    target = torch.randint(0, VOCAB, (2, SEQ_LEN))
+    loss = F.cross_entropy(logits.reshape(-1, VOCAB), target.reshape(-1))
+    loss.backward()
+    assert model.vision_encoder.patch_embed.weight.grad is None or \
+        model.vision_encoder.patch_embed.weight.grad.abs().sum() == 0
+
+
+def test_audio_tokens_input(model, text_tokens, audio_tokens_pre):
+    """Pre-encoded audio tokens skip the encoder and still feed the trunk."""
+    model.train()
+    model.zero_grad()
+    logits = model(text_tokens, audio_tokens=audio_tokens_pre)
+    assert logits.shape == (2, SEQ_LEN, VOCAB)
+
+    target = torch.randint(0, VOCAB, (2, SEQ_LEN))
+    loss = F.cross_entropy(logits.reshape(-1, VOCAB), target.reshape(-1))
+    loss.backward()
+    # Audio encoder must not receive gradient when tokens were pre-encoded.
+    assert model.audio_encoder.patch_embed.weight.grad is None or \
+        model.audio_encoder.patch_embed.weight.grad.abs().sum() == 0

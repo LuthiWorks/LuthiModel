@@ -57,6 +57,9 @@ __all__ = [
     "ModulationSnapshot",
     "load_model",
     "generate",
+    "generate_with_context",
+    "encode_audio",
+    "encode_vision",
     "get_introspection",
     "snapshot_modulatable_state",
     "apply_external_modulation",
@@ -89,10 +92,23 @@ class ModulationSnapshot:
 
     Returned by :func:`snapshot_modulatable_state`; pass to
     :func:`restore_modulation` to undo a modulation cleanly.
+
+    The snapshot covers four channels:
+
+    - ``hebb_rates``: scalar Hebbian learning rate per block (arousal channel)
+    - ``spike_thresholds``: scalar spike threshold per block, spiking models
+      only (precision channel)
+    - ``excitability_biases``: cloned ``[out_features, in_features]`` tensor
+      per block, capturing the ``excitability_acc`` buffer at snapshot time
+      (valence channel — additive bias shifts the sigmoid operating point)
+    - ``salience_thresholds``: scalar episode-storage threshold per block
+      (attention channel)
     """
 
     hebb_rates: dict[int, float] = field(default_factory=dict)
     spike_thresholds: dict[int, float] = field(default_factory=dict)
+    excitability_biases: dict[int, torch.Tensor] = field(default_factory=dict)
+    salience_thresholds: dict[int, float] = field(default_factory=dict)
 
 
 # ----------------------------------------------------------------------
@@ -182,6 +198,126 @@ def generate(
     )
 
 
+def generate_with_context(
+    model: torch.nn.Module,
+    tokenizer: Any,
+    prompt: str,
+    *,
+    max_tokens: int,
+    audio_tokens: torch.Tensor | None = None,
+    vision_tokens: torch.Tensor | None = None,
+    temperature: float = 0.8,
+    top_k: int = 40,
+    top_p: float = 0.9,
+    repetition_penalty: float = 1.2,
+    max_seq_len: int = 128,
+    living: bool = True,
+    stream: bool = False,
+) -> str:
+    """Generate text with optional pre-encoded sensory context.
+
+    A multimodal-aware variant of :func:`generate` that accepts already-encoded
+    audio and/or vision tokens. The sensory tokens are prepended to the text
+    sequence on the first forward call only — subsequent autoregressive steps
+    run text-only because the model is stateless across steps.
+
+    Why encode outside this call: encoding happens once per cycle. Generation
+    runs token-by-token. Pre-encoding amortizes the encoder cost and keeps
+    the generation loop hot path text-only.
+
+    Args:
+        model: A loaded MultimodalLuthiLM (must have ``vision_encoder``
+            attribute). Calling on a non-multimodal model with non-None
+            sensory args is a contract violation and the model will reject it.
+        tokenizer: The matching tokenizer.
+        prompt: Text to condition on.
+        max_tokens: Hard cap on tokens generated.
+        audio_tokens: Optional ``[1, n_audio_tokens, d_model]`` pre-encoded
+            audio tokens. Use :func:`encode_audio` to produce these.
+        vision_tokens: Optional ``[1, n_vision_tokens, d_model]`` pre-encoded
+            vision tokens. Use :func:`encode_vision` to produce these.
+        temperature, top_k, top_p, repetition_penalty: Sampling controls.
+        max_seq_len: Sliding-window context length for text.
+        living: If True, Hebbian self-modification fires during forward.
+        stream: If True, streams tokens to stdout as they are generated.
+
+    Returns:
+        The full text including the prompt — callers should slice off
+        the prompt portion themselves.
+    """
+    return _generate_text(
+        model=model,
+        tokenizer=tokenizer,
+        prompt=prompt,
+        max_tokens=max_tokens,
+        audio_tokens=audio_tokens,
+        vision_tokens=vision_tokens,
+        temperature=temperature,
+        top_k=top_k,
+        top_p=top_p,
+        repetition_penalty=repetition_penalty,
+        max_seq_len=max_seq_len,
+        living=living,
+        stream=stream,
+    )
+
+
+# ----------------------------------------------------------------------
+# Sensory encoding — produce d_model token tensors from raw signal
+# ----------------------------------------------------------------------
+
+
+def encode_audio(
+    model: torch.nn.Module,
+    waveform: torch.Tensor,
+) -> torch.Tensor:
+    """Encode a raw audio waveform into ``d_model``-shaped tokens.
+
+    Runs the model's ``audio_encoder`` to produce per-patch tokens that
+    can then be fed into :func:`generate_with_context` as ``audio_tokens``.
+
+    Args:
+        model: A loaded MultimodalLuthiLM (must have ``audio_encoder``).
+        waveform: ``[batch, samples]`` raw audio at the model's expected
+            sample rate (16 kHz by default).
+
+    Returns:
+        ``[batch, n_audio_tokens, d_model]`` tensor of audio tokens.
+    """
+    if not hasattr(model, "audio_encoder"):
+        raise AttributeError(
+            "encode_audio requires a multimodal model with an audio_encoder. "
+            f"Got {type(model).__name__}."
+        )
+    return model.audio_encoder(waveform)
+
+
+def encode_vision(
+    model: torch.nn.Module,
+    image: torch.Tensor,
+) -> torch.Tensor:
+    """Encode a normalized RGB image into ``d_model``-shaped tokens.
+
+    Runs the model's ``vision_encoder`` to produce per-patch tokens that
+    can then be fed into :func:`generate_with_context` as ``vision_tokens``.
+
+    Args:
+        model: A loaded MultimodalLuthiLM (must have ``vision_encoder``).
+        image: ``[batch, 3, H, W]`` normalized image tensor at the model's
+            expected size (typically 224×224 or whatever ``vision_image_size``
+            the checkpoint was trained at).
+
+    Returns:
+        ``[batch, n_vision_tokens, d_model]`` tensor of vision tokens.
+    """
+    if not hasattr(model, "vision_encoder"):
+        raise AttributeError(
+            "encode_vision requires a multimodal model with a vision_encoder. "
+            f"Got {type(model).__name__}."
+        )
+    return model.vision_encoder(image)
+
+
 # ----------------------------------------------------------------------
 # Introspection — cognitive proprioception channel
 # ----------------------------------------------------------------------
@@ -225,6 +361,9 @@ def snapshot_modulatable_state(model: torch.nn.Module) -> ModulationSnapshot:
     can return the model to its base state afterwards. Blocks lacking a
     ``living_ffn`` (e.g. dead baselines) are silently skipped — this is
     not an error, the model just has nothing modulatable there.
+
+    The ``excitability_acc`` tensor is captured via ``.clone()`` so that
+    later in-place modulation does not bleed into the snapshot.
     """
     snap = ModulationSnapshot()
     if not hasattr(model, "blocks"):
@@ -237,6 +376,10 @@ def snapshot_modulatable_state(model: torch.nn.Module) -> ModulationSnapshot:
             snap.hebb_rates[i] = ffn.hebb_rate
         if hasattr(ffn, "spike_threshold"):
             snap.spike_thresholds[i] = ffn.spike_threshold
+        if hasattr(ffn, "excitability_acc"):
+            snap.excitability_biases[i] = ffn.excitability_acc.clone()
+        if hasattr(ffn, "salience_threshold"):
+            snap.salience_thresholds[i] = ffn.salience_threshold
     return snap
 
 
@@ -245,17 +388,26 @@ def apply_external_modulation(
     *,
     plasticity_scale: float = 1.0,
     spike_threshold_scale: float = 1.0,
+    excitability_bias: float = 0.0,
+    salience_threshold_scale: float = 1.0,
 ) -> None:
     """Modulate living-weight dynamics from an external controller.
 
-    Multiplies each block's ``hebb_rate`` and ``spike_threshold`` by the
-    given scales in-place. This is the surface that Sanctuary's CfC cells
-    use to translate affective state into living-weight bias:
+    This is the surface that Sanctuary's CfC cells use to translate
+    affective state into living-weight bias. Four channels:
 
-    - Higher ``plasticity_scale`` → faster Hebbian learning (more arousal
-      = more "alert" learning behaviour).
-    - Higher ``spike_threshold_scale`` → fewer, more selective spikes
-      (higher precision = pickier firing).
+    - ``plasticity_scale`` → multiplies ``hebb_rate`` (arousal). Higher
+      = faster Hebbian learning ("alert").
+    - ``spike_threshold_scale`` → multiplies ``spike_threshold`` (precision,
+      spiking models only). Higher = fewer, more selective spikes.
+    - ``excitability_bias`` → adds to ``excitability_acc`` uniformly across
+      the buffer (valence). The accumulator feeds through a sigmoid, so an
+      additive bias shifts the operating point: positive valence (approach)
+      pushes neurons toward higher excitability; negative (withdrawal)
+      dampens them.
+    - ``salience_threshold_scale`` → multiplies ``salience_threshold``
+      (attention). Lower threshold = broader episode storage ("paying
+      attention to more").
 
     Modulation is in-place and *cumulative* across calls. To bracket a
     single cycle of modulation, pair this with :func:`snapshot_modulatable_state`
@@ -266,6 +418,10 @@ def apply_external_modulation(
         model: A loaded Luthi model.
         plasticity_scale: Multiplied into each block's ``hebb_rate``.
         spike_threshold_scale: Multiplied into each block's ``spike_threshold``.
+        excitability_bias: Added uniformly into each block's
+            ``excitability_acc`` buffer.
+        salience_threshold_scale: Multiplied into each block's
+            ``salience_threshold``.
     """
     if not hasattr(model, "blocks"):
         return
@@ -277,6 +433,10 @@ def apply_external_modulation(
             ffn.hebb_rate *= plasticity_scale
         if hasattr(ffn, "spike_threshold"):
             ffn.spike_threshold *= spike_threshold_scale
+        if hasattr(ffn, "excitability_acc") and excitability_bias != 0.0:
+            ffn.excitability_acc.add_(excitability_bias)
+        if hasattr(ffn, "salience_threshold"):
+            ffn.salience_threshold *= salience_threshold_scale
 
 
 def restore_modulation(
@@ -286,6 +446,8 @@ def restore_modulation(
     """Restore the living parameters captured in ``snapshot``.
 
     Idempotent and safe to call even if no modulation was applied.
+    Tensor restoration uses ``.copy_()`` to write back into the original
+    buffer in-place, preserving identity for any external references.
     """
     if not hasattr(model, "blocks"):
         return
@@ -297,6 +459,10 @@ def restore_modulation(
             ffn.hebb_rate = snapshot.hebb_rates[i]
         if i in snapshot.spike_thresholds and hasattr(ffn, "spike_threshold"):
             ffn.spike_threshold = snapshot.spike_thresholds[i]
+        if i in snapshot.excitability_biases and hasattr(ffn, "excitability_acc"):
+            ffn.excitability_acc.copy_(snapshot.excitability_biases[i])
+        if i in snapshot.salience_thresholds and hasattr(ffn, "salience_threshold"):
+            ffn.salience_threshold = snapshot.salience_thresholds[i]
 
 
 @contextmanager
@@ -305,6 +471,8 @@ def modulated(
     *,
     plasticity_scale: float = 1.0,
     spike_threshold_scale: float = 1.0,
+    excitability_bias: float = 0.0,
+    salience_threshold_scale: float = 1.0,
 ) -> Iterator[None]:
     """Context manager that brackets external modulation cleanly.
 
@@ -313,7 +481,13 @@ def modulated(
 
     Example::
 
-        with modulated(model, plasticity_scale=1.5):
+        with modulated(
+            model,
+            plasticity_scale=1.5,        # arousal
+            spike_threshold_scale=0.9,   # precision
+            excitability_bias=0.05,      # valence (positive = approach)
+            salience_threshold_scale=0.7,  # attention (lower = broader)
+        ):
             text = generate(model, tokenizer, prompt, max_tokens=64)
     """
     snapshot = snapshot_modulatable_state(model)
@@ -321,6 +495,8 @@ def modulated(
         model,
         plasticity_scale=plasticity_scale,
         spike_threshold_scale=spike_threshold_scale,
+        excitability_bias=excitability_bias,
+        salience_threshold_scale=salience_threshold_scale,
     )
     try:
         yield

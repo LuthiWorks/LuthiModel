@@ -234,19 +234,35 @@ class LivingLayerV6(nn.Module):
 
         n_samples = x_flat.shape[0]
 
-        # Cache input for error-directed learning (detached from graph)
-        self._cached_input = x_flat.detach()
+        from luthi.grad_checkpoint import is_recomputing
+        recomputing = is_recomputing()
 
-        # --- Episodic recall: context-gated weight blending ---
-        with torch.no_grad():
-            context = self._compute_context(x_flat)
-            episode_delta = self._recall_episode(context)
+        if recomputing:
+            # Replay using the snapshot from the original forward so the
+            # recomputed activations are bit-identical. self.weight may
+            # have already been mutated by the original-forward Hebbian.
+            weight_snapshot = self._fwd_weight_snapshot
+            episode_delta = self._fwd_episode_delta
+            # Skip cache update + context recompute — use originals.
+            context = None
+        else:
+            # Cache input for error-directed learning (detached from graph)
+            self._cached_input = x_flat.detach()
 
-        # Snapshot weights for computation. The clone is essential: the
-        # Hebbian update below modifies self.weight in-place, which would
-        # break autograd's version tracking when backward() needs this
-        # tensor to compute gradients for upstream (attention) parameters.
-        weight_snapshot = self.weight.clone()
+            # --- Episodic recall: context-gated weight blending ---
+            with torch.no_grad():
+                context = self._compute_context(x_flat)
+                episode_delta = self._recall_episode(context)
+
+            # Snapshot weights for computation. The clone is essential: the
+            # Hebbian update below modifies self.weight in-place, which would
+            # break autograd's version tracking when backward() needs this
+            # tensor to compute gradients for upstream (attention) parameters.
+            weight_snapshot = self.weight.clone()
+            # Save for any subsequent recompute pass (gradient checkpointing).
+            self._fwd_weight_snapshot = weight_snapshot
+            self._fwd_episode_delta = episode_delta
+
         if episode_delta is not None:
             weight_snapshot = weight_snapshot + episode_delta
 
@@ -254,24 +270,29 @@ class LivingLayerV6(nn.Module):
         output = x_flat @ weight_snapshot.T  # [N, out]
 
         # --- Self-modification (no gradient flow) ---
-        with torch.no_grad():
-            from luthi.fused_ops import living_self_modify
+        # Gated: only fires on the original forward, never on recompute.
+        # The recompute path must observe identical state to be a faithful
+        # replay; firing Hebbian twice would double the self-modification
+        # rate and corrupt gradients computed from the recomputed graph.
+        if not recomputing:
+            with torch.no_grad():
+                from luthi.fused_ops import living_self_modify
 
-            gate = self._get_update_gate()
-            salience_scalar = living_self_modify(
-                self.weight, self.set_point, self.momentum,
-                self.input_avg_mag, self.excitability_acc, self.plasticity,
-                self.update_ema, x_flat, output, gate,
-                self.hebb_rate, self.homeostatic_decay,
-                self.set_point_adapt_rate, self.momentum_decay,
-                self.input_mag_decay, self.salience_threshold,
-                self.excitability_min, self.excitability_max,
-                self.update_ema_decay, self.eval_hebb_fraction,
-                self.training,
-            )
+                gate = self._get_update_gate()
+                salience_scalar = living_self_modify(
+                    self.weight, self.set_point, self.momentum,
+                    self.input_avg_mag, self.excitability_acc, self.plasticity,
+                    self.update_ema, x_flat, output, gate,
+                    self.hebb_rate, self.homeostatic_decay,
+                    self.set_point_adapt_rate, self.momentum_decay,
+                    self.input_mag_decay, self.salience_threshold,
+                    self.excitability_min, self.excitability_max,
+                    self.update_ema_decay, self.eval_hebb_fraction,
+                    self.training,
+                )
 
-            # Store episode if salient enough
-            self._store_episode(context, salience_scalar)
+                # Store episode if salient enough
+                self._store_episode(context, salience_scalar)
 
         # Reshape output to match input shape
         if len(input_shape) == 3:

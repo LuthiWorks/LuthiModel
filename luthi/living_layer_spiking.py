@@ -201,64 +201,76 @@ class SpikingLivingLayer(LivingLayerV6):
         Returns:
             Spike-modulated output tensor matching input leading dimensions.
         """
-        with torch.no_grad():
-            # Phase 0: Receive incoming spikes from previous block
-            if incoming_spikes is not None:
-                self.membrane_potential.add_(
-                    incoming_spikes * self.spike_scale
+        from luthi.grad_checkpoint import is_recomputing
+        recomputing = is_recomputing()
+
+        # Phases 0-3 (membrane integration, leak, spike decision, refractory)
+        # are stateful and must NOT fire during checkpoint recomputation.
+        # On recompute the spike_mask buffer still holds the value from the
+        # original forward (set in Phase 2), which is what Phase 7 needs.
+        if not recomputing:
+            with torch.no_grad():
+                # Phase 0: Receive incoming spikes from previous block
+                if incoming_spikes is not None:
+                    self.membrane_potential.add_(
+                        incoming_spikes * self.spike_scale
+                    )
+
+                # Phase 1: Membrane leak
+                self.membrane_potential.mul_(1.0 - self.membrane_leak)
+
+                # Phase 2: Spike decision (all element-wise float ops)
+                # Decided BEFORE parent forward so _get_update_gate() returns
+                # the current spike_mask when Hebbian code queries it.
+                above = (self.membrane_potential >= self.spike_threshold).float()
+                ready = (self.refractory_counter <= 0.0).float()
+                self.spike_mask = above * ready  # 1.0 where fired, 0.0 where not
+
+                # Phase 3: Fire-and-reset + refractory management
+                if self.reset_mode == "zero":
+                    self.membrane_potential.mul_(1.0 - self.spike_mask)
+                else:  # "subtract"
+                    self.membrane_potential.sub_(
+                        self.spike_mask * self.spike_threshold
+                    )
+
+                # Refractory: where fired → set to refractory_steps
+                #             where not fired → decrement (clamp at 0)
+                decremented = (self.refractory_counter - 1.0).clamp(min=0.0)
+                self.refractory_counter = torch.where(
+                    self.spike_mask > 0.5,
+                    torch.full_like(self.refractory_counter, self.refractory_steps),
+                    decremented,
                 )
 
-            # Phase 1: Membrane leak
-            self.membrane_potential.mul_(1.0 - self.membrane_leak)
-
-            # Phase 2: Spike decision (all element-wise float ops)
-            # Decided BEFORE parent forward so _get_update_gate() returns
-            # the current spike_mask when Hebbian code queries it.
-            above = (self.membrane_potential >= self.spike_threshold).float()
-            ready = (self.refractory_counter <= 0.0).float()
-            self.spike_mask = above * ready  # 1.0 where fired, 0.0 where not
-
-            # Phase 3: Fire-and-reset + refractory management
-            if self.reset_mode == "zero":
-                self.membrane_potential.mul_(1.0 - self.spike_mask)
-            else:  # "subtract"
-                self.membrane_potential.sub_(
-                    self.spike_mask * self.spike_threshold
-                )
-
-            # Refractory: where fired → set to refractory_steps
-            #             where not fired → decrement (clamp at 0)
-            decremented = (self.refractory_counter - 1.0).clamp(min=0.0)
-            self.refractory_counter = torch.where(
-                self.spike_mask > 0.5,
-                torch.full_like(self.refractory_counter, self.refractory_steps),
-                decremented,
-            )
-
-        # Phase 4: Parent forward (Hebbian updates now gated by spike_mask)
+        # Phase 4: Parent forward (Hebbian updates gated by recomputing flag
+        # inside LivingLayerV6.forward). The parent reuses its saved weight
+        # snapshot during recompute so the linear op is bit-identical.
         output = super().forward(x)
 
-        with torch.no_grad():
-            # Phase 5: Drive membrane from input-weight alignment (for NEXT step)
-            # Per-weight: how relevant is this weight to the current input?
-            # drive[i,j] = |weight[i,j]| * |input[j]| — weights aligned with
-            # strong input features get more membrane drive and are more likely
-            # to spike. This is input-dependent sparse activation: the input
-            # selects which weights are relevant, like olfactory input lighting
-            # up food-associated circuits but not motor circuits.
-            # Normalized by mean so dynamics are scale-invariant.
-            if x.dim() == 3:
-                input_mag = x.detach().abs().mean(dim=(0, 1))  # [in]
-            else:
-                input_mag = x.detach().abs().mean(dim=0)  # [in]
-            drive_signal = self.weight.abs() * input_mag.unsqueeze(0)  # [out, in]
-            drive_signal = drive_signal / (drive_signal.mean() + 1e-8)
-            self.membrane_potential.add_(drive_signal * self.spike_scale)
+        # Phases 5-6 are also stateful and must skip during recompute.
+        if not recomputing:
+            with torch.no_grad():
+                # Phase 5: Drive membrane from input-weight alignment (for NEXT step)
+                # Per-weight: how relevant is this weight to the current input?
+                # drive[i,j] = |weight[i,j]| * |input[j]| — weights aligned with
+                # strong input features get more membrane drive and are more likely
+                # to spike. This is input-dependent sparse activation: the input
+                # selects which weights are relevant, like olfactory input lighting
+                # up food-associated circuits but not motor circuits.
+                # Normalized by mean so dynamics are scale-invariant.
+                if x.dim() == 3:
+                    input_mag = x.detach().abs().mean(dim=(0, 1))  # [in]
+                else:
+                    input_mag = x.detach().abs().mean(dim=0)  # [in]
+                drive_signal = self.weight.abs() * input_mag.unsqueeze(0)  # [out, in]
+                drive_signal = drive_signal / (drive_signal.mean() + 1e-8)
+                self.membrane_potential.add_(drive_signal * self.spike_scale)
 
-            # Phase 6: Delay buffer update
-            write_pos = self._delay_pos % self.delay_steps
-            self.delay_buffer[write_pos] = self.spike_mask
-            self._delay_pos += 1
+                # Phase 6: Delay buffer update
+                write_pos = self._delay_pos % self.delay_steps
+                self.delay_buffer[write_pos] = self.spike_mask
+                self._delay_pos += 1
 
         # Phase 7: Output modulation
         spike_ratio = self.spike_mask.mean(dim=1)  # [out]

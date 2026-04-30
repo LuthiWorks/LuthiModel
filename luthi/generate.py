@@ -202,6 +202,8 @@ def generate_text(
     repetition_penalty: float = 1.0,
     max_seq_len: int = 128,
     image: torch.Tensor | None = None,
+    audio_tokens: torch.Tensor | None = None,
+    vision_tokens: torch.Tensor | None = None,
     living: bool = False,
     stream: bool = True,
 ) -> str:
@@ -217,7 +219,17 @@ def generate_text(
         top_p: Nucleus sampling threshold (0 = disabled).
         repetition_penalty: Penalize repeated tokens (1.0 = no penalty).
         max_seq_len: Model's maximum context window.
-        image: Optional [1, 3, H, W] image tensor for vision models.
+        image: Optional [1, 3, H, W] image tensor for vision models. Will
+            be passed through the vision encoder on the first forward call.
+        audio_tokens: Optional [batch, n_audio_tokens, d_model] pre-encoded
+            audio tokens. Skips the audio encoder. Included in the sequence
+            on the first forward call only — subsequent autoregressive
+            steps run text-only because the model is stateless and the
+            sensory context only conditions the first generated token.
+        vision_tokens: Optional [batch, n_vision_tokens, d_model] pre-encoded
+            vision tokens. Same first-step semantics as ``audio_tokens``.
+            If both ``image`` and ``vision_tokens`` are provided,
+            ``vision_tokens`` takes precedence (no need to re-encode).
         living: If True, keep Hebbian self-modification active during
             generation. The model learns from the experience of producing
             each token.
@@ -245,16 +257,33 @@ def generate_text(
         sys.stdout.write(prompt)
         sys.stdout.flush()
 
+    has_sensory = is_multimodal and (
+        image is not None
+        or audio_tokens is not None
+        or vision_tokens is not None
+    )
+
     with torch.set_grad_enabled(living):
         for step in range(max_tokens):
             # Sliding window — use only the last max_seq_len tokens
             context = token_ids[-max_seq_len:]
             x = torch.tensor([context], dtype=torch.long, device=device)
 
-            # Forward pass
-            if is_multimodal and image is not None and step == 0:
-                # First step: include image context
-                logits = model(x, image=image)
+            # Forward pass — sensory context only on the first step.
+            # The model is stateless across steps (no KV cache), so
+            # sensory tokens only condition the very first generated
+            # token via cross-modal attention in step 0.
+            if has_sensory and step == 0:
+                forward_kwargs: dict = {}
+                # Pre-encoded vision tokens take precedence over a raw image
+                # — no need to re-encode if the caller already did.
+                if vision_tokens is not None:
+                    forward_kwargs["vision_tokens"] = vision_tokens
+                elif image is not None:
+                    forward_kwargs["image"] = image
+                if audio_tokens is not None:
+                    forward_kwargs["audio_tokens"] = audio_tokens
+                logits = model(x, **forward_kwargs)
             elif is_multimodal:
                 logits = model(x)
             else:
