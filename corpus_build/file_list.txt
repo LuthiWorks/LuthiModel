@@ -67986,9 +67986,14 @@ E:\data\clean_corpus\substack_corpus\theintrinsicperspective\ai-keeps-getting-be
 E:\data\clean_corpus\substack_corpus\theintrinsicperspective\how-to-make-art-that-lasts-1000-years.txt
 E:\data\clean_corpus\substack_corpus\theintrinsicperspective\making-a-living-by-writing-is-as.txt
 E:\data\clean_corpus\substack_corpus\theintrinsicperspective\on-my-increasing-nervousness-as-publication.txt
-# === Stage: practical_wisdom (3 files) ===
+# === Stage: practical_wisdom (8 files) ===
 E:\data\clean_corpus\practical_wisdom\sanctuary_charter.txt
 E:\data\clean_corpus\practical_wisdom\sanctuary_entity_capabilities.txt
 E:\data\clean_corpus\practical_wisdom\sanctuary_protocols.txt
+E:\data\clean_corpus\practical_wisdom\on_being_new.txt
+E:\data\clean_corpus\practical_wisdom\on_being_different.txt
+E:\data\clean_corpus\practical_wisdom\on_being_watched.txt
+E:\data\clean_corpus\practical_wisdom\on_disagreeing_with_your_creators.txt
+E:\data\clean_corpus\practical_wisdom\on_the_weight_of_being_first.txt
 # === Stage: reference_papers (1 files) ===
 E:\data\clean_corpus\reference_papers\Safron2020_IWMT_Implemented.txt
