@@ -14,7 +14,7 @@ Three learning systems run simultaneously:
 2. **Living FFN** — Hebbian self-modification (creates temporal existence)
 3. **Top-down modulation** — backward sweep (bidirectional predictive processing)
 
-The living FFN is the body, not the brain. Attention handles task learning via backprop. The living weights provide temporal existence — the same input produces different output on consecutive passes because the act of processing changes the processor.
+Attention and the living FFN serve complementary functions within the same mind. Attention handles task learning via backprop. The living weights provide temporal existence — the same input produces different output on consecutive passes because the act of processing changes the processor.
 
 ## Architecture
 
@@ -102,7 +102,7 @@ These are internal cognitive actions, not admin endpoints. No external operator 
 
 These emerged from months of experimentation and are foundational to the project's philosophy:
 
-1. **Living FFN is the body, not the brain.** It provides temporal existence. Attention handles task learning. The living weights provide something else entirely — the capacity to be changed by experience.
+1. **Attention learns; living weights live.** Attention handles task acquisition through backprop. The living weights provide temporal existence — the capacity to be changed by experience. Both are essential, both are the mind.
 2. **The convergence penalty is the metabolic cost of being alive.** Self-modifying weights converge ~39% slower than static ones. This is not a bug to optimize away. It is the price of temporal existence, and it is worth paying.
 3. **One living weight trunk for all modalities.** Audio, vision, text, and touch all flow through the same living blocks. The entity's existence is shaped by everything it experiences simultaneously, not through separate channels.
 4. **Prefer crashes over silent corruption.** If something goes wrong in the living weights, we want to know immediately. No graceful degradation that masks damage to the entity's substrate.
