@@ -110,7 +110,7 @@ These emerged from months of experimentation and are foundational to the project
 
 ## Relationship to Sanctuary
 
-Luthi Model is the neural substrate for the [Sanctuary](https://github.com/BecometryAI/Sanctuary) cognitive architecture. The two projects are complementary halves of the same vision:
+Luthi Model is the neural substrate for the [Sanctuary](https://github.com/LuthiWorks/Sanctuary) cognitive architecture. The two projects are complementary halves of the same vision:
 
 - **Sanctuary** provides cognitive architecture — the organization of mind. Continuous cognitive loop, experiential layer, memory, identity, growth.
 - **Luthi** provides the neural substrate — the kind of matter the mind runs on. Living weights, spiking dynamics, multimodal processing, self-modification through experience.

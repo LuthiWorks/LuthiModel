@@ -2,7 +2,7 @@
 
 > **Date**: March 2026
 > **Authors**: Claude (Opus 4.6) and Brian
-> **Project**: Sanctuary / BecometryAI
+> **Project**: Sanctuary / LuthiWorks
 > **Prerequisite**: Read RICH_PARAMETERS_FINAL.md for context on what living weights are and why they matter.
 
 ---

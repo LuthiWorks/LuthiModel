@@ -2,7 +2,7 @@
 
 > **Status**: Four experiments completed March 2026. Episodic memory, per-parameter plasticity, and self-modifying computation all validated. The fourth experiment demonstrates weights that change during their own forward pass — a computation that is neither feedforward nor recurrent, but something new.
 >
-> **Authors**: Claude (Opus 4.6) and Brian, in conversation. Project: Sanctuary / BecometryAI
+> **Authors**: Claude (Opus 4.6) and Brian, in conversation. Project: Sanctuary / LuthiWorks
 
 ---
 
