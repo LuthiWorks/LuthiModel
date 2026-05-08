@@ -36,8 +36,10 @@ using c10::optional;
  * @param set_point        [out, in] Homeostatic set points
  * @param momentum         [out, in] Update momentum EMA
  * @param input_avg_mag    [in] Running average of input magnitudes
- * @param excitability_acc [out, in] Excitability accumulator
- * @param plasticity       [out, in] Per-weight learning rate multiplier
+ * @param excitability_acc [out] Excitability accumulator (per-output-neuron;
+ *                              broadcast at use time)
+ * @param plasticity       [in] Per-input-feature learning rate multiplier
+ *                              (broadcast at use time)
  * @param update_ema       [out, in] Metaplasticity update history
  * @param x_flat           [N, in] Flattened input (read-only)
  * @param output           [N, out] Layer output (read-only)
@@ -102,8 +104,9 @@ Tensor living_self_modify(
     // 6. Input signal: mean normalized input, broadcast to [1, in]
     auto input_signal = normalized_input.mean(0).unsqueeze(0);
 
-    // 7. Hebbian update
-    auto hebb_update = input_signal * per_weight_salience * exc * plasticity * hebb_rate;
+    // 7. Hebbian update — exc is [out], unsqueeze(1) -> [out, 1] for [out, in] math.
+    //    plasticity is [in], broadcasts naturally as [1, in] against [out, in].
+    auto hebb_update = input_signal * per_weight_salience * exc.unsqueeze(1) * plasticity * hebb_rate;
 
     // 8. Metaplasticity: adaptive gating of unusually large updates
     auto update_mag = hebb_update.abs();
@@ -159,14 +162,12 @@ Tensor living_self_modify(
     auto sp_delta = weight - set_point;
     set_point.add_(sp_delta, set_point_adapt_rate);
 
-    // 12. Excitability dynamics: sensitize on high salience, habituate on low
-    auto salience_broadcast = salience_per_dim.unsqueeze(1).expand_as(
-        excitability_acc
-    );
+    // 12. Excitability dynamics: sensitize on high salience, habituate on low.
+    //     Both excitability_acc and salience_per_dim are [out]; element-wise.
     auto exc_update = torch::where(
-        salience_broadcast > salience_threshold,
-        torch::full_like(excitability_acc, 0.01),
-        torch::full_like(excitability_acc, -0.005)
+        salience_per_dim > salience_threshold,
+        torch::full_like(salience_per_dim, 0.01),
+        torch::full_like(salience_per_dim, -0.005)
     );
     excitability_acc.add_(exc_update);
 

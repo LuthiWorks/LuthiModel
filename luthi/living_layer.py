@@ -77,13 +77,20 @@ class LivingLayerV6(nn.Module):
         # Input magnitude running average: for synaptic scaling (V5)
         self.register_buffer("input_avg_mag", torch.ones(in_features))
 
-        # Excitability accumulator: drives sigmoid -> effective excitability
-        self.register_buffer(
-            "excitability_acc", torch.zeros(out_features, in_features)
-        )
+        # Excitability accumulator: drives sigmoid -> effective excitability.
+        # Per-output-neuron: every column in the original [out, in] layout was
+        # mathematically identical (the Hebbian-step update broadcasts
+        # salience_per_dim across the input axis; Sanctuary modulation adds a
+        # scalar). Stored as [out_features] and broadcast at use time.
+        self.register_buffer("excitability_acc", torch.zeros(out_features))
 
-        # Per-weight plasticity: individual learning rate multiplier
-        self.register_buffer("plasticity", torch.ones(out_features, in_features))
+        # Per-input-feature plasticity: learning rate multiplier shared across
+        # all output rows for a given input dimension. Every row in the
+        # original [out, in] layout was mathematically identical (the only
+        # update site, apply_top_down, broadcasts a per-in_features signal
+        # across the output axis). Stored as [in_features] and broadcast at
+        # use time.
+        self.register_buffer("plasticity", torch.ones(in_features))
 
         # --- Layer-level episode store ---
 
@@ -316,11 +323,12 @@ class LivingLayerV6(nn.Module):
 
         Both ``salience`` and ``prediction_error`` on the signal live in
         **input-dimension space** (see TopDownSignal docstring). They are
-        vectors of length ``in_features``, and we broadcast them across
-        the ``out_features`` axis: every output row of plasticity and
-        set_point receives the same input-dim adjustment pattern. This
-        is intentional homeostasis — "input dim ``i`` was over/under-
-        utilized, so every weight fed by it drifts equally."
+        vectors of length ``in_features``. Plasticity is now stored as a
+        per-input-dim vector (`[in_features]`), so the salience signal maps
+        directly onto its axis with no broadcast needed. Set point remains
+        per-weight `[out, in]` and the prediction-error signal is broadcast
+        across the output axis (every weight fed by input dim ``i`` drifts
+        equally), preserving the original homeostatic semantics.
 
         Args:
             signal: TopDownSignal with salience, prediction_error, and
@@ -348,16 +356,12 @@ class LivingLayerV6(nn.Module):
         with torch.no_grad():
             strength = signal.modulation_strength
 
-            # 1. Plasticity modulation: boost the learning rate for weights
-            # whose INPUT dimension was important downstream. Each row of
-            # plasticity (one row per output neuron) is nudged by the same
-            # per-input-dim importance vector.
-            importance = signal.salience.unsqueeze(0)  # [1, in_features]
-
-            # Gently adjust plasticity: mostly retain current, slightly
-            # bias toward what downstream needs.
+            # 1. Plasticity modulation: boost the learning rate for inputs
+            # whose dimension was important downstream. Plasticity is
+            # `[in_features]`, signal.salience is `[in_features]` — the
+            # axes match directly.
             self.plasticity.mul_(1.0 - 0.01 * strength).add_(
-                importance * 0.01 * strength
+                signal.salience * 0.01 * strength
             )
             # Clamp plasticity to prevent runaway or death.
             self.plasticity.clamp_(0.1, 10.0)

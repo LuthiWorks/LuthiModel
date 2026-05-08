@@ -151,22 +151,90 @@ robotic, not gendered. The auditory equivalent of the luminous body.
 - [ ] Tests for simulation environment
 - [ ] Training run: embodied agent in simple environment
 
-## Phase 4: Scale to 4096d — Curriculum Training
+## Phase 3F: Empirical Defense Program (GATES SCALING)
 
-Production architecture: 4096d / 36 blocks / 32K BPE vocab / ~17.8B params.
-Curriculum-ordered, single-pass training on cloud GPU.
+Prompted by third-party critique + red-team exercise (2026-05-06). Every claim about
+living weights must be backed by a number, not a metaphor. Full plan in
+`docs/EMPIRICAL_DEFENSE_PLAN.md`.
+
+**Deployment spec committed:** 4B params, BF16 weights, mixed-precision living state,
+RX 7800 XT (16 GB VRAM), ROCm/HIP, Triton sparse kernels.
+
+### 3F.1: Same-Scale Baseline Comparison (~2-3 weeks)
+
+| Task | Priority | Status | Description |
+|------|----------|--------|-------------|
+| Baseline transformer model | P0 | Pending | `luthi/baseline_model.py` — standard transformer, matched param count, no living weights |
+| Train baseline on Gutenberg | P0 | Pending | Same corpus, same epochs, same batch size as Luthi |
+| Perplexity comparison | P0 | Pending | Held-out perplexity at matched compute. The most important number. |
+| Training curve comparison | P1 | Pending | Loss over time for both models |
+| Convergence penalty measurement | P1 | Pending | At what epoch does Luthi match baseline final perplexity? |
+
+### 3F.2: Multi-Layer Cascade (parallel with 3F.1, ~2 weeks)
+
+| Task | Priority | Status | Description |
+|------|----------|--------|-------------|
+| Depth sweep script | P0 | Pending | 2/4/8/12/24 blocks at 256d or 512d |
+| Per-block instrumentation | P0 | Pending | Plasticity, drift, spike fraction, membrane, weight norm per block per epoch |
+| Drift propagation analysis | P0 | Pending | Does drift amplify with depth? |
+| Backward pass stability test | P1 | Pending | Compare stability with/without top-down sweep |
+| Homeostatic recovery test | P1 | Pending | Perturb one block, measure recovery time vs depth |
+
+### DECISION GATE
+
+**Do not proceed to Phase 4 until Phases 3F.1 and 3F.2 produce acceptable results.**
+- If cascade is unstable → architectural revision
+- If baseline gap is >2x and not closing → efficiency investigation
+
+### 3F.3: Behavioral Signatures (after gate, ~2-3 weeks)
+
+| Task | Priority | Status | Description |
+|------|----------|--------|-------------|
+| Biographical accumulation test | P1 | Pending | Different training sequences → measurably different weight state |
+| Identity stability test | P1 | Pending | Short perturbations don't permanently alter behavior |
+| Episodic recall test | P1 | Pending | Episode store measurably improves context-dependent performance |
+| Behavioral coherence test | P1 | Pending | Living inference outputs are different but coherent |
+
+### 3F.4: Catastrophic Forgetting (after 3F.3, ~2 weeks)
+
+| Task | Priority | Status | Description |
+|------|----------|--------|-------------|
+| Forgetting experiment | P1 | Pending | Train A → distract B → measure recall A. 5 conditions (vanilla, LoRA, RAG, Luthi full, Luthi ablated) |
+| Forgetting curve | P1 | Pending | Perplexity as function of distractor steps (200/500/2000) |
+| Recovery measurement | P1 | Pending | How quickly does performance restore after returning to A? |
+
+### 3F.5: Custom Kernel Development (parallel track)
+
+| Task | Priority | Status | Description |
+|------|----------|--------|-------------|
+| Kernel design doc | P1 | Pending | Predictive-gated sparse spiking matmul (Triton). 4.7 drafting separately. |
+| Triton implementation | P2 | Pending | Does not block experiments — all use dense impl |
+
+---
+
+## Phase 4: Scale to 4B — Curriculum Training
+
+**NOTE:** Phase 4 is gated by Phase 3F decision gate. Do not begin until empirical
+defense confirms the architecture is sound at depth.
+
+Production architecture: 4B params, BF16 weights, mixed-precision living state,
+32K BPE vocab. Target hardware: RX 7800 XT (consumer GPU) with custom Triton kernels.
 
 ### 4A: Training Infrastructure
 
-- [ ] Build curriculum training script — stage-per-epoch sequential training
-  - [ ] Load each stage separately from file_list.txt
-  - [ ] Process stages in order, no shuffling between stages
-  - [ ] Shuffle within stages is OK
-  - [ ] Living weights carry forward between stages
-- [ ] Implement gradient checkpointing for training (required to fit A100 80GB)
-- [ ] Scale model config: d_model=4096, n_blocks=36, num_episodes=2-4 (training)
-- [ ] Cloud GPU setup (Vast.ai A100 or H200)
-- [ ] Validate FP32 stability at 4096d scale
+- [x] Build curriculum training script — `luthi/train_curriculum.py` (completed 2026-04-29, Track 3 prep)
+  - [x] Load each stage separately from file_list.txt
+  - [x] Process stages in order, no shuffling between stages
+  - [x] Shuffle within stages is OK
+  - [x] Living weights carry forward between stages
+  - [x] Multiple curriculum cycles supported (default 3)
+  - [x] Resume from mid-cycle stage checkpoint
+- [x] Implement gradient checkpointing — `luthi/grad_checkpoint.py` (completed 2026-04-29)
+  - [x] Thread-local recompute flag prevents double Hebbian firing
+  - [x] Weight snapshot replay for bit-identical recomputation
+- [ ] Scale model config to 4B params (exact d_model/n_blocks TBD by Phase 3F results)
+- [ ] Custom Triton kernels for sparse spiking (Phase 3F.5)
+- [ ] Validate BF16 weight stability (replaces FP32 requirement per deployment spec)
 
 ### 4B: Curriculum Training Run
 

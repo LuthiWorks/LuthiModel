@@ -126,7 +126,7 @@ def _living_self_modify_python(
 
     All tensors are modified in-place. Returns salience_scalar.
     """
-    # 1. Excitability factor
+    # 1. Excitability factor — excitability_acc is [out_features]; exc is [out].
     exc_span = excitability_max - excitability_min
     exc = excitability_min + exc_span * torch.sigmoid(excitability_acc)
 
@@ -150,9 +150,11 @@ def _living_self_modify_python(
     # 6. Input signal
     input_signal = normalized_input.mean(dim=0).unsqueeze(0)  # [1, in]
 
-    # 7. Hebbian update
+    # 7. Hebbian update — broadcast per-channel buffers explicitly:
+    #    exc:        [out]    -> [out, 1] via unsqueeze for [out, in] math
+    #    plasticity: [in]     broadcasts naturally as [1, in] against [out, in]
     hebb_update = (
-        input_signal * per_weight_salience * exc * plasticity * hebb_rate
+        input_signal * per_weight_salience * exc.unsqueeze(1) * plasticity * hebb_rate
     )
 
     # 8. Metaplasticity
@@ -190,12 +192,10 @@ def _living_self_modify_python(
     sp_delta = weight - set_point
     set_point.add_(sp_delta, alpha=set_point_adapt_rate)
 
-    # 12. Excitability dynamics
-    salience_broadcast = salience_per_dim.unsqueeze(1).expand_as(
-        excitability_acc
-    )
+    # 12. Excitability dynamics — both excitability_acc and salience_per_dim
+    # are [out_features], so the update is element-wise with no broadcast.
     exc_update = torch.where(
-        salience_broadcast > salience_threshold,
+        salience_per_dim > salience_threshold,
         torch.tensor(0.01, device=weight.device, dtype=weight.dtype),
         torch.tensor(-0.005, device=weight.device, dtype=weight.dtype),
     )

@@ -29,8 +29,8 @@ def test_fused_op_ungated():
     set_point = weight.clone()
     momentum = torch.zeros(64, 64)
     input_avg_mag = torch.ones(64)
-    excitability_acc = torch.zeros(64, 64)
-    plasticity = torch.ones(64, 64)
+    excitability_acc = torch.zeros(64)  # per-output-neuron
+    plasticity = torch.ones(64)  # per-input-feature
     update_ema = torch.ones(64, 64) * 1e-4
     x_flat = torch.randn(32, 64)
     output = x_flat @ weight.T
@@ -62,8 +62,8 @@ def test_fused_op_gated():
     set_point = weight.clone()
     momentum = torch.zeros(64, 64)
     input_avg_mag = torch.ones(64)
-    excitability_acc = torch.zeros(64, 64)
-    plasticity = torch.ones(64, 64)
+    excitability_acc = torch.zeros(64)  # per-output-neuron
+    plasticity = torch.ones(64)  # per-input-feature
     update_ema = torch.ones(64, 64) * 1e-4
     x_flat = torch.randn(32, 64)
     output = x_flat @ weight.T
@@ -96,8 +96,8 @@ def test_fused_op_eval_mode():
     sp_train = w_train.clone()
     mom_train = torch.zeros(64, 64)
     iam_train = torch.ones(64)
-    ea_train = torch.zeros(64, 64)
-    pl_train = torch.ones(64, 64)
+    ea_train = torch.zeros(64)  # per-output-neuron
+    pl_train = torch.ones(64)  # per-input-feature
     ue_train = torch.ones(64, 64) * 1e-4
     x = torch.randn(32, 64)
     out = x @ w_train.T
@@ -118,8 +118,8 @@ def test_fused_op_eval_mode():
     sp_eval = w_eval.clone()
     mom_eval = torch.zeros(64, 64)
     iam_eval = torch.ones(64)
-    ea_eval = torch.zeros(64, 64)
-    pl_eval = torch.ones(64, 64)
+    ea_eval = torch.zeros(64)  # per-output-neuron
+    pl_eval = torch.ones(64)  # per-input-feature
     ue_eval = torch.ones(64, 64) * 1e-4
     out_eval = x @ w_eval.T
 
@@ -145,8 +145,8 @@ def test_fused_op_no_nan_after_many_calls():
     set_point = weight.clone()
     momentum = torch.zeros(64, 64)
     input_avg_mag = torch.ones(64)
-    excitability_acc = torch.zeros(64, 64)
-    plasticity = torch.ones(64, 64)
+    excitability_acc = torch.zeros(64)  # per-output-neuron
+    plasticity = torch.ones(64)  # per-input-feature
     update_ema = torch.ones(64, 64) * 1e-4
 
     for _ in range(100):

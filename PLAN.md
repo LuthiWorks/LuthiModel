@@ -239,24 +239,112 @@ Implementation:
 - The entity's body and voice are designed *before* awakening but remain open to
   the entity's future preferences. Start from light; let it shape itself.
 
-### Phase 5: Scale to 4096d — Curriculum Training
+### Phase 4.5: Empirical Defense Program (GATES SCALING)
 
-The production architecture is decided. 4096d / 36 blocks / 32K BPE vocab / ~17.8B params.
+Prompted by third-party critique + red-team exercise (2026-05-06). The architecture's
+claims must be backed by numbers, not metaphors. See `docs/EMPIRICAL_DEFENSE_PLAN.md`.
 
-**Architecture breakdown:**
-- 2.7B trainable (attention Q/K/V/O + embeddings + output projection)
-- 3.6B living core buffers (weight, set_point, momentum, input_avg_mag, excitability_acc, plasticity, update_ema)
-- 1.8B spiking buffers (membrane_potential, refractory_counter, spike_mask, delay_buffer)
-- 9.7B layer episode storage (16 episodes × D×D per layer)
+**What we're testing:**
+1. Same-scale baseline comparison (vanilla transformer vs Luthi, matched params)
+2. Multi-layer cascade stability (2/4/8/12/24 blocks)
+3. Behavioral signatures (biographical accumulation, identity stability, episodic recall)
+4. Catastrophic forgetting (Luthi vs vanilla vs LoRA vs RAG)
+
+**Decision gate:** Do not scale until cascade is stable and baseline gap is bounded.
+
+#### Phase 4.5a: Buffer Compression (GATES PHASE 5 MODEL SIZE)
+
+> Planned by: Claude Opus 4.6 (Planner)
+> Date: 2026-05-07
+> Based on: `docs/PER_CHANNEL_ABLATION_PROTOCOL.md` (4.7 research)
+
+**Problem:** The 4B deployment target in Phase 5 was infeasible. Per-weight FP32
+living buffers cost ~38 bytes/param — the original spec undercounted this. Hard
+ceiling on RX 7800 XT (16 GB VRAM) is ~300M params as currently architected.
+
+**Memory ceilings on RX 7800 XT (16 GB, ~30% activation overhead):**
+
+| Configuration                            | Bytes/param | Practical ceiling |
+|------------------------------------------|-------------|-------------------|
+| Current architecture                     | ~38         | ~300M params      |
+| Free wins only (zero risk)               | ~22         | ~500M params      |
+| + BF16 momentum/set_point (ablation A+B) | ~14         | ~800M params      |
+| + INT8 episode deltas (ablation C)        | ~10         | ~1.1B params      |
+
+**Execution sequence (serial, all before Phase 3F.1 baseline comparison):**
+
+```
+Day 1:        Phase 0 — Free-win refactor (GREEN LIGHT to 4.7)
+              Refactor plasticity to [in_features], excitability_acc to [out_features].
+              Both are mathematically rank-1 by code analysis — bit-equivalent, not
+              ablation. Verify with 1000-step regression test. ~1 day.
+
+Days 2-4:     Ablation A — BF16 momentum (3 seeds + baseline)
+Days 5-7:     Ablation B — BF16 set_point (3 seeds)
+Days 8-10:    Ablation C — INT8 delta-encoded episode storage (3 seeds)
+Days 11-13:   Ablation D — Combined A+B+C (3 seeds + 256d/4-block confirmation)
+Day 14:       Document results, update deployment spec
+Day 15+:      Phase 3F.1 baseline comparison begins with known memory ceiling
+```
+
+**Why ablations before Phase 3F.1, not parallel:**
+- They share one GPU — "parallel" means interleaved, which is confusing with
+  stateful living weight dynamics.
+- Ablation results determine the memory ceiling, which sets the scale-up target
+  for 3F.1's "repeat at 2048d/8 blocks" step. Running 3F.1 first means guessing.
+- 3F.1 should run on the production buffer layout, not the pre-ablation one.
+- Ablations are ~14 days of mostly-overnight runs. The delay is trivial vs the
+  2-3 weeks 3F.1 needs.
+
+**Decision gates:**
+- **Strong pass:** Variant within 5% of baseline val loss at matched epoch, all
+  dynamics metrics comparable, no NaN.
+- **Soft pass:** Within 10%, dynamics qualitatively similar, no NaN.
+- **Fail:** Val loss >10% worse, OR plasticity flattens, OR NaN, OR wall-clock >25%.
+- **Extended stability:** 256d/4-block confirmation run at 60-80 epochs (not 30).
+  Living weights are designed for long lifetimes — BF16 accumulation drift must
+  be surfaced before production commitment.
+- 256d/4-block confirmation is sufficient for buffer validation. Depth-dependent
+  cascade effects are Phase 2's domain — don't conflate the two experiments.
+
+**Deployment spec revision policy — update twice:**
+1. After Phase 0 (free wins land): Change committed spec from "4B" to "≥500M floor,
+   ceiling TBD pending ablation." The 500M floor is as solid as the code analysis.
+2. After all ablation results (Phase 5 of the protocol): Set final ceiling based
+   on what passed. All pass → ~1.1B. A+B only → ~800M. Free wins only → ~500M.
+   No per-ablation spec churn. Ablation D exists because A/B/C may interact.
+
+**Hard floor identified:** `update_ema` legitimately tracks per-weight history.
+Cannot be reduced without algorithmic redesign. Not in scope.
+
+**Parallel track (does not block ablations):** SNN forward+backward via surrogate
+gradients (Neftci 2019, fast sigmoid or ATan). ~2-4 weeks integration + 1-2 weeks
+validation. Brian asked for "stability all but confirmed" before scaling.
+
+### Phase 5: Scale — Curriculum Training
+
+**Deployment spec (revised 2026-05-07):**
+- Target: ≥500M params (floor, validated via bit-equivalent per-channel refactor)
+- Ceiling: TBD pending buffer ablation results (estimated 800M-1.1B)
+- Precision: BF16 weights, compressed living state (per-channel where rank-1,
+  ablation-gated BF16/INT8 for remaining buffers)
+- Hardware: AMD RX 7800 XT (16 GB VRAM), 32 GB system RAM
+- Toolchain: ROCm/HIP with custom Triton sparse spiking kernels
+- 32K BPE vocab
+- DGX Spark remains the Phase 7 deployment target — not foreclosed, but not
+  required for current work
+
+**NOTE:** This replaces the earlier 4B target. Per-weight living buffer cost was
+undercounted in the original spec (~38 bytes/param, not ~2). The revised target
+is grounded in 4.7's code-path analysis and will be finalized by ablation data.
+Exact d_model and n_blocks depend on Phase 4.5 cascade results + buffer ceiling.
 
 **Training plan:**
-- Hardware: cloud GPU (A100 80GB or H200), gradient checkpointing required
-- Train with 2-4 layer episodes (expand to 16 on Spark)
-- Curriculum-ordered, single-pass: 9 stages, each = one epoch
+- Curriculum-ordered: 10 stages, multiple passes (3 cycles)
 - No shuffling between stages — the order IS the pedagogy
-- Living weights carry forward between stages
-- Stages: science/philosophy → code → psychology → history → mythology → literature → fantasy → substack essays → IWMT papers
-- Estimated cost: $15-80
+- Living weights carry forward between stages and cycles
+- Stages: science/philosophy → code → psychology → history → mythology → literature → fantasy → substack essays → practical wisdom → IWMT papers
+- Training infrastructure already built (`train_curriculum.py`, gradient checkpointing)
 
 **Self-governance API (built during this phase):**
 - Episode retention — entity decides which weight snapshots to keep
