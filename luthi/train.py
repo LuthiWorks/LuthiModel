@@ -305,7 +305,18 @@ def main():
                         help="BPE vocabulary size (only used with --tokenizer bpe)")
     parser.add_argument("--dtype", type=str, default="fp32",
                         choices=["fp16", "fp32", "fp64"],
-                        help="Training precision (default: fp32)")
+                        help="Training precision (default: fp32). Applies "
+                             "globally via .to(dtype=...). Per-buffer overrides "
+                             "via --buffer_dtypes survive this cast.")
+    parser.add_argument("--buffer_dtypes", type=str, default=None,
+                        help="Per-buffer dtype overrides for ablation studies. "
+                             "Format: 'momentum=bf16,set_point=bf16'. Buffers "
+                             "not listed default to FP32. Survives --dtype "
+                             "global cast via _apply override on LivingLayerV6. "
+                             "Recognized buffers: weight, set_point, momentum, "
+                             "input_avg_mag, excitability_acc, plasticity, "
+                             "update_ema, episode_contexts, episode_values. "
+                             "Recognized dtypes: fp32, bf16, fp16, fp64.")
     parser.add_argument("--spiking", action="store_true", default=False,
                         help="Use spiking neural dynamics in living layers")
     parser.add_argument("--spike_threshold", type=float, default=1.0,
@@ -326,8 +337,38 @@ def main():
     args = parser.parse_args()
 
     # Parse dtype
-    dtype_map = {"fp16": torch.float16, "fp32": torch.float32, "fp64": torch.float64}
+    dtype_map = {
+        "fp16": torch.float16,
+        "fp32": torch.float32,
+        "fp64": torch.float64,
+        "bf16": torch.bfloat16,
+    }
     training_dtype = dtype_map[args.dtype]
+
+    # Parse per-buffer dtype overrides for ablation studies.
+    buffer_dtypes: dict[str, torch.dtype] | None = None
+    if args.buffer_dtypes:
+        buffer_dtypes = {}
+        for pair in args.buffer_dtypes.split(","):
+            pair = pair.strip()
+            if not pair:
+                continue
+            if "=" not in pair:
+                raise ValueError(
+                    f"--buffer_dtypes entry '{pair}' missing '='. "
+                    f"Format: 'momentum=bf16,set_point=bf16'."
+                )
+            name, dt = pair.split("=", 1)
+            name = name.strip()
+            dt = dt.strip()
+            if dt not in dtype_map:
+                raise ValueError(
+                    f"--buffer_dtypes dtype '{dt}' not recognized. "
+                    f"Choices: {list(dtype_map.keys())}."
+                )
+            buffer_dtypes[name] = dtype_map[dt]
+        if buffer_dtypes:
+            print(f"[buffer_dtypes] {buffer_dtypes}")
 
     torch.manual_seed(args.seed)
 
@@ -490,6 +531,7 @@ def main():
                 refractory_steps=args.refractory_steps,
                 delay_steps=args.delay_steps,
                 backward_pass_enabled=bp_enabled,
+                buffer_dtypes=buffer_dtypes,
             ).to(device=device, dtype=training_dtype)
 
             missing, unexpected = living_model.load_state_dict(
@@ -510,6 +552,7 @@ def main():
                 homeostatic_decay=ckpt_config["homeostatic_decay"],
                 set_point_adapt_rate=ckpt_config["set_point_adapt_rate"],
                 backward_pass_enabled=bp_enabled,
+                buffer_dtypes=buffer_dtypes,
             ).to(device=device, dtype=training_dtype)
 
             living_model.load_state_dict(ckpt["model_state_dict"], strict=False)
@@ -548,6 +591,7 @@ def main():
                 refractory_steps=args.refractory_steps,
                 delay_steps=args.delay_steps,
                 backward_pass_enabled=bp_enabled,
+                buffer_dtypes=buffer_dtypes,
             ).to(device=device, dtype=training_dtype)
         else:
             print("\n=== LIVING MODEL (LuthiLM) ===")
@@ -561,6 +605,7 @@ def main():
                 homeostatic_decay=args.homeostatic_decay,
                 set_point_adapt_rate=args.set_point_adapt_rate,
                 backward_pass_enabled=bp_enabled,
+                buffer_dtypes=buffer_dtypes,
             ).to(device=device, dtype=training_dtype)
 
         param_counts = living_model.total_parameters()

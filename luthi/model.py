@@ -42,6 +42,7 @@ class LuthiLM(nn.Module):
         episode_blend: float = 0.3,
         eval_hebb_fraction: float = 0.33,
         backward_pass_enabled: bool = True,
+        buffer_dtypes: dict[str, torch.dtype] | None = None,
     ):
         super().__init__()
         self.d_model = d_model
@@ -65,6 +66,7 @@ class LuthiLM(nn.Module):
                 num_episodes=num_episodes,
                 episode_blend=episode_blend,
                 eval_hebb_fraction=eval_hebb_fraction,
+                buffer_dtypes=buffer_dtypes,
             )
             for _ in range(n_blocks)
         ])

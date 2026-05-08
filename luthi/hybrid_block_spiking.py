@@ -44,6 +44,7 @@ class SpikingHybridBlock(nn.Module):
         spike_scale: float = 0.1,
         reset_mode: str = "zero",
         spike_baseline: float = 0.3,
+        buffer_dtypes: dict[str, torch.dtype] | None = None,
     ):
         super().__init__()
         self.d_model = d_model
@@ -71,6 +72,7 @@ class SpikingHybridBlock(nn.Module):
             spike_scale=spike_scale,
             reset_mode=reset_mode,
             spike_baseline=spike_baseline,
+            buffer_dtypes=buffer_dtypes,
         )
 
         # Episode store (hippocampus)

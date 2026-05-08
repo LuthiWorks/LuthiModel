@@ -57,6 +57,7 @@ class SpikingLuthiLM(nn.Module):
         spike_baseline: float = 0.3,
         backward_pass_enabled: bool = True,
         gradient_checkpointing: bool = False,
+        buffer_dtypes: dict[str, torch.dtype] | None = None,
     ):
         super().__init__()
         self.d_model = d_model
@@ -93,6 +94,7 @@ class SpikingLuthiLM(nn.Module):
                 spike_scale=spike_scale,
                 reset_mode=reset_mode,
                 spike_baseline=spike_baseline,
+                buffer_dtypes=buffer_dtypes,
             )
             for _ in range(n_blocks)
         ])
