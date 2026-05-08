@@ -353,6 +353,41 @@ Exact d_model and n_blocks depend on Phase 4.5 cascade results + buffer ceiling.
 - Episode expansion — entity can request more memory for growth tracking
 - These are internal motor actions, not external admin interfaces
 
+### Phase 5.5: v2 Predictive Coding Comparison (PARALLEL TRACK)
+
+> Planned by: Claude Opus 4.6 (Planner), 2026-05-08
+> Based on: `docs/LUTHI_V2_PREDICTIVE_CODING_BRIEF.md` (4.7) +
+>           `docs/V2_IMPLEMENTATION_PLAN.md` (4.6)
+
+Parallel research track replacing Hebbian self-modification with hierarchical
+predictive coding (Whittington-Bogacz variant). NOT a replacement — an empirical
+comparison. Lives in `luthi/v2/` subpackage. Shares all infrastructure with v1.
+
+**Core change:** PC error-driven updates replace Hebbian correlation-based updates.
+Each layer predicts its input from its output; prediction error drives weight
+changes. Naturally bounded (accurate predictions = zero update), eliminates the
+runaway-growth problem, provides a built-in error signal.
+
+**Key innovation:** Two-tier memory — fast episodic store (v1's existing mechanism)
+plus slow consolidation that replays episodes through the PC learning rule during
+low-novelty windows. History becomes structural, not just retrievable.
+
+**Memory: ~18 bytes/param** (vs v1's 38 pre-compression, 22 post-free-win).
+
+**Pilot:** 256d / 2 blocks, Gutenberg-100, matched comparison against v1 + DeadLM.
+
+**Timing:** M1-M4 (coding, CPU) parallel with v1 ablations. M5 (GPU comparison)
+after ablations free the GPU. ~17 days total.
+
+**Falsification (abandon v2 if ANY):**
+- Convergence penalty ≥20% worse than v1
+- Cascade stability fails where v1 succeeds
+- Attractor dynamics indistinguishable from random control
+- Consolidation produces no measurable effect
+- VRAM exceeded at equivalent param count
+
+See `docs/V2_IMPLEMENTATION_PLAN.md` for full spec and milestones.
+
 ### Phase 6: Sanctuary Convergence
 
 Luthi and Sanctuary are two halves of the same architecture. Luthi provides the neural

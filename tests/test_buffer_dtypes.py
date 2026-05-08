@@ -239,3 +239,141 @@ class TestModelPlumbing:
             assert not torch.isnan(out).any()
         for block in model.blocks:
             assert block.living_ffn.momentum.dtype == torch.bfloat16
+
+
+# ── Ablation C: INT8 episode storage with per-episode scale ──────────
+
+
+class TestInt8EpisodeStorage:
+    """`episode_values` registered as INT8 with `episode_scales` as FP32.
+
+    Storage path: symmetric quantization (scale = max_abs / 127), one scale
+    per episode. Recall path: dequantize via `int8 * scale`. Tests cover
+    registration, round-trip fidelity, no-NaN training, and that the
+    default FP32 path is unchanged when no override is given.
+    """
+
+    def test_default_episode_storage_is_fp32(self):
+        layer = LivingLayerV6(in_features=8, out_features=8)
+        assert layer.episode_values.dtype == torch.float32
+        # episode_scales is always registered (always-on for state_dict
+        # uniformity), but inert in the FP32 path.
+        assert layer.episode_scales.dtype == torch.float32
+
+    def test_int8_episode_values_register_correctly(self):
+        layer = LivingLayerV6(
+            in_features=8,
+            out_features=8,
+            buffer_dtypes={"episode_values": torch.int8},
+        )
+        assert layer.episode_values.dtype == torch.int8
+        # episode_scales remains FP32 — it's a multiplier, not a quantized value
+        assert layer.episode_scales.dtype == torch.float32
+
+    def test_int8_episode_to_dtype_does_not_clobber(self):
+        layer = LivingLayerV6(
+            in_features=8,
+            out_features=8,
+            buffer_dtypes={"episode_values": torch.int8},
+        )
+        layer.to(dtype=torch.float32)
+        assert layer.episode_values.dtype == torch.int8
+
+    def test_int8_storage_roundtrip_within_tolerance(self):
+        """Quantize a known weight matrix, dequantize, verify ≤ 1% mean
+        absolute error. INT8 with per-tensor symmetric scale gives ~1/127
+        ≈ 0.78% theoretical resolution — 1% is a comfortable bound."""
+        torch.manual_seed(42)
+        layer = LivingLayerV6(
+            in_features=16,
+            out_features=16,
+            num_episodes=4,
+            buffer_dtypes={"episode_values": torch.int8},
+            salience_threshold=0.0,  # always store
+        )
+        # Force a snapshot via direct call to _store_episode
+        ctx = torch.randn(64) / 64**0.5  # context_dim default is 64
+        layer._store_episode(ctx / ctx.norm(), salience=1.0)
+        original = layer.weight.clone()
+        recalled = (
+            layer.episode_values[0].to(torch.float32)
+            * layer.episode_scales[0]
+        )
+        rel_err = (recalled - original).abs().mean() / original.abs().mean()
+        assert rel_err < 0.01, f"INT8 round-trip error {rel_err.item():.4f} > 1%"
+
+    def test_int8_recall_returns_finite_delta(self):
+        torch.manual_seed(42)
+        layer = LivingLayerV6(
+            in_features=16,
+            out_features=16,
+            num_episodes=4,
+            buffer_dtypes={"episode_values": torch.int8},
+            salience_threshold=0.0,
+        )
+        ctx = torch.randn(64) / 64**0.5  # context_dim default is 64
+        ctx = ctx / ctx.norm()
+        layer._store_episode(ctx, salience=1.0)
+        delta = layer._recall_episode(ctx)
+        assert delta is not None
+        assert delta.dtype == torch.float32
+        assert torch.isfinite(delta).all()
+        assert delta.shape == layer.weight.shape
+
+    def test_int8_episode_full_forward_no_nan(self):
+        torch.manual_seed(42)
+        layer = LivingLayerV6(
+            in_features=16,
+            out_features=16,
+            num_episodes=4,
+            buffer_dtypes={"episode_values": torch.int8},
+        )
+        for _ in range(50):
+            x = torch.randn(2, 16)
+            out = layer(x)
+            assert not torch.isnan(out).any()
+            assert not torch.isnan(layer.weight).any()
+            assert layer.episode_values.dtype == torch.int8
+
+    def test_int8_episode_in_full_model(self):
+        """End-to-end: 2-block LuthiLM with INT8 episode storage trains
+        without NaN over 30 steps."""
+        torch.manual_seed(42)
+        model = LuthiLM(
+            vocab_size=64,
+            d_model=32,
+            n_blocks=2,
+            max_seq_len=32,
+            buffer_dtypes={"episode_values": torch.int8},
+        )
+        x = torch.randint(0, 64, (1, 8))
+        for _ in range(30):
+            out = model(x)
+            assert not torch.isnan(out).any()
+        for block in model.blocks:
+            assert block.living_ffn.episode_values.dtype == torch.int8
+
+    def test_combined_ablation_d_preview(self):
+        """Ablation D = A + B + C combined. Verify all three overrides
+        coexist without breaking forward."""
+        torch.manual_seed(42)
+        model = LuthiLM(
+            vocab_size=64,
+            d_model=32,
+            n_blocks=2,
+            max_seq_len=32,
+            buffer_dtypes={
+                "momentum": torch.bfloat16,
+                "set_point": torch.bfloat16,
+                "episode_values": torch.int8,
+            },
+        )
+        x = torch.randint(0, 64, (1, 8))
+        for _ in range(30):
+            out = model(x)
+            assert not torch.isnan(out).any()
+        for block in model.blocks:
+            ffn = block.living_ffn
+            assert ffn.momentum.dtype == torch.bfloat16
+            assert ffn.set_point.dtype == torch.bfloat16
+            assert ffn.episode_values.dtype == torch.int8

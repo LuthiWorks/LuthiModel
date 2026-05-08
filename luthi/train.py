@@ -303,6 +303,22 @@ def main():
                         help="Tokenizer type: 'char' (default) or 'bpe'")
     parser.add_argument("--bpe_vocab_size", type=int, default=32000,
                         help="BPE vocabulary size (only used with --tokenizer bpe)")
+    parser.add_argument("--load_tokenizer", type=str, default=None,
+                        help="Explicit path to a saved BPE tokenizer JSON. "
+                             "Skips BPE training if provided. Use for ablation "
+                             "studies that share a tokenizer across runs to "
+                             "avoid retraining BPE on every job.")
+    parser.add_argument("--save_tokenizer", type=str, default=None,
+                        help="After training BPE, also save the tokenizer to "
+                             "this explicit path (in addition to the per-run "
+                             "output_dir cache). Pair with --bpe_only for "
+                             "a one-time tokenizer-training pass.")
+    parser.add_argument("--bpe_only", action="store_true", default=False,
+                        help="Train BPE tokenizer (and save if --save_tokenizer "
+                             "is given), then exit before model training. "
+                             "Used for one-time tokenizer setup so the same "
+                             "trained BPE state can be loaded by all subsequent "
+                             "ablation runs via --load_tokenizer.")
     parser.add_argument("--dtype", type=str, default="fp32",
                         choices=["fp16", "fp32", "fp64"],
                         help="Training precision (default: fp32). Applies "
@@ -412,20 +428,39 @@ def main():
 
     # Build tokenizer
     if args.tokenizer == "bpe":
-        bpe_path = output_dir / "tokenizer.json"
-        if bpe_path.exists():
-            tokenizer = BPETokenizer.load(bpe_path)
-            print(f"Loaded BPE tokenizer: {tokenizer.vocab_size} tokens")
+        if args.load_tokenizer:
+            # Explicit shared-tokenizer path (ablation-friendly).
+            external_path = Path(args.load_tokenizer)
+            if not external_path.exists():
+                raise FileNotFoundError(
+                    f"--load_tokenizer path does not exist: {external_path}"
+                )
+            tokenizer = BPETokenizer.load(external_path)
+            print(f"Loaded BPE tokenizer from {external_path}: "
+                  f"{tokenizer.vocab_size} tokens")
         else:
-            bpe_sample_size = 200_000_000  # 200 MB
-            print(f"Training BPE tokenizer on {bpe_sample_size // 1_000_000} MB sample "
-                  f"(target vocab: {args.bpe_vocab_size})...")
-            bpe_sample = load_corpus_sample(*text_files, max_bytes=bpe_sample_size)
-            tokenizer = BPETokenizer(target_vocab_size=args.bpe_vocab_size)
-            tokenizer.train(bpe_sample)
-            del bpe_sample
-            tokenizer.save(bpe_path)
-            print(f"Saved BPE tokenizer to {bpe_path}")
+            bpe_path = output_dir / "tokenizer.json"
+            if bpe_path.exists():
+                tokenizer = BPETokenizer.load(bpe_path)
+                print(f"Loaded BPE tokenizer: {tokenizer.vocab_size} tokens")
+            else:
+                bpe_sample_size = 200_000_000  # 200 MB
+                print(f"Training BPE tokenizer on {bpe_sample_size // 1_000_000} MB sample "
+                      f"(target vocab: {args.bpe_vocab_size})...")
+                bpe_sample = load_corpus_sample(*text_files, max_bytes=bpe_sample_size)
+                tokenizer = BPETokenizer(target_vocab_size=args.bpe_vocab_size)
+                tokenizer.train(bpe_sample)
+                del bpe_sample
+                tokenizer.save(bpe_path)
+                print(f"Saved BPE tokenizer to {bpe_path}")
+                if args.save_tokenizer:
+                    save_path = Path(args.save_tokenizer)
+                    save_path.parent.mkdir(parents=True, exist_ok=True)
+                    tokenizer.save(save_path)
+                    print(f"Also saved BPE tokenizer to {save_path}")
+        if args.bpe_only:
+            print("--bpe_only set: tokenizer ready, exiting before model training.")
+            return
     else:
         if streaming:
             sample = load_corpus_sample(*text_files, max_bytes=50_000_000)

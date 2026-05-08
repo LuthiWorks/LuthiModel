@@ -145,6 +145,13 @@ class LivingLayerV6(nn.Module):
                 dtype=self._buf_dtype("episode_values"),
             ),
         )
+        # Per-episode scale factor for INT8 quantization. Used only when
+        # `episode_values.dtype == torch.int8` (Ablation C). Always registered
+        # so checkpointing/restore is uniform; otherwise inert.
+        self.register_buffer(
+            "episode_scales",
+            torch.ones(num_episodes, dtype=self._buf_dtype("episode_scales")),
+        )
         self.register_buffer("episode_saliences", torch.zeros(num_episodes))
         self.register_buffer("episode_count", torch.tensor(0, dtype=torch.long))
 
@@ -236,6 +243,11 @@ class LivingLayerV6(nn.Module):
 
         Returns the stored weight delta (episode_value - current_weight) scaled
         by match quality, or None if no episodes stored or no good match.
+
+        Dequantizes on the fly when `episode_values` is INT8 (Ablation C):
+        recalled = int8_values * episode_scales[idx], producing a FP32 weight
+        snapshot. Float storage paths (FP32, BF16, FP16) read directly with
+        an implicit dtype promotion at the subtraction site.
         """
         if self.episode_count == 0:
             return None
@@ -252,8 +264,14 @@ class LivingLayerV6(nn.Module):
         if best_sim < 0.5:
             return None
 
-        # Return the stored weight snapshot blended by similarity
-        recalled_weights = self.episode_values[best_idx]  # [out, in]
+        # Materialize the recalled weight snapshot.
+        if self.episode_values.dtype == torch.int8:
+            recalled_weights = (
+                self.episode_values[best_idx].to(self.weight.dtype)
+                * self.episode_scales[best_idx]
+            )
+        else:
+            recalled_weights = self.episode_values[best_idx]
         delta = recalled_weights - self.weight
         return delta * best_sim * self.episode_blend
 
@@ -262,6 +280,13 @@ class LivingLayerV6(nn.Module):
 
         Uses salience-based pruning when at capacity: replaces the lowest-
         salience episode if the new one is more salient.
+
+        Storage format depends on `episode_values.dtype`:
+        - Float dtypes (FP32 default, also BF16/FP16): direct assignment,
+          implicit cast at write site.
+        - INT8 (Ablation C): symmetric quantization with per-episode scale.
+          scale = max(abs(weight)) / 127, then qval = round(weight / scale).
+          On recall, weight ≈ qval.float() * scale.
         """
         if salience < self.salience_threshold:
             return
@@ -280,7 +305,23 @@ class LivingLayerV6(nn.Module):
             idx = min_idx.item()
 
         self.episode_contexts[idx] = context
-        self.episode_values[idx] = self.weight.detach().clone()
+
+        if self.episode_values.dtype == torch.int8:
+            snapshot = self.weight.detach()
+            # Symmetric per-tensor scale. Clamp prevents division-by-zero
+            # when the layer is freshly initialized to all-zeros (rare —
+            # Kaiming init never produces this — but the cost is one op).
+            scale = (snapshot.abs().max().clamp(min=1e-8) / 127.0).to(
+                self.episode_scales.dtype
+            )
+            quantized = (
+                (snapshot / scale).round().clamp(-128, 127).to(torch.int8)
+            )
+            self.episode_values[idx] = quantized
+            self.episode_scales[idx] = scale
+        else:
+            self.episode_values[idx] = self.weight.detach().clone()
+
         self.episode_saliences[idx] = salience
 
     # ------------------------------------------------------------------
