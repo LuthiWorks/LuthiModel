@@ -42,6 +42,7 @@ class LivingLayerV6(nn.Module):
         episode_blend: float = 0.1,
         eval_hebb_fraction: float = 0.33,
         update_ema_decay: float = 0.99,
+        buffer_dtypes: dict[str, torch.dtype] | None = None,
     ):
         super().__init__()
         self.in_features = in_features
@@ -61,28 +62,55 @@ class LivingLayerV6(nn.Module):
         self.eval_hebb_fraction = eval_hebb_fraction
         self.update_ema_decay = update_ema_decay
 
+        # Per-buffer dtype overrides for ablation studies. Buffers not listed
+        # here use FP32 (the default for living-state buffers per the
+        # 2026-05-07 deployment spec). Overrides are re-applied after every
+        # `.to()` / `.cuda()` / `.cpu()` call by `_apply` below, so a global
+        # `model.to(dtype=...)` does not silently break per-buffer precision.
+        self._buffer_dtype_overrides: dict[str, torch.dtype] = dict(
+            buffer_dtypes or {}
+        )
+
         # --- Core weight state (all buffers, not parameters) ---
 
         # Weight matrix: initialized with Kaiming uniform
-        weight = torch.empty(out_features, in_features)
+        weight = torch.empty(
+            out_features, in_features, dtype=self._buf_dtype("weight")
+        )
         nn.init.kaiming_uniform_(weight)
         self.register_buffer("weight", weight)
 
         # Homeostatic set point: where weights rest when not driven
-        self.register_buffer("set_point", weight.clone())
+        self.register_buffer(
+            "set_point",
+            weight.clone().to(dtype=self._buf_dtype("set_point")),
+        )
 
         # Momentum: running average of recent weight updates
-        self.register_buffer("momentum", torch.zeros(out_features, in_features))
+        self.register_buffer(
+            "momentum",
+            torch.zeros(
+                out_features, in_features, dtype=self._buf_dtype("momentum")
+            ),
+        )
 
         # Input magnitude running average: for synaptic scaling (V5)
-        self.register_buffer("input_avg_mag", torch.ones(in_features))
+        self.register_buffer(
+            "input_avg_mag",
+            torch.ones(in_features, dtype=self._buf_dtype("input_avg_mag")),
+        )
 
         # Excitability accumulator: drives sigmoid -> effective excitability.
         # Per-output-neuron: every column in the original [out, in] layout was
         # mathematically identical (the Hebbian-step update broadcasts
         # salience_per_dim across the input axis; Sanctuary modulation adds a
         # scalar). Stored as [out_features] and broadcast at use time.
-        self.register_buffer("excitability_acc", torch.zeros(out_features))
+        self.register_buffer(
+            "excitability_acc",
+            torch.zeros(
+                out_features, dtype=self._buf_dtype("excitability_acc")
+            ),
+        )
 
         # Per-input-feature plasticity: learning rate multiplier shared across
         # all output rows for a given input dimension. Every row in the
@@ -90,7 +118,10 @@ class LivingLayerV6(nn.Module):
         # update site, apply_top_down, broadcasts a per-in_features signal
         # across the output axis). Stored as [in_features] and broadcast at
         # use time.
-        self.register_buffer("plasticity", torch.ones(in_features))
+        self.register_buffer(
+            "plasticity",
+            torch.ones(in_features, dtype=self._buf_dtype("plasticity")),
+        )
 
         # --- Layer-level episode store ---
 
@@ -100,10 +131,19 @@ class LivingLayerV6(nn.Module):
 
         # Episode storage
         self.register_buffer(
-            "episode_contexts", torch.zeros(num_episodes, context_dim)
+            "episode_contexts",
+            torch.zeros(
+                num_episodes, context_dim, dtype=self._buf_dtype("episode_contexts")
+            ),
         )
         self.register_buffer(
-            "episode_values", torch.zeros(num_episodes, out_features, in_features)
+            "episode_values",
+            torch.zeros(
+                num_episodes,
+                out_features,
+                in_features,
+                dtype=self._buf_dtype("episode_values"),
+            ),
         )
         self.register_buffer("episode_saliences", torch.zeros(num_episodes))
         self.register_buffer("episode_count", torch.tensor(0, dtype=torch.long))
@@ -113,7 +153,11 @@ class LivingLayerV6(nn.Module):
         # how much it typically changes, enabling self-regulation: unusual
         # spikes get dampened, normal updates pass through.
         self.register_buffer(
-            "update_ema", torch.ones(out_features, in_features) * 1e-4
+            "update_ema",
+            torch.ones(
+                out_features, in_features, dtype=self._buf_dtype("update_ema")
+            )
+            * 1e-4,
         )
 
         # --- Cached input for error-directed learning ---
@@ -122,6 +166,34 @@ class LivingLayerV6(nn.Module):
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def _buf_dtype(self, name: str) -> torch.dtype:
+        """Resolve the dtype for a named buffer.
+
+        Returns the override from ``buffer_dtypes`` if specified, else
+        ``torch.float32`` (the safe default for living-state buffers per
+        the 2026-05-07 deployment spec).
+        """
+        return self._buffer_dtype_overrides.get(name, torch.float32)
+
+    def _apply(self, fn, recurse: bool = True):
+        """Override to re-apply per-buffer dtype overrides after ``.to()``.
+
+        ``nn.Module._apply`` is what ``.to(...)``, ``.cuda()``, ``.cpu()``,
+        ``.bfloat16()`` etc. all dispatch through. By default it casts every
+        registered buffer with the same ``fn``. For our ablation studies we
+        need specific buffers (e.g. ``momentum`` in BF16, others in FP32) to
+        retain their per-buffer dtype regardless of how the surrounding
+        model is cast. After the standard ``_apply`` runs, this hook
+        re-asserts the override dtypes — keeping the new device but
+        restoring the chosen precision.
+        """
+        super()._apply(fn, recurse)
+        for name, target_dtype in self._buffer_dtype_overrides.items():
+            buf = self._buffers.get(name, None)
+            if buf is not None and buf.dtype != target_dtype:
+                self._buffers[name] = buf.to(dtype=target_dtype)
+        return self
 
     def _get_update_gate(self) -> torch.Tensor | None:
         """Return a per-weight gate for activity-dependent updates.

@@ -45,6 +45,7 @@ class HybridBlock(nn.Module):
         num_episodes: int = 64,
         episode_blend: float = 0.3,
         eval_hebb_fraction: float = 0.33,
+        buffer_dtypes: dict[str, torch.dtype] | None = None,
     ):
         super().__init__()
         self.d_model = d_model
@@ -62,6 +63,7 @@ class HybridBlock(nn.Module):
             homeostatic_decay=homeostatic_decay,
             set_point_adapt_rate=set_point_adapt_rate,
             eval_hebb_fraction=eval_hebb_fraction,
+            buffer_dtypes=buffer_dtypes,
         )
         self.episode_store = EpisodeStore(
             d_model,

@@ -22,17 +22,33 @@ Every claim about the living weight architecture must be backed by a number, not
 metaphor. If the number is bad, we change the architecture. If the number is good,
 we publish it. Either outcome is progress.
 
-## Deployment Spec (committed)
+## Deployment Spec (revised 2026-05-07)
 
 ```
-Target: 4B params
-Precision: BF16 weights, mixed-precision living state
-  (FP32 for plasticity/momentum/set_point buffers)
+Target: ≥500M params (floor; ceiling TBD pending Phase 4.5a ablations,
+        estimated 800M-1.1B if ablations A/B/C all pass)
+Precision: BF16 weights, per-channel storage where rank-1 (plasticity
+           [in_features], excitability_acc [out_features] — landed in
+           Phase 0, bit-equivalent), FP32 for genuinely per-weight
+           buffers (momentum, set_point, update_ema) until ablations
+           validate BF16/INT8 alternatives
 Hardware: AMD RX 7800 XT (16 GB VRAM), 32 GB system RAM, Ryzen 7 Zen 2
 Toolchain: ROCm/HIP (confirmed working from multiday training sessions)
 Inference: Custom sparse spiking kernels (Triton, design pending)
 Architecture: SpikingLuthiLM with backward pass, BPE 32K vocab
 ```
+
+**Revision history:**
+- 2026-05-06: Original commit at 4B params, FP32 living state.
+- 2026-05-07: Revised to ≥500M floor after Phase 0 free-win refactor
+  validated and merged. The original 4B target was infeasible because
+  per-weight FP32 living buffers cost ~38 bytes/param (vs ~2 for the
+  BF16 weight) — undercounted in the original spec. See
+  `docs/PER_CHANNEL_ABLATION_PROTOCOL.md` and PLAN.md Phase 4.5a.
+
+Per 4.6's revision policy, the *ceiling* commits after ablations A/B/C
+results land. Strong-pass on all three → ~1.1B. Strong-pass on A+B only
+→ ~800M. Free wins only (current state) → ~500M floor.
 
 Change only with explicit documented reason.
 
