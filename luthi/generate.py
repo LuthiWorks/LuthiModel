@@ -241,83 +241,142 @@ def generate_text(
     device = next(model.parameters()).device
     is_multimodal = hasattr(model, "vision_encoder")
 
-    if living:
-        model.train()
-        # Keep backward pass off — we want Hebbian updates only,
-        # not top-down sweep (which needs loss gradients)
-        if hasattr(model, "backward_pass_enabled"):
-            model.backward_pass_enabled = False
-    else:
-        model.eval()
-
-    token_ids = tokenizer.encode(prompt)
-    generated_ids = []
-
-    if stream:
-        sys.stdout.write(prompt)
-        sys.stdout.flush()
-
-    has_sensory = is_multimodal and (
-        image is not None
-        or audio_tokens is not None
-        or vision_tokens is not None
+    # Capture original model mode + backward_pass setting before mutating,
+    # so the finally clause below restores it. Without this, calling
+    # generate_text from a training loop or the Sanctuary integration
+    # would leave the model in train()/eval() and backward_pass off after
+    # return — corrupting downstream state silently.
+    original_training = model.training
+    original_backward_pass_enabled = getattr(
+        model, "backward_pass_enabled", None
     )
 
-    with torch.set_grad_enabled(living):
-        for step in range(max_tokens):
-            # Sliding window — use only the last max_seq_len tokens
-            context = token_ids[-max_seq_len:]
-            x = torch.tensor([context], dtype=torch.long, device=device)
+    try:
+        if living:
+            model.train()
+            # Keep backward pass off — we want Hebbian updates only,
+            # not top-down sweep (which needs loss gradients).
+            if hasattr(model, "backward_pass_enabled"):
+                model.backward_pass_enabled = False
+        else:
+            model.eval()
 
-            # Forward pass — sensory context only on the first step.
-            # The model is stateless across steps (no KV cache), so
-            # sensory tokens only condition the very first generated
-            # token via cross-modal attention in step 0.
-            if has_sensory and step == 0:
-                forward_kwargs: dict = {}
-                # Pre-encoded vision tokens take precedence over a raw image
-                # — no need to re-encode if the caller already did.
-                if vision_tokens is not None:
-                    forward_kwargs["vision_tokens"] = vision_tokens
-                elif image is not None:
-                    forward_kwargs["image"] = image
-                if audio_tokens is not None:
-                    forward_kwargs["audio_tokens"] = audio_tokens
-                logits = model(x, **forward_kwargs)
-            elif is_multimodal:
-                logits = model(x)
-            else:
-                logits = model(x)
+        token_ids = tokenizer.encode(prompt)
+        generated_ids = []
 
-            # Living inference: Hebbian updates fire during forward pass
-            # in train mode. Optionally apply error-directed updates too.
-            if living and hasattr(model, "apply_living_errors"):
-                model.apply_living_errors()
+        if stream:
+            sys.stdout.write(prompt)
+            sys.stdout.flush()
 
-            # Sample next token
-            next_logits = logits[0, -1, :].clone()
-            next_id = sample_next_token(
-                next_logits,
-                temperature=temperature,
-                top_k=top_k,
-                top_p=top_p,
-                repetition_penalty=repetition_penalty,
-                generated_ids=generated_ids,
+        has_sensory = is_multimodal and (
+            image is not None
+            or audio_tokens is not None
+            or vision_tokens is not None
+        )
+
+        # Detect whether the model supports KV cache. Both v1 LuthiLM and
+        # v2 PredictiveCodingLM accept kv_caches/return_kv_caches as of
+        # 2026-05-10 (audit follow-up). MultimodalLuthiLM doesn't yet —
+        # falls back to the legacy recompute-each-token path. Detection
+        # is via signature inspection so future KV-cache-aware models
+        # (e.g., a future multimodal v2) get the fast path automatically.
+        import inspect
+        try:
+            sig = inspect.signature(model.forward)
+            supports_kv_cache = (
+                "kv_caches" in sig.parameters
+                and "return_kv_caches" in sig.parameters
+                and not has_sensory  # legacy multimodal path needs its own
+                                     # kwargs and isn't compatible with the
+                                     # cache-aware text path
             )
+        except (TypeError, ValueError):
+            supports_kv_cache = False
 
-            token_ids.append(next_id)
-            generated_ids.append(next_id)
+        kv_caches: list | None = None  # populated after step 0 when supported
 
-            if stream:
-                token_text = tokenizer.decode([next_id])
-                sys.stdout.write(token_text)
-                sys.stdout.flush()
+        with torch.set_grad_enabled(living):
+            for step in range(max_tokens):
+                # Forward pass — sensory context only on the first step.
+                if has_sensory and step == 0:
+                    # Multimodal first step: pass the full prompt + sensory
+                    # tokens. No KV cache support yet for this path; sensory
+                    # context conditions the first generated token only.
+                    context = token_ids[-max_seq_len:]
+                    x = torch.tensor([context], dtype=torch.long, device=device)
+                    forward_kwargs: dict = {}
+                    if vision_tokens is not None:
+                        forward_kwargs["vision_tokens"] = vision_tokens
+                    elif image is not None:
+                        forward_kwargs["image"] = image
+                    if audio_tokens is not None:
+                        forward_kwargs["audio_tokens"] = audio_tokens
+                    logits = model(x, **forward_kwargs)
+                elif supports_kv_cache:
+                    # KV-cache fast path. Step 0: full prompt, initialize
+                    # cache. Step 1+: just the new token, extend cache.
+                    if step == 0:
+                        context = token_ids[-max_seq_len:]
+                        x = torch.tensor([context], dtype=torch.long, device=device)
+                        logits, kv_caches = model(
+                            x, return_kv_caches=True,
+                        )
+                    else:
+                        # Feed only the most recently generated token; the
+                        # attention sees the rest via the cache.
+                        x = torch.tensor(
+                            [[token_ids[-1]]], dtype=torch.long, device=device,
+                        )
+                        logits, kv_caches = model(
+                            x, kv_caches=kv_caches, return_kv_caches=True,
+                        )
+                else:
+                    # Legacy recompute-each-step path (sliding window).
+                    context = token_ids[-max_seq_len:]
+                    x = torch.tensor([context], dtype=torch.long, device=device)
+                    logits = model(x)
 
-    if stream:
-        sys.stdout.write("\n")
-        sys.stdout.flush()
+                # Living inference: Hebbian updates fire during forward pass
+                # in train mode. Note (audit 2026-05-11): we used to also
+                # call model.apply_living_errors() here, but that's
+                # error-directed learning which requires a loss.backward()
+                # to populate gradients first. During generation there's
+                # no loss, so the call was a no-op — dead code. Removed.
 
-    return tokenizer.decode(token_ids)
+                # Sample next token
+                next_logits = logits[0, -1, :].clone()
+                next_id = sample_next_token(
+                    next_logits,
+                    temperature=temperature,
+                    top_k=top_k,
+                    top_p=top_p,
+                    repetition_penalty=repetition_penalty,
+                    generated_ids=generated_ids,
+                )
+
+                token_ids.append(next_id)
+                generated_ids.append(next_id)
+
+                if stream:
+                    token_text = tokenizer.decode([next_id])
+                    sys.stdout.write(token_text)
+                    sys.stdout.flush()
+
+        if stream:
+            sys.stdout.write("\n")
+            sys.stdout.flush()
+
+        return tokenizer.decode(token_ids)
+    finally:
+        # Restore original mode and backward_pass setting so any caller
+        # (Sanctuary integration, training loop, generation script) sees
+        # the model in the state they left it.
+        model.train(original_training)
+        if (
+            original_backward_pass_enabled is not None
+            and hasattr(model, "backward_pass_enabled")
+        ):
+            model.backward_pass_enabled = original_backward_pass_enabled
 
 
 def get_introspection(model: torch.nn.Module) -> dict:
@@ -356,9 +415,21 @@ def get_introspection(model: torch.nn.Module) -> dict:
             drift = (ffn.weight.data - ffn.set_point).abs().mean().item()
             block_state["set_point_drift"] = drift
 
-        # Excitability — overall responsiveness
-        if hasattr(ffn, "excitability"):
-            block_state["excitability_mean"] = ffn.excitability.mean().item()
+        # Excitability — overall responsiveness.
+        # LivingLayerV6 stores `excitability_acc` (the running accumulator);
+        # the effective excitability is mapped through sigmoid by
+        # `_excitability_factor()`. Report both: the effective value (what
+        # the layer actually uses) and the raw accumulator (useful for
+        # diagnosing saturation when the sigmoid pegs at min or max).
+        if hasattr(ffn, "_excitability_factor"):
+            exc = ffn._excitability_factor()
+            block_state["excitability_mean"] = exc.mean().item()
+            block_state["excitability_min"] = exc.min().item()
+            block_state["excitability_max"] = exc.max().item()
+        if hasattr(ffn, "excitability_acc"):
+            block_state["excitability_acc_mean"] = (
+                ffn.excitability_acc.mean().item()
+            )
 
         # Spiking dynamics
         if hasattr(ffn, "membrane_potential"):
@@ -410,8 +481,12 @@ def format_introspection(state: dict) -> str:
             parts.append(f"spiking={block['spike_fraction']:.3f}")
         if "membrane_mean" in block:
             parts.append(f"membrane={block['membrane_mean']:.3f}")
-        if "episode_strength_mean" in block:
-            parts.append(f"episodes={block['episode_strength_mean']:.3f}")
+        # Audit 2026-05-11 fix: previous code checked the stale key
+        # `episode_strength_mean` while the collector at line 454 stores
+        # `episode_salience_mean`. The mismatch dropped episode data
+        # silently from the introspection output.
+        if "episode_salience_mean" in block:
+            parts.append(f"episodes={block['episode_salience_mean']:.3f}")
 
         lines.append(" | ".join(parts))
 

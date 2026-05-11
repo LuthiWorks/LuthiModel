@@ -13,7 +13,7 @@ REM Total: 3 baseline + 3 variant + 1 confirmation, ~12-14 GPU-hours
 cd /d "C:\Users\Hasha Smokes\Desktop\LuthiModel\LuthiModel"
 
 REM Loads the pre-trained BPE tokenizer (run run_train_tokenizer.bat first)
-set COMMON_ARGS=--data_dir corpus_build/gutenberg_100 --tokenizer bpe --load_tokenizer corpus_build/gutenberg_100_bpe32k.json --d_model 128 --n_blocks 2 --epochs 30 --backward_pass --output_dir runs/ablation_D
+set COMMON_ARGS=--data_dir corpus_build/gutenberg_100 --tokenizer bpe --load_tokenizer corpus_build/gutenberg_100_bpe32k.json --d_model 128 --n_blocks 2 --epochs 30 --stride 64 --backward_pass --output_dir runs/ablation_D
 set COMBINED_DTYPES=momentum=bf16,set_point=bf16,episode_values=int8
 
 echo ============================================================
@@ -47,7 +47,7 @@ python -m luthi.train %COMMON_ARGS% --seed 2026 --run_name variant_combined_seed
 
 echo.
 echo === CONFIRMATION 256d/4-blocks/80 epochs (extended stability per PLAN.md 4.5a) ===
-python -m luthi.train --data_dir corpus_build/gutenberg_100 --tokenizer bpe --load_tokenizer corpus_build/gutenberg_100_bpe32k.json --d_model 256 --n_blocks 4 --epochs 80 --backward_pass --output_dir runs/ablation_D --seed 42 --run_name confirmation_256d_4blocks_80ep --buffer_dtypes %COMBINED_DTYPES%
+python -m luthi.train --data_dir corpus_build/gutenberg_100 --tokenizer bpe --load_tokenizer corpus_build/gutenberg_100_bpe32k.json --d_model 256 --n_blocks 4 --epochs 80 --stride 64 --backward_pass --output_dir runs/ablation_D --seed 42 --run_name confirmation_256d_4blocks_80ep --buffer_dtypes %COMBINED_DTYPES%
 
 echo.
 echo ============================================================

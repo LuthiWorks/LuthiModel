@@ -17,6 +17,18 @@ Architecture:
 
 Cross-modal attention is free: concatenating modalities in one sequence lets
 the attention layers attend across senses without extra machinery.
+
+Note (2026-05-11): KV cache support has been added to LuthiLM and the v2
+PredictiveCodingLM (see attention.py / model.py / model_pc.py). This model
+hasn't been updated yet — adding kv_cache here is non-trivial because
+SpikingHybridBlock propagates spikes between blocks (stateful, not
+trivially cacheable) and the sensory-concat must coexist with the
+incremental-token path. For now, generate.py detects whether the model's
+forward accepts kv_caches and falls back to recompute-each-step here.
+Effect: multimodal generation still loses sensory context after step 0
+(the audit's #62 concern). v2's planned MultimodalPredictiveCodingLM will
+inherit the cache support natively; that's the right place to land the
+sensory-persistence fix.
 """
 
 import torch

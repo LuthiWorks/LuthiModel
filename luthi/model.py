@@ -75,7 +75,12 @@ class LuthiLM(nn.Module):
         self.final_norm = nn.LayerNorm(d_model)
         self.output_proj = nn.Linear(d_model, vocab_size)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        x: torch.Tensor,
+        kv_caches: list | None = None,
+        return_kv_caches: bool = False,
+    ):
         """Forward pass with optional top-down backward sweep.
 
         Phase 1 (bottom-up): Standard forward through all blocks.
@@ -84,31 +89,70 @@ class LuthiLM(nn.Module):
 
         Args:
             x: [batch, seq_len] integer token indices.
+            kv_caches: Optional list of per-block (K, V) cache tuples from a
+                prior forward. When passed, each block's attention uses its
+                cached K/V instead of recomputing — used by generate.py to
+                skip the O(S²) re-attention per generated token.
+            return_kv_caches: If True, return (logits, list-of-new-caches)
+                so the generation loop can carry caches forward.
 
         Returns:
-            [batch, seq_len, vocab_size] logits for next character prediction.
+            [batch, seq_len, vocab_size] logits, optionally with caches.
         """
         batch, seq_len = x.shape
-        assert seq_len <= self.max_seq_len, (
-            f"Sequence length {seq_len} exceeds max {self.max_seq_len}"
-        )
 
-        # Embed characters + positions
-        positions = torch.arange(seq_len, device=x.device).unsqueeze(0)
+        # With kv_caches, the new input is just the new tokens. The
+        # positional embedding has to use the absolute positions, which
+        # equals (prior cache length + new token index). Without cache,
+        # positions are [0, seq_len). Top-down sweep is skipped in cache
+        # mode — it expects a full forward and isn't well-defined when
+        # only a single-token slice has been computed.
+        if kv_caches is not None and len(kv_caches) > 0 and kv_caches[0] is not None:
+            cache_seq_len = kv_caches[0][0].shape[-2]
+            total_seq_len = cache_seq_len + seq_len
+            assert total_seq_len <= self.max_seq_len, (
+                f"Total context length {total_seq_len} exceeds max {self.max_seq_len}"
+            )
+            positions = torch.arange(
+                cache_seq_len, total_seq_len, device=x.device,
+            ).unsqueeze(0)
+        else:
+            assert seq_len <= self.max_seq_len, (
+                f"Sequence length {seq_len} exceeds max {self.max_seq_len}"
+            )
+            positions = torch.arange(seq_len, device=x.device).unsqueeze(0)
+
         h = self.embedding(x) + self.pos_embedding(positions)
 
         # Phase 1: Bottom-up (forward pass through blocks)
         block_inputs = []
-        for block in self.blocks:
+        new_caches: list = [] if return_kv_caches else []
+        for i, block in enumerate(self.blocks):
             block_inputs.append(h.detach())
-            h = block(h, causal=True)
+            block_cache = (
+                kv_caches[i] if kv_caches is not None and i < len(kv_caches) else None
+            )
+            if return_kv_caches:
+                h, new_cache_i = block(
+                    h, causal=True,
+                    kv_cache=block_cache, return_kv_cache=True,
+                )
+                new_caches.append(new_cache_i)
+            else:
+                h = block(h, causal=True, kv_cache=block_cache)
 
         # Project to vocabulary
         h_final = self.final_norm(h)
         logits = self.output_proj(h_final)
 
-        # Phase 2: Top-down backward sweep (modulates state for NEXT pass)
-        if self.training and self.backward_pass_enabled:
+        # Phase 2: Top-down backward sweep (modulates state for NEXT pass).
+        # Skip when using KV cache — the sweep expects a full-context
+        # forward and isn't well-defined on a single-token slice.
+        if (
+            self.training
+            and self.backward_pass_enabled
+            and kv_caches is None
+        ):
             from luthi.backward_pass import create_initial_signal
 
             with torch.no_grad():
@@ -118,6 +162,8 @@ class LuthiLM(nn.Module):
                         signal, block_inputs[i],
                     )
 
+        if return_kv_caches:
+            return logits, new_caches
         return logits
 
     def apply_living_errors(self, expect_grad: bool = False) -> None:
@@ -157,9 +203,13 @@ class LuthiLM(nn.Module):
 class DeadLM(nn.Module):
     """Baseline model: same architecture but with standard nn.Linear FFN.
 
-    Used to measure the convergence penalty of living weights (~39%).
-    Everything is identical to LuthiLM except the living FFN is replaced
-    with a standard linear layer.
+    Used to measure the convergence penalty of living weights (~39%) and
+    as the M5 head-to-head baseline against v2 PredictiveCodingLM.
+
+    Audit 2026-05-11 update: now accepts `n_heads` and `ffn_expansion` so
+    the M5 comparison can match v2's architecture (which got both via the
+    audit). Without this DeadLM would have been bottlenecked by single-
+    head attention and a no-expansion FFN, confounding the comparison.
     """
 
     def __init__(
@@ -167,6 +217,8 @@ class DeadLM(nn.Module):
         vocab_size: int,
         d_model: int = 64,
         n_blocks: int = 2,
+        n_heads: int = 1,
+        ffn_expansion: int = 1,
         max_seq_len: int = 128,
     ):
         super().__init__()
@@ -177,7 +229,8 @@ class DeadLM(nn.Module):
         self.pos_embedding = nn.Embedding(max_seq_len, d_model)
 
         self.blocks = nn.ModuleList([
-            _DeadBlock(d_model) for _ in range(n_blocks)
+            _DeadBlock(d_model, n_heads=n_heads, ffn_expansion=ffn_expansion)
+            for _ in range(n_blocks)
         ])
 
         self.final_norm = nn.LayerNorm(d_model)
@@ -196,18 +249,42 @@ class DeadLM(nn.Module):
 
 
 class _DeadBlock(nn.Module):
-    """Baseline block: attention + standard linear FFN (no living weights)."""
+    """Baseline block: attention + standard FFN (no living weights).
 
-    def __init__(self, d_model: int):
+    Accepts `n_heads` and `ffn_expansion` so the dead baseline can match
+    the v2 PredictiveCodingBlock architecture for fair M5 comparison.
+    """
+
+    def __init__(
+        self,
+        d_model: int,
+        n_heads: int = 1,
+        ffn_expansion: int = 1,
+    ):
         super().__init__()
         from luthi.attention import ScalarAttention
+        import torch.nn.functional as F
 
         self.norm1 = nn.LayerNorm(d_model)
         self.norm2 = nn.LayerNorm(d_model)
-        self.attention = ScalarAttention(d_model)
-        self.ffn = nn.Linear(d_model, d_model)
+        self.attention = ScalarAttention(d_model, n_heads=n_heads)
+        self.ffn_expansion = ffn_expansion
+        if ffn_expansion == 1:
+            self.ffn = nn.Linear(d_model, d_model)
+            self.ffn_up: nn.Module = nn.Identity()
+            self.ffn_down: nn.Module = nn.Identity()
+        else:
+            self.ffn_up = nn.Linear(d_model, d_model * ffn_expansion, bias=False)
+            self.ffn_down = nn.Linear(d_model * ffn_expansion, d_model, bias=False)
+            self.ffn = nn.Identity()
 
     def forward(self, x: torch.Tensor, causal: bool = True) -> torch.Tensor:
         x = x + self.attention(self.norm1(x), causal=causal)
-        x = x + self.ffn(self.norm2(x))
+        if self.ffn_expansion == 1:
+            x = x + self.ffn(self.norm2(x))
+        else:
+            import torch.nn.functional as F
+            inner = self.ffn_up(self.norm2(x))
+            inner = F.gelu(inner)
+            x = x + self.ffn_down(inner)
         return x

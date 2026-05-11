@@ -90,6 +90,7 @@ class SpikingLivingLayer(LivingLayerV6):
         reset_mode: str = "zero",
         spike_baseline: float = 0.3,
         surrogate_sharpness: float = 10.0,
+        membrane_potential_max: float = 10.0,
         # All parent parameters forwarded via kwargs
         **kwargs,
     ):
@@ -101,6 +102,13 @@ class SpikingLivingLayer(LivingLayerV6):
         self.refractory_steps = float(refractory_steps)
         self.delay_steps = max(1, delay_steps)
         self.spike_scale = spike_scale
+        # Defensive bound on |membrane_potential| — prevents the unbounded
+        # growth scenario the 2026-05-10 audit flagged when spike_threshold
+        # is never reached and spike_scale > membrane_leak. 10.0 (vs the
+        # default spike_threshold=1.0) is permissive enough that normal
+        # supra-threshold dynamics aren't affected, tight enough that any
+        # pathological drive sequence stays bounded.
+        self.membrane_potential_max = membrane_potential_max
         assert reset_mode in ("zero", "subtract"), (
             f"reset_mode must be 'zero' or 'subtract', got '{reset_mode}'"
         )
@@ -266,6 +274,14 @@ class SpikingLivingLayer(LivingLayerV6):
                 drive_signal = self.weight.abs() * input_mag.unsqueeze(0)  # [out, in]
                 drive_signal = drive_signal / (drive_signal.mean() + 1e-8)
                 self.membrane_potential.add_(drive_signal * self.spike_scale)
+
+                # Defensive clamp — prevents unbounded membrane growth when
+                # drive consistently exceeds leak without reaching threshold.
+                # Applied once per step, after all membrane updates.
+                self.membrane_potential.clamp_(
+                    -self.membrane_potential_max,
+                    self.membrane_potential_max,
+                )
 
                 # Phase 6: Delay buffer update
                 write_pos = self._delay_pos % self.delay_steps

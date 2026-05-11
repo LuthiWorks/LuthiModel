@@ -168,8 +168,14 @@ def load_checkpoint(
     raw_bytes = _decrypt(encrypted, password)
 
     buffer = io.BytesIO(raw_bytes)
-    # Always load to CPU first — DirectML devices don't support map_location
-    checkpoint = torch.load(buffer, map_location="cpu", weights_only=False)
+    # Always load to CPU first — DirectML devices don't support map_location.
+    # weights_only=True is defense in depth: even though the checkpoint is
+    # AES-256-GCM encrypted (so tampering by an external attacker requires
+    # the key), this prevents arbitrary code execution if a malicious
+    # checkpoint ever gets through the encryption layer. Checkpoints
+    # contain tensors + basic Python dicts (no custom classes), so the
+    # restricted pickle is sufficient.
+    checkpoint = torch.load(buffer, map_location="cpu", weights_only=True)
     return checkpoint
 
 

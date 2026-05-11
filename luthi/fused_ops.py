@@ -194,11 +194,12 @@ def _living_self_modify_python(
 
     # 12. Excitability dynamics — both excitability_acc and salience_per_dim
     # are [out_features], so the update is element-wise with no broadcast.
-    exc_update = torch.where(
-        salience_per_dim > salience_threshold,
-        torch.tensor(0.01, device=weight.device, dtype=weight.dtype),
-        torch.tensor(-0.005, device=weight.device, dtype=weight.dtype),
-    )
+    # Computed via arithmetic on the boolean mask instead of `torch.where`
+    # with scalar tensors, eliminating the per-step `torch.tensor(0.01, ...)`
+    # / `torch.tensor(-0.005, ...)` allocations that the audit flagged.
+    # Multiply-add reproduces the original semantics: True -> +0.01, False -> -0.005.
+    above = salience_per_dim > salience_threshold
+    exc_update = above.to(weight.dtype) * 0.015 - 0.005
     excitability_acc.add_(exc_update)
 
     return salience_scalar

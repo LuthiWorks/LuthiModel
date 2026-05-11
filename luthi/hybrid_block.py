@@ -75,21 +75,43 @@ class HybridBlock(nn.Module):
         self._ffn_output: torch.Tensor | None = None
 
     def forward(
-        self, x: torch.Tensor, causal: bool = True
-    ) -> torch.Tensor:
+        self,
+        x: torch.Tensor,
+        causal: bool = True,
+        kv_cache: tuple[torch.Tensor, torch.Tensor] | None = None,
+        return_kv_cache: bool = False,
+    ):
         """Forward pass through the hybrid block.
 
         Args:
             x: [batch, seq_len, d_model] input tensor.
             causal: Whether to use causal masking in attention.
+            kv_cache: Optional prior (K, V) for the attention layer to
+                concatenate with — see ScalarAttention.forward. Used during
+                generation to skip O(S²) re-attention over the prompt.
+            return_kv_cache: If True, return (output, kv_cache) so a
+                generation loop can carry the cache forward.
 
         Returns:
-            [batch, seq_len, d_model] output tensor.
+            [batch, seq_len, d_model] output. If return_kv_cache=True,
+            returns (output, (K, V)).
         """
         block_input = x
 
-        # 1. Pre-norm attention with residual
-        x = x + self.attention(self.norm1(x), causal=causal)
+        # 1. Pre-norm attention with residual (optionally with KV cache)
+        if return_kv_cache:
+            attn_out, new_kv = self.attention(
+                self.norm1(x),
+                causal=causal,
+                kv_cache=kv_cache,
+                return_kv_cache=True,
+            )
+        else:
+            attn_out = self.attention(
+                self.norm1(x), causal=causal, kv_cache=kv_cache,
+            )
+            new_kv = None
+        x = x + attn_out
 
         # 2. Pre-norm living FFN with residual
         ffn_in = self.norm2(x)
@@ -104,6 +126,8 @@ class HybridBlock(nn.Module):
         # 3. Episode store: recall, blend, and store
         x = self.episode_store(block_input, x)
 
+        if return_kv_cache:
+            return x, new_kv
         return x
 
     def top_down_pass(

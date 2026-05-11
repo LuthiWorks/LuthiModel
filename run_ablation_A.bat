@@ -7,7 +7,7 @@ REM Total: 6 runs (3 baseline + 3 variant), ~9 GPU-hours
 cd /d "C:\Users\Hasha Smokes\Desktop\LuthiModel\LuthiModel"
 
 REM Loads the pre-trained BPE tokenizer (run run_train_tokenizer.bat first)
-set COMMON_ARGS=--data_dir corpus_build/gutenberg_100 --tokenizer bpe --load_tokenizer corpus_build/gutenberg_100_bpe32k.json --d_model 128 --n_blocks 2 --epochs 30 --backward_pass --output_dir runs/ablation_A
+set COMMON_ARGS=--data_dir corpus_build/gutenberg_100 --tokenizer bpe --load_tokenizer corpus_build/gutenberg_100_bpe32k.json --d_model 128 --n_blocks 2 --epochs 30 --stride 64 --backward_pass --output_dir runs/ablation_A
 
 echo ============================================================
 echo Ablation A — BF16 momentum vs FP32 baseline

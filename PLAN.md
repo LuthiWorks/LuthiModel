@@ -257,6 +257,21 @@ claims must be backed by numbers, not metaphors. See `docs/EMPIRICAL_DEFENSE_PLA
 > Planned by: Claude Opus 4.6 (Planner)
 > Date: 2026-05-07
 > Based on: `docs/PER_CHANNEL_ABLATION_PROTOCOL.md` (4.7 research)
+> **STATUS 2026-05-09: DEFERRED.** See "Deferral note" below.
+
+**Deferral note (2026-05-09):** Brian decided to make v2 (predictive coding)
+the primary substrate and replace v1 Hebbian dynamics. The v1 ablations
+optimize memory cost for the Hebbian substrate's stabilizing buffers; with
+v1 deferred as fallback, those optimizations are decoration on an abandoned
+path. v2 has lower intrinsic per-weight cost (~18-20 bytes/param) than v1's
+post-compression target (~14). See `docs/V2_IMPLEMENTATION_PLAN.md` →
+"Strategic shift (2026-05-09)" for the full reasoning.
+
+The protocol below is preserved verbatim as a fallback path. **Revive only
+if v2 fails M5 falsification** — at that point the v1 ceiling becomes
+load-bearing again. Baseline FP32 data (3 seeds, train 4.91 / val 6.67) lives
+in `runs/ablation_A/baseline_seed{42,1337,2026}/` as the v1 reference point;
+the BF16 variant runs failed at startup due to the DirectML hardware blocker.
 
 **Problem:** The 4B deployment target in Phase 5 was infeasible. Per-weight FP32
 living buffers cost ~38 bytes/param — the original spec undercounted this. Hard
@@ -323,13 +338,16 @@ validation. Brian asked for "stability all but confirmed" before scaling.
 
 ### Phase 5: Scale — Curriculum Training
 
-**Deployment spec (revised 2026-05-07):**
-- Target: ≥500M params (floor, validated via bit-equivalent per-channel refactor)
-- Ceiling: TBD pending buffer ablation results (estimated 800M-1.1B)
-- Precision: BF16 weights, compressed living state (per-channel where rank-1,
-  ablation-gated BF16/INT8 for remaining buffers)
+**Deployment spec (revised 2026-05-09 — v2-primary):**
+- **Substrate: v2 (predictive coding).** v1 Hebbian deferred as fallback.
+- Target: ≥500M params (floor; v2 intrinsic per-weight cost ~18-20 bytes/param
+  fits this on 16 GB VRAM with FP32 weights, no ablation needed).
+- Ceiling: ~560M params on DirectML/FP32 weight; up to ~870M if BF16 weights
+  available (requires ROCm/WSL2 migration, deferred until M5 passes and Phase 5
+  wants to scale beyond the 560M floor).
 - Hardware: AMD RX 7800 XT (16 GB VRAM), 32 GB system RAM
-- Toolchain: ROCm/HIP with custom Triton sparse spiking kernels
+- Toolchain: DirectML on Windows 11 (current daily driver). ROCm/HIP migration
+  is a Phase-5-scale decision, not an architectural one.
 - 32K BPE vocab
 - DGX Spark remains the Phase 7 deployment target — not foreclosed, but not
   required for current work
