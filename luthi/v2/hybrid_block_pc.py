@@ -49,6 +49,7 @@ class PredictiveCodingBlock(nn.Module):
         num_episodes: int = 64,
         episode_blend: float = 0.3,
         compressed_episodes: bool = False,
+        consolidation_enabled: bool = False,
         buffer_dtypes: dict[str, torch.dtype] | None = None,
     ):
         super().__init__()
@@ -92,6 +93,7 @@ class PredictiveCodingBlock(nn.Module):
             num_episodes=num_episodes,
             episode_blend=episode_blend,
             compressed_episodes=compressed_episodes,
+            consolidation_enabled=consolidation_enabled,
             buffer_dtypes=buffer_dtypes,
         )
         self.episode_store = EpisodeStore(
