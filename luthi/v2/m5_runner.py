@@ -135,6 +135,50 @@ def _train_one_epoch(
 
 
 @torch.no_grad()
+def _measure_nff(model: torch.nn.Module, x: torch.Tensor) -> float:
+    """Two consecutive identical-input forward passes. >0 = non-feedforward."""
+    was_training = model.training
+    model.eval()
+    try:
+        out1 = model(x)
+        out2 = model(x)
+        return (out2 - out1).abs().mean().item()
+    finally:
+        if was_training:
+            model.train()
+
+
+@torch.no_grad()
+def _measure_living_diagnostics(model: torch.nn.Module) -> dict:
+    """Per-epoch v2 diagnostics flagged by 4.6's 2026-05-12 audit:
+    prediction Frobenius norm (mean over blocks) and precision distribution
+    (mean / min / max over blocks). No-op for DeadLM (no PC layer)."""
+    if not hasattr(model, "blocks"):
+        return {}
+    pred_norms = []
+    precision_means = []
+    precision_mins = []
+    precision_maxes = []
+    for block in model.blocks:
+        living = getattr(block, "living_ffn", None)
+        if living is None or not hasattr(living, "prediction"):
+            continue
+        pred_norms.append(living.prediction.norm().item())
+        if hasattr(living, "precision"):
+            precision_means.append(living.precision.mean().item())
+            precision_mins.append(living.precision.min().item())
+            precision_maxes.append(living.precision.max().item())
+    diag = {}
+    if pred_norms:
+        diag["prediction_frob_mean"] = sum(pred_norms) / len(pred_norms)
+    if precision_means:
+        diag["precision_mean"] = sum(precision_means) / len(precision_means)
+        diag["precision_min"] = min(precision_mins)
+        diag["precision_max"] = max(precision_maxes)
+    return diag
+
+
+@torch.no_grad()
 def _evaluate(
     model: torch.nn.Module,
     loader: DataLoader,
@@ -294,9 +338,17 @@ def main():
         [p for p in model.parameters() if p.requires_grad], lr=args.lr,
     )
 
+    # --- Per-epoch NFF probe input (audit 2026-05-12 instrumentation) ---
+    # Fixed across the run so NFF values are commensurable epoch-to-epoch.
+    nff_probe = next(iter(val_loader))[0][:1].to(device)
+
     # --- Training loop ---
     train_losses: list[float] = []
     val_losses: list[float] = []
+    nff_signals: list[float] = []
+    pred_frob_norms: list[float] = []
+    precision_means: list[float] = []
+    precision_ranges: list[list[float]] = []  # [[min, max], ...]
     total_nan_events = 0
     best_val = float("inf")
 
@@ -314,10 +366,29 @@ def main():
         total_nan_events += nans
         best_val = min(best_val, val_loss)
 
+        # Audit 2026-05-12 instrumentation: NFF + PC diagnostics per epoch.
+        # For DeadLM, NFF should be ~0 (deterministic forward) and the PC
+        # diagnostics return empty.
+        nff = _measure_nff(model, nff_probe)
+        living = _measure_living_diagnostics(model)
+        nff_signals.append(nff)
+        if "prediction_frob_mean" in living:
+            pred_frob_norms.append(living["prediction_frob_mean"])
+        if "precision_mean" in living:
+            precision_means.append(living["precision_mean"])
+            precision_ranges.append(
+                [living["precision_min"], living["precision_max"]]
+            )
+
+        log_extra = f" nff={nff:.4e}"
+        if "prediction_frob_mean" in living:
+            log_extra += f" pred_frob={living['prediction_frob_mean']:.3f}"
+        if "precision_mean" in living:
+            log_extra += f" prec={living['precision_mean']:.3f}"
         print(
             f"[epoch {epoch:3d}/{args.epochs}] "
             f"train={train_loss:.4f} val={val_loss:.4f} "
-            f"lr={lr_for_epoch:.2e} nans={nans}"
+            f"lr={lr_for_epoch:.2e} nans={nans}{log_extra}"
         )
 
     # --- Save final checkpoint + metrics ---
@@ -328,7 +399,12 @@ def main():
         "config": vars(args),
         "train_losses": train_losses,
         "val_losses": val_losses,
+        "nff_signals": nff_signals,
+        "prediction_frob_norms": pred_frob_norms,
+        "precision_means": precision_means,
+        "precision_ranges": precision_ranges,
         "best_val": best_val,
+        "final_nff": nff_signals[-1] if nff_signals else 0.0,
         "nan_events": total_nan_events,
         "trainable_params": n_train,
         "buffer_params": n_buffer,

@@ -150,6 +150,7 @@ def load_checkpoint(
     path: str | Path,
     password: str | None = None,
     device: torch.device | str = "cpu",
+    trusted: bool = False,
 ) -> dict[str, Any]:
     """Load and decrypt a checkpoint from disk.
 
@@ -169,13 +170,28 @@ def load_checkpoint(
 
     buffer = io.BytesIO(raw_bytes)
     # Always load to CPU first — DirectML devices don't support map_location.
-    # weights_only=True is defense in depth: even though the checkpoint is
-    # AES-256-GCM encrypted (so tampering by an external attacker requires
-    # the key), this prevents arbitrary code execution if a malicious
-    # checkpoint ever gets through the encryption layer. Checkpoints
-    # contain tensors + basic Python dicts (no custom classes), so the
-    # restricted pickle is sufficient.
-    checkpoint = torch.load(buffer, map_location="cpu", weights_only=True)
+    #
+    # `trusted` controls the pickle security posture:
+    # - `trusted=False` (default): `weights_only=True`. Strict — only
+    #   torch/numpy primitives on the allowlist are unpickled. If the
+    #   checkpoint format uses anything else (e.g., DirectML's save format
+    #   uses `_rebuild_device_tensor_from_numpy`), the load raises
+    #   `pickle.UnpicklingError` and the caller sees a loud failure.
+    # - `trusted=True`: caller explicitly affirms the file is trusted —
+    #   typically because the AES-256-GCM decryption gate above is the
+    #   actual security boundary and they hold the key. Falls back to the
+    #   permissive `weights_only=False`. This is an opt-in, not a silent
+    #   fallback. The project's "no silent fallbacks" rule (CLAUDE.md)
+    #   requires the unsafe path to be a conscious caller decision, not
+    #   library behavior that flips on a caught exception.
+    if trusted:
+        checkpoint = torch.load(
+            buffer, map_location="cpu", weights_only=False,
+        )
+    else:
+        checkpoint = torch.load(
+            buffer, map_location="cpu", weights_only=True,
+        )
     return checkpoint
 
 
