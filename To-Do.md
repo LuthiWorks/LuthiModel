@@ -212,6 +212,48 @@ RX 7800 XT (16 GB VRAM), ROCm/HIP, Triton sparse kernels.
 
 ---
 
+## Phase 3G: v2 Predictive Coding — Compute Optimization (post-M5)
+
+Added 2026-05-14 from a focused literature sweep on PC compute reduction
+(Salvatori et al. 2024 iPC; Innocenti et al. 2025 μPC; Whittington & Bogacz 2019;
+SpikingBrain 1.0 Aug 2025). Tracked separately from v2 milestones M1-M5 because
+these are *direction* experiments that should be validated on the M5 256d
+re-run substrate. None block the depth sweep or M6.
+
+Full literature notes: `docs/RESEARCH_LITERATURE_2026-05-13.md`.
+
+### 3G.1: Implementation (CPU + unit-test verified)
+
+| Task | Priority | Status | Description |
+|------|----------|--------|-------------|
+| Depth-μP parameterization | P1 | Done (2026-05-13) | `mu_pc_enabled` flag in `PredictiveCodingBlock`. Re-inits q/k/v/o_proj, up/down_proj, PC layer with `N(0, 1/sqrt(fan_in*L))`. Residual scale `1/sqrt(L)`. Tests: `test_pc_block.py::test_mu_pc_*` (3 passing). |
+| Sparse PC update gating | P1 | Done (2026-05-13) | `sparse_threshold` + `sparse_warmup_steps` on PC layer. Per-output mask from `error_acc > threshold` zeroes `delta_w` rows. C++ path skipped when gate is active (Python only). Tests: `test_pc_layer.py::test_sparse_gate_*` (2 passing). |
+| iPC interleaved inference+update | P1 | Done (2026-05-13) | `inference_steps_per_forward` on PC layer. Inner loop recomputes output and calls `pc_self_modify` T times per external forward. Grad-checkpoint recompute raises `RuntimeError` (no silent fallback). Tests: `test_pc_layer.py::test_ipc_*` (3 passing). |
+| Triton kernel skeleton for `pc_self_modify` | P2 | In progress | `luthi/v2/pc_ops_triton.py` skeleton + invariant tests. GPU validation deferred to first ROCm/CUDA box; not blocking. |
+| Mamba-style state-space hybrid | P3 | Deferred | Replaces softmax attention with linear SSM (SpikingBrain 1.0 path). Larger surgery — defer until iPC + μPC results are in hand. |
+
+### 3G.2: Validation (GPU runs, after M5 256d completes)
+
+These spawn from the M5 256d baseline. Each is a one-epoch ablation at 256d/2
+blocks on Gutenberg-100 to isolate the compute effect.
+
+| Task | Priority | Status | Description |
+|------|----------|--------|-------------|
+| μPC validation run | P1 | Pending | `--mu-pc-enabled` flag on `run_m5.bat`. Compare convergence + final val loss against M5 256d baseline at matched compute. Falsifier: convergence ≥20% worse at L=2 (μPC's gain is depth-dependent). |
+| iPC sweep T ∈ {1, 3, 5} | P1 | Pending | One-epoch each. Measure (a) val loss at matched external-forward count, (b) wall-clock per epoch. Salvatori claim: T=3-5 converges faster per external forward; we expect ~1.5-2× total compute trade for faster convergence. |
+| Sparse-gating sweep threshold ∈ {0.0, 0.01, 0.05, 0.1} | P1 | Pending | Measure (a) gate-on rate post-warmup, (b) convergence delta. Target: ≥50% of PC rows gated off after warmup with <5% val loss penalty. |
+| Combined μPC + iPC + sparse @ depth | P2 | Pending | Run after individual experiments. If all three are net-positive, stack on the depth-sweep harness (Phase 3F.4 / M6) to test compounding gain at L=4/8/12. |
+
+### 3G.3: Falsification criteria
+
+Abandon a direction (mark task `deleted`, document negative result) if:
+- **μPC**: convergence penalty ≥20% vs unscaled baseline at L=2 (it must help, not hurt, at the pilot depth) OR it doesn't extend learning-rate transfer to L≥8.
+- **iPC**: T=5 fails to beat T=1 at matched external-forward count by ≥10% val loss, OR T>1 + grad-checkpoint can't be made compatible at the architecture level (requires restructuring `apply_living_errors` callsite).
+- **Sparse gating**: cannot achieve ≥50% sparsity post-warmup without ≥10% val loss penalty, OR the gate creates dead-output collapse (error_acc EMA can't recover for gated-off rows).
+- **Triton kernel**: produces non-bit-identical results vs Python path on a CPU-equivalence test (no silent divergence allowed).
+
+---
+
 ## Phase 4: Scale to 4B — Curriculum Training
 
 **NOTE:** Phase 4 is gated by Phase 3F decision gate. Do not begin until empirical

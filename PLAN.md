@@ -406,6 +406,43 @@ after ablations free the GPU. ~17 days total.
 
 See `docs/V2_IMPLEMENTATION_PLAN.md` for full spec and milestones.
 
+**Compute optimization directions (post-M5, added 2026-05-14):**
+
+A focused literature sweep on PC compute reduction surfaced three directions
+that landed as opt-in implementations in `luthi/v2/`. Each was added with the
+"no silent fallback" rule: any incompatibility raises `RuntimeError` rather
+than degrading quietly. Full notes in `docs/RESEARCH_LITERATURE_2026-05-13.md`.
+
+- **Depth-μP / μPC** (Innocenti et al. 2025): width-and-depth independent
+  scaling of weight init and residual stream. Implemented via `mu_pc_enabled`
+  on `PredictiveCodingBlock` — re-inits all linear/PC weights to
+  `N(0, 1/sqrt(fan_in·L))` and applies a `1/sqrt(L)` residual scale.
+  Expected benefit: learning-rate transfer from L=2 pilot to L≥8 scale runs
+  without per-depth tuning sweeps.
+- **iPC interleaved inference + update** (Salvatori et al. 2024): runs T
+  inference steps with weight updates *between* each, instead of fully
+  converging inference before updating. Implemented via
+  `inference_steps_per_forward` on `PredictiveCodingLayer`. T=1 is
+  bit-identical to the classical schedule (regression-tested). T=5 is
+  expected to converge to lower error per external forward; the cost is
+  T× the inner-loop compute, so the win is in convergence-per-epoch.
+- **Sparse PC update gating**: per-output mask zeroes `delta_w` rows whose
+  recent error accumulator is below threshold — the continuous-error analog
+  of v1's spiking gate. Implemented via `sparse_threshold` +
+  `sparse_warmup_steps` on `PredictiveCodingLayer`. Bit-identical to default
+  when threshold=0. Target: ≥50% of PC rows gated off after warmup with
+  <5% val loss penalty, paving the way for the same sparse-matmul story
+  v1 uses to fit on Spark's 273 GB/s bandwidth.
+
+GPU validation of all three runs after the depth sweep (M6) completes;
+each is a one-epoch ablation at 256d/2 blocks against the M5 256d baseline.
+A combined μPC + iPC + sparse stack on the depth-sweep harness is planned
+if individual results are net-positive.
+
+Deferred: Mamba-style state-space hybrid (SpikingBrain 1.0). Linear-cost
+attention is the obvious next direction, but the surgery is larger and the
+pilot data isn't in yet — revisit after the three above land.
+
 ### Phase 6: Sanctuary Convergence
 
 Luthi and Sanctuary are two halves of the same architecture. Luthi provides the neural
