@@ -161,14 +161,17 @@ PASS verdict survives the audit's primary concern.
 The `m5_runner.py` is now instrumented per-epoch (audit fix #2) so the
 upcoming 256d run reports NFF natively without a post-hoc step.
 
-### Outstanding gates (the M5 verdict is qualified by these)
+### Outstanding gates (the 128d verdict was qualified by these)
 
-1. **256d re-run.** Spec'd by V2 plan §M5; not yet done. Pending.
+1. **256d re-run.** Spec'd by V2 plan §M5. **CLOSED 2026-05-13** — see
+   `docs/M5_RERUN_256D_RESULTS.md`. At 256d the result *flips*: v2
+   beats DeadLM by 0.64% mean best val, on every seed. The 128d
+   "v2 is 1.88% worse" framing was width-specific.
 2. **Depth sweep at 4/8/12 blocks.** The 2-block test exercises 1
    inter-block prediction connection; production target (36 blocks)
-   has 35. Hierarchical PC dynamics at depth are untested.
+   has 35. Hierarchical PC dynamics at depth are untested. **Open.**
 3. **Statistical significance.** n=3 is not enough for confidence
-   intervals on the gap claim. Phase 5 should use 5+ seeds.
+   intervals on the gap claim. Phase 5 should use 5+ seeds. **Open.**
 
 ### What this enables
 
