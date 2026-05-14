@@ -209,6 +209,183 @@ def test_update_ema_ratio_check_meaningfulness():
     )
 
 
+# iPC interleaved inference + update (lit-followup 2026-05-13) -------------
+
+def test_ipc_default_T1_matches_classical():
+    """inference_steps_per_forward=1 (default) must reproduce the
+    classical PC trajectory bit-identically. Regression test.
+    """
+    torch.manual_seed(0)
+    layer_a = PredictiveCodingLayer(
+        in_features=16, out_features=8, num_episodes=4,
+        inference_steps_per_forward=1,
+    )
+    torch.manual_seed(0)
+    layer_b = PredictiveCodingLayer(
+        in_features=16, out_features=8, num_episodes=4,
+    )
+    x = torch.randn(4, 16)
+    for _ in range(10):
+        layer_a(x)
+        layer_b(x)
+    assert torch.allclose(layer_a.weight, layer_b.weight, atol=1e-7), (
+        "inference_steps_per_forward=1 should be bit-identical to "
+        "the no-iPC default code path."
+    )
+
+
+def test_ipc_T_gt_1_converges_faster():
+    """iPC with T>1 should drive prediction error down faster than T=1
+    over the same number of *external* forward calls on a fixed-pattern
+    task. Validates the Salvatori et al. claim that interleaved
+    inference+update converges faster than the classical schedule.
+    """
+    def _make_layer(T: int) -> PredictiveCodingLayer:
+        torch.manual_seed(0)
+        return PredictiveCodingLayer(
+            in_features=8, out_features=4, num_episodes=4,
+            inference_steps_per_forward=T,
+            pred_learning_rate=0.01,  # M1's mechanism-test rate
+        )
+
+    x_fixed = torch.randn(16, 8) * 0.5
+
+    def _measure_err(layer):
+        with torch.no_grad():
+            output = x_fixed @ layer.weight.T
+            output_mean = output.mean(dim=0)
+            actual = x_fixed.mean(dim=0)
+            predicted = output_mean @ layer.prediction
+            return (actual - predicted).abs().mean().item()
+
+    layer_t1 = _make_layer(T=1)
+    layer_t5 = _make_layer(T=5)
+
+    initial_t1 = _measure_err(layer_t1)
+    initial_t5 = _measure_err(layer_t5)
+    assert abs(initial_t1 - initial_t5) < 1e-6, (
+        "Initial state should be identical given same seed"
+    )
+
+    # Run same number of EXTERNAL forwards on each.
+    N = 100
+    for _ in range(N):
+        layer_t1(x_fixed)
+        layer_t5(x_fixed)
+
+    final_t1 = _measure_err(layer_t1)
+    final_t5 = _measure_err(layer_t5)
+
+    # iPC should converge prediction error LOWER than classical PC at
+    # matched external forward count (it gets T inner steps per external,
+    # so more "compute" — but the iPC paper argues this is also better
+    # than spending the same compute on more external forwards).
+    assert final_t5 < final_t1, (
+        f"iPC T=5 should converge below T=1 at matched external forwards; "
+        f"T=1 final {final_t1:.4f}, T=5 final {final_t5:.4f}"
+    )
+
+
+def test_ipc_grad_checkpoint_fails_loud():
+    """iPC + gradient checkpointing is incompatible; the forward must
+    raise rather than silently produce wrong gradients on the recompute.
+    """
+    from luthi.grad_checkpoint import is_recomputing
+    torch.manual_seed(0)
+    layer = PredictiveCodingLayer(
+        in_features=8, out_features=4, num_episodes=4,
+        inference_steps_per_forward=3,
+    )
+    x = torch.randn(2, 8)
+
+    # Simulate the gradient-checkpoint recompute by setting the thread-local.
+    # Patch the is_recomputing helper for the scope of one forward.
+    import luthi.grad_checkpoint as gc_mod
+    original_is_recomputing = gc_mod.is_recomputing
+    gc_mod.is_recomputing = lambda: True
+    try:
+        with pytest.raises(RuntimeError, match="iPC.*incompatible.*gradient"):
+            layer(x)
+    finally:
+        gc_mod.is_recomputing = original_is_recomputing
+
+
+# Sparse PC gating (lit-followup 2026-05-13) --------------------------------
+
+def test_sparse_gate_disabled_matches_unsparse_default():
+    """sparse_threshold=0 (default) must produce bit-identical training
+    trajectories to the un-instrumented code path. Regression test for
+    the no-silent-behavior-change rule.
+    """
+    torch.manual_seed(0)
+    layer_a = PredictiveCodingLayer(
+        in_features=16, out_features=8, num_episodes=4,
+        sparse_threshold=0.0,
+    )
+    torch.manual_seed(0)
+    layer_b = PredictiveCodingLayer(
+        in_features=16, out_features=8, num_episodes=4,
+        # Same as layer_a but explicitly no sparse_threshold kwarg
+    )
+    x = torch.randn(4, 16)
+    for _ in range(20):
+        layer_a(x)
+        layer_b(x)
+    assert torch.allclose(layer_a.weight, layer_b.weight, atol=1e-7), (
+        "sparse_threshold=0 should be bit-identical to the no-sparse code path"
+    )
+
+
+def test_sparse_gate_freezes_low_error_rows_after_warmup():
+    """After warmup, output rows with error_acc below the threshold should
+    not see weight updates. Verify by manipulating error_acc directly:
+    set half the rows above threshold, half below, then run for a few
+    forward passes and confirm the below-threshold rows don't drift.
+    """
+    torch.manual_seed(0)
+    layer = PredictiveCodingLayer(
+        in_features=16, out_features=8, num_episodes=4,
+        sparse_threshold=0.5,
+        sparse_warmup_steps=2,  # short warmup for the test
+    )
+    x = torch.randn(4, 16) * 1.5
+    # Burn through warmup
+    for _ in range(3):
+        layer(x)
+    # Hand-set error_acc: first 4 outputs above threshold, last 4 below.
+    with torch.no_grad():
+        layer.error_acc[:4] = 1.0
+        layer.error_acc[4:] = 0.0  # below 0.5 threshold
+
+    weight_before = layer.weight.clone()
+    # Run several steps. The high-error-acc rows should update; the
+    # low-error-acc rows should not. error_acc itself updates each step
+    # so we re-pin after each forward to keep the gate stable.
+    for _ in range(10):
+        layer(x)
+        with torch.no_grad():
+            layer.error_acc[:4] = 1.0
+            layer.error_acc[4:] = 0.0
+    weight_after = layer.weight
+
+    drift_active = (weight_after[:4] - weight_before[:4]).abs().mean().item()
+    drift_frozen = (weight_after[4:] - weight_before[4:]).abs().mean().item()
+
+    assert drift_active > 1e-5, (
+        f"High-error-acc rows did not update under sparse gating "
+        f"(drift {drift_active:.6e}). Gating may have over-fired."
+    )
+    # Frozen rows can drift slightly from homeostatic regulation
+    # (the homeostatic_force += (set_point - weight) step runs for all
+    # rows regardless of the sparse gate). That's by design — gating
+    # affects only delta_w / momentum / update_ema, not homeostatic.
+    # So the assertion is "much less drift," not "zero drift."
+    assert drift_frozen < 0.1 * drift_active, (
+        f"Low-error-acc rows should drift much less than active rows. "
+        f"Got active={drift_active:.6e} vs frozen={drift_frozen:.6e}."
+    )
+
+
 # 8. Prediction matrix bounded growth (refinement 6) ------------------------
 
 def test_prediction_matrix_bounded_growth(small_layer):

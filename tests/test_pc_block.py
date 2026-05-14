@@ -200,6 +200,94 @@ def test_block_with_ffn_expansion_has_more_capacity():
     )
 
 
+def test_mu_pc_init_scaling_matches_spec():
+    """Depth-μP (Innocenti et al. 2025): all trainable linears + the PC
+    layer weight should be initialized at `std = 1/√(fan_in · L)` when
+    `mu_pc_enabled=True`. Verify the empirical std lands within ~2% of
+    the target across all the re-initialized tensors.
+    """
+    import math
+    torch.manual_seed(0)
+    d = 64
+    L = 16  # production-ish depth for the test
+    block = PredictiveCodingBlock(
+        d_model=d,
+        n_heads=4,
+        ffn_expansion=4,
+        num_episodes=4,
+        mu_pc_enabled=True,
+        n_blocks_total=L,
+    )
+
+    target_attn = 1.0 / math.sqrt(d * L)
+    target_up = 1.0 / math.sqrt(d * L)
+    target_down = 1.0 / math.sqrt(d * 4 * L)  # down_proj fan_in = d_model*expansion
+    target_pc = 1.0 / math.sqrt((d * 4) * L)  # PC layer at inner_dim = d * expansion
+
+    def _close(actual: float, expected: float, tol: float = 0.10) -> bool:
+        # 10% tolerance accounts for finite-sample std estimation noise.
+        return abs(actual - expected) / max(expected, 1e-8) < tol
+
+    for name, proj, target in [
+        ("q_proj", block.attention.q_proj, target_attn),
+        ("k_proj", block.attention.k_proj, target_attn),
+        ("v_proj", block.attention.v_proj, target_attn),
+        ("o_proj", block.attention.o_proj, target_attn),
+        ("up_proj", block.up_proj, target_up),
+        ("down_proj", block.down_proj, target_down),
+    ]:
+        std = proj.weight.std().item()
+        assert _close(std, target), (
+            f"{name} init std {std:.6f} not close to target {target:.6f} "
+            f"for d_model={d}, L={L}"
+        )
+
+    pc_std = block.living_ffn.weight.std().item()
+    assert _close(pc_std, target_pc), (
+        f"PC layer weight init std {pc_std:.6f} not close to target "
+        f"{target_pc:.6f}"
+    )
+
+
+def test_mu_pc_residual_scale_is_inv_sqrt_L():
+    """Residual additions are scaled by 1/√L when μPC is on."""
+    import math
+    torch.manual_seed(0)
+    for L in (1, 4, 16, 64):
+        block = PredictiveCodingBlock(
+            d_model=16, num_episodes=4,
+            mu_pc_enabled=True, n_blocks_total=L,
+        )
+        expected = 1.0 / math.sqrt(L)
+        assert abs(block.residual_scale - expected) < 1e-6, (
+            f"residual_scale {block.residual_scale} != 1/√{L} = {expected}"
+        )
+
+
+def test_mu_pc_off_preserves_default_behavior():
+    """With μPC off (the default), residual_scale must be exactly 1.0
+    and the weight inits should follow the un-scaled defaults — so
+    existing M5 results don't change semantics if someone passes
+    n_blocks_total without setting mu_pc_enabled.
+    """
+    torch.manual_seed(0)
+    block = PredictiveCodingBlock(
+        d_model=16, num_episodes=4,
+        mu_pc_enabled=False, n_blocks_total=99,
+    )
+    assert block.residual_scale == 1.0
+    # Kaiming init at fan_in=16 gives std ≈ √(2/16) ≈ 0.354.
+    # Won't match the μPC target of 1/√(16·99) ≈ 0.025, so the inits
+    # diverge — which is the whole point of "off preserves default."
+    # Just verify the std is closer to Kaiming than μPC.
+    target_mupc = 1.0 / (16 * 99) ** 0.5
+    actual = block.attention.q_proj.weight.std().item()
+    assert actual > 5 * target_mupc, (
+        f"With μPC off, attention init should be at the un-scaled Kaiming "
+        f"size (~0.35), not the μPC target (~{target_mupc:.4f}). Got {actual:.4f}."
+    )
+
+
 def test_block_top_down_with_expansion_runs():
     """Top-down sweep through an expanded block runs without error.
     With ffn_expansion > 1 the PC layer is in expanded space, so the

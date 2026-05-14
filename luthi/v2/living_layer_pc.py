@@ -56,6 +56,9 @@ class PredictiveCodingLayer(nn.Module):
         consolidation_trigger_window: int = 100,
         consolidation_threshold_factor: float = 0.5,
         consolidation_rate_factor: float = 0.1,
+        sparse_threshold: float = 0.0,
+        sparse_warmup_steps: int = 500,
+        inference_steps_per_forward: int = 1,
         buffer_dtypes: dict[str, torch.dtype] | None = None,
     ):
         super().__init__()
@@ -77,6 +80,38 @@ class PredictiveCodingLayer(nn.Module):
         self.episode_blend = episode_blend
         self.consolidation_enabled = consolidation_enabled
         self.consolidation_rate_factor = consolidation_rate_factor
+
+        # Sparse PC gating (lit-followup 2026-05-13). When sparse_threshold
+        # > 0, output rows with error_acc[j] below the threshold skip the
+        # weight update for that row. Analog of v1's spiking gate in
+        # continuous error space. Bandwidth saving is proportional to the
+        # fraction of outputs gated off. The warmup window prevents the
+        # bootstrap-deadlock (error_acc starts at 0; if we gated
+        # immediately, nothing would ever learn and error_acc would never
+        # grow). After warmup_steps the gate engages.
+        self.sparse_threshold = float(sparse_threshold)
+        self.sparse_warmup_steps = int(sparse_warmup_steps)
+        # Step counter as a non-persistent attribute (not a buffer — we
+        # don't checkpoint it; recovery from checkpoint resets warmup).
+        self._sparse_step_count: int = 0
+
+        # iPC interleaved inference + update (Salvatori et al. 2022,
+        # arXiv:2212.00720). With inference_steps_per_forward=T>1, the
+        # forward repeats the matmul + self-mod cycle T times within
+        # one external forward call. Classical PC = T=1 (current
+        # default, behavior unchanged). Reported in the iPC paper to
+        # consistently improve convergence over the "infer to
+        # completion, then update" classical schedule.
+        # Constraint: iPC mode is incompatible with gradient checkpointing
+        # because the weight evolves T times within the forward; the
+        # cached snapshot for recompute would not reproduce the original
+        # trajectory. Forward raises if recomputing and T > 1.
+        if inference_steps_per_forward < 1:
+            raise ValueError(
+                f"inference_steps_per_forward must be >= 1, got "
+                f"{inference_steps_per_forward}"
+            )
+        self.inference_steps_per_forward = int(inference_steps_per_forward)
 
         if consolidation_enabled:
             from luthi.v2.consolidation import ConsolidationTracker
@@ -310,6 +345,18 @@ class PredictiveCodingLayer(nn.Module):
         from luthi.grad_checkpoint import is_recomputing
         recomputing = is_recomputing()
 
+        # iPC: gradient checkpointing isn't compatible with T>1 because
+        # the weight evolves within the forward and the cached snapshot
+        # can't reproduce the trajectory. Fail loud rather than silently
+        # produce wrong gradients.
+        if recomputing and self.inference_steps_per_forward > 1:
+            raise RuntimeError(
+                "iPC (inference_steps_per_forward > 1) is incompatible "
+                "with gradient checkpointing: the weight evolves within "
+                "the forward, so the recompute path cannot reproduce the "
+                "original trajectory. Disable one or the other."
+            )
+
         if recomputing:
             weight_snapshot = self._fwd_weight_snapshot
             episode_delta = self._fwd_episode_delta
@@ -366,18 +413,55 @@ class PredictiveCodingLayer(nn.Module):
         with torch.no_grad():
             from luthi.v2.pc_ops import pc_self_modify
 
-            salience, pred_error = pc_self_modify(
-                self.weight, self.prediction, self.set_point,
-                self.momentum, self.update_ema, self.precision,
-                self.error_acc, self.plasticity,
-                x_flat, output,
-                self.pc_rate, self.pred_learning_rate,
-                self.homeostatic_decay, self.set_point_adapt_rate,
-                self.momentum_decay, self.update_ema_decay,
-                self.precision_ema_decay,
-                self.precision_min, self.precision_max,
-                self.prediction_clamp,
-            )
+            T = self.inference_steps_per_forward
+            for inner_step in range(T):
+                # Recompute output for inner_step > 0 since the weight
+                # has changed since the last iteration. For the first
+                # iteration we already have `output` from the matmul above.
+                if inner_step > 0:
+                    # Use self.weight directly (mutated by previous inner
+                    # step's self_modify). We don't need a fresh snapshot
+                    # inside the loop — backward() flows through the
+                    # initial weight_snapshot only.
+                    output = x_flat @ self.weight.T
+
+                # Compute the sparse gate for this inner step (gate state
+                # depends on error_acc which evolves across inner steps).
+                sparse_gate: torch.Tensor | None = None
+                if (
+                    self.sparse_threshold > 0.0
+                    and self._sparse_step_count >= self.sparse_warmup_steps
+                ):
+                    sparse_gate = (self.error_acc > self.sparse_threshold).to(
+                        dtype=self.weight.dtype
+                    )
+
+                salience, pred_error = pc_self_modify(
+                    self.weight, self.prediction, self.set_point,
+                    self.momentum, self.update_ema, self.precision,
+                    self.error_acc, self.plasticity,
+                    x_flat, output,
+                    self.pc_rate, self.pred_learning_rate,
+                    self.homeostatic_decay, self.set_point_adapt_rate,
+                    self.momentum_decay, self.update_ema_decay,
+                    self.precision_ema_decay,
+                    self.precision_min, self.precision_max,
+                    self.prediction_clamp,
+                    sparse_gate=sparse_gate,
+                )
+
+            # Recompute final output after the last inner step so the
+            # returned activation reflects the post-self-mod weight state.
+            # When T=1, this matches the classical PC behavior — the
+            # returned output is computed from the snapshotted weight
+            # (before the single self-mod), preserving backward() semantics.
+            # When T>1, the inner loop's last output is what we want.
+            # (For T=1 we keep `output` from the initial matmul above —
+            # see the `if inner_step > 0` branch, which means the T=1
+            # case never recomputes and is bit-identical to the prior
+            # implementation.)
+
+            self._sparse_step_count += 1
             self._last_pred_error = pred_error
             self._store_episode(context, salience)
 

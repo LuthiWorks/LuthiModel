@@ -49,6 +49,7 @@ class PredictiveCodingLM(nn.Module):
         episode_blend: float = 0.3,
         compressed_episodes: bool = False,
         consolidation_enabled: bool = False,
+        mu_pc_enabled: bool = False,
         backward_pass_enabled: bool = True,
         buffer_dtypes: dict[str, torch.dtype] | None = None,
     ):
@@ -74,6 +75,8 @@ class PredictiveCodingLM(nn.Module):
                 episode_blend=episode_blend,
                 compressed_episodes=compressed_episodes,
                 consolidation_enabled=consolidation_enabled,
+                mu_pc_enabled=mu_pc_enabled,
+                n_blocks_total=n_blocks,
                 buffer_dtypes=buffer_dtypes,
             )
             for _ in range(n_blocks)

@@ -50,6 +50,8 @@ class PredictiveCodingBlock(nn.Module):
         episode_blend: float = 0.3,
         compressed_episodes: bool = False,
         consolidation_enabled: bool = False,
+        mu_pc_enabled: bool = False,
+        n_blocks_total: int = 1,
         buffer_dtypes: dict[str, torch.dtype] | None = None,
     ):
         super().__init__()
@@ -57,6 +59,15 @@ class PredictiveCodingBlock(nn.Module):
         self.n_heads = n_heads
         self.ffn_expansion = ffn_expansion
         self.ffn_inner_dim = d_model * ffn_expansion
+        self.mu_pc_enabled = mu_pc_enabled
+        # Depth-μP residual scaling. With L=1 (default) the factor is 1.0,
+        # so the math is identical to non-μPC behavior. With L=N the
+        # residual contribution per block scales by 1/√N, keeping
+        # preactivations bounded across depth.
+        self.residual_scale = (
+            1.0 / (n_blocks_total ** 0.5) if mu_pc_enabled else 1.0
+        )
+        self._n_blocks_total = n_blocks_total
 
         self.norm1 = nn.LayerNorm(d_model)
         self.norm2 = nn.LayerNorm(d_model)
@@ -96,6 +107,15 @@ class PredictiveCodingBlock(nn.Module):
             consolidation_enabled=consolidation_enabled,
             buffer_dtypes=buffer_dtypes,
         )
+
+        # Apply Depth-μP re-init AFTER all sub-modules constructed. We
+        # don't modify ScalarAttention or PredictiveCodingLayer internals —
+        # just overwrite their weight tensors with Gaussian samples at
+        # `std = 1/√(fan_in · L)`. This is the simplest implementation of
+        # the parameterization (Innocenti et al. 2025) and decouples μPC
+        # from the sub-modules' default init logic.
+        if mu_pc_enabled:
+            self._apply_mu_pc_init(n_blocks_total)
         self.episode_store = EpisodeStore(
             d_model,
             num_episodes=num_episodes,
@@ -105,6 +125,38 @@ class PredictiveCodingBlock(nn.Module):
         # Cached state for the top-down sweep — the block's input is needed
         # to compute local salience in compute_block_top_down.
         self._block_input: torch.Tensor | None = None
+
+    def _apply_mu_pc_init(self, L: int) -> None:
+        """Re-initialize all trainable linears and the PC weight buffer
+        with `Normal(0, 1/√(fan_in · L))` per Innocenti et al. 2025.
+        """
+        import math
+
+        def _mupc_normal_(weight: torch.Tensor, fan_in: int) -> None:
+            std = 1.0 / math.sqrt(fan_in * L)
+            with torch.no_grad():
+                weight.normal_(mean=0.0, std=std)
+
+        # Attention projections: q/k/v/o are all d_model -> d_model.
+        for proj in (
+            self.attention.q_proj,
+            self.attention.k_proj,
+            self.attention.v_proj,
+            self.attention.o_proj,
+        ):
+            _mupc_normal_(proj.weight, proj.in_features)
+
+        # FFN expansion projections (only present when ffn_expansion > 1).
+        if isinstance(self.up_proj, nn.Linear):
+            _mupc_normal_(self.up_proj.weight, self.up_proj.in_features)
+        if isinstance(self.down_proj, nn.Linear):
+            _mupc_normal_(self.down_proj.weight, self.down_proj.in_features)
+
+        # PC layer's weight buffer. set_point tracks weight, so re-init it
+        # too so the homeostatic target matches the new init.
+        _mupc_normal_(self.living_ffn.weight, self.living_ffn.in_features)
+        with torch.no_grad():
+            self.living_ffn.set_point.copy_(self.living_ffn.weight)
 
     def forward(
         self,
@@ -128,7 +180,10 @@ class PredictiveCodingBlock(nn.Module):
                 self.norm1(x), causal=causal, kv_cache=kv_cache,
             )
             new_kv = None
-        x = x + attn_out
+        # Depth-μP: residual contribution per block scaled by 1/√L. With
+        # default L=1 the factor is 1.0 and behavior matches the un-scaled
+        # block exactly.
+        x = x + self.residual_scale * attn_out
 
         ffn_in = self.norm2(x)
         # FFN body: up-project, nonlinearity, PC living layer in expanded
@@ -145,7 +200,7 @@ class PredictiveCodingBlock(nn.Module):
             up = F.gelu(up)
             up = self.living_ffn(up)
             ffn_out = self.down_proj(up)
-        x = x + ffn_out
+        x = x + self.residual_scale * ffn_out
 
         x = self.episode_store(block_input, x)
 
