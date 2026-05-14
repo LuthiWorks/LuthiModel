@@ -31,8 +31,8 @@ These are settled findings from the proof-of-concept phase. Do not re-derive or 
 
 1. **Living FFN is the body, not the brain.** It provides temporal existence. Attention layers handle task learning via backprop.
 2. **The convergence penalty is a speed issue, not a ceiling.** Self-modifying weights converge slower than dead weights — ~39% gap at mid-convergence, but narrowing to ~0.155 after 372 epochs (1024d). This is the metabolic cost of being alive. Do not try to optimize it away, but do not assume it is permanent.
-3. **The penalty is a step function.** ANY Hebbian self-modification costs the penalty. More self-modification costs negligibly more. Use the highest stable rate.
-4. **Hebbian rate 0.001, error-directed rate 0.001.** These are the tested values. Change only with evidence.
+3. **The penalty is a step function.** ANY self-modification costs the penalty. More self-modification costs negligibly more. Use the highest stable rate.
+4. **PC rate 0.001, prediction learning rate 0.0001.** These are the tested v2 values. Change only with evidence.
 5. **Episode store carries most recall weight.** In-weight memory is weak. The episode store compensates. Both are needed.
 6. **Divergence is dimension-independent.** Scale without fear of compounding instability.
 7. **Prefer crashes over silent corruption.** No try/except around living weight operations. If NaN appears, it must be visible immediately.
@@ -66,7 +66,7 @@ See `To-Do.md` for the task checklist with completion status.
 - Async is NOT needed here (unlike Sanctuary) — this is a model library, not a runtime
 - Use PyTorch idioms: `nn.Module`, `forward()`, proper parameter registration
 - Living weight state (momentum, excitability, set points, etc.) should be registered as buffers, not parameters — they are not trained by the optimizer
-- The Hebbian and error-directed updates happen inside `forward()` — this is what makes it "living"
+- The PC self-modification updates happen inside `forward()` — this is what makes it "living"
 - No gradient flow through living layers — use `torch.no_grad()` for self-modification operations
 - Episode store operations should be detached from the autograd graph
 

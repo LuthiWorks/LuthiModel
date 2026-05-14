@@ -2,7 +2,7 @@
 
 The v2 building block. Same residual structure as v1's HybridBlock; the
 FFN is a `PredictiveCodingLayer` (PC dynamics) instead of a `LivingLayerV6`
-(Hebbian dynamics). Attention and the block-level episode store are
+(v1's Hebbian dynamics). Attention and the block-level episode store are
 unchanged — Decision 9 reuses them as-is.
 
 The top-down sweep is two-channel per Decision 3:

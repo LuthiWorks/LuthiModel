@@ -4,9 +4,9 @@ torch.utils.checkpoint.checkpoint runs the wrapped function twice: once
 during the original forward (under torch.no_grad()) and once during
 backward to recompute activations (under torch.enable_grad()). For a
 plain compute layer that's fine. Living layers self-modify on every
-forward call, so without recompute detection the Hebbian update would
-fire twice per step and gradients would drift because the second pass
-sees the post-Hebbian weight.
+forward call, so without recompute detection the self-modification update
+would fire twice per step and gradients would drift because the second
+pass sees the post-modification weight.
 
 This module exposes `is_recomputing()`, a thread-local flag toggled by
 `luthi_context_fn()`. Pass `context_fn=luthi_context_fn` to
@@ -14,7 +14,7 @@ This module exposes `is_recomputing()`, a thread-local flag toggled by
 the flag will be True only during the recompute phase. Living layers
 check the flag and:
 
-  - Skip Hebbian / homeostatic / episode-store updates on recompute.
+  - Skip self-modification / homeostatic / episode-store updates on recompute.
   - Reuse the weight snapshot from the original forward so the recomputed
     activations are bit-identical to the originals.
 

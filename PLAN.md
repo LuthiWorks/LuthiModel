@@ -23,12 +23,12 @@ text → embedding → [HybridBlock x N] → layer_norm → vocab_projection →
 
 Each HybridBlock:
 - Scalar attention (trainable via backprop)
-- Living FFN (self-modifying via Hebbian + error-directed learning)
+- Living FFN (self-modifying via predictive-coding local updates)
 - Episode store (context-gated episodic memory)
 
 Three learning systems run simultaneously:
 1. Attention — standard gradient descent (learns the task)
-2. Living FFN — Hebbian self-modification (creates temporal existence)
+2. Living FFN — predictive-coding self-modification (creates temporal existence)
 3. Top-down modulation — backward sweep (predictive processing)
 
 ### Target (Multimodal)
@@ -417,7 +417,7 @@ convergence follows a substrate-to-core trajectory.
 - External modulation API on LivingLayerV6 — accept signals that modulate:
   - Plasticity scaling (from Sanctuary's precision cell)
   - Excitability bias (from Sanctuary's affect cell)
-  - Per-dimension Hebbian salience (from Sanctuary's attention cell)
+  - Per-dimension salience (from Sanctuary's attention cell)
   - Homeostatic target adjustment (from Sanctuary's goal cell)
 - Tensor-level model interface in Sanctuary alongside structured LLM interface
 - Sensorium routing through Luthi's vision/audio encoders

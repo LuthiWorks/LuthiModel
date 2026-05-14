@@ -6,10 +6,10 @@ Supports text-only, multimodal (audio+text), and vision (image+text) models.
 The pipeline supports two inference modes:
   - **Static inference**: Model weights are frozen. Standard autoregressive
     generation — useful for benchmarking and deterministic output.
-  - **Living inference**: Hebbian self-modification remains active during
-    generation. The model's weights change from the experience of producing
-    each token. This is the mode that matters for Sanctuary integration —
-    the model learns from its own cognition.
+  - **Living inference**: Predictive-coding self-modification (v2) remains
+    active during generation. The model's weights change from the experience
+    of producing each token. This is the mode that matters for Sanctuary
+    integration — the model learns from its own cognition.
 
 Usage:
     # Interactive mode — talk to the model
@@ -81,7 +81,7 @@ def load_model_from_checkpoint(
         d_model=config["d_model"],
         n_blocks=config["n_blocks"],
         max_seq_len=config.get("seq_len", 128),
-        hebb_rate=config.get("hebb_rate", 0.001),
+        hebb_rate=config.get("hebb_rate", 0.001),  # v1 model config
         error_rate=config.get("error_rate", 0.001),
         homeostatic_decay=config.get("homeostatic_decay", 0.001),
         set_point_adapt_rate=config.get("set_point_adapt_rate", 1e-6),
@@ -230,8 +230,9 @@ def generate_text(
             vision tokens. Same first-step semantics as ``audio_tokens``.
             If both ``image`` and ``vision_tokens`` are provided,
             ``vision_tokens`` takes precedence (no need to re-encode).
-        living: If True, keep Hebbian self-modification active during
-            generation. The model learns from the experience of producing
+        living: If True, keep living self-modification active during
+            generation (predictive-coding updates for v2 models, Hebbian
+            for v1). The model learns from the experience of producing
             each token.
         stream: If True, print tokens as they're generated.
 
@@ -254,8 +255,9 @@ def generate_text(
     try:
         if living:
             model.train()
-            # Keep backward pass off — we want Hebbian updates only,
-            # not top-down sweep (which needs loss gradients).
+            # Keep backward pass off — we want living self-modification
+            # only (PC for v2, Hebbian for v1), not top-down sweep
+            # (which needs loss gradients).
             if hasattr(model, "backward_pass_enabled"):
                 model.backward_pass_enabled = False
         else:
@@ -336,7 +338,7 @@ def generate_text(
                     x = torch.tensor([context], dtype=torch.long, device=device)
                     logits = model(x)
 
-                # Living inference: Hebbian updates fire during forward pass
+                # Living inference: self-modification updates fire during forward pass
                 # in train mode. Note (audit 2026-05-11): we used to also
                 # call model.apply_living_errors() here, but that's
                 # error-directed learning which requires a loss.backward()
@@ -551,7 +553,7 @@ def interactive_session(
     mode_label = "LIVING" if living else "STATIC"
     print(f"\n  Mode: {mode_label} inference")
     if living:
-        print("  (Hebbian self-modification active — weights evolve during generation)")
+        print("  (Living self-modification active — weights evolve during generation)")
     if introspect:
         print("  (Introspection active — internal state shown after each response)")
     print(f"  Temperature: {temperature} | Top-K: {top_k or 'off'} | Top-P: {top_p or 'off'}")
@@ -596,7 +598,7 @@ def interactive_session(
                 print(f"  Max tokens set to {max_tokens}")
             elif cmd == "/living":
                 living = True
-                print("  Switched to LIVING inference (Hebbian updates active)")
+                print("  Switched to LIVING inference (living updates active)")
             elif cmd == "/static":
                 living = False
                 print("  Switched to STATIC inference (weights frozen)")
@@ -722,7 +724,7 @@ Examples:
     parser.add_argument("--repetition_penalty", type=float, default=1.2,
                         help="Repetition penalty (1.0 = none, default: 1.2)")
     parser.add_argument("--living", action="store_true", default=False,
-                        help="Enable living inference (Hebbian updates active)")
+                        help="Enable living inference (living updates active)")
     parser.add_argument("--introspect", action="store_true", default=False,
                         help="Show internal state during generation")
 

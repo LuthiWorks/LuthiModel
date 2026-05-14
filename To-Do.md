@@ -2,7 +2,7 @@
 
 ## Phase 1-2: Foundation (COMPLETE)
 
-- [x] LivingLayerV6: Hebbian self-modification, error-directed learning, episodic memory
+- [x] LivingLayerV6: Hebbian self-modification (v1), error-directed learning, episodic memory
 - [x] HybridBlock: attention + living FFN + episode store
 - [x] LuthiLM: character-level language model with living weights
 - [x] DeadLM: baseline model for convergence penalty measurement
@@ -230,7 +230,7 @@ Production architecture: 4B params, BF16 weights, mixed-precision living state,
   - [x] Multiple curriculum cycles supported (default 3)
   - [x] Resume from mid-cycle stage checkpoint
 - [x] Implement gradient checkpointing — `luthi/grad_checkpoint.py` (completed 2026-04-29)
-  - [x] Thread-local recompute flag prevents double Hebbian firing
+  - [x] Thread-local recompute flag prevents double self-modification firing
   - [x] Weight snapshot replay for bit-identical recomputation
 - [ ] Scale model config to 4B params (exact d_model/n_blocks TBD by Phase 3F results)
 - [ ] Custom Triton kernels for sparse spiking (Phase 3F.5)
@@ -275,7 +275,7 @@ experiential substrate and grows into the cognitive core on the DGX Spark.
 ### 5A: Integration Hooks — COMPLETE (Track 1, 2026-04-27)
 
 - [x] External modulation API on LivingLayerV6 — accept signals that modulate:
-  - [x] Plasticity scaling (arousal → hebb_rate, 0.5x-2.0x multiplicative)
+  - [x] Plasticity scaling (arousal → pc_rate, 0.5x-2.0x multiplicative)
   - [x] Excitability bias (valence → excitability_acc, additive ±0.1 through sigmoid)
   - [x] Salience threshold (attention → salience_threshold, 0.5x-1.0x multiplicative)
   - [ ] Homeostatic target adjustment (goal → set_point_adapt_rate) — deferred, lower priority

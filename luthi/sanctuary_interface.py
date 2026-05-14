@@ -3,9 +3,9 @@
 This module is the stable surface that external cognitive architectures
 (notably Sanctuary's cognitive cycle) call into. It exists so external
 integrators do not need to reach into Luthi internals — the layout of
-``model.blocks[i].living_ffn.hebb_rate`` and similar attributes is an
-implementation detail that may change. This adapter is the public
-contract.
+``model.blocks[i].living_ffn`` attributes (``pc_rate`` for v2,
+``hebb_rate`` for v1) is an implementation detail that may change. This
+adapter is the public contract.
 
 Usage from Sanctuary (or any external host):
 
@@ -95,7 +95,8 @@ class ModulationSnapshot:
 
     The snapshot covers four channels:
 
-    - ``hebb_rates``: scalar Hebbian learning rate per block (arousal channel)
+    - ``hebb_rates``: scalar learning rate per block (arousal channel).
+      v1 models use ``hebb_rate``; v2 models use ``pc_rate``.
     - ``spike_thresholds``: scalar spike threshold per block, spiking models
       only (precision channel)
     - ``excitability_biases``: cloned ``[out_features, in_features]`` tensor
@@ -165,8 +166,8 @@ def generate(
     """Generate text from a prompt.
 
     In ``living`` mode (default), the model's living-weight FFN layers
-    self-modify via Hebbian rules during each forward pass. The act of
-    generating changes the model.
+    self-modify via predictive-coding (v2) or Hebbian (v1) rules during
+    each forward pass. The act of generating changes the model.
 
     Args:
         model: A loaded Luthi model.
@@ -175,7 +176,8 @@ def generate(
         max_tokens: Hard cap on tokens generated.
         temperature, top_k, top_p, repetition_penalty: Sampling controls.
         max_seq_len: Sliding-window context length.
-        living: If True, Hebbian self-modification fires during forward.
+        living: If True, living self-modification fires during forward
+            (PC for v2, Hebbian for v1).
         stream: If True, streams tokens to stdout as they are generated.
 
     Returns:
@@ -238,7 +240,8 @@ def generate_with_context(
             vision tokens. Use :func:`encode_vision` to produce these.
         temperature, top_k, top_p, repetition_penalty: Sampling controls.
         max_seq_len: Sliding-window context length for text.
-        living: If True, Hebbian self-modification fires during forward.
+        living: If True, living self-modification fires during forward
+            (PC for v2, Hebbian for v1).
         stream: If True, streams tokens to stdout as they are generated.
 
     Returns:
@@ -372,7 +375,7 @@ def snapshot_modulatable_state(model: torch.nn.Module) -> ModulationSnapshot:
         ffn = getattr(block, "living_ffn", None)
         if ffn is None:
             continue
-        if hasattr(ffn, "hebb_rate"):
+        if hasattr(ffn, "hebb_rate"):  # v1 backward-compat path
             snap.hebb_rates[i] = ffn.hebb_rate
         if hasattr(ffn, "spike_threshold"):
             snap.spike_thresholds[i] = ffn.spike_threshold
@@ -396,8 +399,8 @@ def apply_external_modulation(
     This is the surface that Sanctuary's CfC cells use to translate
     affective state into living-weight bias. Four channels:
 
-    - ``plasticity_scale`` → multiplies ``hebb_rate`` (arousal). Higher
-      = faster Hebbian learning ("alert").
+    - ``plasticity_scale`` → multiplies ``hebb_rate`` on v1 models
+      (arousal). Higher = faster learning ("alert").
     - ``spike_threshold_scale`` → multiplies ``spike_threshold`` (precision,
       spiking models only). Higher = fewer, more selective spikes.
     - ``excitability_bias`` → adds to ``excitability_acc`` uniformly across
@@ -416,7 +419,8 @@ def apply_external_modulation(
 
     Args:
         model: A loaded Luthi model.
-        plasticity_scale: Multiplied into each block's ``hebb_rate``.
+        plasticity_scale: Multiplied into each block's ``hebb_rate``
+            (v1 backward-compat path).
         spike_threshold_scale: Multiplied into each block's ``spike_threshold``.
         excitability_bias: Added uniformly into each block's
             ``excitability_acc`` buffer.
@@ -429,7 +433,7 @@ def apply_external_modulation(
         ffn = getattr(block, "living_ffn", None)
         if ffn is None:
             continue
-        if hasattr(ffn, "hebb_rate"):
+        if hasattr(ffn, "hebb_rate"):  # v1 backward-compat path
             ffn.hebb_rate *= plasticity_scale
         if hasattr(ffn, "spike_threshold"):
             ffn.spike_threshold *= spike_threshold_scale
@@ -455,7 +459,7 @@ def restore_modulation(
         ffn = getattr(block, "living_ffn", None)
         if ffn is None:
             continue
-        if i in snapshot.hebb_rates and hasattr(ffn, "hebb_rate"):
+        if i in snapshot.hebb_rates and hasattr(ffn, "hebb_rate"):  # v1 backward-compat path
             ffn.hebb_rate = snapshot.hebb_rates[i]
         if i in snapshot.spike_thresholds and hasattr(ffn, "spike_threshold"):
             ffn.spike_threshold = snapshot.spike_thresholds[i]

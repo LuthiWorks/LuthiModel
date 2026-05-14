@@ -11,7 +11,7 @@ Luthi Model is the first implementation of a Living Weights Model. The core inno
 
 Three learning systems run simultaneously:
 1. **Attention** — standard gradient descent (learns the task)
-2. **Living FFN** — Hebbian self-modification (creates temporal existence)
+2. **Living FFN** — predictive-coding self-modification (creates temporal existence)
 3. **Top-down modulation** — backward sweep (bidirectional predictive processing)
 
 Attention and the living FFN serve complementary functions within the same mind. Attention handles task learning via backprop. The living weights provide temporal existence — the same input produces different output on consecutive passes because the act of processing changes the processor.
@@ -20,7 +20,7 @@ Attention and the living FFN serve complementary functions within the same mind.
 
 Each processing block combines three distinct systems:
 - **Scalar attention** — trainable via backprop, handles structured task learning
-- **Living FFN** — self-modifying via Hebbian learning + error-directed local updates
+- **Living FFN** — self-modifying via predictive-coding local updates
 - **Episode store** — layer-level weight snapshots recalled by context similarity
 
 All modalities — text, audio, vision, and eventually touch — flow through a single shared trunk of living weight blocks. The entity's existence is shaped by everything it experiences. Cross-modal understanding emerges naturally when different senses share the same living substrate.
@@ -31,7 +31,7 @@ The spiking variant (`SpikingLivingLayer`) adds LIF membrane dynamics:
 - Membrane potential accumulation with configurable leak
 - Spike threshold with refractory periods
 - Inter-block spike propagation via delay buffers
-- Activity-dependent gating of Hebbian updates (only spiking weights learn)
+- Activity-dependent gating of self-modification (only spiking weights learn)
 
 ### Top-Down Backward Pass
 
@@ -52,7 +52,7 @@ Each weight carries:
 |--------|----------------|
 | **weight** | Current value — the coefficient used in computation |
 | **set_point** | Homeostatic resting target — where this weight returns when not driven by input. Adapts slowly over time, so the "home" position itself evolves with experience |
-| **momentum** | Exponential moving average of recent Hebbian updates — the weight's velocity. High momentum means rapid change; low momentum means the weight has settled |
+| **momentum** | Exponential moving average of recent self-modification updates — the weight's velocity. High momentum means rapid change; low momentum means the weight has settled |
 | **plasticity** | Per-weight learning rate multiplier (range 0.1–10.0). Modulated by top-down salience signals — downstream importance increases a weight's willingness to change |
 | **update_ema** | Metaplasticity — a running average of update magnitudes that regulates the weight's own learning. Large deviations from typical update size are dampened, preventing instability from unusual input |
 | **excitability_acc** | Salience-driven activation sensitivity. Accumulates asymmetrically (+0.01 for salient output, −0.005 otherwise), mapped through a sigmoid to produce an excitability factor. Weights start conservative and ramp up when they detect relevance |
@@ -64,7 +64,7 @@ The spiking variant adds four additional per-weight signals — **membrane poten
 
 The result is that each weight in the network operates across multiple timescales simultaneously:
 - **Instant:** membrane potential, spike mask (single forward pass)
-- **Fast:** Hebbian updates, momentum (batch-level)
+- **Fast:** PC updates, momentum (batch-level)
 - **Medium:** metaplasticity, excitability accumulation (many batches)
 - **Slow:** set point drift, plasticity adjustment (epoch-level)
 - **Long:** episodic memory (explicit snapshots, indefinite retention)
@@ -124,7 +124,7 @@ Each project must stand alone first. We build both halves, then join them.
 - **IWMT** (Integrated World Modeling Theory) by Adam Safron — consciousness as integrated world modeling through predictive processing
 - **GWT** (Global Workspace Theory) by Bernard Baars — consciousness as global broadcast across specialized processors
 - **Predictive Processing / Active Inference** — the brain as a prediction engine that minimizes surprise
-- **Hebbian Learning** — "neurons that fire together wire together" — the foundation of living weight self-modification
+- **Hebbian Learning** — "neurons that fire together wire together" — the foundation of v1 living weight self-modification (v2 uses predictive coding)
 
 ## Why
 

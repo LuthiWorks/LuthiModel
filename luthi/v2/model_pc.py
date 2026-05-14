@@ -6,7 +6,7 @@ The v2 counterpart to v1's `LuthiLM`. Same external shape:
 
 Key differences from v1:
 - Hybrid blocks are PredictiveCodingBlock (PC dynamics) instead of HybridBlock
-  (Hebbian dynamics).
+  (v1's Hebbian dynamics).
 - No `apply_living_errors` post-backward step. PC handles error-driven
   learning intrinsically during forward — the prediction-error update is
   part of `pc_self_modify`, not a separate post-loss pass.

@@ -121,8 +121,9 @@ gradient downhill toward lower loss." It's how conventional neural networks
 learn.
 
 In Luthi, the attention layers learn by gradient descent, but the living
-weight layers learn by Hebbian self-modification instead. That's a fundamental
-architectural difference.
+weight layers learn by predictive coding self-modification instead (v1 used
+Hebbian rules; v2 replaced them with prediction-error-driven updates).
+That's a fundamental architectural difference.
 
 ### Backpropagation (Backprop)
 The algorithm that computes gradients. It works backward through the network:
@@ -212,7 +213,7 @@ experiment tests 2/4/8/12/24 blocks).
 
 In Luthi, each block contains three things:
 1. Scalar attention (conventional, learns by gradient descent)
-2. Living FFN (self-modifying, learns by Hebbian rules)
+2. Living FFN (self-modifying, learns by predictive coding — v2)
 3. Episode store (memory of past weight states)
 
 ### Attention
@@ -334,14 +335,18 @@ from a loss function, weights strengthen when the neurons they connect are
 both active at the same time. This is how biological brains learn at the
 synapse level.
 
-In Luthi, the living FFN layers learn this way — they modify themselves based
-on the patterns they see, without waiting for a loss function to tell them
-what to do.
+> **v1 context.** Luthi v1's living FFN layers used Hebbian learning for
+> self-modification. In v2, this was replaced by predictive coding — updates
+> are driven by prediction error rather than input-output correlation.
 
 ### Hebbian Update (hebb_update)
 The specific amount a weight changes during one step of Hebbian learning.
 Computed from the correlation between input and output activations, scaled by
 the learning rate and various modulators (plasticity, excitability, salience).
+
+> **v1 context.** The `hebb_update` variable appears in v1's `LivingLayerV6`.
+> In v2, the analogous quantity is the prediction-error-driven weight delta
+> computed inside `pc_self_modify`.
 
 ### Self-Modification
 The key innovation: weights change during their own forward pass (during
@@ -373,7 +378,7 @@ healthy. Unbounded drift = the weight has lost its anchor. The ablation tests
 monitor this.
 
 ### Momentum (in Living Weights)
-A running average of recent Hebbian updates — the weight's velocity. Not the
+A running average of recent self-modification updates — the weight's velocity. Not the
 same as "momentum" in the optimizer (though the concept is similar). High
 momentum means the weight has been changing a lot recently. The living weight
 system uses this to smooth out updates and prevent jitter.
@@ -404,7 +409,7 @@ drifting without bound.
 ### Salience
 How important or noteworthy something is. In Luthi, salience is computed from
 the activation magnitudes — strong activations signal something important is
-happening. Salience modulates plasticity, excitability, and Hebbian learning:
+happening. Salience modulates plasticity, excitability, and self-modification:
 important inputs cause more learning.
 
 ### EMA (Exponential Moving Average)
