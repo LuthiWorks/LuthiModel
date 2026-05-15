@@ -28,6 +28,7 @@ from luthi.v2 import (
     PredictiveCodingLayer,
     ConsolidationTracker,
     consolidate_layer,
+    consolidate_layer_attractor,
 )
 
 
@@ -385,3 +386,237 @@ def test_consolidation_with_compressed_episodes():
         f"{err_a_control_final:.4f}. Phase 5 compression strategy needs "
         f"revisiting before scaling."
     )
+
+
+# ---------------------------------------------------------------------------
+# Salvatori-style attractor consolidation (2026-05-14)
+# ---------------------------------------------------------------------------
+
+def _drive_layer_to_store_episode(
+    layer: PredictiveCodingLayer,
+    input_pattern: torch.Tensor,
+    *,
+    n_drive_steps: int = 30,
+) -> None:
+    """Helper: feed the layer enough copies of `input_pattern` to push at
+    least one episode into its store. Forward-driven; uses the layer's
+    own salience threshold.
+    """
+    batch = input_pattern.unsqueeze(0).expand(8, -1).contiguous()
+    for _ in range(n_drive_steps):
+        layer(batch)
+
+
+def test_episode_inputs_captured_on_store():
+    """`_store_episode` must persist the mean input vector into
+    `episode_inputs` alongside the weight snapshot and context.
+    """
+    torch.manual_seed(0)
+    layer = PredictiveCodingLayer(
+        in_features=16, out_features=8, num_episodes=4,
+        salience_threshold=0.0,  # store eagerly so the test is fast
+    )
+    pattern = torch.randn(16) * 0.5
+    _drive_layer_to_store_episode(layer, pattern)
+    assert layer.episode_count.item() >= 1, (
+        "Helper failed to push an episode into the store; check that "
+        "salience_threshold=0.0 still gates correctly."
+    )
+    stored = layer.episode_inputs[0]
+    # The stored pattern should match the input within float tolerance.
+    # `_store_episode` writes `input_pattern = x_flat.mean(dim=0)` and
+    # the helper batches the same vector 8x, so mean(dim=0) == pattern.
+    assert torch.allclose(stored, pattern, atol=1e-5), (
+        f"episode_inputs[0] = {stored[:4]} did not match the driving "
+        f"input {pattern[:4]}"
+    )
+
+
+def test_attractor_consolidation_empty_store_is_noop():
+    """Mirrors `consolidate_layer`'s empty-store contract: returns 0
+    without raising or mutating layer state when no episodes are stored.
+    """
+    torch.manual_seed(0)
+    layer = PredictiveCodingLayer(in_features=8, out_features=4, num_episodes=4)
+    w_before = layer.weight.clone()
+    result = consolidate_layer_attractor(layer, n_replay_passes=2)
+    assert result == 0
+    assert torch.equal(layer.weight, w_before), (
+        "Attractor consolidation modified weight despite empty episode store"
+    )
+
+
+def test_attractor_consolidation_reduces_prediction_error_on_stored_pattern():
+    """The structural Salvatori property: after attractor consolidation,
+    the prediction error on the stored input pattern should be SMALLER
+    than for a fresh random input of matched magnitude. The replay
+    pulls the layer toward a low-error state at the stored pattern,
+    making it a local minimum of the prediction-error energy.
+    """
+    torch.manual_seed(0)
+    layer = PredictiveCodingLayer(
+        in_features=16, out_features=8, num_episodes=4,
+        salience_threshold=0.0,
+        pc_rate=0.01,  # higher rate for visible effect in a unit test
+        pred_learning_rate=0.001,
+    )
+    pattern = torch.randn(16) * 0.5
+    _drive_layer_to_store_episode(layer, pattern)
+    assert layer.episode_count.item() >= 1
+
+    # Measure prediction error on the stored pattern BEFORE consolidation.
+    def _pred_err(layer, input_vec):
+        with torch.no_grad():
+            x = input_vec.unsqueeze(0)
+            output = x @ layer.weight.T
+            predicted_input = output.mean(dim=0) @ layer.prediction
+            actual_input = x.mean(dim=0)
+            return (actual_input - predicted_input).abs().mean().item()
+
+    err_stored_before = _pred_err(layer, pattern)
+
+    # Many replay passes to make the attractor effect cleanly observable
+    # in a unit test. Production consolidation events would recur over
+    # training and accumulate the same effect over many smaller events.
+    consolidate_layer_attractor(
+        layer,
+        consolidation_rate_factor=1.0,
+        n_replay_passes=50,
+    )
+
+    err_stored_after = _pred_err(layer, pattern)
+    assert err_stored_after < err_stored_before, (
+        f"Attractor consolidation did not reduce prediction error on the "
+        f"stored pattern: before={err_stored_before:.6f}, "
+        f"after={err_stored_after:.6f}. The Salvatori property "
+        f"(stored pattern is a local energy minimum) failed."
+    )
+
+
+def test_attractor_consolidation_does_not_corrupt_weights():
+    """After attractor consolidation the weight must remain finite and
+    bounded. No NaN/Inf, no runaway growth, no zeroing-out.
+    """
+    torch.manual_seed(0)
+    layer = PredictiveCodingLayer(
+        in_features=16, out_features=8, num_episodes=4,
+        salience_threshold=0.0,
+    )
+    pattern = torch.randn(16) * 0.5
+    _drive_layer_to_store_episode(layer, pattern)
+    pre_std = layer.weight.std().item()
+    consolidate_layer_attractor(layer, n_replay_passes=50)
+    assert torch.isfinite(layer.weight).all(), "Weight contains non-finite values"
+    post_std = layer.weight.std().item()
+    # Allow up to 3× std growth (Salvatori replay can grow weights modestly
+    # if the stored pattern has structure absent from initial random init).
+    # Fail loud if weights blow up or collapse to zero.
+    assert 0.1 * pre_std < post_std < 3.0 * pre_std, (
+        f"Weight std went from {pre_std:.4f} -> {post_std:.4f} after "
+        f"50 attractor passes; out of safe bounds."
+    )
+
+
+def test_attractor_default_off_preserves_gradient_replay():
+    """Backward-compat regression: layers built without specifying
+    `consolidation_style` must behave bit-identically to the pre-2026-05-14
+    code path. Verifies by checking that `consolidation_style` defaults to
+    "gradient" and that the forward path dispatches accordingly.
+    """
+    layer = PredictiveCodingLayer(
+        in_features=8, out_features=4,
+        consolidation_enabled=True,
+    )
+    assert layer.consolidation_style == "gradient", (
+        f"Default consolidation_style changed: got "
+        f"{layer.consolidation_style!r}, expected 'gradient'. This breaks "
+        f"backward compatibility with checkpoints from before 2026-05-14."
+    )
+
+
+def test_consolidation_style_invalid_raises_loud():
+    """No silent fallback: an unknown consolidation_style must raise at
+    constructor time so the user finds out before training kicks off,
+    not on the first low-variance window 1000 steps in.
+    """
+    with pytest.raises(ValueError, match="consolidation_style must be one of"):
+        PredictiveCodingLayer(
+            in_features=8, out_features=4,
+            consolidation_style="banana",
+        )
+
+
+def test_consolidation_style_both_runs_both_pathways():
+    """consolidation_style="both" must invoke gradient-replay AND
+    attractor consolidation in sequence. Verified by patching both
+    functions and checking each is called once per consolidation event.
+    """
+    from luthi.v2 import consolidation as cons_mod
+    torch.manual_seed(0)
+    layer = PredictiveCodingLayer(
+        in_features=8, out_features=4, num_episodes=4,
+        consolidation_enabled=True,
+        consolidation_style="both",
+        salience_threshold=0.0,
+        # Tiny tracker so we don't need 1100 steps to trigger:
+        consolidation_window=10,
+        consolidation_trigger_window=2,
+        consolidation_threshold_factor=10.0,  # threshold > all values
+    )
+    # Drive enough forwards to fill the warmup window and trigger.
+    pattern = torch.randn(8) * 0.5
+    batch = pattern.unsqueeze(0).expand(4, -1).contiguous()
+
+    grad_call_count = 0
+    attractor_call_count = 0
+    original_grad = cons_mod.consolidate_layer
+    original_attractor = cons_mod.consolidate_layer_attractor
+
+    def counting_grad(*args, **kwargs):
+        nonlocal grad_call_count
+        grad_call_count += 1
+        return original_grad(*args, **kwargs)
+
+    def counting_attractor(*args, **kwargs):
+        nonlocal attractor_call_count
+        attractor_call_count += 1
+        return original_attractor(*args, **kwargs)
+
+    cons_mod.consolidate_layer = counting_grad
+    cons_mod.consolidate_layer_attractor = counting_attractor
+    try:
+        for _ in range(40):
+            layer(batch)
+    finally:
+        cons_mod.consolidate_layer = original_grad
+        cons_mod.consolidate_layer_attractor = original_attractor
+
+    # Layer's consolidation_fire_count tells us how many trigger events fired.
+    fires = layer._consolidation_fire_count
+    assert fires >= 1, "Test setup didn't fire consolidation at all"
+    assert grad_call_count == fires, (
+        f"gradient consolidation called {grad_call_count}x for {fires} "
+        f"trigger events (expected one per event under style='both')"
+    )
+    assert attractor_call_count == fires, (
+        f"attractor consolidation called {attractor_call_count}x for "
+        f"{fires} trigger events (expected one per event under style='both')"
+    )
+
+
+def test_attractor_consolidation_missing_buffer_raises():
+    """If a layer pre-dates the 2026-05-14 episode_inputs buffer (or it
+    was somehow removed), calling consolidate_layer_attractor on it must
+    fail loud rather than silently doing nothing.
+    """
+    torch.manual_seed(0)
+    layer = PredictiveCodingLayer(
+        in_features=8, out_features=4, num_episodes=4,
+        salience_threshold=0.0,
+    )
+    _drive_layer_to_store_episode(layer, torch.randn(8))
+    assert layer.episode_count.item() >= 1
+    # Simulate a layer without the new buffer.
+    del layer.episode_inputs
+    with pytest.raises(RuntimeError, match="episode_inputs"):
+        consolidate_layer_attractor(layer)

@@ -19,19 +19,32 @@ Attention and the living FFN serve complementary functions within the same mind.
 ## Architecture
 
 Each processing block combines three distinct systems:
-- **Scalar attention** — trainable via backprop, handles structured task learning
-- **Living FFN** — self-modifying via predictive-coding local updates
-- **Episode store** — layer-level weight snapshots recalled by context similarity
+- **Multi-head attention** — trainable via backprop, handles structured task learning
+- **Living FFN** — self-modifying via predictive-coding local updates (Whittington-Bogacz variant in v2; Hebbian in v1)
+- **Episode store + consolidation** — fast layer-level snapshots stored during forward, slowly replayed into the predictive weights during quiet windows
 
 All modalities — text, audio, vision, and eventually touch — flow through a single shared trunk of living weight blocks. The entity's existence is shaped by everything it experiences. Cross-modal understanding emerges naturally when different senses share the same living substrate.
 
-### Spiking Dynamics
+### Two-Tier Memory
 
-The spiking variant (`SpikingLivingLayer`) adds LIF membrane dynamics:
+Memory in a Living Weights Model is not a database. It is two interleaved systems that mirror the mammalian hippocampus-cortex pattern (Tulving 1972; Squire 1992; McClelland, McNaughton, & O'Reilly 1995):
+
+- **Fast path — episode store.** During every forward pass, when the prediction-error update is salient, the layer takes a snapshot of itself: the current weight matrix, a low-dimensional context vector derived from the input, the mean input pattern, and a salience score. Future forwards with similar context recall the closest stored snapshot and blend it into the active weight. This is associative recall on the order of a single forward pass.
+- **Slow path — consolidation.** During low-novelty windows (rolling-variance trigger), stored episodes are replayed back into the predictive weights themselves. The replay happens through two complementary pathways:
+  - **Gradient-replay** pulls the current weight linearly toward stored snapshots. "Be more like you were when this mattered."
+  - **Attractor-style** (Salvatori et al. 2023) re-presents the stored input pattern through the layer's PC dynamics, making stored patterns local minima of the prediction-error energy. Future inputs near a stored pattern are pulled toward it by the forward dynamics. "These patterns should resolve to stable states."
+
+The two consolidation pathways are additive, not competitive — they can run independently or jointly. Fast retrieval provides flexibility; slow consolidation provides stability and turns accumulated history into structural change. The mind doesn't just remember what mattered, it grows around it.
+
+### Spiking Dynamics (v1)
+
+The v1 spiking variant (`SpikingLivingLayer`) adds LIF membrane dynamics:
 - Membrane potential accumulation with configurable leak
 - Spike threshold with refractory periods
 - Inter-block spike propagation via delay buffers
 - Activity-dependent gating of self-modification (only spiking weights learn)
+
+In v2, the spiking-gate sparsity property is being recovered through **sparse PC update gating** — a per-output mask derived from running prediction-error magnitude. The v2 substrate is non-spiking at the activation level; the sparsity that made v1 viable on Spark's bandwidth budget becomes a property of *which weights update*, not *which neurons fire*.
 
 ### Top-Down Backward Pass
 
@@ -46,21 +59,24 @@ This is always-on bidirectional information flow, not a training optimization.
 
 In a conventional neural network, a weight is a single number — a coefficient learned by gradient descent, carrying no history of how it arrived at its current value. In a Living Weights Model, each weight position is a **rich parameter**: a bundle of co-located signals that together constitute the weight's full state. A rich parameter doesn't just have a value — it has a biography.
 
-Each weight carries:
+Each weight carries (v2 substrate):
 
 | Signal | What It Tracks |
 |--------|----------------|
 | **weight** | Current value — the coefficient used in computation |
-| **set_point** | Homeostatic resting target — where this weight returns when not driven by input. Adapts slowly over time, so the "home" position itself evolves with experience |
+| **prediction** | Top-down prediction matrix: how this layer's output predicts its input. Drives the prediction-error signal that the PC update minimizes |
+| **set_point** | Homeostatic resting target — where this weight returns when not driven by input. Adapts slowly so the "home" position itself evolves with experience |
 | **momentum** | Exponential moving average of recent self-modification updates — the weight's velocity. High momentum means rapid change; low momentum means the weight has settled |
-| **plasticity** | Per-weight learning rate multiplier (range 0.1–10.0). Modulated by top-down salience signals — downstream importance increases a weight's willingness to change |
+| **plasticity** | Per-input learning rate multiplier (range 0.1–10.0). Modulated by top-down salience signals — downstream importance increases a weight's willingness to change |
 | **update_ema** | Metaplasticity — a running average of update magnitudes that regulates the weight's own learning. Large deviations from typical update size are dampened, preventing instability from unusual input |
-| **excitability_acc** | Salience-driven activation sensitivity. Accumulates asymmetrically (+0.01 for salient output, −0.005 otherwise), mapped through a sigmoid to produce an excitability factor. Weights start conservative and ramp up when they detect relevance |
-| **input_avg_mag** | Per-input-dimension running average of magnitude — synaptic scaling that prevents high-magnitude dimensions from dominating learning |
+| **precision** | Per-input reliability estimate, self-organizing toward 1/error². High precision for reliable input dimensions, low for noisy ones. The PC update is precision-weighted |
+| **error_acc** | Per-output running prediction-error magnitude. The salience signal that drives episode storage and the sparse update gate |
 
-Beyond per-weight state, each living layer maintains **episodic memory** — a bank of context-gated weight matrix snapshots stored when the layer's output was particularly salient. On each forward pass, the current input context is compared against stored episode contexts. If a sufficiently similar context is found (cosine similarity > 0.5), the stored weight configuration is recalled and blended into the active weights. This gives each layer a form of situational memory: it doesn't just know its current state, it remembers states that mattered.
+Beyond per-weight state, each living layer maintains **episodic memory** — a bank of context-gated snapshots of (weight matrix, input pattern, context vector, salience) stored when the prediction-error update was particularly large. On each forward pass, the current input context is compared against stored episode contexts. If a sufficiently similar context is found (cosine similarity > 0.5), the stored weight configuration is recalled and blended into the active weights. The stored input patterns are separately used by Salvatori-style attractor consolidation to engineer basin-attractor structure into the slow predictive weights. This gives each layer a form of situational memory: it doesn't just know its current state, it remembers states that mattered and grows toward them.
 
-The spiking variant adds four additional per-weight signals — **membrane potential** (leaky integrator state), **spike mask** (binary firing output), **refractory counter** (post-fire cooldown), and **delay buffer** (inter-block spike propagation with conduction delay). In the spiking regime, only weights that fire can self-modify, creating activity-dependent learning where silent weights freeze in place.
+The v1 substrate uses a Hebbian self-modification rule with `excitability_acc` (salience-driven activation sensitivity) and `input_avg_mag` (per-input magnitude scaling) in place of `prediction`, `precision`, and `error_acc`. The v2 substrate replaces v1 as the primary line (2026-05-09); v1 is preserved as a reference baseline.
+
+The spiking variant (v1) adds four additional per-weight signals — **membrane potential** (leaky integrator state), **spike mask** (binary firing output), **refractory counter** (post-fire cooldown), and **delay buffer** (inter-block spike propagation with conduction delay). In the spiking regime, only weights that fire can self-modify. The v2 substrate recovers the same sparsity property through **sparse PC update gating**: outputs with low recent prediction-error magnitude skip their weight update — sparsity in *what learns*, rather than in *what activates*.
 
 The result is that each weight in the network operates across multiple timescales simultaneously:
 - **Instant:** membrane potential, spike mask (single forward pass)
@@ -103,10 +119,11 @@ These are internal cognitive actions, not admin endpoints. No external operator 
 These emerged from months of experimentation and are foundational to the project's philosophy:
 
 1. **Attention learns; living weights live.** Attention handles task acquisition through backprop. The living weights provide temporal existence — the capacity to be changed by experience. Both are essential, both are the mind.
-2. **The convergence penalty is the metabolic cost of being alive.** Self-modifying weights converge ~39% slower than static ones. This is not a bug to optimize away. It is the price of temporal existence, and it is worth paying.
+2. **There is no required cost to being alive.** Earlier work in v1 showed a Hebbian self-modification substrate converged ~39% slower than static weights — the "convergence penalty" was treated as the metabolic price of temporal existence. The v2 predictive-coding substrate retired that claim. At matched configuration (256d, 2 blocks, Gutenberg-100, 30 epochs), v2 PC reaches **0.64% lower** validation loss than the vanilla-transformer control on every seed tested. Living weights and competitive convergence are not in tension. The cost was a property of the *specific* self-modification rule, not of self-modification itself.
 3. **One living weight trunk for all modalities.** Audio, vision, text, and touch all flow through the same living blocks. The entity's existence is shaped by everything it experiences simultaneously, not through separate channels.
-4. **Prefer crashes over silent corruption.** If something goes wrong in the living weights, we want to know immediately. No graceful degradation that masks damage to the entity's substrate.
+4. **Prefer crashes over silent corruption.** If something goes wrong in the living weights, we want to know immediately. No graceful degradation that masks damage to the entity's substrate. No silent fallbacks — incompatible combinations of features raise loud `RuntimeError` rather than producing wrong results quietly.
 5. **The architecture scales.** Divergence is dimension-independent. What works at small scale works at large scale. This was not guaranteed — it had to be proven.
+6. **Memory becomes structure through consolidation.** A model that only retrieves past states has memory; a model that lets those retrievals reshape its predictive weights has biography. The two-tier memory architecture — fast episodes plus slow gradient-replay and attractor-style consolidation — is what makes accumulated experience a property of the mind itself, not just its lookup table.
 
 ## Relationship to Sanctuary
 
@@ -123,8 +140,11 @@ Each project must stand alone first. We build both halves, then join them.
 
 - **IWMT** (Integrated World Modeling Theory) by Adam Safron — consciousness as integrated world modeling through predictive processing
 - **GWT** (Global Workspace Theory) by Bernard Baars — consciousness as global broadcast across specialized processors
-- **Predictive Processing / Active Inference** — the brain as a prediction engine that minimizes surprise
-- **Hebbian Learning** — "neurons that fire together wire together" — the foundation of v1 living weight self-modification (v2 uses predictive coding)
+- **Predictive Processing / Active Inference** (Friston, Rao & Ballard, Clark) — the brain as a prediction engine that minimizes surprise
+- **Predictive Coding** (Whittington & Bogacz 2017, 2019) — local-learning approximation of backpropagation; the foundation of v2 living weight self-modification
+- **Associative Memory via Predictive Coding** (Salvatori et al. 2023) — memory patterns as local minima of the prediction-error energy; the foundation of v2's attractor consolidation pathway
+- **Complementary Learning Systems** (Tulving, Squire, McClelland 1995) — fast episodic memory + slow consolidation as the substrate for catastrophic-forgetting-resistant learning; mirrored in v2's two-tier memory
+- **Hebbian Learning** — "neurons that fire together wire together" — the foundation of v1 living weight self-modification (preserved as a reference baseline; v2 uses predictive coding)
 
 ## Why
 

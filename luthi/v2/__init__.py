@@ -18,7 +18,11 @@ from luthi.v2.backward_pass_pc import (
     create_initial_signal,
     mask_signal,
 )
-from luthi.v2.consolidation import ConsolidationTracker, consolidate_layer
+from luthi.v2.consolidation import (
+    ConsolidationTracker,
+    consolidate_layer,
+    consolidate_layer_attractor,
+)
 
 __all__ = [
     "PredictiveCodingLayer",
@@ -30,4 +34,5 @@ __all__ = [
     "mask_signal",
     "ConsolidationTracker",
     "consolidate_layer",
+    "consolidate_layer_attractor",
 ]

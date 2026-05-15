@@ -180,10 +180,27 @@ Reasons:
    scaffolding maps directly onto PC's error neurons. Episode store,
    attention, multimodal encoders all stay.
 
-If data later justifies it, Salvatori-style associative-memory PC is the
-natural extension for the consolidation mechanism (it's already attractor-
-based). For first implementation, Whittington-Bogacz is the pragmatic
-call.
+Salvatori-style associative-memory PC is **planned as an additive pathway
+on the consolidation mechanism**, not a conditional extension. The
+original 2026-05-08 brief framing was "if data later justifies it";
+Brian's 2026-05-14 design call: attractor dynamics are worth having on
+their own merits — partial-cue recall, perturbation robustness, and
+shape-consistency with the cosine-similarity retrieval the episode store
+already uses — not just as a remedy for a measured deficit. Salvatori's
+attractor-based consolidation **is now implemented**
+(`consolidate_layer_attractor` in `luthi/v2/consolidation.py`,
+2026-05-14) and runs alongside the original gradient-replay pathway. The
+two pathways are additive; either can run alone
+(`consolidation_style="gradient"` or `"attractor"`) or together
+(`consolidation_style="both"`). Choice of production default is an
+empirical question scheduled for Phase 3G validation.
+
+For the **main PC learning rule** (the fast forward-pass update),
+Whittington-Bogacz remains the pragmatic call and is unchanged.
+Salvatori's contribution lives on the slow consolidation path only.
+
+See `docs/RESEARCH_SALVATORI_ATTRACTOR_MEMORY.md` for the implementation
+mapping and known design tradeoffs.
 
 ## What carries over from v1 (unchanged)
 

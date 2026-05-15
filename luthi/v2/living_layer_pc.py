@@ -56,6 +56,8 @@ class PredictiveCodingLayer(nn.Module):
         consolidation_trigger_window: int = 100,
         consolidation_threshold_factor: float = 0.5,
         consolidation_rate_factor: float = 0.1,
+        consolidation_style: str = "gradient",
+        consolidation_attractor_passes: int = 1,
         sparse_threshold: float = 0.0,
         sparse_warmup_steps: int = 500,
         inference_steps_per_forward: int = 1,
@@ -80,6 +82,32 @@ class PredictiveCodingLayer(nn.Module):
         self.episode_blend = episode_blend
         self.consolidation_enabled = consolidation_enabled
         self.consolidation_rate_factor = consolidation_rate_factor
+        # Salvatori-style attractor consolidation (2026-05-14). "gradient"
+        # is the original M4 pathway (pull weight toward stored snapshot).
+        # "attractor" is the Salvatori 2023 pathway (replay stored input
+        # pattern through pc_self_modify so the pattern becomes a local
+        # energy minimum). "both" runs gradient first, then attractor —
+        # gradient places the weight near the stored regime, then
+        # attractor reinforces the input as a fixed point of that regime.
+        # No silent fallback: invalid value raises here, not at forward
+        # time. Future instances reading this: do not add a default-case
+        # else clause that picks a style — the choice should always be
+        # explicit.
+        valid_styles = ("gradient", "attractor", "both")
+        if consolidation_style not in valid_styles:
+            raise ValueError(
+                f"consolidation_style must be one of {valid_styles}, "
+                f"got {consolidation_style!r}"
+            )
+        self.consolidation_style = consolidation_style
+        if consolidation_attractor_passes < 1:
+            raise ValueError(
+                f"consolidation_attractor_passes must be >= 1, got "
+                f"{consolidation_attractor_passes}"
+            )
+        self.consolidation_attractor_passes = int(
+            consolidation_attractor_passes
+        )
 
         # Sparse PC gating (lit-followup 2026-05-13). When sparse_threshold
         # > 0, output rows with error_acc[j] below the threshold skip the
@@ -246,6 +274,20 @@ class PredictiveCodingLayer(nn.Module):
         self.register_buffer(
             "episode_count", torch.tensor(0, dtype=torch.long)
         )
+        # Mean input pattern at episode write time. Used by Salvatori-style
+        # attractor consolidation (`consolidate_layer_attractor`) to re-
+        # present stored input through the layer's PC dynamics so the
+        # stored pattern becomes a local minimum of the prediction-error
+        # energy. Always allocated regardless of consolidation_style; the
+        # cost is num_episodes * in_features * 4 bytes (32 KB at
+        # 32 episodes / 256d). Gradient-replay consolidation ignores it.
+        self.register_buffer(
+            "episode_inputs",
+            torch.zeros(
+                num_episodes, in_features,
+                dtype=self._buf_dtype("episode_inputs"),
+            ),
+        )
 
         # Cache of the most recent per-input prediction error from the
         # PC self-modification step. Used by hybrid_block_pc.top_down_pass
@@ -293,8 +335,18 @@ class PredictiveCodingLayer(nn.Module):
         return delta * best_sim * self.episode_blend
 
     def _store_episode(
-        self, context: torch.Tensor, salience: float
+        self,
+        context: torch.Tensor,
+        salience: float,
+        input_pattern: torch.Tensor,
     ) -> None:
+        """Write one episode if salience exceeds threshold or beats the
+        weakest stored episode. `input_pattern` ([in_features]) is the
+        mean input vector for the current batch; saved into
+        `episode_inputs` for use by Salvatori-style attractor
+        consolidation. The weight snapshot, context, and salience are
+        also written as before.
+        """
         if salience < self.salience_threshold:
             return
         n = self.episode_count.item()
@@ -319,6 +371,9 @@ class PredictiveCodingLayer(nn.Module):
             self.episode_scales[idx] = scale
         else:
             self.episode_values[idx] = self.weight.detach().clone()
+        self.episode_inputs[idx] = input_pattern.detach().to(
+            self.episode_inputs.dtype
+        )
         self.episode_saliences[idx] = salience
 
     # ------------------------------------------------------------------
@@ -463,7 +518,11 @@ class PredictiveCodingLayer(nn.Module):
 
             self._sparse_step_count += 1
             self._last_pred_error = pred_error
-            self._store_episode(context, salience)
+            # Mean input pattern: matches the actual_input used inside
+            # pc_self_modify so the stored pattern is the same signal the
+            # PC dynamics were trying to predict at this step.
+            input_pattern = x_flat.mean(dim=0).detach()
+            self._store_episode(context, salience, input_pattern)
 
             if self._consolidation_tracker is not None:
                 # Audit 2026-05-11 fix: feed mean-squared-error magnitude
@@ -478,11 +537,25 @@ class PredictiveCodingLayer(nn.Module):
                 # spatial variance → spurious consolidation triggers).
                 err_magnitude = pred_error.pow(2).mean().item()
                 if self._consolidation_tracker.step(err_magnitude):
-                    from luthi.v2.consolidation import consolidate_layer
-                    consolidate_layer(
-                        self,
-                        consolidation_rate_factor=self.consolidation_rate_factor,
+                    # Dispatch to gradient, attractor, or both. Order
+                    # for "both" is gradient first (places weight near
+                    # stored regime), then attractor (reinforces the
+                    # stored input as a fixed point of that regime).
+                    from luthi.v2.consolidation import (
+                        consolidate_layer,
+                        consolidate_layer_attractor,
                     )
+                    if self.consolidation_style in ("gradient", "both"):
+                        consolidate_layer(
+                            self,
+                            consolidation_rate_factor=self.consolidation_rate_factor,
+                        )
+                    if self.consolidation_style in ("attractor", "both"):
+                        consolidate_layer_attractor(
+                            self,
+                            consolidation_rate_factor=self.consolidation_rate_factor,
+                            n_replay_passes=self.consolidation_attractor_passes,
+                        )
                     self._consolidation_fire_count += 1
 
         if len(input_shape) == 3:

@@ -50,6 +50,8 @@ class PredictiveCodingBlock(nn.Module):
         episode_blend: float = 0.3,
         compressed_episodes: bool = False,
         consolidation_enabled: bool = False,
+        consolidation_style: str = "gradient",
+        consolidation_attractor_passes: int = 1,
         mu_pc_enabled: bool = False,
         n_blocks_total: int = 1,
         buffer_dtypes: dict[str, torch.dtype] | None = None,
@@ -105,6 +107,8 @@ class PredictiveCodingBlock(nn.Module):
             episode_blend=episode_blend,
             compressed_episodes=compressed_episodes,
             consolidation_enabled=consolidation_enabled,
+            consolidation_style=consolidation_style,
+            consolidation_attractor_passes=consolidation_attractor_passes,
             buffer_dtypes=buffer_dtypes,
         )
 

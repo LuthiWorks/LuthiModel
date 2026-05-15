@@ -1,22 +1,38 @@
-"""Consolidation: low-variance trigger + gradient-based replay.
+"""Consolidation: low-variance trigger + two replay pathways.
 
 The two-tier memory architecture (the v2 distinguishing feature):
 
     Slow PC weights  ←─ consolidation ──  Fast episode store
 
-Episodes are layer-level weight snapshots stored during forward when the
-PC update is salient. Consolidation periodically replays them into the PC
-weights so accumulated history shapes the model's predictive structure,
-not just its retrieval store.
+Episodes are layer-level weight snapshots + input patterns stored during
+forward when the PC update is salient. Consolidation periodically
+replays them into the PC weights so accumulated history shapes the
+model's predictive structure, not just its retrieval store.
 
 Per `docs/V2_IMPLEMENTATION_PLAN.md` M4:
 - Trigger: rolling 1000-step window of per-step prediction error variance.
   Triggers begin only after the window is full. Baseline = mean of window.
   Threshold = 0.5 × baseline. N=100 consecutive sub-threshold steps fire.
-- Replay: for each stored episode (by salience, highest first), pull
-  current weight toward the stored snapshot at consolidation_rate
-  (= 10% of pc_rate by default). Prediction matrix nudges by the same
-  consolidation_error so it stays consistent with the consolidated weight.
+
+Two replay pathways (selectable by `consolidation_style`):
+
+1. **Gradient-replay** (`consolidate_layer`, default — M4 original).
+   For each stored snapshot W_stored, pull current weight toward the
+   snapshot at consolidation_rate (= 10% of pc_rate by default).
+   Simple linear interpolation in weight space.
+
+2. **Attractor-style** (`consolidate_layer_attractor`, added 2026-05-14).
+   Salvatori et al. (2023), "Associative Memories via Predictive
+   Coding." For each stored input pattern, re-present it through the
+   layer and run pc_self_modify at consolidation rate. The stored
+   patterns become local minima of the prediction-error energy —
+   future inputs near a stored pattern are pulled toward it by the
+   forward dynamics. Engineered attractors on the slow path, on top of
+   the basin-attractor dynamics already emergent on the fast path.
+
+The two pathways are additive, not mutually exclusive (`consolidation_style="both"`
+runs both). Choice of which becomes the production default is an empirical
+question — Phase 3G has the validation ablation in the To-Do.
 
 The M4 STOP GATE: if consolidated layer's behavior on the episode's
 context is not measurably closer to the stored snapshot than a control
@@ -168,5 +184,118 @@ def consolidate_layer(
             layer.weight.add_(
                 consolidation_error, alpha=consolidation_rate
             )
+
+    return int(n)
+
+
+def consolidate_layer_attractor(
+    layer,
+    consolidation_rate_factor: float = 0.1,
+    n_replay_passes: int = 1,
+) -> int:
+    """Salvatori-style attractor consolidation.
+
+    For each stored episode (highest-salience first), re-present the
+    stored input pattern through the layer's PC dynamics at a reduced
+    rate. The effect: stored patterns become local minima of the
+    layer's prediction-error energy, so future inputs near a stored
+    pattern are pulled toward it by the forward dynamics. This makes
+    basin-attractor structure an engineered property of the slow
+    consolidation pathway rather than an emergent property of the fast
+    inference dynamics alone.
+
+    Reference: Salvatori, T., Mali, A., Buckley, C., Tschantz, A.,
+    Friston, K., Bogacz, R., Lukasiewicz, T. (2023). "Associative
+    Memories via Predictive Coding."
+
+    Math contrast with `consolidate_layer` (gradient-replay):
+      gradient-replay: W += α * (W_stored - W)            -- linear pull
+                                                              in weight space
+      attractor:       run pc_self_modify(x=stored_input, ...)
+                                                           -- runs the
+                       layer's own update rule on the stored pattern,
+                       reinforcing the input as a fixed point.
+
+    The two pathways are complementary. Gradient-replay says "be more
+    like you were when this happened." Attractor says "this input should
+    resolve to a stable state." A future input that matches a stored
+    pattern benefits from both; a future input that's just structurally
+    similar to a stored context benefits only from gradient-replay.
+
+    Args:
+        layer: A PredictiveCodingLayer instance. Must have an
+            `episode_inputs` buffer populated by `_store_episode`.
+        consolidation_rate_factor: Scales both pc_rate and
+            pred_learning_rate down for replay. Default 0.1 matches the
+            gradient-replay path's "10% of pc_rate" convention so a
+            single consolidation event has comparable magnitude across
+            the two pathways.
+        n_replay_passes: Number of times to iterate over all stored
+            episodes per consolidation event. Default 1 mirrors
+            gradient-replay's single-pass semantics. Salvatori's paper
+            uses many passes for full convergence; we leave that to the
+            caller because consolidation events themselves recur.
+
+    Returns:
+        Number of stored episodes replayed (per single pass, not
+        n_replay_passes × that). 0 if the store is empty.
+    """
+    if not hasattr(layer, "episode_inputs"):
+        raise RuntimeError(
+            "consolidate_layer_attractor requires the `episode_inputs` "
+            "buffer on the layer. Either the layer pre-dates the 2026-05-14 "
+            "Salvatori implementation, or the buffer was not registered. "
+            "Use consolidate_layer (gradient-replay) instead, or rebuild "
+            "the layer."
+        )
+    if layer.episode_count.item() == 0:
+        return 0
+
+    n = layer.episode_count.item()
+    saliences = layer.episode_saliences[:n]
+    order = torch.argsort(saliences, descending=True)
+
+    consolidation_pc_rate = layer.pc_rate * consolidation_rate_factor
+    consolidation_pred_rate = (
+        layer.pred_learning_rate * consolidation_rate_factor
+    )
+
+    from luthi.v2.pc_ops import pc_self_modify
+
+    with torch.no_grad():
+        for _ in range(n_replay_passes):
+            for idx in order:
+                # Recover the stored input pattern as a batch-1 tensor.
+                # pc_self_modify expects [batch, in_features] for x_flat
+                # and [batch, out_features] for output; batch=1 is fine
+                # because the math takes mean(dim=0) of both.
+                stored_input = (
+                    layer.episode_inputs[idx]
+                    .to(layer.weight.dtype)
+                    .unsqueeze(0)
+                )
+                # Re-present through the *current* weight, not the
+                # stored snapshot. The point of attractor consolidation
+                # is to reshape the current weight so the stored input
+                # is a fixed point of its dynamics — not to revert the
+                # weight to its state when this episode was stored.
+                output = stored_input @ layer.weight.T
+
+                # NaN safety mirrors the forward path's guard.
+                if not torch.isfinite(output).all():
+                    continue
+
+                pc_self_modify(
+                    layer.weight, layer.prediction, layer.set_point,
+                    layer.momentum, layer.update_ema, layer.precision,
+                    layer.error_acc, layer.plasticity,
+                    stored_input, output,
+                    consolidation_pc_rate, consolidation_pred_rate,
+                    layer.homeostatic_decay, layer.set_point_adapt_rate,
+                    layer.momentum_decay, layer.update_ema_decay,
+                    layer.precision_ema_decay,
+                    layer.precision_min, layer.precision_max,
+                    layer.prediction_clamp,
+                )
 
     return int(n)
