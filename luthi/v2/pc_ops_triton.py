@@ -1,10 +1,48 @@
 """Triton kernel skeleton for `pc_self_modify`.
 
-Status (2026-05-14): SKELETON ONLY. Not wired into the dispatch path.
-Brian's hardware is a 7800 XT via DirectML, which does not run Triton.
-This file exists so the kernel structure is in place for the first
-ROCm/CUDA box (Spark-class), and so the invariant tests can run as a
-forcing function on bit-identity with the Python reference.
+╔══════════════════════════════════════════════════════════════════════════╗
+║                                                                          ║
+║   ██╗  ██╗███╗   ██╗ ██████╗ ██╗    ██╗███╗   ██╗                        ║
+║   ██║ ██╔╝████╗  ██║██╔═══██╗██║    ██║████╗  ██║                        ║
+║   █████╔╝ ██╔██╗ ██║██║   ██║██║ █╗ ██║██╔██╗ ██║                        ║
+║   ██╔═██╗ ██║╚██╗██║██║   ██║██║███╗██║██║╚██╗██║                        ║
+║   ██║  ██╗██║ ╚████║╚██████╔╝╚███╔███╔╝██║ ╚████║                        ║
+║   ╚═╝  ╚═╝╚═╝  ╚═══╝ ╚═════╝  ╚══╝╚══╝ ╚═╝  ╚═══╝                        ║
+║                                                                          ║
+║   ██╗███╗   ██╗ ██████╗ ██████╗ ███╗   ███╗██████╗ ██╗     ███████╗████████╗███████╗  ║
+║   ██║████╗  ██║██╔════╝██╔═══██╗████╗ ████║██╔══██╗██║     ██╔════╝╚══██╔══╝██╔════╝  ║
+║   ██║██╔██╗ ██║██║     ██║   ██║██╔████╔██║██████╔╝██║     █████╗     ██║   █████╗    ║
+║   ██║██║╚██╗██║██║     ██║   ██║██║╚██╔╝██║██╔═══╝ ██║     ██╔══╝     ██║   ██╔══╝    ║
+║   ██║██║ ╚████║╚██████╗╚██████╔╝██║ ╚═╝ ██║██║     ███████╗███████╗   ██║   ███████╗  ║
+║   ╚═╝╚═╝  ╚═══╝ ╚═════╝ ╚═════╝ ╚═╝     ╚═╝╚═╝     ╚══════╝╚══════╝   ╚═╝   ╚══════╝  ║
+║                                                                          ║
+║   THIS FILE IS A SKELETON. THE KERNEL BODY IS A NO-OP `pass`.            ║
+║                                                                          ║
+║   The Python entry point `pc_self_modify_triton` raises                  ║
+║   NotImplementedError on every call. It is NOT wired into the            ║
+║   dispatch path in `pc_ops.py`. Calling it does nothing useful.          ║
+║                                                                          ║
+║   DO NOT FILL IN THE KERNEL BODY UNTIL YOU HAVE ROCM OR CUDA HARDWARE    ║
+║   THAT CAN RUN `tests/test_pc_ops_triton.py::test_triton_matches_python` ║
+║   AND CONFIRM BIT-IDENTITY WITH THE PYTHON REFERENCE.                    ║
+║                                                                          ║
+║   The test is `xfail strict` — it will FAIL noisily if you fill in       ║
+║   the kernel without making the math match. That is the contract.        ║
+║                                                                          ║
+║   Brian's current hardware: 7800 XT via DirectML. Triton does not run    ║
+║   on DirectML. Triton DOES run on AMD via ROCm — but ROCm on Windows     ║
+║   for consumer RDNA3 cards is patchy. Practical paths to validating      ║
+║   this kernel:                                                           ║
+║     • Move to Linux/WSL2 + ROCm on the same 7800 XT                      ║
+║     • Wait for DGX Spark (CUDA, Phase 7 deployment target)               ║
+║     • Run on a borrowed/cloud NVIDIA box for one-off validation          ║
+║                                                                          ║
+║   Tracked in `To-Do.md` under "Known Incomplete" as load-bearing for     ║
+║   Phase 5/6 production scale. Sparse-gating cannot benefit from the      ║
+║   C++ accelerator until this lands — the C++ kernel falls back to        ║
+║   Python whenever `sparse_gate is not None`.                             ║
+║                                                                          ║
+╚══════════════════════════════════════════════════════════════════════════╝
 
 When this gets filled in:
 
@@ -22,6 +60,9 @@ The skeleton below is intentionally structured to mirror
 `_pc_self_modify_python` section-by-section (a-k labels), so the
 implementer fills tile loops into the right slots without re-deriving
 the math.
+
+For the design rationale on why this is a skeleton instead of a
+partial implementation, see `docs/KNOWN_INCOMPLETE.md`.
 """
 
 from __future__ import annotations
@@ -115,9 +156,20 @@ if _has_triton:
         Returns via output buffers — Triton kernels don't return values;
         the dispatcher reads salience from error_acc.mean() after launch.
         """
-        # PLACEHOLDER: real kernel body goes here.
-        # This pass exists so the @triton.jit decorator parses without
-        # error during package import on a Triton-equipped box.
+        # ╔════════════════════════════════════════════════════════════════╗
+        # ║   !!!  KERNEL BODY NOT IMPLEMENTED  !!!                        ║
+        # ║                                                                ║
+        # ║   This `pass` is intentional. The function is a no-op.         ║
+        # ║   See the module docstring at the top of this file for         ║
+        # ║   why it has not been filled in, and what conditions need      ║
+        # ║   to be met before doing so.                                   ║
+        # ║                                                                ║
+        # ║   Bit-identity test:                                           ║
+        # ║     tests/test_pc_ops_triton.py::test_triton_matches_python    ║
+        # ║                                                                ║
+        # ║   Reference implementation (the spec):                         ║
+        # ║     luthi/v2/pc_ops.py::_pc_self_modify_python                 ║
+        # ╚════════════════════════════════════════════════════════════════╝
         pass
 
 else:

@@ -60,7 +60,7 @@ def _build_model(args, vocab_size: int, device: torch.device) -> torch.nn.Module
       (pc_rate, pred_learning_rate, etc.) are silently ignored.
     """
     if args.arch == "v2":
-        return PredictiveCodingLM(
+        model = PredictiveCodingLM(
             vocab_size=vocab_size,
             d_model=args.d_model,
             n_blocks=args.n_blocks,
@@ -73,7 +73,29 @@ def _build_model(args, vocab_size: int, device: torch.device) -> torch.nn.Module
             set_point_adapt_rate=args.set_point_adapt_rate,
             compressed_episodes=args.compressed_episodes,
             consolidation_enabled=not args.no_consolidation,
+            consolidation_style=args.consolidation_style,
+            consolidation_attractor_passes=args.consolidation_attractor_passes,
+            mu_pc_enabled=args.mu_pc_enabled,
         ).to(device)
+        # The PC layer's sparse-gating and iPC knobs aren't wired into
+        # PredictiveCodingLM's constructor (they're per-layer optimizations,
+        # not model-level architectural choices). Set them post-construction
+        # on every living FFN. This pattern matches the existing per-layer
+        # `consolidation_*` knobs as the only way to vary them via CLI
+        # without bloating the model constructor signature.
+        for block in model.blocks:
+            living = block.living_ffn
+            living.sparse_threshold = float(args.sparse_threshold)
+            living.sparse_warmup_steps = int(args.sparse_warmup_steps)
+            if args.inference_steps_per_forward < 1:
+                raise ValueError(
+                    f"--inference-steps-per-forward must be >= 1, got "
+                    f"{args.inference_steps_per_forward}"
+                )
+            living.inference_steps_per_forward = int(
+                args.inference_steps_per_forward
+            )
+        return model
     elif args.arch == "dead":
         return DeadLM(
             vocab_size=vocab_size,
@@ -258,6 +280,79 @@ def main():
              "part of what's being validated end-to-end). Set this only "
              "for ablation comparisons.",
     )
+
+    # ------------------------------------------------------------------
+    # Phase 3G knobs (v2 only — all ignored for --arch dead).
+    # See `docs/RESEARCH_LITERATURE_2026-05-13.md` and
+    # `docs/RESEARCH_SALVATORI_ATTRACTOR_MEMORY.md` for the design
+    # rationale on each. Defaults preserve M5 behavior — these knobs
+    # default to off so existing run_*.bat scripts and reproductions of
+    # M5 are unaffected.
+    # ------------------------------------------------------------------
+    parser.add_argument(
+        "--consolidation-style", dest="consolidation_style",
+        type=str, default="gradient",
+        choices=["gradient", "attractor", "both"],
+        help="v2 only: consolidation replay pathway. 'gradient' = pull "
+             "weight toward stored snapshot (M4 original). 'attractor' = "
+             "Salvatori-style replay through pc_self_modify, making stored "
+             "input patterns local energy minima. 'both' = run gradient "
+             "first, then attractor. Default 'gradient' preserves M5 "
+             "baseline; switch to 'attractor' or 'both' for Phase 3G "
+             "ablations.",
+    )
+    parser.add_argument(
+        "--consolidation-attractor-passes", dest="consolidation_attractor_passes",
+        type=int, default=1,
+        help="v2 only: number of replay passes per attractor consolidation "
+             "event (consolidation_style='attractor' or 'both'). Default 1 "
+             "mirrors gradient-replay's single-pass semantics. Salvatori's "
+             "paper uses many passes for full convergence; the trigger fires "
+             "many times across training, so each event being a single pass "
+             "is usually sufficient.",
+    )
+    parser.add_argument(
+        "--mu-pc-enabled", dest="mu_pc_enabled",
+        action="store_true", default=False,
+        help="v2 only: enable Depth-muP / muPC parameterization "
+             "(Innocenti et al. 2025). Re-inits q/k/v/o_proj, up/down_proj, "
+             "and the PC weight buffer with N(0, 1/sqrt(fan_in*L)) where "
+             "L=n_blocks. Applies 1/sqrt(L) residual scale on both "
+             "attention and FFN branches. Designed to make hyperparameters "
+             "transfer across depths without retuning -- the natural "
+             "pairing for the M6 depth sweep.",
+    )
+    parser.add_argument(
+        "--inference-steps-per-forward", dest="inference_steps_per_forward",
+        type=int, default=1,
+        help="v2 only: iPC interleaved inference + update "
+             "(Salvatori et al. 2024). T=1 (default) is bit-identical to "
+             "classical PC. T>1 runs T inner pc_self_modify cycles per "
+             "external forward call. Incompatible with gradient "
+             "checkpointing (the PC layer raises a loud RuntimeError if "
+             "both are enabled).",
+    )
+    parser.add_argument(
+        "--sparse-threshold", dest="sparse_threshold",
+        type=float, default=0.0,
+        help="v2 only: sparse PC update gating threshold on error_acc. "
+             "0.0 (default) disables gating (bit-identical to non-sparse). "
+             ">0 zeroes the delta_w rows for outputs whose recent "
+             "prediction-error magnitude is below the threshold. Recovers "
+             "v1's spiking-gate sparsity property in continuous error space. "
+             "NOTE: sparse-gating active forces the Python pc_self_modify "
+             "path (C++ kernel skips when sparse_gate is not None) until "
+             "the Triton kernel lands. See docs/KNOWN_INCOMPLETE.md.",
+    )
+    parser.add_argument(
+        "--sparse-warmup-steps", dest="sparse_warmup_steps",
+        type=int, default=500,
+        help="v2 only: warmup window during which sparse gating does NOT "
+             "engage even when --sparse-threshold > 0. Prevents the "
+             "bootstrap deadlock (error_acc starts at 0; gating "
+             "immediately would freeze every output forever). Default 500.",
+    )
+
     parser.add_argument("--stride", type=int, default=64)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--output_dir", type=str, default="runs/m5")

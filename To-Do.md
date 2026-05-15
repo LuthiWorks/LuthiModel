@@ -1,5 +1,18 @@
 # LuthiModel — To-Do
 
+> ## ⚠️ KNOWN INCOMPLETE — read first
+>
+> Things that exist in the codebase but are NOT functionally complete.
+> See `docs/KNOWN_INCOMPLETE.md` for the full list with safety nets.
+>
+> - **Triton kernel for `pc_self_modify`** (`luthi/v2/pc_ops_triton.py`).
+>   Kernel body is a no-op `pass`. Entry point raises
+>   `NotImplementedError`. Cannot be validated without ROCm-on-Linux or
+>   CUDA. Sparse PC gating runs on the Python path only until this lands.
+>   The file has a large ASCII banner; the bit-identity test is
+>   `xfail strict` to catch any unvalidated fill-in. **Do not assume the
+>   Triton path is hot.**
+
 ## Phase 1-2: Foundation (COMPLETE)
 
 - [x] LivingLayerV6: Hebbian self-modification (v1), error-directed learning, episodic memory

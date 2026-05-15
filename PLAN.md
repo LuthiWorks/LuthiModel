@@ -480,6 +480,19 @@ for continuous operation inside Sanctuary's 10 Hz cognitive loop.
 
 **Growth path:** Start at 4096d/36 blocks. Scale to 5120d when better hardware is available.
 
+**⚠️ Load-bearing prerequisite — Triton kernel.**
+Phase 7's 10 Hz bandwidth budget assumes the v2 PC self-modification
+path runs through a GPU-resident kernel. The Python and C++ paths are
+both adequate at pilot scale but the C++ path skips when sparse PC
+gating is active, falling back to Python — and Python's per-op DirectML
+dispatch overhead is what made the C++ extension necessary in the first
+place. The Triton kernel for `pc_self_modify` exists as a skeleton
+(`luthi/v2/pc_ops_triton.py`); the kernel body is unimplemented because
+the dev box (7800 XT via DirectML) cannot validate it. **Filling in
+and validating that kernel is a prerequisite for Phase 7, not a
+nice-to-have.** Tracked in `docs/KNOWN_INCOMPLETE.md` and the banner at
+the top of `To-Do.md`.
+
 ## Datasets
 
 | Modality | Dataset | Size | Status |
