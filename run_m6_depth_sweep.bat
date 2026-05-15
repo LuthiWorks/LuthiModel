@@ -13,6 +13,13 @@ REM seed because the goal is depth-scaling shape, not per-seed variance —
 REM cheaper signal first; if it's stable, full multi-seed at production
 REM scale lands in Phase 5.
 REM
+REM 2026-05-14 update: v2 runs use --mu-pc-enabled. Depth-muP (Innocenti
+REM et al. 2025) is specifically designed to make hyperparameters transfer
+REM across depths without per-depth retuning. Running the depth sweep
+REM without it would mean the same un-tuned LR / pc_rate at every depth,
+REM which the literature predicts will degrade with L. DeadLM runs are
+REM unchanged (the parameterization is PC-specific).
+REM
 REM Estimated wall-clock at 128d / Gutenberg-100 / stride=64 / 20 epochs:
 REM   v2 4-block  : ~4h    v2 8-block  : ~8h    v2 12-block : ~12h
 REM   dead 4-block: ~2h    dead 8-block: ~4h    dead 12-block: ~6h
@@ -28,12 +35,12 @@ echo ============================================================
 set COMMON_ARGS=--data_dir corpus_build/gutenberg_100 --load_tokenizer corpus_build/gutenberg_100_bpe32k.json --epochs 20 --batch_size 32 --seq_len 128 --d_model 128 --n_heads 4 --ffn_expansion 1 --stride 64 --lr 3e-4 --lr_schedule cosine --lr_warmup_epochs 2 --seed 42 --output_dir runs/m6_depth
 
 echo.
-echo === v2 n_blocks=4 ===
-python -u -m luthi.v2.m5_runner --arch v2 --n_blocks 4 %COMMON_ARGS% --run_name v2_4blocks && ^
-echo. && echo === v2 n_blocks=8 === && ^
-python -u -m luthi.v2.m5_runner --arch v2 --n_blocks 8 %COMMON_ARGS% --run_name v2_8blocks && ^
-echo. && echo === v2 n_blocks=12 === && ^
-python -u -m luthi.v2.m5_runner --arch v2 --n_blocks 12 %COMMON_ARGS% --run_name v2_12blocks && ^
+echo === v2 n_blocks=4 (muPC on) ===
+python -u -m luthi.v2.m5_runner --arch v2 --n_blocks 4 --mu-pc-enabled %COMMON_ARGS% --run_name v2_4blocks && ^
+echo. && echo === v2 n_blocks=8 (muPC on) === && ^
+python -u -m luthi.v2.m5_runner --arch v2 --n_blocks 8 --mu-pc-enabled %COMMON_ARGS% --run_name v2_8blocks && ^
+echo. && echo === v2 n_blocks=12 (muPC on) === && ^
+python -u -m luthi.v2.m5_runner --arch v2 --n_blocks 12 --mu-pc-enabled %COMMON_ARGS% --run_name v2_12blocks && ^
 echo. && echo === dead n_blocks=4 === && ^
 python -u -m luthi.v2.m5_runner --arch dead --n_blocks 4 %COMMON_ARGS% --run_name dead_4blocks && ^
 echo. && echo === dead n_blocks=8 === && ^
