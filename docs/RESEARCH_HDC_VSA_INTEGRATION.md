@@ -360,7 +360,7 @@ This read is accurate in every respect:
 - **"Reasoning happens in HD space"**: this is the Hersche et al. 2025 framing too — attention IS approximate VSA, the question is how much MORE VSA-shaped we should make it.
 - **"Neubert, Schlegel, others are circling but it's not mature"**: yes. The 2022 Schlegel-Neubert-Protzel comparison paper is the reference framework. Neubert's TU Chemnitz group has VSA tutorials and is doing the right work for robotics. The IBM group (Hersche, Rahimi) is the production-leaning side. Renner/Frady/Sommer at Olshausen's Redwood Center is the visual perception side. None of them have produced a "drop-in for transformer LM training" result.
 
-His instinct that this matters for Luthi's eventual deployment cost is correct. The integration path is what this document is about — *where* HDC fits without breaking the living-weights premise.
+The instinct that this matters for Luthi's eventual deployment cost is correct. The integration path is what this document is about — *where* HDC fits without breaking the living-weights premise.
 
 ---
 
