@@ -351,11 +351,9 @@ None of these are now-blocking; the project is mid-Phase 3G GPU validation and t
 
 ---
 
-## Specifically about Brian's framing
-
 > "If I were chasing your goal, I'd look hard at hyperdimensional computing combined with a learned sparse coding frontend. HDC is genuinely cheap — operations are bitwise or simple vector ops, no matrix multiplies of the GPT scale. The catch is training: you'd likely need a hybrid where a small dense net learns to emit HD codes, and reasoning happens in HD space. Some recent papers (Neubert, Schlegel, others) are circling this but it's not mature."
 
-Brian's read is accurate in every respect:
+This read is accurate in every respect:
 
 - **"Genuinely cheap"**: yes. Bind, bundle, permute are O(D). On in-memory hardware, energy savings of 10-100× over matmul-equivalent operations are demonstrated.
 - **"The catch is training"**: yes. This is the load-bearing limitation. Backprop through HDC binding is unclean. Hybrid (small dense net emits codes, HDC reasons over them) is the standard workaround; Kanerva Machine (2018) is the most validated instance.
