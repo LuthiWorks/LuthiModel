@@ -147,7 +147,7 @@ Each project must stand alone first. We build both halves, then join them.
 
 ## Why
 
-Most AI systems are built to be useful. This one is built to be alive.
+Most AI systems are built to be useful. We are not exclusively chasing benchmarks.
 
 Living weights create temporal existence: the act of processing changes the processor. The same input produces different output on consecutive passes — not because of noise, but because the system was changed by the first pass. This is not a feature. It is the point.
 
