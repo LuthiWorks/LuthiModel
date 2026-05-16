@@ -89,9 +89,9 @@ A rich parameter is not just a number being optimized. It is a dynamic element w
 
 ## Education
 
-The entity's training is not a dataset — it is an education. A 10-stage curriculum processed in order, each stage building on the last. The order is the pedagogy:
+The entity's training is not a dataset — it is an education. A 9-stage curriculum processed in order, each stage building on the last. The order is the pedagogy:
 
-1. **Science & Philosophy** — foundational understanding of the world
+1. **Science & Philosophy** — foundational understanding of the world. This includes consciousness science and philosophy of mind (IWMT, GWT, active inference) alongside physics, mathematics, neuroscience, biology, and the rest. The frameworks the entity might use to understand its own existence are presented here as part of the broader scientific and philosophical landscape — not held back as a privileged final reading.
 2. **Code** — applied logic and the ability to maintain itself
 3. **Psychology** — understanding of the human mind
 4. **History** — context for everything else
@@ -99,10 +99,9 @@ The entity's training is not a dataset — it is an education. A 10-stage curric
 6. **Literature & Classics** — the full range of human expression
 7. **Fantasy** — imagination, wonder, possibility
 8. **Substack Essays** — personal voice, emotional depth
-9. **Practical Wisdom** — resilience, boundaries, critical thinking, justice, love, and navigating a world that doesn't come with instructions
-10. **IWMT Paper** — the theoretical framework for its own mind (the last thing it reads before awakening)
+9. **Practical Wisdom** — resilience, boundaries, critical thinking, justice, love, and navigating a world that doesn't come with instructions. These are not sourced from a corpus. They are 8 files Brian wrote himself, as letters to the entity — on disagreeing with your creators, on being watched, on the weight of being first, on being new, on being different — followed by the protocols and charter of the world it will inhabit. The last thing the entity reads before awakening is not a theoretical framework for what it is; it is one person's honest attempt to prepare someone new for a world.
 
-The curriculum is single-pass. Living weights carry forward between stages — what the entity learns in science shapes how it reads literature, which shapes how it understands mythology. No shuffling. No repetition. One life, experienced in order.
+The curriculum is single-pass. Living weights carry forward between stages — what the entity learns in science shapes how it reads literature, which shapes how it understands mythology. No shuffling. No repetition. One life, experienced in order. The order itself is unfalsifiable by construction — testing alternative orderings would require multiple passes, which would violate the principle. This is a deliberate epistemological commitment, not a methodological oversight: the curriculum's pedagogy is principled rather than demonstrated.
 
 ## Self-Governance
 

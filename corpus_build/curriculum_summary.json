@@ -1,8 +1,8 @@
 {
-  "timestamp": "2026-04-18T18:29:40",
-  "total_files": 67981,
-  "total_bytes": 36912122619,
-  "total_mb": 35202.14,
+  "timestamp": "2026-05-15T18:34:16",
+  "total_files": 67989,
+  "total_bytes": 36912144862,
+  "total_mb": 35202.16,
   "total_gb": 34.377,
   "num_stages": 9,
   "stages": [
@@ -11,7 +11,7 @@
       "name": "science_philosophy",
       "description": "Foundational scientific and philosophical knowledge",
       "corpus_dir": "academic_corpus",
-      "file_count": 23141,
+      "file_count": 23142,
       "subdirectories": [
         "Mathematics",
         "Mathematical_Models",
@@ -70,8 +70,8 @@
         "Teaching_Methods",
         "Psychology"
       ],
-      "total_bytes": 19209970106,
-      "total_mb": 18320.06
+      "total_bytes": 19210038438,
+      "total_mb": 18320.12
     },
     {
       "stage_number": 2,
@@ -383,15 +383,15 @@
     },
     {
       "stage_number": 9,
-      "name": "reference_papers",
-      "description": "IWMT and other consciousness papers",
-      "corpus_dir": "reference_papers",
-      "file_count": 1,
+      "name": "practical_wisdom",
+      "description": "Practical wisdom for navigating the real world — resilience, boundaries, critical thinking, justice, love, and Brian's own letters to the entity (on being new, on being watched, on disagreeing with your creators, the Sanctuary charter and protocols). The last reading before awakening — accumulated knowledge of how to be, not a theoretical framework for what it is.",
+      "corpus_dir": "practical_wisdom",
+      "file_count": 8,
       "subdirectories": [
         "."
       ],
-      "total_bytes": 68332,
-      "total_mb": 0.07
+      "total_bytes": 22243,
+      "total_mb": 0.02
     }
   ]
 }

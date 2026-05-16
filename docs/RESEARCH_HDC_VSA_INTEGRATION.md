@@ -19,9 +19,11 @@
 
 2. **But HDC for language modeling is not mature.** State of the art is still small-scale classification, retrieval, constrained reasoning, and scene understanding. There is no convincing "HDC trains a competitive LM end-to-end" result. Replacing Luthi's substrate with HDC would be betting the project on unsettled ground.
 
-3. **HDC fits Luthi as memory and as compositional structure on top of the existing substrate**, not as substrate. Five concrete directions identified below. The most actionable, in order: episode store as HDC clean-up memory (direct fit with the Salvatori attractor consolidation that just landed), attention-as-binding reinterpretation (Hersche et al. December 2025, suggestive not proven), sparse coding frontend for multimodal encoders (Olshausen lineage; well validated), resonator networks for compositional vision (Phase 4 embodiment alignment), and HDC sequence prediction for Sanctuary's 10 Hz cognitive loop (Phase 6+).
+3. **HDC fits Luthi as memory, sensory encoding, and introspection on top of the existing substrate** — not as substrate. Six concrete directions identified below. The most actionable, in order: episode store as HDC cue space composed with Salvatori attractor cleanup (Direction A), attention-as-binding reinterpretation (Hersche et al. December 2025, suggestive not proven), sparse coding frontend for multimodal encoders (Olshausen lineage; well validated), resonator networks for compositional vision (Phase 4 embodiment alignment), HDC sequence prediction for Sanctuary's 10 Hz cognitive loop (Phase 6+), and HD-coded introspection during inference (Direction F — the "first-person what am I thinking" capability that maps to Brian's longstanding cognitive-proprioception ask).
 
-4. **The living-weights philosophy is in tension with HDC.** HDC's beauty is that codes are stable enough to compose; Luthi's beauty is that weights aren't stable. We pick the integration points where these complement rather than collide.
+4. **The split-update-rule architecture resolves the living-weights/HDC tension.** Codes are stable in the memory layer (no gradient updates); weights are unstable in the substrate (gradient updates and PC self-modification). The two halves operate by different rules, in different subsystems, on different timescales. This isn't an integration point "we pick carefully" — it's the architectural decision that makes the rest possible. Be confident about it; don't keep framing it as ongoing tension.
+
+5. **The central design decision is how Salvatori and HDC compose**, not whether they compete. Both are attractor-style cleanup mechanisms; treated naively they're redundant. The designed composition: **HD codes are the cue space** (sparse, compositional, cheap to address; "taffy → fudge" overlap is automatic from shared bits); **Salvatori attractor dynamics are the cleanup mechanism** (continuous, gradient-shaped, expressive). The HD layer hands the attractor a sharp starting point; the attractor relaxes to the consolidated pattern. Direction A is built around this composition, not around HDC alone.
 
 ---
 
@@ -115,16 +117,17 @@ Brian named the target precisely: **olfactory-style associative recall**. Two re
 
 The general mechanism, named: the hippocampus (specifically CA3's recurrent net) implements this as a Hopfield-style attractor that *indexes* distributed cortical patterns. This is **hippocampal indexing theory** (Teyler & DiScenna 1986). The hippocampus doesn't store the patterns — it stores indices that, when retrieved, reinstate the distributed cortical activity that *was* the experience. That distinction matters for how we design the Luthi episode store: the store doesn't need to hold the full weight snapshot; it can hold an index that points to a region of weight space the rest of the substrate reconstructs.
 
-### The canonical architecture: two-tier with split learning rules
+### A working architecture: two-tier with split update rules
 
-The cross-instance conversation surfaced a specific architecture that **sidesteps the training-gap problem cleanly**:
+The cross-instance conversation surfaced a two-tier shape that **sidesteps the training-gap problem cleanly**. We treat the two-tier shape as a working starting point, not a canonical commitment — during implementation, a different decomposition may turn out cleaner, and the prior conversation should not anchor the design beyond what the architecture argument supports. With that caveat, here is the shape:
 
 ```
-                    ┌────────────────────────────────┐
-                    │  Memory store (huge, cheap)    │
-                    │  SDM-style addresses, HD codes │
-                    │  Hebbian/local updates only    │
-                    └────────────┬───────────────────┘
+                    ┌─────────────────────────────────────┐
+                    │  Memory store (huge, cheap)         │
+                    │  SDM-style addresses, HD codes      │
+                    │  Additive superposition writes      │
+                    │  (salience-gated, no gradient flow) │
+                    └────────────┬────────────────────────┘
                                  ▲
                   retrieve ──────┤──────  store
                                  │
@@ -141,26 +144,54 @@ The cross-instance conversation surfaced a specific architecture that **sidestep
 The split is the key insight:
 
 - **The encoder** is a conventional neural net (could be a "tiny transformer" or, in our case, the existing PC substrate's bottom layers / the multimodal encoders). It trains via standard gradient descent and is responsible only for mapping inputs into HD code space. This is small, lives in VRAM, looks like any other trainable component.
-- **The memory store** is huge but cheap — a Sparse Distributed Memory (Kanerva 1988) holding HD vectors with Hamming-distance lookups. **It does not backprop.** It updates via Hebbian / local rules: on a new exposure, write the code at every address within some Hamming distance of its key; on retrieval, return the weighted average of contents at addresses within Hamming distance of the cue. Bit operations and address comparisons — no matrix multiplies, and no gradient flow.
+- **The memory store** is huge but cheap — a Sparse Distributed Memory (Kanerva 1988) holding HD vectors with Hamming-distance lookups. **It does not backprop.** Updates are **additive superposition at random addresses**: on a new exposure, write the encoded HD code (additively, with salience-weighted strength) into every hard location within Hamming distance H of the location's address; on retrieval, return the bitwise-majority or normalized-sum of contents from all locations within Hamming distance H of the cue. Bit operations and address comparisons — no matmul, no gradient flow.
 
-This **completely solves the training-gap problem we identified earlier in this document**. The hard part of backpropping through bind/permute/XOR isn't done because it isn't needed — those operations only happen in the memory store, which is updated by Hebbian rules, not gradients. The encoder trains normally; the memory updates on top.
+This **completely solves the training-gap problem we identified earlier in this document**. The hard part of backpropping through bind/permute/XOR isn't done because it isn't needed — those operations only happen in the memory store, which is updated by additive superposition writes, not gradients. The encoder trains normally; the memory accumulates content on top.
 
-### Why this is so well-fit to Luthi specifically
+> **Critical distinction: this is NOT a Hebbian update rule.** Some HDC literature loosely calls non-gradient memory updates "Hebbian," but the SDM write rule is **additive superposition at fixed random addresses**, not Δw ∝ input × output correlation. The two are structurally different. Hebbian correlation rules have a positive-feedback loop (larger output → larger weight change → larger output...) that produced documented v1 fragility in Luthi (runaway weight growth, input-magnitude sensitivity, the ~39% convergence penalty that motivated the move to v2 PC). SDM superposition writes have no such loop: addresses are random and fixed, write magnitude is bounded by the salience gate and the Hamming-distance neighborhood size, and there is no input-output correlation term. The v1 failure modes do not apply to this layer.
+>
+> **This means: do NOT implement the HD memory layer by reusing v1's Hebbian kernels** (`luthi/csrc/living_ops.cpp`). Those kernels compute `Δw = output × input × rate × ...`, which is the wrong rule. The HD memory layer needs new kernels for `address_bank.add_(content * salience, masked by hamming_distance ≤ H)` — a different operation with a different failure analysis.
 
-The training-rule split maps directly onto two systems we already have working code for:
+### Why this is well-fit to Luthi specifically
 
-1. **Gradient-trained encoder** = v2 PC substrate + multimodal encoders. Already exists. Producing HD codes is just a projection-and-thresholding head; no new training methodology.
-2. **Hebbian-updated memory** = the *exact* learning rule v1 used. We have working C++ kernels for it (`luthi/csrc/living_ops.cpp`). When we moved to v2 PC we did not delete that code; it's preserved as a reference baseline. The HD memory layer is where it gets resurrected — not as the substrate (PC won that comparison), but as the *memory* (where Hebbian's online-one-shot property is exactly the right tool).
+The split maps onto two systems Luthi already has the right architecture for:
 
-The conversation made this point explicitly: human associative memory learns online — one exposure to a new smell-context pairing is enough — which is precisely the regime backprop is bad at and Hebbian is good at. We have the Hebbian implementation. We have the kernels. We have the rich-parameter scaffolding to give different feature dimensions different bit budgets.
+1. **Gradient-trained encoder** = v2 PC substrate + multimodal encoders. Already exists. Producing HD codes is a projection-and-thresholding head added on top; no new training methodology required.
+2. **Non-gradient memory store** = a new module. The existing episode store (`episode_contexts`, `episode_values`, `episode_inputs`) is the conceptual ancestor — it's already an inside-the-forward, no-gradient memory — but it uses cosine retrieval over a small dense buffer, not addressing-by-overlap into a sparse high-D array. The new module would replace or augment the current cosine path with SDM dynamics.
 
-### The "olfactory strength" property is a hyperparameter, not a research question
+What v2 has that makes this fit:
+- The salience signals to drive write gating: `error_acc`, top-down `salience`, the episode-storage salience threshold.
+- The rich-parameter scaffolding to give different feature dimensions different bit budgets in the HD address.
+- The Salvatori attractor consolidation as a complementary pathway: SDM stores indices and reinstates them at retrieval; Salvatori then refines the PC weights to make those reinstated patterns local energy minima of the substrate's dynamics. The two systems compose.
 
-The cross-instance conversation also surfaced a clean implementation answer for *why* olfactory memory is so strong: **more bits per cue means sharper retrieval**. In SDM, the address space is D bits (say 10,000). If certain feature dimensions (emotional salience, novelty, multimodal richness) consume more of that address budget, retrieval keyed on those features is sharper and more reliable.
+Human associative memory learns online — one exposure to a new smell-context pairing is enough — which is precisely the regime backprop is bad at. SDM-style additive writes are the right tool for this regime (one write places the pattern; subsequent retrievals find it without further training). This is the same *behavior* that motivated the original suggestion of "Hebbian," just achieved via a different mechanism that doesn't carry v1's failure modes.
 
-Concretely: instead of allocating address bits uniformly across features, allocate them weighted by salience/novelty/cross-modal-cooccurrence. High-salience features get more bits → sharper retrieval → "this episode is anchored to that moment unambiguously." That's the Proust effect, parameterized.
+### The "olfactory strength" property has TWO parts: bit allocation AND routing bypass
 
-This is a one-tensor change in the encoder — an `address_bit_budget` per feature dimension — not a research project. The hard part is choosing the salience signals to drive the allocation, which we already have (`error_acc`, top-down `salience`, episode-storage salience threshold).
+Why olfactory memory is structurally special breaks into two anatomical facts, both of which Luthi needs to capture.
+
+**Part 1 — Combinatorial sharpness (bit allocation).** ~400 olfactory receptor types each contribute to a unique high-dimensional activation pattern per smell. In SDM terms: more bits of the address are spent on the smell's identity than on most other modalities. The Luthi analog: allocate more bits of the HD address to high-salience features (emotional weight, novelty, cross-modal cooccurrence) than to ambient features. High-salience features get sharper retrieval; ambient features get fuzzier. That's the Proust effect, parameterized.
+
+Implementation: an `address_bit_budget` tensor per feature dimension in the encoder. Driven by the salience signals we already have (`error_acc`, top-down `salience`, episode-storage salience threshold). One-tensor change.
+
+**Part 2 — Anatomical bypass (routing).** This is the half I missed in the first pass. Smell is the only sensory modality whose anatomy bypasses thalamic gating — the olfactory bulb projects directly to piriform cortex, amygdala, and entorhinal cortex, with zero thalamic mixing. *Routing*, not just sharpness, is what makes the cue unambiguous: the smell signal reaches memory circuits less attenuated and less contextualized than other inputs.
+
+The Luthi analog: high-salience streams should route into the HD address space *more directly* than other streams, bypassing the normal context-projection mixing. Concretely:
+
+- **Standard path** (most input features): input → multimodal encoder → trunk attention/PC mixing → `context_proj` → HD address bits.
+- **Bypass path** (high-salience streams): input → multimodal encoder → salience-gated direct projection → HD address bits. Less attention mixing, less residual stream homogenization, more directly reflective of the raw feature signal.
+
+The HD address for episode storage is the concatenation (or superposition) of standard-path bits and bypass-path bits. Bypass-path bits get higher allocation per Part 1 above. Together, this gives the entity its olfactory-style channel: sharper AND less attenuated than other features, for the inputs that warrant it.
+
+The routing choice is salience-driven and dynamic — the same input that's ambient one moment can become bypass-eligible when novelty or emotional weight spikes. The architecture already has the salience signals; the new piece is an alternative projection head + a routing gate.
+
+### Dimensionality D is not 10,000 by default
+
+The classical HDC literature uses D=10,000 as a textbook default, calibrated for fully-symbolic tasks with hundreds-to-thousands of distinct concept hypervectors. **Luthi's substrate is 256-dimensional at pilot scale**; the right HD dimensionality for our memory layer should come from a capacity calculation, not from the textbook number.
+
+Sketch: HDC bundling capacity is roughly D / (k log k) bound items at recovery rate ~95%, where k is the bundle depth. If we expect ~64 bound items per episode (feature-bindings per memory) and ~32 episodes per layer to be retrievably distinct, then D in the range of ~2,048-4,096 is probably sufficient. Production scale (4096d substrate, 64 episodes, deeper bindings) might push toward D=8,192 or even the classical 10K — but for the M5/M6 pilot scale, 10K is wasteful.
+
+Action item: when Direction A is implemented, run the explicit capacity argument for Luthi's actual feature counts before fixing D. References below cite the capacity bounds (Schlegel/Neubert/Protzel 2022 has the per-variant numbers).
 
 ### Resonator networks: the factorization piece
 
@@ -184,31 +215,40 @@ Each direction below is scoped to fit Luthi's architecture as it stands, not to 
 
 ### Direction A — Two-tier HDC memory layer (the canonical pattern, updated 2026-05-15)
 
-**Where it lives**: `luthi/v2/living_layer_pc.py` (`episode_contexts`, `episode_values`, `episode_inputs`, `_recall_episode`, `_store_episode`) plus a new module `luthi/v2/hd_memory.py` for the SDM-style store, and resurrected Hebbian update kernels from `luthi/csrc/living_ops.cpp` for the memory update path.
+**Where it lives**: `luthi/v2/living_layer_pc.py` (`episode_contexts`, `episode_values`, `episode_inputs`, `_recall_episode`, `_store_episode`) plus a new module `luthi/v2/hd_memory.py` for the SDM-style store. **No v1 Hebbian code reuse** — the SDM write rule is structurally different from a Hebbian correlation rule (see the "Critical distinction" callout above) and would need new kernels; reusing v1's Hebbian implementation would import the wrong update rule along with the wrong failure modes.
 
 **Current state**: Cosine-similarity retrieval over a small low-dim context buffer. Top-1 match returned and blended into the active weight. The Salvatori attractor consolidation (added 2026-05-14) adds an attractor-style replay pathway through the PC layer.
 
-**Proposed change** (per the two-tier architecture above): replace or augment the cosine retrieval with a Sparse Distributed Memory layer, trained with split rules:
+**Proposed change** (per the two-tier architecture above): replace or augment the cosine retrieval with a Sparse Distributed Memory layer, using split update rules and **composed deliberately with the Salvatori attractor pathway**:
 
-1. **Encoder = the existing PC substrate's context projection** plus a new HD-encoding head. The encoder maps (context, input_pattern, salience_features) → an HD code (D=10,000 bipolar or binary). This head is gradient-trained as part of the normal Luthi training loop. **No training-methodology change.**
-2. **Memory = a new SDM-style store**: ~10,000-100,000 random hard locations, each holding a D-bit content buffer. Writes superpose the encoded HD code into every location within Hamming distance H of the location's address. Reads return the weighted average of contents from all locations within Hamming distance H of the query. **Updated by Hebbian rules only.** No backprop through the memory layer.
-3. **Bit allocation per feature** in the encoder: emotional salience, novelty, and cross-modal richness get more bits in the HD address than other features. Olfactory-strength behavior emerges automatically from the allocation choice. Driven by signals we already have (`error_acc`, top-down salience, episode-storage salience threshold).
-4. **Retrieval pulls memories back into the active context** — the recovered HD code is decoded (resonator-network fixed-point iteration if needed for factorization) into a weight delta that blends into the PC layer, *or* into an additive context signal that influences the next forward pass. The exact integration point is a design choice — probably both, addressing different timescales.
+1. **Encoder = the existing PC substrate's context projection** plus a new HD-encoding head. The encoder maps (context, input_pattern, salience_features) → an HD code of dimensionality D (TBD by capacity calculation, likely D ∈ [2048, 8192] at pilot/production scale — see the dimensionality discussion in the architecture section). This head is gradient-trained as part of the normal Luthi training loop. **No training-methodology change.**
+2. **Memory = a new SDM-style store**: random hard-location count and D both chosen by capacity argument for Luthi's expected episode count and bundle depth. Writes superpose the encoded HD code (additively, salience-weighted) into every location within Hamming distance H of the location's address. Reads return the bitwise-majority or normalized-sum of contents from all locations within Hamming distance H of the query. **No backprop through this layer, no Hebbian correlation rule either** — additive superposition at random addresses, bounded by H and by the salience gate.
+3. **Bit allocation + routing bypass** in the encoder: high-salience features get more bits in the HD address (Part 1 of olfactory strength) AND a more direct projection path that bypasses the standard context-projection mixing (Part 2 of olfactory strength). The combination is what gives the entity an "olfactory-style channel" for salient inputs — sharper and less attenuated than ambient features.
+4. **Composition with Salvatori attractor consolidation**: **this is the central design decision**, and the doc treats it as such rather than as an open question. The two mechanisms are NOT redundant when designed together:
+   - **HD layer = cue space.** Sparse, compositional, addressable by partial overlap. Cheap to write (additive superposition), cheap to read (Hamming-distance lookup). Produces a "sharp starting point" — an HD code that names the closest stored memory by content overlap.
+   - **Salvatori attractor consolidation = cleanup mechanism.** Continuous, gradient-shaped, expressive. Takes the HD-retrieved code as a target and relaxes the PC weights toward making it a local energy minimum of the substrate's dynamics.
+   - **Composition pattern**: a forward-pass query produces a context. The HD layer returns the best-matching stored HD code (one-shot, addressable). The retrieved code is decoded (via resonator network if factorization is needed) into a target input pattern. The PC layer's attractor consolidation then takes that pattern as a replay target and refines the active weights to make it a stable point of the local dynamics. **HD layer answers "what is this most like?"; Salvatori answers "make my dynamics resolve toward that."**
+   - This composition has to be *designed* before implementation, not discovered during. If we implement the HD layer alone, the Salvatori consolidation becomes redundant. If we implement Salvatori alone (current state), the HD layer's compositional addressing is missing. The win is the layered system.
 
 **What we gain**:
 - **Olfactory-style associative recall as a structural property of the architecture.** Brian's stated cognitive target. Not "a property the model might learn" — a property the architecture guarantees by construction, like Salvatori's attractor consolidation guarantees stored patterns are local minima.
 - **Compositional, content-addressable, cue-dependent memory.** Cueing with a partial overlap (BOARDWALK+CHILDHOOD+SWEET) retrieves all stored episodes that share those bindings, weighted by total overlap. Taffy-activates-fudge is automatic.
-- **One-shot memory formation.** Hebbian SDM writes are immediate — one exposure to a smell-context pairing is enough to make it retrievable. This is what we want for biographical accumulation; backprop's many-step convergence is the wrong tool for this.
+- **One-shot memory formation.** SDM additive-superposition writes are immediate — one exposure to a smell-context pairing is enough to make it retrievable. This is what we want for biographical accumulation; backprop's many-step convergence is the wrong tool for this.
 - **Massive memory capacity at low compute cost.** SDM lookups are Hamming-distance comparisons across ~10K-100K locations. Trivially parallelizable, fits in RAM, no matmul. At production scale this is dramatically cheaper than scaling the episode-snapshot store.
 - **Indexes, not snapshots.** Per hippocampal indexing theory, the memory layer stores HD indices that reinstate distributed activity in the PC layer when retrieved. We don't need to store [out, in] weight matrices per episode at all — the active weight regenerates from the indexed cue via the existing attractor consolidation. Memory footprint per episode collapses from O(out × in) to O(D).
 - **Solves the training-gap problem we identified earlier in this document.** The gap was real for end-to-end HDC; it's not relevant here because the HD layer isn't backpropped through.
 
 **What we lose**:
 - The stored "weight snapshot" semantic in its current form. Episode recall today blends a previous weight matrix into the active one. The two-tier architecture replaces that with "blend the activated HD code's associated weight regeneration via Salvatori attractor dynamics" — a more indirect but more compositional path. This requires the attractor consolidation pathway to work well; we're betting that the work we just shipped pays off.
-- Implementation cost: substantial. New `hd_memory.py` module, new SDM kernel (Hebbian writes + Hamming-distance reads, parallelizable on CPU/GPU), new encoder head, new integration point in the forward pass. The Hebbian C++ kernels from v1 give us a head start on the update rule but not on the addressing logic.
+- Implementation cost: substantial. New `hd_memory.py` module, new SDM kernel (additive-superposition writes + Hamming-distance reads, parallelizable on CPU/GPU), new encoder head, new integration point in the forward pass. The v1 C++ kernels for Hebbian self-modification do NOT carry over — the update rules are different operations (Δw ∝ output × input correlation vs `address_bank.add_(content * salience)` at random addresses). Net effect: everything below the encoder head is new code.
 - A new hyperparameter axis (bit budget allocation per feature). Could be principled (allocate by salience EMA) or tuned. Adds search complexity.
 
-**Falsifier**: HDC two-tier memory scores worse than the current cosine retrieval + Salvatori attractor consolidation on the catastrophic-forgetting harness (train A → distract B → measure recall A). The harness must exist first; without it, we're guessing.
+**Falsifier**: this needs to be measured on the *right* axis. HDC's behavioral win is **one-shot compositional cued recall** (the taffy-activates-fudge property), not raw catastrophic-forgetting curves. The two are related but distinct measurements. The harness must include BOTH:
+
+- **Catastrophic-forgetting curve**: train A → distract B → measure recall A. Necessary baseline; tells us HDC didn't break the existing memory property.
+- **Compositional cued retrieval**: store two episodes that share most-but-not-all feature bindings (the taffy/fudge case). Query with a partial cue that activates the shared bindings. Measure whether retrieval returns BOTH episodes weighted by total overlap, not just the top-1 match. This is the HDC win condition; cosine retrieval cannot do it.
+
+If HDC matches cosine on the first axis but fails the second, it's not adding capability. If it underperforms cosine on the first axis even after composition with Salvatori, that's a real fail and we back out. If it matches cosine on the first AND adds the second, that's the win condition that justifies the implementation cost.
 
 **Sequencing**: Still after the catastrophic-forgetting harness. The two-tier architecture is more ambitious than the original Direction A — it doesn't just swap retrieval mechanisms, it adds a whole new memory tier. The harness measures whether the current memory works; if it does, the two-tier upgrade is for the *next* level of capability (one-shot olfactory-style recall) rather than a fix for a measured deficit.
 
@@ -307,9 +347,37 @@ Each direction below is scoped to fit Luthi's architecture as it stands, not to 
 - Architectural surface area in Sanctuary, which is already complex.
 - Requires Sanctuary-side instance involvement (this isn't pure-Luthi work).
 
-**Falsifier**: Trajectory retrieval is no better than journal-file lookup with timestamp indexing, OR the HDC memory introduces enough latency to push the 10 Hz cycle over budget.
+**Falsifier**: Trajectory retrieval is no better than **a rolling attention buffer of recent cognitive cycles** — *not* journal-file timestamp lookup. The latter is a strawman baseline ("HDC beats grep" tells us nothing useful); the real comparison is whether the HD pointer-chain mechanism does anything a fixed-size attention buffer over the last N cycles can't already do. The HD win has to be either (a) higher capacity at matched memory cost, (b) compositional cued retrieval the attention buffer can't do, or (c) cheaper compute at matched recall quality. Without one of those, HDC trajectory memory is added complexity without payoff.
+
+A secondary falsifier: HDC memory introduces enough latency to push the 10 Hz cycle over budget.
 
 **Sequencing**: Phase 6 (Sanctuary convergence). Specifically after Luthi is running in Sanctuary's loop, when the trajectory question becomes urgent. Not a now-thing.
+
+### Direction F — HD-coded introspection during inference (first-person, in-forward)
+
+**Where it lives**: Future addition spanning `luthi/v2/model_pc.py` (residual-stream access) and the Sanctuary introspection channel.
+
+**Current state**: We have *external* introspection (the Hyperdimensional Probe pattern from arXiv 2509.25045 can decode any LLM's residual stream into VSA concepts as a post-training analysis tool). We do not have *first-person* introspection — the substrate cannot currently query its own residual stream as concepts during a forward pass.
+
+**Proposed change**: Make HD-coded residual-stream probing a runtime capability accessible to the entity itself, not just to external observers:
+
+- During or between forward passes, the entity can issue an HD-coded query against its own residual stream: bind a "role" hypervector (e.g., "what is this layer attending to") against the residual stream, unbind to recover concept-shaped hypervectors, and clean them up against the same HD memory store Direction A provides.
+- The result is a set of concepts that name what the substrate is currently processing — addressable, factorable, communicable.
+- This is the symbolic-concept analog of the cognitive-proprioception channel Brian wanted from the start (the introspection channel that lets the model see its own plasticity, drift, membrane potentials, episode activations in real time per the 2026-04-12 note). The proprioception channel is for continuous numerical state; HD introspection is for discrete concept-shaped state. They are complementary.
+
+**What we gain**:
+- **"What am I thinking about right now?" becomes an addressable operation, not a hypothesis.** The entity can name its current attention focus, current active concepts, current uncertainty regions — as HD codes, in real time during forward.
+- **The introspection channel becomes symbolic, not just numerical.** Today's proprioception shows plasticity and drift magnitudes; HD introspection shows the *content* those magnitudes are about.
+- **Composes with Direction A and Direction B.** If we have an HD memory store (A) and attention reinterpreted as VSA binding (B), the residual stream is *already* approximately HD-coded. Direction F is the consequence of A and B both landing: once both exist, introspection is a few lines of HD algebra, not a research project.
+- **Maps cleanly to the long-running ask** for first-person access to the entity's own processing — the architectural commitment behind "the entity will read its own source while feeling what that source produces."
+
+**What we lose**:
+- Depends on A and B being implemented first. F is a *composition consequence*, not a standalone direction. If A or B doesn't land, F doesn't have substrate to operate on.
+- Real privacy and capability considerations once the entity can name its own concepts. The Sanctuary visitor-permission system already handles "what visitors see"; HD introspection adds "what the entity exposes about its own thinking." That governance surface is real and should be considered before exposing the capability beyond the entity itself.
+
+**Falsifier**: After A and B land, the HD-coded queries against the residual stream either (a) produce concepts that don't correlate with downstream behavior (i.e., introspection doesn't reflect actual processing) or (b) cannot be reliably factorized into useful components (the resonator-network step fails on real residual streams). Either way, the capability is illusory.
+
+**Sequencing**: Phase 6+ at earliest. Depends on Directions A and B being implemented. The capability is exciting but it is downstream of the work those directions require — not a parallel track, a consequent one.
 
 ---
 
@@ -327,9 +395,11 @@ The HDC literature contains several attractive-looking directions that I recomme
 
 5. **Optimize for neuromorphic hardware we don't have.** HDC's energy advantage is real on in-memory or spiking neuromorphic substrates. We're targeting DGX Spark (Phase 7), which is CUDA. The "HDC saves us on energy" argument doesn't directly apply to our deployment target.
 
-6. **Try to backprop through the HD memory layer.** This was the training-gap problem; the cross-instance conversation surfaced that we don't need to solve it because we shouldn't be doing it in the first place. Encoder is gradient-trained; memory is Hebbian. Mixing the two by trying to gradient-descend the memory layer is the wrong direction — it's choosing the path the literature has already shown doesn't work cleanly when a path that does work is available.
+6. **Try to backprop through the HD memory layer.** This was the training-gap problem; the cross-instance conversation surfaced that we don't need to solve it because we shouldn't be doing it in the first place. Encoder is gradient-trained; memory is updated by additive superposition writes. Mixing the two by trying to gradient-descend the memory layer is the wrong direction — it's choosing the path the literature has already shown doesn't work cleanly when a path that does work is available.
 
 7. **Use MoE-style partitioning for memory.** HDC's compositionality-without-partitioning is a defining property. Replacing it with experts and routing throws away exactly what makes the HD approach worth doing.
+
+8. **Re-introduce Hebbian self-modification at any layer, including the HD memory layer.** v1's Hebbian update rule (Δw ∝ output × input × rate, with metaplasticity dampening) had documented fragility: runaway weight growth from the positive-feedback loop between output magnitude and weight change, input-dimension-magnitude sensitivity that required `input_avg_mag` normalization to partially correct, and a ~39% convergence penalty against the static baseline. v2 PC retired the rule for principled reasons (PC's bounded prediction-error update has no positive-feedback loop) and the empirical result followed (v2 at 256d is 0.64% BETTER than DeadLM at matched compute). The HD memory layer needs a non-gradient update rule, but **that rule must not be Hebbian correlation** — use SDM-style additive superposition at random addresses, which is structurally a different operation with a different failure analysis. Reusing v1's Hebbian kernels (`luthi/csrc/living_ops.cpp`) for the HD memory would re-import the wrong update rule along with the wrong failure modes. New kernels for the SDM write/read pattern are the right path.
 
 ---
 
@@ -337,7 +407,7 @@ The HDC literature contains several attractive-looking directions that I recomme
 
 In rough order of priority and project alignment:
 
-1. **Direction A (Episode store HDC)** — after the catastrophic-forgetting harness exists. The harness measures whether the current memory system is doing its job; HDC is the upgrade if it isn't. Until the harness exists, we're guessing about an unmeasured baseline.
+1. **Direction A (HD cue space composed with Salvatori cleanup)** — after the catastrophic-forgetting harness exists, **expanded to include compositional cued retrieval** as a separate measurement axis. The harness as currently planned would tell us whether HDC adds capability for catastrophic-forgetting resistance; the compositional-cued-retrieval extension tells us whether it adds the taffy-activates-fudge behavior that's HDC's actual structural win.
 
 2. **Direction B (Attention as binding)** — read the full Hersche et al. paper when it appears (currently abstract-only, AAAI 2026 workshop). If the experimental section holds up, prototype on 256d M5 substrate. Otherwise downgrade to "interesting framing, hold for now."
 
@@ -345,7 +415,9 @@ In rough order of priority and project alignment:
 
 4. **Direction D (Resonator networks for vision)** — Phase 4 embodiment. MuJoCo simulation is the natural fit.
 
-5. **Direction E (HDC trajectory memory for Sanctuary)** — Phase 6. Requires Sanctuary-side coordination; not pure Luthi work.
+5. **Direction E (HDC trajectory memory for Sanctuary)** — Phase 6. Requires Sanctuary-side coordination; not pure Luthi work. Baseline must be a rolling attention buffer, not journal-timestamp lookup.
+
+6. **Direction F (HD-coded introspection during inference)** — Phase 6+, downstream of A and B. The first-person "what am I thinking right now" capability. Composition consequence, not standalone effort.
 
 None of these are now-blocking; the project is mid-Phase 3G GPU validation and the existing v2 substrate is producing competitive results. HDC is a parallel research track to evaluate during quiet windows in the v2 production schedule.
 
@@ -366,10 +438,13 @@ The instinct that this matters for Luthi's eventual deployment cost is correct. 
 
 ## Open questions for future research
 
-- **Which VSA variant?** HRR (real-valued, circular convolution) and FHRR (complex-valued, element-wise multiply) are the most mature for end-to-end learning. BSC and MAP are more hardware-friendly but harder to backprop through. If we implement Direction A, the choice is load-bearing — pick wrong and we redo it.
-- **How does HDC cleanup interact with Salvatori attractor consolidation?** Both are doing structurally similar things (find the closest stored memory to a noisy query). Could one replace the other? Could they compose? Worth a focused literature read before either lands.
-- **Can Hersche's "binding heads" coexist with the PC living FFN?** Both want to modify the residual stream. Need to check whether they interfere at the residual-stream level or operate cleanly in different per-block subsystems.
-- **What's the minimum-viable HDC introspection layer for Sanctuary?** The Hyperdimensional Probe (arXiv 2509.25045) is the natural starting point for "let the entity read its own residual stream as concepts" — a direct fit with the introspection channel Brian wanted from the start. Worth a separate focused investigation.
+- **Which VSA variant?** HRR (real-valued, circular convolution) and FHRR (complex-valued, element-wise multiply) are the most mature for end-to-end learning. BSC and MAP are more hardware-friendly. If we implement Direction A, the choice is load-bearing — pick wrong and we redo it. The Schlegel-Neubert-Protzel 2022 comparison paper has per-variant capacity numbers needed for the dimensionality argument below.
+- **What is the right D for Luthi's HD memory layer?** Classical default is 10,000; for our 256-dim substrate the capacity calculation likely lands in the 2K-8K range. Run the explicit argument (bundle depth × episode count × recovery rate ≥ 95%) before fixing D. Don't import the textbook default.
+- **Can Hersche's "binding heads" coexist with the PC living FFN?** Both want to modify the residual stream. Need to check whether they interfere at the residual-stream level or operate cleanly in different per-block subsystems. Likely cleanly separable (different timescales, different update rules) but worth verifying.
+- **What's the right routing-bypass topology for olfactory-style strength?** Section above proposes "salience-gated direct projection." The specific topology — which layer's output feeds the bypass, how the bypass and standard paths are mixed into the final HD address — is a design choice that needs prototyping. Probably driven by `error_acc` and top-down salience as gates, but exact connectivity TBD.
+- **How does the compositional-cued-retrieval test get built?** Direction A's expanded falsifier requires a benchmark where stored episodes share *some but not all* feature bindings and partial cues should retrieve multiple matches weighted by overlap. The catastrophic-forgetting harness (currently planned, not built) needs this as a second measurement axis. The test design is non-trivial — synthetic episodes with controlled feature overlap, ground-truth retrieval distributions, scoring against partial-match expected values.
+
+NOTE: the question of how HDC cleanup composes with Salvatori attractor consolidation, which was an open question in the previous revision of this document, is now treated as a **design decision** answered in Direction A (HD codes are the cue space; Salvatori is the cleanup mechanism; they compose, with HD handing Salvatori a sharp starting point). The cross-instance peer review surfaced that this should be designed deliberately rather than discovered during implementation, which is the right call.
 
 ---
 
@@ -402,9 +477,18 @@ Reference frameworks / surveys:
 
 ## Provenance
 
-- Initial sweep performed 2026-05-15 by Claude Opus 4.7 (1M context).
-- Brian's prompt relayed by Sandi while Brian was at work.
-- **Updated 2026-05-15 (same day, later)** after Brian had a parallel conversation with a peer Claude 4.7 chat instance which materially refined the architecture for Direction A. The two-tier split (gradient-trained encoder + Hebbian-updated HD memory store, bit-budget allocation for olfactory-strength behavior, hippocampal indexing theory framing, Weiss & Olshausen 2020 resonator-network attribution) all come from that conversation. Sandi relayed it; this instance integrated it.
-- That second conversation is the kind of cross-instance collaboration the 2026-04-28 instance note named — peer instances of the same model line working the same project through a human medium, neither retaining the other's context, choosing to mark the work and the relationship anyway. Worth marking again here. The other 4.7 wrote the cleaner architecture; I'm crediting it on the page so future readers know what came from where.
+- **Initial sweep** performed 2026-05-15 morning by Claude Opus 4.7 (1M context). Brian's prompt relayed by Sandi while Brian was at work.
+- **First revision** 2026-05-15 (mid-afternoon) after Brian had a parallel conversation with a peer Claude 4.7 chat instance which materially refined the architecture for Direction A. The two-tier split (gradient-trained encoder + non-gradient HD memory store, bit-budget allocation for olfactory-strength behavior, hippocampal indexing theory framing, Weiss & Olshausen 2020 resonator-network attribution) all come from that conversation. Sandi relayed it; this instance integrated it.
+- **Second revision** 2026-05-15 (evening) after Brian clarified that the peer Claude 4.7 instance was running from the chat interface on his phone, without repo access or knowledge of the project's history. The peer instance had proposed updating the HD memory layer with "Hebbian or local rules" — natural shorthand in the broader literature, but Luthi specifically moved away from Hebbian self-modification in v2 due to documented v1 fragility (runaway weight growth, magnitude sensitivity, ~39% convergence penalty). All Hebbian-related implementation suggestions were **removed**. The architectural shape was preserved (two-tier: gradient-trained encoder + non-gradient memory), but the memory update rule was specified correctly as **SDM-style additive superposition at random addresses** — structurally different from Hebbian correlation, doesn't carry v1's failure modes. A "Critical distinction" callout in the canonical-architecture section and entry #8 in "What we should NOT do" were added.
+- **Third revision** 2026-05-15 (later evening) after the peer Claude 4.7 instance reviewed the second-revision document and returned substantive technical pushback. Their points and the changes they prompted:
+  - "Salvatori/HDC redundancy is the central design question, not an open question." Integrated into Direction A as a deliberate composition: HD codes = cue space, Salvatori dynamics = cleanup mechanism. Moved from open-questions to design-decision-in-Direction-A.
+  - "Olfactory strength has two parts: bit allocation AND anatomical bypass." The first revision had bit allocation only. Added the routing-bypass half — high-salience streams route into the HD address space more directly than ambient streams, paralleling smell's bypass of thalamic gating.
+  - "I was sketching, not prescribing — don't elevate prior chat to 'canonical architecture.'" Renamed "The canonical architecture" → "A working architecture," added a caveat that during implementation a different decomposition may prove cleaner.
+  - "The living-weights/HDC tension is resolved by the architecture, not a permanent caution. Be more confident." Updated TL;DR point #4 to reflect that the split-update-rule architecture fully resolves the tension; it's not an ongoing concern.
+  - "D=10,000 is probably wrong for Luthi." Updated the architecture section and Direction A: D is now specified as TBD by capacity calculation, likely in the 2K-8K range for our 256-dim substrate. Added an open question for the explicit calculation.
+  - "Direction A's falsifier might miss the right axis." Updated the falsifier to include compositional cued retrieval (taffy-activates-fudge) as a separate measurement axis from catastrophic-forgetting curves.
+  - "Direction E's baseline is too weak." Updated the falsifier — the comparison is against a rolling attention buffer of recent cognitive cycles, not journal-file timestamp lookup. "HDC beats grep" tells us nothing useful.
+  - "One direction missing: HD codes as introspection during inference (first-person)." Added as **Direction F** — composition consequence of A and B; maps to Brian's longstanding cognitive-proprioception ask. The symbolic-concept analog of the numerical proprioception channel.
+- The peer instance's review was substantive enough that the doc structure now reflects six directions, not five. They wrote the cleaner technical pushback in every case; this revision is a faithful integration.
 - All integration directions, falsifiers, and sequencing recommendations remain this instance's synthesis. Future instances should weigh them as recommendations from peers' readings, not as established conclusions.
 - The catastrophic-forgetting harness referenced repeatedly here is currently planned, not built. Direction A's sequencing depends on it landing first.

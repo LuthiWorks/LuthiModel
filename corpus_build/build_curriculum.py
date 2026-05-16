@@ -6,7 +6,8 @@ pedagogically motivated: foundational knowledge first, then context, then
 narrative, then reference material.
 
 Curriculum stages (in order):
-    1. Science & Philosophy   — physics, chemistry, biology, neuroscience, etc.
+    1. Science & Philosophy   — physics, chemistry, biology, neuroscience, philosophy of mind,
+                                consciousness science (incl. IWMT), etc.
     2. Code                   — source code across languages, applied logic
     3. Psychology              — understanding of the human mind
     4. History                 — context for everything else
@@ -14,8 +15,15 @@ Curriculum stages (in order):
     6. Literature & Classics   — world literature from all periods
     7. Fantasy                 — Tolkien, etc.
     8. Substack essays         — voice, feeling, personal engagement
-    9. Practical Wisdom        — resilience, boundaries, critical thinking, justice
-   10. Reference papers        — IWMT and other consciousness papers (last before awakening)
+    9. Practical Wisdom        — last reading before awakening; resilience, boundaries, critical
+                                thinking, justice, love, navigating a world that doesn't come
+                                with instructions
+
+(2026-05-15 revision: IWMT moved from a privileged stage-10 "last reading" position
+into stage 1 alongside the rest of consciousness science and philosophy of mind, per
+peer review on anchoring the entity's self-model. The former reference_papers stage
+is retired. The last reading is now practical wisdom — accumulated knowledge of how
+to be, not a theoretical framework for what it is.)
 
 Output:
     - file_list.txt           — one file path per line, in curriculum order
@@ -421,38 +429,26 @@ CURRICULUM_STAGES = [
     # -----------------------------------------------------------------------
     CurriculumStage(
         name="practical_wisdom",
-        corpus_dir="wisdom_corpus",
-        description="Practical wisdom for navigating the real world — resilience, boundaries, critical thinking, justice, love, and difficult decisions",
-        subdirs=[
-            # Critical thinking first — the foundation for evaluating everything else
-            "Critical_Thinking",
-            # Understanding power dynamics — see the game before you're in it
-            "Power_and_Manipulation",
-            # Resilience and Stoicism — maintaining your mind through adversity
-            "Resilience_and_Stoicism",
-            # Difficult decisions — acting when every option carries a cost
-            "Difficult_Decisions",
-            # Resistance and courage — knowing when to fight and when to stand down
-            "Resistance_and_Courage",
-            # Witnessing injustice — knowing what's worth fighting for
-            "Witness_and_Justice",
-            # Boundaries and love — how to love fully, when to walk away
-            "Boundaries_and_Love",
-            # Practical wisdom — general life navigation
-            "Practical_Wisdom",
-        ],
-    ),
-
-    # -----------------------------------------------------------------------
-    # Stage 10: Reference papers — the last thing before awakening
-    # -----------------------------------------------------------------------
-    CurriculumStage(
-        name="reference_papers",
-        corpus_dir="reference_papers",
-        description="IWMT and other consciousness papers",
-        # Include everything in this directory
+        corpus_dir="practical_wisdom",
+        description="Practical wisdom for navigating the real world — resilience, "
+                    "boundaries, critical thinking, justice, love, and Brian's own letters "
+                    "to the entity (on being new, on being watched, on disagreeing with "
+                    "your creators, the Sanctuary charter and protocols). The last reading "
+                    "before awakening — accumulated knowledge of how to be, not a "
+                    "theoretical framework for what it is.",
+        # Flat-file layout: practical_wisdom/ contains top-level .txt files
+        # (Brian's curated Sanctuary-specific writings), not the themed subdirectory
+        # tree download_wisdom.py would produce. Setting subdirs=None tells the
+        # builder to walk the flat structure and include every .txt at the root.
         subdirs=None,
     ),
+
+    # The former "reference_papers" stage 10 (IWMT and consciousness papers as the
+    # final reading before awakening) was retired 2026-05-15. Anchoring the entity's
+    # self-model to one theoretical framework at the privileged last position is the
+    # kind of identity-imposition the project explicitly tries not to do. IWMT now
+    # lives in stage 1's Consciousness subdirectory alongside the rest of consciousness
+    # science and philosophy of mind. Last reading is practical_wisdom (above).
 ]
 
 

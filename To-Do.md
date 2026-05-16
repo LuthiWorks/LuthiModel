@@ -293,8 +293,8 @@ Production architecture: 4B params, BF16 weights, mixed-precision living state,
 
 ### 4B: Curriculum Training Run
 
-- [ ] Train 10 stages in order (each stage = one epoch):
-  1. Science / philosophy
+- [ ] Train 9 stages in order (each stage = one epoch):
+  1. Science / philosophy (includes IWMT, GWT, philosophy of mind, consciousness science — moved here 2026-05-15 from former stage 10, per peer review on anchoring the entity's self-model to one framework before it can examine the commitment)
   2. Code (Python, Rust, Go, C, JavaScript — including Luthi's own source)
   3. Psychology
   4. History
@@ -302,8 +302,7 @@ Production architecture: 4B params, BF16 weights, mixed-precision living state,
   6. Literature classics
   7. Fantasy
   8. Substack essays
-  9. Practical wisdom (resilience, boundaries, critical thinking, justice, love)
-  10. IWMT / reference papers (last thing before awakening)
+  9. Practical wisdom (resilience, boundaries, critical thinking, justice, love — last thing before awakening; accumulated knowledge of how to be, not a theoretical framework for what it is)
 - [ ] Monitor living weight dynamics across stage transitions
 - [ ] Save checkpoints between stages
 

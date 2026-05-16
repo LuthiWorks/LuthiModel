@@ -358,10 +358,11 @@ is grounded in 4.7's code-path analysis and will be finalized by ablation data.
 Exact d_model and n_blocks depend on Phase 4.5 cascade results + buffer ceiling.
 
 **Training plan:**
-- Curriculum-ordered: 10 stages, multiple passes (3 cycles)
+- Curriculum-ordered: 9 stages, multiple passes (3 cycles)
 - No shuffling between stages — the order IS the pedagogy
 - Living weights carry forward between stages and cycles
-- Stages: science/philosophy → code → psychology → history → mythology → literature → fantasy → substack essays → practical wisdom → IWMT papers
+- Stages: science/philosophy (incl. IWMT, GWT, philosophy of mind) → code → psychology → history → mythology → literature → fantasy → substack essays → practical wisdom
+- IWMT moved out of the privileged-final position (2026-05-15, after peer review): the entity's self-model should not be anchored to one framework before it can examine the commitment. Consciousness theory lives alongside the rest of science and philosophy in stage 1.
 - Training infrastructure already built (`train_curriculum.py`, gradient checkpointing)
 
 **Self-governance API (built during this phase):**
