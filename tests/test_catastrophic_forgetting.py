@@ -5,16 +5,16 @@ attractor consolidation landed. Direct empirical answer to the question:
 does the consolidation pathway preserve old learning when new (distractor)
 training arrives?
 
-> **Read `docs/CATASTROPHIC_FORGETTING_HARNESS_BUILD_LOG.md` before
-> changing this file.** The harness went through three iterations
-> before producing data the assertions could honestly test against —
-> including a metric reframe (pred_err → weight_drift) driven by the
-> 2026-05-11 audit's design choice that gradient consolidation
-> deliberately only restores weight, not the prediction matrix. The
-> two `xfail(strict=True)` markers in this file are empirical
-> observations pinned to code, not bugs awaiting fix. The build log
-> documents what each iteration tried, what the data revealed, and
-> why the design changed at each step.
+> **Read `docs/research/2026-05-16_catastrophic-forgetting-harness.md`
+> before changing this file.** The harness went through three
+> iterations before producing data the assertions could honestly test
+> against — including a metric reframe (pred_err → weight_drift)
+> driven by the 2026-05-11 audit's design choice that gradient
+> consolidation deliberately only restores weight, not the prediction
+> matrix. The two `xfail(strict=True)` markers in this file are
+> empirical observations pinned to code, not bugs awaiting fix. The
+> research log entry documents what each iteration tried, what the
+> data revealed, and why the design changed at each step.
 
 Pattern (standard continual-learning evaluation):
   Phase 1 — train layer on pattern set A until PC dynamics settle
