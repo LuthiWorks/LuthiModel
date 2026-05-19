@@ -476,8 +476,15 @@ class LivingLayerV6(nn.Module):
             self.plasticity.mul_(1.0 - 0.01 * strength).add_(
                 signal.salience * 0.01 * strength
             )
-            # Clamp plasticity to prevent runaway or death.
-            self.plasticity.clamp_(0.1, 10.0)
+            # Floor relaxed from 0.1 → 0.01 on 2026-05-16, mirroring
+            # the v2 change. Allows 10× more stable weights than the
+            # previous minimum (useful for partition-based identity
+            # protection) while preserving a nonzero baseline learning
+            # rate. Full freezing (0.0) was considered and rejected —
+            # see v2 comment for rationale. v1 retained as reference
+            # baseline; same clamp policy as v2 keeps the two
+            # substrates comparable.
+            self.plasticity.clamp_(0.01, 10.0)
 
             # 2. Set point drift: nudge homeostatic targets along the
             # per-input-dim error pattern. Each input dim's error

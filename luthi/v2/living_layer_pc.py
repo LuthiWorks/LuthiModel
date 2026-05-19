@@ -597,7 +597,22 @@ class PredictiveCodingLayer(nn.Module):
             self.plasticity.mul_(1.0 - 0.01 * strength).add_(
                 signal.salience * 0.01 * strength
             )
-            self.plasticity.clamp_(0.1, 10.0)
+            # Floor relaxed from 0.1 → 0.01 on 2026-05-16 to support
+            # the plasticity-partition design direction (see
+            # docs/research/2026-05-16_plasticity-partitions-design.md).
+            # The new floor allows weights to be 10× more stable than
+            # the previous minimum — enough to express identity-anchor
+            # behavior (per-step updates an order of magnitude smaller)
+            # while preserving a nonzero learning rate so weights are
+            # never fully frozen. Full freezing was considered (floor
+            # = 0.0) but rejected: it leaves no baseline learning rate
+            # if the top-down recovery signal is weak or absent, and
+            # exact-zero updates can distort downstream metaplasticity
+            # tracking. Biological precedent agrees — even the most
+            # stable synapses retain nonzero plasticity. Upper bound
+            # 10.0 retained as a safety guard against runaway
+            # plasticity until there's a specific motivation to raise it.
+            self.plasticity.clamp_(0.01, 10.0)
 
             error_signal = signal.prediction_error.unsqueeze(0)
             self.set_point.add_(

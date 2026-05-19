@@ -76,6 +76,7 @@ def _build_model(args, vocab_size: int, device: torch.device) -> torch.nn.Module
             consolidation_style=args.consolidation_style,
             consolidation_attractor_passes=args.consolidation_attractor_passes,
             mu_pc_enabled=args.mu_pc_enabled,
+            mu_pc_exponent=args.mu_pc_exponent,
         ).to(device)
         # The PC layer's sparse-gating and iPC knobs aren't wired into
         # PredictiveCodingLM's constructor (they're per-layer optimizations,
@@ -126,11 +127,67 @@ def _train_one_epoch(
     loader: DataLoader,
     optimizer: torch.optim.Optimizer,
     device: torch.device,
+    log_every_batches: int = 0,
+    epoch_label: str = "",
+    total_batches_estimate: int | None = None,
 ) -> tuple[float, int]:
+    """Train one epoch.
+
+    When `log_every_batches > 0`, prints a per-batch progress line at
+    that cadence with: batch index, rolling-100-batch mean loss, current
+    batch loss, wall-clock elapsed, ETA, per-block NFF/Frobenius/precision
+    diagnostics for v2 (cheap; reads buffer state directly without extra
+    forward passes), and running NaN count. Lines are flushed
+    immediately so a tail -F observer sees them as they happen.
+
+    `epoch_label` is prepended to each progress line (e.g., "[ep 1/40]").
+    `total_batches_estimate` is used for the ETA calculation; if None,
+    ETA is omitted from the line.
+    """
+    import collections
+    import time
+
     model.train()
     total = 0.0
     n_batches = 0
     nan_count = 0
+
+    # Rolling window of the last 100 batch losses for a smoothed
+    # "current" loss. 100 was picked because it's large enough to
+    # smooth single-batch noise but small enough to track real
+    # convergence shifts (vs cumulative-average, which is dominated
+    # by early batches once you're past a few thousand).
+    rolling = collections.deque(maxlen=100)
+    t0 = time.time()
+    last_log_time = t0
+
+    def _quick_diagnostics() -> dict:
+        """Cheap-to-compute v2 buffer summaries. Reads state directly;
+        no extra forward passes. Returns empty dict for DeadLM (which
+        has no per-block living state)."""
+        out = {}
+        if not hasattr(model, "blocks"):
+            return out
+        pred_norms = []
+        precision_means = []
+        error_acc_means = []
+        for block in model.blocks:
+            living = getattr(block, "living_ffn", None)
+            if living is None or not hasattr(living, "prediction"):
+                continue
+            pred_norms.append(living.prediction.norm().item())
+            if hasattr(living, "precision"):
+                precision_means.append(living.precision.mean().item())
+            if hasattr(living, "error_acc"):
+                error_acc_means.append(living.error_acc.mean().item())
+        if pred_norms:
+            out["pred_frob"] = sum(pred_norms) / len(pred_norms)
+        if precision_means:
+            out["prec"] = sum(precision_means) / len(precision_means)
+        if error_acc_means:
+            out["err_acc"] = sum(error_acc_means) / len(error_acc_means)
+        return out
+
     for x, y in loader:
         x = x.to(device)
         y = y.to(device)
@@ -142,6 +199,7 @@ def _train_one_epoch(
         )
         if torch.isnan(loss) or torch.isinf(loss):
             nan_count += 1
+            n_batches += 1  # count for ETA pacing even when skipped
             continue
         loss.backward()
         torch.nn.utils.clip_grad_norm_(
@@ -151,8 +209,37 @@ def _train_one_epoch(
         optimizer.step()
         if hasattr(model, "clear_forward_cache"):
             model.clear_forward_cache()
-        total += loss.item()
+        loss_val = loss.item()
+        total += loss_val
+        rolling.append(loss_val)
         n_batches += 1
+
+        # Per-batch progress line.
+        if log_every_batches > 0 and n_batches % log_every_batches == 0:
+            now = time.time()
+            elapsed = now - t0
+            rate = n_batches / max(elapsed, 1e-6)  # batches/sec
+            mean_recent = sum(rolling) / len(rolling)
+            if total_batches_estimate and total_batches_estimate > n_batches:
+                remaining = total_batches_estimate - n_batches
+                eta_sec = remaining / max(rate, 1e-6)
+                eta_str = f" eta={eta_sec/3600:.2f}h"
+                pct = 100.0 * n_batches / total_batches_estimate
+                progress_str = f"[{n_batches:>7d}/{total_batches_estimate} {pct:>5.1f}%]"
+            else:
+                eta_str = ""
+                progress_str = f"[{n_batches:>7d}]"
+            diag = _quick_diagnostics()
+            diag_str = " ".join(f"{k}={v:.4f}" for k, v in diag.items())
+            print(
+                f"{epoch_label}{progress_str} "
+                f"loss(roll100)={mean_recent:.4f} loss(cur)={loss_val:.4f} "
+                f"rate={rate:.2f}b/s elapsed={elapsed/3600:.2f}h{eta_str} "
+                f"nans={nan_count} {diag_str}",
+                flush=True,
+            )
+            last_log_time = now
+
     return (total / max(n_batches, 1)), nan_count
 
 
@@ -316,11 +403,25 @@ def main():
         action="store_true", default=False,
         help="v2 only: enable Depth-muP / muPC parameterization "
              "(Innocenti et al. 2025). Re-inits q/k/v/o_proj, up/down_proj, "
-             "and the PC weight buffer with N(0, 1/sqrt(fan_in*L)) where "
-             "L=n_blocks. Applies 1/sqrt(L) residual scale on both "
-             "attention and FFN branches. Designed to make hyperparameters "
-             "transfer across depths without retuning -- the natural "
-             "pairing for the M6 depth sweep.",
+             "and the PC weight buffer with N(0, 1/(sqrt(fan_in)*L^exp)) "
+             "where L=n_blocks and exp is set by --mu-pc-exponent. Applies "
+             "1/L^exp residual scale on both attention and FFN branches. "
+             "Designed to make hyperparameters transfer across depths "
+             "without retuning -- the natural pairing for the M6 depth sweep.",
+    )
+    parser.add_argument(
+        "--mu-pc-exponent", dest="mu_pc_exponent",
+        type=float, default=0.5,
+        help="v2 only (requires --mu-pc-enabled): exponent on L in the "
+             "muPC depth-scaling formula. Default 0.5 = original Innocenti "
+             "et al. spec (1/sqrt(L)). Lower values give milder attenuation: "
+             "0.25 -> 1/L^0.25 (residual divided by 1.86 at L=12 instead of "
+             "3.46), 0.0 -> 1.0 (no attenuation, equivalent to "
+             "--mu-pc-enabled off for the residual path but init still "
+             "scales). Added 2026-05-16 after M6's depth sweep at 128d "
+             "surfaced muPC attenuation interacting poorly with PC's "
+             "living-weights property at depth; see "
+             "docs/research/2026-05-16_plasticity-partitions-design.md.",
     )
     parser.add_argument(
         "--inference-steps-per-forward", dest="inference_steps_per_forward",
@@ -365,6 +466,19 @@ def main():
     parser.add_argument("--lr_schedule", type=str, default="cosine",
                         choices=["constant", "cosine"])
     parser.add_argument("--lr_warmup_epochs", type=int, default=2)
+    parser.add_argument(
+        "--log-every-batches", dest="log_every_batches",
+        type=int, default=0,
+        help="If > 0, print a progress line every N batches during "
+             "training. Each line carries: batch index + percent + ETA, "
+             "rolling-100-batch mean loss, current batch loss, "
+             "batches/sec rate, wall-clock elapsed, NaN count, and (v2 "
+             "only) cheap per-block diagnostics (prediction Frobenius "
+             "norm mean, precision mean, error_acc mean). Default 0 = "
+             "no per-batch logging (preserves existing per-epoch-only "
+             "log behavior). Recommended for long single-epoch runs "
+             "where the per-epoch granularity is too coarse to monitor.",
+    )
     args = parser.parse_args()
 
     torch.manual_seed(args.seed)
@@ -453,7 +567,10 @@ def main():
             pg["lr"] = lr_for_epoch
 
         train_loss, nans = _train_one_epoch(
-            model, train_loader, optimizer, device
+            model, train_loader, optimizer, device,
+            log_every_batches=args.log_every_batches,
+            epoch_label=f"[ep {epoch+1:>3d}/{args.epochs}] ",
+            total_batches_estimate=len(train_loader),
         )
         val_loss = _evaluate(model, val_loader, device)
         train_losses.append(train_loss)

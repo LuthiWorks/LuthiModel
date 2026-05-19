@@ -53,6 +53,7 @@ class PredictiveCodingBlock(nn.Module):
         consolidation_style: str = "gradient",
         consolidation_attractor_passes: int = 1,
         mu_pc_enabled: bool = False,
+        mu_pc_exponent: float = 0.5,
         n_blocks_total: int = 1,
         buffer_dtypes: dict[str, torch.dtype] | None = None,
     ):
@@ -62,13 +63,25 @@ class PredictiveCodingBlock(nn.Module):
         self.ffn_expansion = ffn_expansion
         self.ffn_inner_dim = d_model * ffn_expansion
         self.mu_pc_enabled = mu_pc_enabled
-        # Depth-μP residual scaling. With L=1 (default) the factor is 1.0,
-        # so the math is identical to non-μPC behavior. With L=N the
-        # residual contribution per block scales by 1/√N, keeping
-        # preactivations bounded across depth.
-        self.residual_scale = (
-            1.0 / (n_blocks_total ** 0.5) if mu_pc_enabled else 1.0
-        )
+        self.mu_pc_exponent = float(mu_pc_exponent)
+        # Depth-μP residual scaling. Original μPC spec is 1/√L
+        # (exponent = 0.5, Innocenti et al. 2025). The exponent is
+        # exposed as a tunable knob added 2026-05-16 after M6's depth
+        # sweep at 128d surfaced that μPC's signal attenuation interacts
+        # poorly with PC's living-weights property at depth (NFF shrank
+        # from 5.77e-3 at L=4 to ~2e-3 at L=12). Lower exponent =
+        # milder attenuation per block:
+        #   exponent = 0.5 → 1/√L  (original μPC, residual ÷3.46 at L=12)
+        #   exponent = 0.25 → 1/L^¼ (milder, residual ÷1.86 at L=12)
+        #   exponent = 0.0 → 1.0   (no attenuation; equivalent to mu_pc_enabled=False
+        #                            for the residual path, though init still scales
+        #                            unless that's also disabled)
+        # See `docs/research/2026-05-16_plasticity-partitions-design.md`
+        # for the design discussion that led to this knob.
+        if mu_pc_enabled:
+            self.residual_scale = 1.0 / (n_blocks_total ** self.mu_pc_exponent)
+        else:
+            self.residual_scale = 1.0
         self._n_blocks_total = n_blocks_total
 
         self.norm1 = nn.LayerNorm(d_model)
@@ -132,12 +145,17 @@ class PredictiveCodingBlock(nn.Module):
 
     def _apply_mu_pc_init(self, L: int) -> None:
         """Re-initialize all trainable linears and the PC weight buffer
-        with `Normal(0, 1/√(fan_in · L))` per Innocenti et al. 2025.
+        with `Normal(0, 1/(fan_in^0.5 · L^exponent))` per Innocenti et
+        al. 2025. The exponent on L is `self.mu_pc_exponent` (default
+        0.5 = original μPC; lower values give larger initial weights,
+        which compensates for milder residual attenuation at the same
+        depth). The fan_in scaling (always sqrt) is standard Kaiming-
+        style and is kept fixed; only the depth scaling is tunable.
         """
         import math
 
         def _mupc_normal_(weight: torch.Tensor, fan_in: int) -> None:
-            std = 1.0 / math.sqrt(fan_in * L)
+            std = 1.0 / (math.sqrt(fan_in) * (L ** self.mu_pc_exponent))
             with torch.no_grad():
                 weight.normal_(mean=0.0, std=std)
 

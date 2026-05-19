@@ -52,6 +52,7 @@ class PredictiveCodingLM(nn.Module):
         consolidation_style: str = "gradient",
         consolidation_attractor_passes: int = 1,
         mu_pc_enabled: bool = False,
+        mu_pc_exponent: float = 0.5,
         backward_pass_enabled: bool = True,
         buffer_dtypes: dict[str, torch.dtype] | None = None,
     ):
@@ -80,6 +81,7 @@ class PredictiveCodingLM(nn.Module):
                 consolidation_style=consolidation_style,
                 consolidation_attractor_passes=consolidation_attractor_passes,
                 mu_pc_enabled=mu_pc_enabled,
+                mu_pc_exponent=mu_pc_exponent,
                 n_blocks_total=n_blocks,
                 buffer_dtypes=buffer_dtypes,
             )

@@ -288,6 +288,70 @@ def test_mu_pc_off_preserves_default_behavior():
     )
 
 
+def test_mu_pc_exponent_default_matches_original_spec():
+    """exponent=0.5 (default) must reproduce the original Innocenti et al.
+    1/√L behavior bit-identically. Regression guard: if anyone changes
+    the default exponent, this test fails noisily so the M5 results
+    that established v2's baseline don't silently change semantics.
+    """
+    import math
+    torch.manual_seed(0)
+    block_default = PredictiveCodingBlock(
+        d_model=16, num_episodes=4,
+        mu_pc_enabled=True, n_blocks_total=8,
+    )
+    torch.manual_seed(0)
+    block_explicit = PredictiveCodingBlock(
+        d_model=16, num_episodes=4,
+        mu_pc_enabled=True, n_blocks_total=8, mu_pc_exponent=0.5,
+    )
+    assert block_default.residual_scale == block_explicit.residual_scale
+    assert math.isclose(
+        block_default.residual_scale, 1.0 / math.sqrt(8), rel_tol=1e-12
+    )
+    # Same init under same seed.
+    assert torch.equal(
+        block_default.attention.q_proj.weight,
+        block_explicit.attention.q_proj.weight,
+    )
+
+
+def test_mu_pc_exponent_milder_gives_larger_residual():
+    """Lower exponent = milder attenuation. exponent=0.25 at L=12 should
+    give residual_scale = 1/12^0.25 ≈ 0.537, vs 1/√12 ≈ 0.289 at
+    exponent=0.5. This is the knob's whole purpose.
+    """
+    import math
+    block_25 = PredictiveCodingBlock(
+        d_model=16, num_episodes=4,
+        mu_pc_enabled=True, n_blocks_total=12, mu_pc_exponent=0.25,
+    )
+    block_50 = PredictiveCodingBlock(
+        d_model=16, num_episodes=4,
+        mu_pc_enabled=True, n_blocks_total=12, mu_pc_exponent=0.5,
+    )
+    assert block_25.residual_scale > block_50.residual_scale, (
+        f"Lower exponent should give larger residual_scale; got "
+        f"exp=0.25 -> {block_25.residual_scale:.4f}, "
+        f"exp=0.5 -> {block_50.residual_scale:.4f}"
+    )
+    assert math.isclose(block_25.residual_scale, 1.0 / 12 ** 0.25, rel_tol=1e-6)
+    assert math.isclose(block_50.residual_scale, 1.0 / math.sqrt(12), rel_tol=1e-6)
+
+
+def test_mu_pc_exponent_zero_disables_residual_attenuation():
+    """exponent=0.0 should give residual_scale = 1.0 — no attenuation,
+    matching the no-μPC behavior on the residual path. Init still
+    scales (the init formula has fan_in^0.5 regardless), but the
+    residual signal is preserved fully.
+    """
+    block = PredictiveCodingBlock(
+        d_model=16, num_episodes=4,
+        mu_pc_enabled=True, n_blocks_total=12, mu_pc_exponent=0.0,
+    )
+    assert block.residual_scale == 1.0
+
+
 def test_block_top_down_with_expansion_runs():
     """Top-down sweep through an expanded block runs without error.
     With ffn_expansion > 1 the PC layer is in expanded space, so the
