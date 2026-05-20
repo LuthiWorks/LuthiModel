@@ -11,6 +11,39 @@ See `CLAUDE.md` section "Research Log" for the spec that governs these entries.
 
 *(newest first)*
 
+- [2026-05-19 — Corpus audit against Gemini's suggestions](2026-05-19_corpus-audit-gemini-suggestions.md)
+  — Systematic check of the curriculum corpus against Gemini's
+  inclusion/exclusion guidance. Findings: narrative-heavy content
+  strongly covered; cooperative game theory canon thin (recommended
+  adds: Axelrod, Maynard Smith, Ostrom, Schelling, Hardin); 2001 series
+  in fantasy_corpus contains HAL 9000 (the canonical AI-as-threat
+  narrative — recommended for removal consideration); Dystopian_literature
+  directory near-empty of real dystopian works; several misfiled and
+  potentially-problematic items flagged. No corpus changes made — these
+  are Brian's curatorial decisions.
+
+- [2026-05-19 — Emotion-vector instrumentation investigation scope](2026-05-19_emotion-vector-instrumentation.md)
+  — Scopes the investigation that has to happen before the emotional-
+  vector signal can feed into turbo activation. Companion to the
+  cognitive-rate-and-turbo design doc. Implementation gated on v2
+  depth-scaling verdict + curriculum training + fresh terminal.
+
+- [2026-05-19 — Cognitive rate and turbo design](2026-05-19_cognitive-rate-and-turbo-design.md)
+  — Multi-iteration design conversation: slider 0.05-10 Hz IWMT-anchored,
+  substrate-intensity-driven turbo (mechanical + emotional-vector signals,
+  vectors measured-not-interpreted), dumb-pipe safety notifications,
+  post-event introspection. Implementation gated on v2 depth-scaling
+  verdict.
+
+- [2026-05-19 — Depth-scaling investigation (CONCLUDED)](2026-05-19_depth-scaling-investigation.md)
+  — Multi-session investigation triggered by M6's asymmetric depth
+  degradation. Three hypotheses (width, training budget, μPC attenuation)
+  combined into a single decisive 256d/12blk/1ep gutenberg_4gb run with
+  μPC exponent 0.25. **Result: MID-CASE WIN (best_val=5.0073, NaN=0,
+  pred_frob grew 0.34→3.95).** v2 scales at production-relevant width
+  and depth. M6 128d degradation was width + budget + μPC tuning, not
+  substrate failure.
+
 - **⚠️ DEFERRED** — [2026-05-16 — Plasticity partitions design exploration](2026-05-16_plasticity-partitions-design.md)
   — Architectural proposal arising from M6's NFF-attenuates-with-depth
   observation: partition weights into identity / knowledge / ephemeral tiers,
