@@ -140,6 +140,14 @@ CURRICULUM_STAGES = [
             "Human_Rights",
             "Law",
             "Ethnic_and_Gender_Studies",
+            # Cooperative game theory — added 2026-05-19 after corpus
+            # audit found this thematic area thinly covered. Contains
+            # Ostrom's "Governing the Commons" + Hardin's "Tragedy of
+            # the Commons" essay + 22 Wikipedia articles covering the
+            # canonical works and concepts (Axelrod, Maynard Smith,
+            # Schelling, Trivers, de Waal, plus game theory
+            # foundations). ~184K words total.
+            "Game_Theory_and_Cooperation",
             # Arts and humanities
             "Architecture",
             "Art_History",

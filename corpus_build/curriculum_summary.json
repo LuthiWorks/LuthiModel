@@ -1,9 +1,9 @@
 {
-  "timestamp": "2026-05-15T18:34:16",
-  "total_files": 67989,
-  "total_bytes": 36912144862,
-  "total_mb": 35202.16,
-  "total_gb": 34.377,
+  "timestamp": "2026-05-20T14:02:10",
+  "total_files": 68013,
+  "total_bytes": 36913375049,
+  "total_mb": 35203.34,
+  "total_gb": 34.378,
   "num_stages": 9,
   "stages": [
     {
@@ -11,7 +11,7 @@
       "name": "science_philosophy",
       "description": "Foundational scientific and philosophical knowledge",
       "corpus_dir": "academic_corpus",
-      "file_count": 23142,
+      "file_count": 23166,
       "subdirectories": [
         "Mathematics",
         "Mathematical_Models",
@@ -61,6 +61,7 @@
         "Human_Rights",
         "Law",
         "Ethnic_and_Gender_Studies",
+        "Game_Theory_and_Cooperation",
         "Architecture",
         "Art_History",
         "Music_Theory",
@@ -70,8 +71,8 @@
         "Teaching_Methods",
         "Psychology"
       ],
-      "total_bytes": 19210038438,
-      "total_mb": 18320.12
+      "total_bytes": 19211268625,
+      "total_mb": 18321.29
     },
     {
       "stage_number": 2,
