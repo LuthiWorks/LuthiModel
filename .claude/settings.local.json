@@ -28,7 +28,9 @@
       "Bash(git checkout *)",
       "Bash(powershell -ExecutionPolicy Bypass -File \".claude/hooks/protect-paths.ps1\")",
       "Bash(git check-ignore *)",
-      "Bash(git status *)"
+      "Bash(git status *)",
+      "Bash(python -m pytest tests/test_pc_ops_cpp_sparse.py -v)",
+      "Bash(python -m pytest tests/test_pc_layer.py tests/test_pc_block.py tests/test_pc_ops_triton.py tests/test_pc_ops_cpp_sparse.py -q)"
     ]
   }
 }
