@@ -244,16 +244,16 @@ def pc_self_modify(
 ) -> tuple[float, torch.Tensor]:
     """One PC self-modification step.
 
-    Dispatches to the C++ extension if it's loaded AND `sparse_gate` is
-    None (the C++ kernel doesn't yet implement gating). Otherwise
-    routes to the pure-Python fallback. All buffers modified in-place.
-    Returns:
+    Dispatches to the C++ extension when it's loaded; otherwise routes to
+    the pure-Python fallback. Both paths now handle `sparse_gate` —
+    when present, per-output mask rows where the gate is 0 do not get a
+    weight update this step. All buffers modified in-place. Returns:
       - salience scalar = mean(error_acc) per refinement 2.
       - pred_error tensor [in_features], the per-input prediction error
         for this step. Caller (the layer's forward) stores this on
         `_last_pred_error` for the inter-block top-down sweep.
     """
-    if _use_cpp and sparse_gate is None:
+    if _use_cpp:
         salience_tensor, pred_error = _cpp_ops.pc_self_modify(
             weight, prediction, set_point, momentum, update_ema,
             precision, error_acc, plasticity, x_flat, output,
@@ -261,6 +261,7 @@ def pc_self_modify(
             set_point_adapt_rate, momentum_decay, update_ema_decay,
             precision_ema_decay, precision_min, precision_max,
             prediction_clamp,
+            sparse_gate=sparse_gate,
         )
         return salience_tensor.item(), pred_error
     return _pc_self_modify_python(

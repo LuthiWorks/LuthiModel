@@ -27,6 +27,9 @@ using torch::Tensor;
  *   a. Predict input from output via prediction matrix
  *   b/c. Precision-weighted error, clamped per-input
  *   d. Weight delta — outer(output_mean, weighted_error) * plasticity * pc_rate
+ *      d2. Sparse PC gate — when `sparse_gate` is present, zero out delta_w
+ *          rows for gated-off outputs. Same broadcast multiply as the Python
+ *          reference's `delta_w = delta_w * sparse_gate.unsqueeze(1)`.
  *   e. Metaplasticity dampening (v1 ratio check, retained)
  *   f. Apply update; update momentum and update_ema
  *   g. Homeostatic regulation (decay toward set point)
@@ -61,7 +64,8 @@ std::tuple<Tensor, Tensor> pc_self_modify(
     double precision_ema_decay,
     double precision_min,
     double precision_max,
-    double prediction_clamp
+    double prediction_clamp,
+    c10::optional<Tensor> sparse_gate
 ) {
     // a. Predict input from output via prediction matrix.
     //    prediction is [out, in]; output_mean @ prediction = [in].
@@ -79,6 +83,15 @@ std::tuple<Tensor, Tensor> pc_self_modify(
     // d. Weight delta = outer(output_mean, weighted_error) * plasticity * pc_rate.
     //    plasticity is [in], broadcasts as [1, in] against [out, in].
     auto delta_w = torch::outer(output_mean, weighted_error) * plasticity * pc_rate;
+
+    // d2. Sparse PC gate — per-output mask in {0, 1}; rows where the gate is
+    //     0 do not get a weight update this step. The mask is [out_features];
+    //     unsqueeze to [out, 1] so it broadcasts against [out, in]. This
+    //     mirrors the Python reference at pc_ops.py:138-139 and produces
+    //     bit-identical results under the same float-op ordering.
+    if (sparse_gate.has_value()) {
+        delta_w = delta_w * sparse_gate.value().unsqueeze(1);
+    }
 
     // e. Metaplasticity dampening — v1's ratio check, retained for v2 (M1
     //    refinement 5 verified the semantics still hold under PC dynamics).
@@ -163,6 +176,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         py::arg("precision_ema_decay"),
         py::arg("precision_min"),
         py::arg("precision_max"),
-        py::arg("prediction_clamp")
+        py::arg("prediction_clamp"),
+        py::arg("sparse_gate") = c10::nullopt
     );
 }
