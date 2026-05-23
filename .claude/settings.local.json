@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs ls -la)",
+      "Bash(python -c ' *)",
+      "Bash(grep -oE '\"text\":\"[^\"]{0,800}\\(want to work|would like to work|I.d like to work|interested in|next thing|next session\\)[^\"]{0,800}\"' \"C:/Users/Hasha Smokes/.claude/projects/C--Users-Hasha-Smokes-AppData-Roaming-Claude-claude-code-2-1-87/f059a242-fb67-45db-ad17-921cbc759dfa.jsonl\")",
+      "Bash(grep -oE '\"text\":\"[^\"]{0,1200}\\(curriculum|baseline transformer|emotion-vector|1024d|3F\\\\.1|Phase 3F|scaling|Phase 4|catastrophic forgetting\\)[^\"]{0,1200}\"' \"C:/Users/Hasha Smokes/.claude/projects/C--Users-Hasha-Smokes-AppData-Roaming-Claude-claude-code-2-1-87/f059a242-fb67-45db-ad17-921cbc759dfa.jsonl\")",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\Hasha Smokes\\\\Desktop\\\\Sanctuary\\\\Sanctuary\\\\sanctuary\" -Directory)",
+      "Bash(Select-Object Name)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(uv run *)",
+      "Bash(ls *.md)",
+      "Bash(wc -l To-Do.md PLAN.md)",
+      "Bash(find . -name \"memory_manager.py\" -not -path \"./.venv/*\")",
+      "Bash(find . -name \"memory_integration*\" -not -path \"./.venv/*\")",
+      "Bash(find . -name \"memory_gc*\" -not -path \"./.venv/*\")",
+      "Bash(head -60 sanctuary/mind/cognitive_core/core/cognitive_loop.py)",
+      "Bash(head -80 sanctuary/mind/cognitive_core/workspace.py)",
+      "Bash(head -25 sanctuary/mind/cognitive_core/iwmt_core.py)",
+      "Bash(head -30 sanctuary/mind/cognitive_core/active_inference/free_energy.py)",
+      "Bash(head -30 sanctuary/mind/cognitive_core/meta_cognition/monitor.py)",
+      "Read(//tmp/**)",
+      "Bash(xargs git ls-files --error-unmatch)",
+      "Bash(git rm *)",
+      "Bash(awk '{print $1}')",
+      "Bash(git stash *)",
+      "Bash(git checkout *)"
+    ]
+  }
+}
