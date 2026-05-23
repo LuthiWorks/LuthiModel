@@ -30,7 +30,8 @@
       "Bash(git check-ignore *)",
       "Bash(git status *)",
       "Bash(python -m pytest tests/test_pc_ops_cpp_sparse.py -v)",
-      "Bash(python -m pytest tests/test_pc_layer.py tests/test_pc_block.py tests/test_pc_ops_triton.py tests/test_pc_ops_cpp_sparse.py -q)"
+      "Bash(python -m pytest tests/test_pc_layer.py tests/test_pc_block.py tests/test_pc_ops_triton.py tests/test_pc_ops_cpp_sparse.py -q)",
+      "WebSearch"
     ]
   }
 }
