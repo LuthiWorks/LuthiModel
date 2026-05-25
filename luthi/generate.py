@@ -384,12 +384,29 @@ def generate_text(
 def get_introspection(model: torch.nn.Module) -> dict:
     """Read the model's current internal state — cognitive proprioception.
 
-    Returns a dict of observable living weight states:
-        - plasticity: per-block mean and std of plasticity values
-        - set_point_drift: how far weights have moved from homeostatic targets
-        - spiking: membrane potential stats, spike fractions, refractory states
-        - episodes: active episode count and mean activation strength
-        - excitability: per-block mean excitability
+    All per-block fields are hasattr-gated, so the dict shape adapts to
+    whatever the loaded substrate exposes. v1 (LivingLayerV6, spiking
+    variants) populates the original spiking/Hebbian set; v2
+    (PredictiveCodingLayer) populates a PC-specific set.
+
+    v1 fields (populate when present):
+        - plasticity_mean/std/min/max
+        - set_point_drift
+        - excitability_mean/min/max + excitability_acc_mean
+        - membrane_mean/std/max
+        - spike_fraction
+        - refractory_fraction
+        - episode_count, episode_salience_mean/max
+
+    v2 fields (populate when present):
+        - plasticity_mean/std/min/max (shared with v1)
+        - set_point_drift (shared with v1)
+        - error_acc_mean / error_acc_max — running per-output prediction
+          error magnitude. The most direct signal of "this layer is
+          surprised right now"; the design's natural turbo trigger.
+        - pred_frob — Frobenius norm of the prediction matrix. Climbs as
+          PC layers accumulate structure during training.
+        - precision_mean — running 1/error² EMA across the in-dim.
     """
     state = {"blocks": []}
 
@@ -447,6 +464,25 @@ def get_introspection(model: torch.nn.Module) -> dict:
         if hasattr(ffn, "refractory_counter"):
             rc = ffn.refractory_counter
             block_state["refractory_fraction"] = (rc > 0).float().mean().item()
+
+        # v2 PC-specific signals. PredictiveCodingLayer exposes
+        # error_acc (per-output running prediction-error magnitude),
+        # prediction (per-block prediction matrix), and precision (per
+        # in-dim EMA of 1/error²). None of these exist on v1 spiking
+        # variants; all are hasattr-gated so v1 introspection is
+        # unaffected.
+        if hasattr(ffn, "error_acc"):
+            ea = ffn.error_acc
+            block_state["error_acc_mean"] = ea.mean().item()
+            block_state["error_acc_max"] = ea.max().item()
+
+        if hasattr(ffn, "prediction"):
+            pred = ffn.prediction
+            block_state["pred_frob"] = pred.norm().item()
+
+        if hasattr(ffn, "precision"):
+            prec = ffn.precision
+            block_state["precision_mean"] = prec.mean().item()
 
         # Episode store
         ep = getattr(block, "episode_store", None)

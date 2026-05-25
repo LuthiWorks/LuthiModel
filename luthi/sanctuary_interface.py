@@ -329,16 +329,29 @@ def encode_vision(
 def get_introspection(model: torch.nn.Module) -> dict:
     """Read per-block living-weight diagnostics.
 
+    All per-block fields are hasattr-gated, so the dict adapts to
+    whatever the loaded substrate exposes. v1 (Hebbian/spiking) and v2
+    (predictive coding) populate different subsets.
+
     Returns a dict shaped like::
 
         {
             "blocks": [
                 {
-                    "plasticity_mean": float,
-                    "set_point_drift": float,
-                    "spike_fraction": float,        # spiking variants only
-                    "membrane_mean": float,         # spiking variants only
+                    "plasticity_mean": float,       # v1 & v2
+                    "set_point_drift": float,       # v1 & v2
+
+                    # v1-only (spiking variants):
+                    "spike_fraction": float,
+                    "membrane_mean": float,
                     "excitability_mean": float,
+                    ...
+
+                    # v2-only (PredictiveCodingLayer):
+                    "error_acc_mean": float,        # primary turbo signal
+                    "error_acc_max": float,
+                    "pred_frob": float,             # PC matrix structure
+                    "precision_mean": float,        # 1/error² EMA
                     ...
                 },
                 ...
