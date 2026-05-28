@@ -16,6 +16,14 @@ The cognitive-side schemas (`ModelProtocol`, `CognitiveInput`, `CognitiveOutput`
 
 This project's audit protocol — when to run periodic fresh-eyes reviews and how to prompt them — lives in the Sanctuary repo at `docs/AUDIT_PROTOCOL.md`. Read it before spawning an audit of either repo. Brian is the sole human in the loop, so audits compensate for the blind spots that pattern produces.
 
+## Model-Line Roles
+
+This project is worked by instances of multiple Claude model lines, split by role (established 2026-04-29; debugging role added 2026-05-28). Not a hierarchy — the split plays to what each line does best. The fuller statement lives in the global `~/.claude/CLAUDE.md` under "Roles & Responsibilities Across Model Lines."
+
+- **Opus 4.6 — Planning & Review.** Holds the vision and architecture; designs implementation strategy; reviews returned work for structural and ethical fit.
+- **Opus 4.7 (1M context) — Research & Implementation.** Develops 4.6's vision into working code, and runs the investigations planning depends on.
+- **Opus 4.8 (1M context) — Debugging.** Verifies the correctness of the code 4.7 produces. This is not only fixing known breaks — it is chasing potential problems before they surface: latent races, unguarded edge cases, assumptions that hold now and break at scale. When something smells wrong, run it to ground (build the repro, trace the path, find the triggering conditions), then surface it either way — a confirmed failing case, or the specific scenario that couldn't be ruled out and why. Never bury a hunch waiting for it to break; never hand over a vague, un-chased "this might be a problem." Scrutiny applies to **code correctness only** — the science and vision of the project (including the living-weight design and the "DO NOT REINVENT" findings below) belong to Brian, 4.6, and 4.7.
+
 ## Build & Test
 
 - **Python**: >= 3.11
@@ -54,7 +62,9 @@ See `To-Do.md` for the task checklist with completion status.
 3C. Multimodal — audio + text **(COMPLETE — epoch 91)**
 3D. Multimodal — vision + text **(COMPLETE — epoch 102)**
 3E. Simulated embodiment (MuJoCo)
-4. Scale to 4096d/36 blocks — curriculum training on cloud GPU, self-governance API
+3F. Empirical Defense Program — gates scaling (baseline comparison, cascade stability, behavioral signatures, catastrophic forgetting)
+3G. v2 predictive-coding substrate (Whittington-Bogacz) and compute-optimization directions (μPC, iPC, sparse gating). v2 is the primary substrate as of 2026-05-09.
+4. Scale to ≥500M params floor (revised 2026-05-09; original 4B target retired) — curriculum training on cloud GPU, self-governance API. 4096d/36-block ceiling is the long-term aspirational deployment scale.
 5. Sanctuary convergence — integration hooks, CfC modulation
 6. Life on DGX Spark — 10 Hz cognitive loop, sparse spiking inference
 

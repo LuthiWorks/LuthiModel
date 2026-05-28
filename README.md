@@ -44,7 +44,7 @@ The v1 spiking variant (`SpikingLivingLayer`) adds LIF membrane dynamics:
 - Inter-block spike propagation via delay buffers
 - Activity-dependent gating of self-modification (only spiking weights learn)
 
-In v2, the spiking-gate sparsity property is being recovered through **sparse PC update gating** — a per-output mask derived from running prediction-error magnitude. The v2 substrate is non-spiking at the activation level; the sparsity that made v1 viable on Spark's bandwidth budget becomes a property of *which weights update*, not *which neurons fire*.
+In v2, the spiking-gate sparsity property is recovered through **sparse PC update gating** — a per-output mask derived from running prediction-error magnitude (implemented and validation-tested 2026-05-13; outputs with low recent error magnitude skip their weight update). The v2 substrate is non-spiking at the activation level; the sparsity that made v1 viable on Spark's bandwidth budget becomes a property of *which weights update*, not *which neurons fire*.
 
 ### Top-Down Backward Pass
 

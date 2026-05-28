@@ -32,7 +32,19 @@
       "Bash(python -m pytest tests/test_pc_ops_cpp_sparse.py -v)",
       "Bash(python -m pytest tests/test_pc_layer.py tests/test_pc_block.py tests/test_pc_ops_triton.py tests/test_pc_ops_cpp_sparse.py -q)",
       "WebSearch",
-      "Bash(grep -n \"default.*data\\\\|--input\\\\|default=.*\\\\\\\\.\\\\\\\\.\\\\|clean_corpus\\\\|practical_wisdom\" corpus_build/build_curriculum.py)"
+      "Bash(grep -n \"default.*data\\\\|--input\\\\|default=.*\\\\\\\\.\\\\\\\\.\\\\|clean_corpus\\\\|practical_wisdom\" corpus_build/build_curriculum.py)",
+      "Bash(python -c \"import json; r = json.load\\(open\\('runs/vision/results.json'\\)\\); print\\('vision config:', {k: v for k, v in r.items\\(\\) if 'config' in k or 'd_model' in k or 'n_blocks' in k or 'params' in k or k in \\('vocab_size','seq_len'\\)}\\)\")",
+      "Bash(python -c \"import json; r = json.load\\(open\\('runs/vision/results.json'\\)\\); print\\('vision keys:', list\\(r.keys\\(\\)\\)[:20]\\)\")",
+      "Bash(uv add *)",
+      "Bash(python -m pytest tests/test_introspection_v1_v2.py -v)",
+      "Bash(awk '{print $5, $9}')",
+      "Bash(awk '/parser\\\\.add_argument\\\\\\(/{getline x; print NR\": \"$0\" / \"x}' luthi/v2/m5_runner.py)",
+      "PowerShell(Get-PSDrive C, E | Select-Object Name, @{N='Free\\(GB\\)';E={[math]::Round\\($_.Free/1GB,1\\)}}, @{N='Used\\(GB\\)';E={[math]::Round\\($_.Used/1GB,1\\)}})",
+      "Bash(python -c \"import torch; print\\('PyTorch:', torch.__version__\\); print\\('CUDA:', torch.cuda.is_available\\(\\)\\); import torch_directml; print\\('DirectML device count:', torch_directml.device_count\\(\\)\\); print\\('DirectML name:', torch_directml.device_name\\(0\\)\\)\")",
+      "Bash(python -m luthi.v2.m5_runner --help)",
+      "Bash(python *)",
+      "WebFetch(domain:arxiv.org)",
+      "Bash(git -C \"C:/Users/Hasha Smokes/Desktop/Sanctuary/Sanctuary\" status --short)"
     ]
   }
 }

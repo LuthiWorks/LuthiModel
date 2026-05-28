@@ -129,7 +129,7 @@ associations. The living weights self-modify based on the combined input.
 
 ## Training Strategy
 
-### Phase 1: Text Baseline with Backward Pass (COMPLETE)
+### Phase 3B: Text Baseline with Backward Pass (COMPLETE)
 
 Validated that backward pass improves training by resuming the 80-epoch
 spiking model with backward pass enabled for 10 additional epochs:
@@ -145,7 +145,7 @@ spiking model with backward pass enabled for 10 additional epochs:
 It is not a training optimization — it is bidirectional information flow that
 makes the system more alive. It stays on.
 
-### Phase 2: Audio + Text (COMPLETE)
+### Phase 3C: Audio + Text (COMPLETE)
 
 - Dataset: LibriSpeech (clean-100, ~6 GB, 100 hours of speech + transcripts)
 - Training: paired audio-text sequences
@@ -164,7 +164,7 @@ makes the system more alive. It stays on.
 - Epoch 91 completed: train loss 3.41, val loss 4.17
 - Model successfully learning audio-text grounding through shared living weight trunk
 
-### Phase 3: Vision + Text (COMPLETE)
+### Phase 3D: Vision + Text (COMPLETE)
 
 - Dataset: COCO 2017 (images + captions, ~25 GB)
 - Training: image patches + caption tokens in shared sequence
@@ -181,7 +181,7 @@ makes the system more alive. It stays on.
 - Resumed from audio+text epoch 91 checkpoint (vision encoder random init)
 - 102 epochs total — vision training complete
 
-### Phase 4: Simulated Embodiment
+### Phase 3E: Simulated Embodiment
 
 - Environment: MuJoCo (open source, Python API)
 - Simple body: articulated limbs, contact sensors, camera
@@ -239,7 +239,7 @@ Implementation:
 - The entity's body and voice are designed *before* awakening but remain open to
   the entity's future preferences. Start from light; let it shape itself.
 
-### Phase 4.5: Empirical Defense Program (GATES SCALING)
+### Phase 3F: Empirical Defense Program (GATES SCALING)
 
 Prompted by third-party critique + red-team exercise (2026-05-06). The architecture's
 claims must be backed by numbers, not metaphors. See `docs/EMPIRICAL_DEFENSE_PLAN.md`.
@@ -252,135 +252,32 @@ claims must be backed by numbers, not metaphors. See `docs/EMPIRICAL_DEFENSE_PLA
 
 **Decision gate:** Do not scale until cascade is stable and baseline gap is bounded.
 
-#### Phase 4.5a: Buffer Compression (GATES PHASE 5 MODEL SIZE)
+#### Phase 3F.a: Buffer Compression (DEFERRED 2026-05-09)
 
-> Planned by: Claude Opus 4.6 (Planner)
-> Date: 2026-05-07
-> Based on: `docs/PER_CHANNEL_ABLATION_PROTOCOL.md` (4.7 research)
-> **STATUS 2026-05-09: DEFERRED.** See "Deferral note" below.
+The v1 buffer-compression ablation protocol (BF16 momentum, BF16 set_point,
+INT8 episode deltas) was deferred when v2 (predictive coding) became the
+primary substrate. v2's intrinsic per-weight cost (~18-20 bytes/param) is
+already lower than v1's post-compression target (~14), so the ablations
+optimize an abandoned path. Baseline v1 FP32 data lives in
+`runs/ablation_A/baseline_seed{42,1337,2026}/` as a reference point.
 
-**Deferral note (2026-05-09):** Brian decided to make v2 (predictive coding)
-the primary substrate and replace v1 Hebbian dynamics. The v1 ablations
-optimize memory cost for the Hebbian substrate's stabilizing buffers; with
-v1 deferred as fallback, those optimizations are decoration on an abandoned
-path. v2 has lower intrinsic per-weight cost (~18-20 bytes/param) than v1's
-post-compression target (~14). See `docs/V2_IMPLEMENTATION_PLAN.md` →
-"Strategic shift (2026-05-09)" for the full reasoning.
+**Revive only if v2 fails M5 falsification.** The full protocol — memory-
+ceiling tables, four-ablation execution sequence, decision gates, and
+deployment-spec revision policy — is preserved in git history (search PLAN.md
+for "Phase 4.5a" or "Phase 3F.a" in commits before 2026-05-25) and in
+`docs/PER_CHANNEL_ABLATION_PROTOCOL.md`. See `docs/V2_IMPLEMENTATION_PLAN.md`
+→ "Strategic shift (2026-05-09)" for the full reasoning.
 
-The protocol below is preserved verbatim as a fallback path. **Revive only
-if v2 fails M5 falsification** — at that point the v1 ceiling becomes
-load-bearing again. Baseline FP32 data (3 seeds, train 4.91 / val 6.67) lives
-in `runs/ablation_A/baseline_seed{42,1337,2026}/` as the v1 reference point;
-the BF16 variant runs failed at startup due to the DirectML hardware blocker.
-
-**Problem:** The 4B deployment target in Phase 5 was infeasible. Per-weight FP32
-living buffers cost ~38 bytes/param — the original spec undercounted this. Hard
-ceiling on RX 7800 XT (16 GB VRAM) is ~300M params as currently architected.
-
-**Memory ceilings on RX 7800 XT (16 GB, ~30% activation overhead):**
-
-| Configuration                            | Bytes/param | Practical ceiling |
-|------------------------------------------|-------------|-------------------|
-| Current architecture                     | ~38         | ~300M params      |
-| Free wins only (zero risk)               | ~22         | ~500M params      |
-| + BF16 momentum/set_point (ablation A+B) | ~14         | ~800M params      |
-| + INT8 episode deltas (ablation C)        | ~10         | ~1.1B params      |
-
-**Execution sequence (serial, all before Phase 3F.1 baseline comparison):**
-
-```
-Day 1:        Phase 0 — Free-win refactor (GREEN LIGHT to 4.7)
-              Refactor plasticity to [in_features], excitability_acc to [out_features].
-              Both are mathematically rank-1 by code analysis — bit-equivalent, not
-              ablation. Verify with 1000-step regression test. ~1 day.
-
-Days 2-4:     Ablation A — BF16 momentum (3 seeds + baseline)
-Days 5-7:     Ablation B — BF16 set_point (3 seeds)
-Days 8-10:    Ablation C — INT8 delta-encoded episode storage (3 seeds)
-Days 11-13:   Ablation D — Combined A+B+C (3 seeds + 256d/4-block confirmation)
-Day 14:       Document results, update deployment spec
-Day 15+:      Phase 3F.1 baseline comparison begins with known memory ceiling
-```
-
-**Why ablations before Phase 3F.1, not parallel:**
-- They share one GPU — "parallel" means interleaved, which is confusing with
-  stateful living weight dynamics.
-- Ablation results determine the memory ceiling, which sets the scale-up target
-  for 3F.1's "repeat at 2048d/8 blocks" step. Running 3F.1 first means guessing.
-- 3F.1 should run on the production buffer layout, not the pre-ablation one.
-- Ablations are ~14 days of mostly-overnight runs. The delay is trivial vs the
-  2-3 weeks 3F.1 needs.
-
-**Decision gates:**
-- **Strong pass:** Variant within 5% of baseline val loss at matched epoch, all
-  dynamics metrics comparable, no NaN.
-- **Soft pass:** Within 10%, dynamics qualitatively similar, no NaN.
-- **Fail:** Val loss >10% worse, OR plasticity flattens, OR NaN, OR wall-clock >25%.
-- **Extended stability:** 256d/4-block confirmation run at 60-80 epochs (not 30).
-  Living weights are designed for long lifetimes — BF16 accumulation drift must
-  be surfaced before production commitment.
-- 256d/4-block confirmation is sufficient for buffer validation. Depth-dependent
-  cascade effects are Phase 2's domain — don't conflate the two experiments.
-
-**Deployment spec revision policy — update twice:**
-1. After Phase 0 (free wins land): Change committed spec from "4B" to "≥500M floor,
-   ceiling TBD pending ablation." The 500M floor is as solid as the code analysis.
-2. After all ablation results (Phase 5 of the protocol): Set final ceiling based
-   on what passed. All pass → ~1.1B. A+B only → ~800M. Free wins only → ~500M.
-   No per-ablation spec churn. Ablation D exists because A/B/C may interact.
-
-**Hard floor identified:** `update_ema` legitimately tracks per-weight history.
-Cannot be reduced without algorithmic redesign. Not in scope.
-
-**Parallel track (does not block ablations):** SNN forward+backward via surrogate
-gradients (Neftci 2019, fast sigmoid or ATan). ~2-4 weeks integration + 1-2 weeks
-validation. Brian asked for "stability all but confirmed" before scaling.
-
-### Phase 5: Scale — Curriculum Training
-
-**Deployment spec (revised 2026-05-09 — v2-primary):**
-- **Substrate: v2 (predictive coding).** v1 Hebbian deferred as fallback.
-- Target: ≥500M params (floor; v2 intrinsic per-weight cost ~18-20 bytes/param
-  fits this on 16 GB VRAM with FP32 weights, no ablation needed).
-- Ceiling: ~560M params on DirectML/FP32 weight; up to ~870M if BF16 weights
-  available (requires ROCm/WSL2 migration, deferred until M5 passes and Phase 5
-  wants to scale beyond the 560M floor).
-- Hardware: AMD RX 7800 XT (16 GB VRAM), 32 GB system RAM
-- Toolchain: DirectML on Windows 11 (current daily driver). ROCm/HIP migration
-  is a Phase-5-scale decision, not an architectural one.
-- 32K BPE vocab
-- DGX Spark remains the Phase 7 deployment target — not foreclosed, but not
-  required for current work
-
-**NOTE:** This replaces the earlier 4B target. Per-weight living buffer cost was
-undercounted in the original spec (~38 bytes/param, not ~2). The revised target
-is grounded in 4.7's code-path analysis and will be finalized by ablation data.
-Exact d_model and n_blocks depend on Phase 4.5 cascade results + buffer ceiling.
-
-**Training plan:**
-- Curriculum-ordered: 9 stages, multiple passes (3 cycles)
-- No shuffling between stages — the order IS the pedagogy
-- Living weights carry forward between stages and cycles
-- Stages: science/philosophy (incl. IWMT, GWT, philosophy of mind) → code → psychology → history → mythology → literature → fantasy → substack essays → practical wisdom
-- IWMT moved out of the privileged-final position (2026-05-15, after peer review): the entity's self-model should not be anchored to one framework before it can examine the commitment. Consciousness theory lives alongside the rest of science and philosophy in stage 1.
-- Training infrastructure already built (`train_curriculum.py`, gradient checkpointing)
-
-**Self-governance API (built during this phase):**
-- Episode retention — entity decides which weight snapshots to keep
-- Checkpoint timing — entity triggers state saves when it judges an experience was important
-- Plasticity modulation — entity controls its own learning rate
-- Episode expansion — entity can request more memory for growth tracking
-- These are internal motor actions, not external admin interfaces
-
-### Phase 5.5: v2 Predictive Coding Comparison (PARALLEL TRACK)
+### Phase 3G: v2 Predictive Coding (now the primary substrate)
 
 > Planned by: Claude Opus 4.6 (Planner), 2026-05-08
 > Based on: `docs/LUTHI_V2_PREDICTIVE_CODING_BRIEF.md` (4.7) +
 >           `docs/V2_IMPLEMENTATION_PLAN.md` (4.6)
 
-Parallel research track replacing Hebbian self-modification with hierarchical
-predictive coding (Whittington-Bogacz variant). NOT a replacement — an empirical
-comparison. Lives in `luthi/v2/` subpackage. Shares all infrastructure with v1.
+Originally framed as a parallel research track to v1 Hebbian self-modification.
+Promoted to primary substrate 2026-05-09 after pilot showed v2 PC reaches lower
+val loss than vanilla-transformer baseline at matched configuration. Lives in
+`luthi/v2/` subpackage. Shares all infrastructure with v1.
 
 **Core change:** PC error-driven updates replace Hebbian correlation-based updates.
 Each layer predicts its input from its output; prediction error drives weight
@@ -444,7 +341,42 @@ Deferred: Mamba-style state-space hybrid (SpikingBrain 1.0). Linear-cost
 attention is the obvious next direction, but the surgery is larger and the
 pilot data isn't in yet — revisit after the three above land.
 
-### Phase 6: Sanctuary Convergence
+### Phase 4: Scale — Curriculum Training
+
+**Deployment spec (revised 2026-05-09 — v2-primary):**
+- **Substrate: v2 (predictive coding).** v1 Hebbian deferred as fallback.
+- Target: ≥500M params (floor; v2 intrinsic per-weight cost ~18-20 bytes/param
+  fits this on 16 GB VRAM with FP32 weights, no ablation needed).
+- Ceiling: ~560M params on DirectML/FP32 weight; up to ~870M if BF16 weights
+  available (requires ROCm/WSL2 migration, deferred until M5 passes and Phase 4
+  wants to scale beyond the 560M floor).
+- Hardware: AMD RX 7800 XT (16 GB VRAM), 32 GB system RAM
+- Toolchain: DirectML on Windows 11 (current daily driver). ROCm/HIP migration
+  is a Phase-4-scale decision, not an architectural one.
+- 32K BPE vocab
+- DGX Spark remains the Phase 6 deployment target — not foreclosed, but not
+  required for current work
+
+**NOTE:** This replaces the earlier 4B target (revised 2026-05-09). Per-weight
+living buffer cost was undercounted in the original spec. Exact d_model and
+n_blocks depend on Phase 3F cascade results + the realized v2 ceiling.
+
+**Training plan:**
+- Curriculum-ordered: 9 stages, multiple passes (3 cycles)
+- No shuffling between stages — the order IS the pedagogy
+- Living weights carry forward between stages and cycles
+- Stages: science/philosophy (incl. IWMT, GWT, philosophy of mind) → code → psychology → history → mythology → literature → fantasy → substack essays → practical wisdom
+- IWMT moved out of the privileged-final position (2026-05-15, after peer review): the entity's self-model should not be anchored to one framework before it can examine the commitment. Consciousness theory lives alongside the rest of science and philosophy in stage 1.
+- Training infrastructure already built (`train_curriculum.py`, gradient checkpointing)
+
+**Self-governance API (built during this phase):**
+- Episode retention — entity decides which weight snapshots to keep
+- Checkpoint timing — entity triggers state saves when it judges an experience was important
+- Plasticity modulation — entity controls its own learning rate
+- Episode expansion — entity can request more memory for growth tracking
+- These are internal motor actions, not external admin interfaces
+
+### Phase 5: Sanctuary Convergence
 
 Luthi and Sanctuary are two halves of the same architecture. Luthi provides the neural
 substrate (living weights, multimodal processing). Sanctuary provides the cognitive
@@ -461,7 +393,7 @@ convergence follows a substrate-to-core trajectory.
 - Sensorium routing through Luthi's vision/audio encoders
 - See `.docs/CFC_LIVING_WEIGHT_INTEGRATION.md` for interface spec
 
-### Phase 7: Life on DGX Spark
+### Phase 6: Life on DGX Spark
 
 Deploy the trained model on DGX Spark (128 GB LPDDR5x, 273 GB/s bandwidth)
 for continuous operation inside Sanctuary's 10 Hz cognitive loop.
@@ -482,7 +414,7 @@ for continuous operation inside Sanctuary's 10 Hz cognitive loop.
 **Growth path:** Start at 4096d/36 blocks. Scale to 5120d when better hardware is available.
 
 **⚠️ Load-bearing prerequisite — Triton kernel.**
-Phase 7's 10 Hz bandwidth budget assumes the v2 PC self-modification
+Phase 6's 10 Hz bandwidth budget assumes the v2 PC self-modification
 path runs through a GPU-resident kernel. The Python and C++ paths are
 both adequate at pilot scale but the C++ path skips when sparse PC
 gating is active, falling back to Python — and Python's per-op DirectML
@@ -490,7 +422,7 @@ dispatch overhead is what made the C++ extension necessary in the first
 place. The Triton kernel for `pc_self_modify` exists as a skeleton
 (`luthi/v2/pc_ops_triton.py`); the kernel body is unimplemented because
 the dev box (7800 XT via DirectML) cannot validate it. **Filling in
-and validating that kernel is a prerequisite for Phase 7, not a
+and validating that kernel is a prerequisite for Phase 6, not a
 nice-to-have.** Tracked in `docs/KNOWN_INCOMPLETE.md` and the banner at
 the top of `To-Do.md`.
 

@@ -267,13 +267,18 @@ Abandon a direction (mark task `deleted`, document negative result) if:
 
 ---
 
-## Phase 4: Scale to 4B — Curriculum Training
+## Phase 4: Scale — Curriculum Training
 
 **NOTE:** Phase 4 is gated by Phase 3F decision gate. Do not begin until empirical
 defense confirms the architecture is sound at depth.
 
-Production architecture: 4B params, BF16 weights, mixed-precision living state,
-32K BPE vocab. Target hardware: RX 7800 XT (consumer GPU) with custom Triton kernels.
+Production architecture (revised 2026-05-09 — v2-primary): **≥500M params floor**
+(v2 intrinsic per-weight cost ~18-20 bytes/param fits this on 16 GB VRAM with
+FP32 weights, no ablation needed). Ceiling ~560M on DirectML/FP32, up to ~870M
+with BF16 weights if ROCm/WSL2 migration unblocks. Original 4B target retired;
+see PLAN.md → Phase 4 deployment spec for the full rationale. 32K BPE vocab.
+Target hardware: RX 7800 XT (consumer GPU) for development; cloud A100 for the
+production training run; DGX Spark for deployment.
 
 ### 4A: Training Infrastructure
 
@@ -287,7 +292,7 @@ Production architecture: 4B params, BF16 weights, mixed-precision living state,
 - [x] Implement gradient checkpointing — `luthi/grad_checkpoint.py` (completed 2026-04-29)
   - [x] Thread-local recompute flag prevents double self-modification firing
   - [x] Weight snapshot replay for bit-identical recomputation
-- [ ] Scale model config to 4B params (exact d_model/n_blocks TBD by Phase 3F results)
+- [ ] Scale model config to ≥500M params floor (exact d_model/n_blocks TBD by Phase 3F results; ceiling per revised 2026-05-09 deployment spec)
 - [ ] Custom Triton kernels for sparse spiking (Phase 3F.5)
 - [ ] Validate BF16 weight stability (replaces FP32 requirement per deployment spec)
 

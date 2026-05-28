@@ -463,6 +463,19 @@ def main():
     parser.add_argument("--bpe_vocab_size", type=int, default=32000)
     parser.add_argument("--load_tokenizer", type=str, default=None)
     parser.add_argument("--val_fraction", type=float, default=0.05)
+    parser.add_argument(
+        "--probe-file-list", dest="probe_file_list", type=str, default=None,
+        help="Optional path to a separate file_list.txt for held-out "
+             "perplexity probe. When set, the corpus listed is tokenized "
+             "with the SAME tokenizer and used as an additional eval pass "
+             "at each epoch end. Results land in metrics['probe_losses']. "
+             "Distinct from --val_fraction (in-distribution held-out from "
+             "the training corpus): the probe is an OUT-of-training-corpus "
+             "held-out set, used to track generalization to in-domain but "
+             "unseen material. Recommended for any run where the training "
+             "corpus is curated/staged and val_fraction's tail-of-tokens "
+             "split would give a non-representative val signal.",
+    )
     parser.add_argument("--lr_schedule", type=str, default="cosine",
                         choices=["constant", "cosine"])
     parser.add_argument("--lr_warmup_epochs", type=int, default=2)
@@ -521,19 +534,48 @@ def main():
 
     n = data.numel()
     val_fraction = max(0.0, min(0.5, args.val_fraction))
-    split = int(n * (1.0 - val_fraction))
-    train_data, val_data = data[:split], data[split:]
-    print(f"[split] {1.0 - val_fraction:.0%} train / {val_fraction:.0%} val")
+    if val_fraction > 0:
+        split = int(n * (1.0 - val_fraction))
+        train_data, val_data = data[:split], data[split:]
+        print(f"[split] {1.0 - val_fraction:.0%} train / {val_fraction:.0%} val")
+    else:
+        train_data = data
+        val_data = None
+        print("[split] 100% train / 0% val (probe-only eval path)")
 
     train_ds = CharDataset(
         train_data, seq_len=args.seq_len, tokenizer=tokenizer, stride=args.stride,
     )
-    val_ds = CharDataset(
-        val_data, seq_len=args.seq_len, tokenizer=tokenizer, stride=args.stride,
-    )
     train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True)
-    val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False)
-    print(f"[batches] train={len(train_loader)} val={len(val_loader)}")
+
+    if val_data is not None:
+        val_ds = CharDataset(
+            val_data, seq_len=args.seq_len, tokenizer=tokenizer, stride=args.stride,
+        )
+        val_loader: DataLoader | None = DataLoader(
+            val_ds, batch_size=args.batch_size, shuffle=False,
+        )
+        print(f"[batches] train={len(train_loader)} val={len(val_loader)}")
+    else:
+        val_loader = None
+        print(f"[batches] train={len(train_loader)} val=0")
+
+    # --- Held-out probe (out-of-training-corpus eval) ---
+    probe_loader: DataLoader | None = None
+    if args.probe_file_list:
+        print(f"[probe] loading from {args.probe_file_list}")
+        probe_paths = load_file_list(args.probe_file_list)
+        probe_data = load_corpus_as_tensor(*probe_paths, tokenizer=tokenizer)
+        probe_ds = CharDataset(
+            probe_data, seq_len=args.seq_len, tokenizer=tokenizer, stride=args.stride,
+        )
+        probe_loader = DataLoader(
+            probe_ds, batch_size=args.batch_size, shuffle=False,
+        )
+        print(
+            f"[probe] {probe_data.numel():,} tokens, "
+            f"{len(probe_loader)} batches"
+        )
 
     # --- Model ---
     model = _build_model(args, tokenizer.vocab_size, device)
@@ -549,17 +591,28 @@ def main():
 
     # --- Per-epoch NFF probe input (audit 2026-05-12 instrumentation) ---
     # Fixed across the run so NFF values are commensurable epoch-to-epoch.
-    nff_probe = next(iter(val_loader))[0][:1].to(device)
+    # Drawn from probe_loader if available (preferred — held-out from
+    # training so NFF measures non-feedforward signal on truly novel
+    # input), otherwise val_loader, otherwise train_loader.
+    if probe_loader is not None:
+        nff_source = probe_loader
+    elif val_loader is not None:
+        nff_source = val_loader
+    else:
+        nff_source = train_loader
+    nff_probe = next(iter(nff_source))[0][:1].to(device)
 
     # --- Training loop ---
     train_losses: list[float] = []
     val_losses: list[float] = []
+    probe_losses: list[float] = []
     nff_signals: list[float] = []
     pred_frob_norms: list[float] = []
     precision_means: list[float] = []
     precision_ranges: list[list[float]] = []  # [[min, max], ...]
     total_nan_events = 0
     best_val = float("inf")
+    best_probe = float("inf")
 
     for epoch in range(1, args.epochs + 1):
         lr_for_epoch = _compute_lr(args, epoch - 1)
@@ -572,11 +625,22 @@ def main():
             epoch_label=f"[ep {epoch+1:>3d}/{args.epochs}] ",
             total_batches_estimate=len(train_loader),
         )
-        val_loss = _evaluate(model, val_loader, device)
         train_losses.append(train_loss)
-        val_losses.append(val_loss)
         total_nan_events += nans
-        best_val = min(best_val, val_loss)
+
+        if val_loader is not None:
+            val_loss = _evaluate(model, val_loader, device)
+            val_losses.append(val_loss)
+            best_val = min(best_val, val_loss)
+        else:
+            val_loss = float("nan")
+
+        if probe_loader is not None:
+            probe_loss = _evaluate(model, probe_loader, device)
+            probe_losses.append(probe_loss)
+            best_probe = min(best_probe, probe_loss)
+        else:
+            probe_loss = float("nan")
 
         # Audit 2026-05-12 instrumentation: NFF + PC diagnostics per epoch.
         # For DeadLM, NFF should be ~0 (deterministic forward) and the PC
@@ -597,9 +661,19 @@ def main():
             log_extra += f" pred_frob={living['prediction_frob_mean']:.3f}"
         if "precision_mean" in living:
             log_extra += f" prec={living['precision_mean']:.3f}"
+        eval_summary = ""
+        if val_loader is not None:
+            eval_summary += f" val={val_loss:.4f}"
+        if probe_loader is not None:
+            from math import exp
+            try:
+                probe_ppl = exp(probe_loss)
+            except OverflowError:
+                probe_ppl = float("inf")
+            eval_summary += f" probe={probe_loss:.4f} (ppl={probe_ppl:.1f})"
         print(
             f"[epoch {epoch:3d}/{args.epochs}] "
-            f"train={train_loss:.4f} val={val_loss:.4f} "
+            f"train={train_loss:.4f}{eval_summary} "
             f"lr={lr_for_epoch:.2e} nans={nans}{log_extra}"
         )
 
@@ -611,11 +685,13 @@ def main():
         "config": vars(args),
         "train_losses": train_losses,
         "val_losses": val_losses,
+        "probe_losses": probe_losses,
         "nff_signals": nff_signals,
         "prediction_frob_norms": pred_frob_norms,
         "precision_means": precision_means,
         "precision_ranges": precision_ranges,
-        "best_val": best_val,
+        "best_val": best_val if val_losses else None,
+        "best_probe": best_probe if probe_losses else None,
         "final_nff": nff_signals[-1] if nff_signals else 0.0,
         "nan_events": total_nan_events,
         "trainable_params": n_train,
@@ -623,9 +699,14 @@ def main():
     }
     (output_dir / "results.json").write_text(json.dumps(metrics, indent=2))
     print(f"[done] saved to {output_dir}")
+    summary_eval = ""
+    if val_losses:
+        summary_eval += f" best_val={best_val:.4f}"
+    if probe_losses:
+        summary_eval += f" best_probe={best_probe:.4f}"
     print(
-        f"[summary] arch={args.arch} seed={args.seed} "
-        f"best_val={best_val:.4f} final_train={train_losses[-1]:.4f}"
+        f"[summary] arch={args.arch} seed={args.seed}{summary_eval} "
+        f"final_train={train_losses[-1]:.4f}"
     )
 
 
