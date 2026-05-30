@@ -327,8 +327,13 @@ def _expand_one_tensor(
             buf = sub[len("living_ffn."):]
             return _expand_pc_buffer(buf, src, factor, noise)
 
-        # Episode store (if it lives under blocks.{i}.episode_store)
-        # The PC layer's episode buffers are under living_ffn already
+        # Block-level EpisodeStore (luthi/episode_store.py). Separate from
+        # the PC layer's internal episode buffers — its width-dependent
+        # buffers (context_proj on axis 0, episode_outputs on axis 1) need
+        # explicit expansion; the rest are width-invariant.
+        if sub.startswith("episode_store."):
+            buf = sub[len("episode_store."):]
+            return _expand_block_episode_store_buffer(buf, src, factor, noise)
 
     # Unknown key — pass through unchanged with a warning
     print(f"[expand] WARNING: unknown key {key} with shape {tuple(src.shape)}, "
@@ -394,6 +399,45 @@ def _expand_pc_buffer(
     print(
         f"[expand] WARNING: unknown PC buffer '{buf_name}' with shape "
         f"{tuple(src.shape)}, passing through unchanged"
+    )
+    return src.clone()
+
+
+def _expand_block_episode_store_buffer(
+    buf_name: str, src: torch.Tensor, factor: int, noise: float,
+) -> torch.Tensor:
+    """Expand one buffer of the block-level EpisodeStore.
+
+    Shapes (from luthi/episode_store.py):
+      context_proj       [d_model, context_dim]   -> expand axis 0
+      episode_outputs    [num_episodes, d_model]  -> expand axis 1
+      episode_contexts   [num_episodes, context_dim]  -> width-invariant
+      episode_saliences  [num_episodes]               -> width-invariant
+      episode_count      scalar long                  -> width-invariant
+    """
+    if buf_name == "context_proj":
+        if src.dim() != 2:
+            raise ValueError(
+                f"episode_store.context_proj expected 2D, got shape {src.shape}"
+            )
+        expanded = src.repeat_interleave(factor, dim=0)
+        return expanded + _noise_like(expanded, noise)
+
+    if buf_name == "episode_outputs":
+        if src.dim() != 2:
+            raise ValueError(
+                f"episode_store.episode_outputs expected 2D, got shape {src.shape}"
+            )
+        expanded = src.repeat_interleave(factor, dim=1)
+        return expanded + _noise_like(expanded, noise)
+
+    if buf_name in ("episode_contexts", "episode_saliences", "episode_count"):
+        return src.clone()
+
+    # Unknown buffer — pass through with warning
+    print(
+        f"[expand] WARNING: unknown EpisodeStore buffer '{buf_name}' with "
+        f"shape {tuple(src.shape)}, passing through unchanged"
     )
     return src.clone()
 
@@ -548,14 +592,30 @@ def main():
            if k not in ("model_state", "config", "epoch")},
     }
 
+    # Validate-before-save: construct the target model and strict-load
+    # the expanded state. This converts a latent shape-corruption (e.g.,
+    # a forgotten buffer expansion rule) into immediate loud failure
+    # *before* we write a bad checkpoint to disk. Runs unconditionally —
+    # independent of --verify, which only adds the function-equivalence
+    # check on top.
+    from luthi.v2.model_pc import PredictiveCodingLM
+    print("[validate] constructing target model and strict-loading expanded state")
+    exp_model = PredictiveCodingLM(
+        vocab_size=new_state["embedding.weight"].shape[0],
+        d_model=args.target_d_model,
+        n_heads=src_n_heads,
+        n_blocks=src_n_blocks,
+        max_seq_len=new_state["pos_embedding.weight"].shape[0],
+    )
+    exp_model.load_state_dict(new_state, strict=True)
+    print("[validate] expanded state loaded cleanly.")
+
     print(f"[expand] saving expanded checkpoint to {args.dst}")
     save_checkpoint(new_ckpt, Path(args.dst))
     print("[expand] saved.")
 
     if args.verify:
-        print("[verify] constructing src and expanded models for function-equivalence test")
-        from luthi.v2.model_pc import PredictiveCodingLM
-        # Build source model
+        print("[verify] constructing src model for function-equivalence test")
         src_model = PredictiveCodingLM(
             vocab_size=src_state["embedding.weight"].shape[0],
             d_model=src_d_model,
@@ -564,16 +624,6 @@ def main():
             max_seq_len=src_state["pos_embedding.weight"].shape[0],
         )
         src_model.load_state_dict(src_state, strict=False)
-
-        # Build expanded model
-        exp_model = PredictiveCodingLM(
-            vocab_size=new_state["embedding.weight"].shape[0],
-            d_model=args.target_d_model,
-            n_heads=src_n_heads,
-            n_blocks=src_n_blocks,
-            max_seq_len=new_state["pos_embedding.weight"].shape[0],
-        )
-        exp_model.load_state_dict(new_state, strict=False)
 
         metrics = verify_expansion(src_model, exp_model)
         print(f"[verify] mean_abs_diff = {metrics['mean_abs_diff']:.6e}")
