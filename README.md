@@ -96,15 +96,19 @@ A rich parameter is not just a number being optimized. It is a dynamic element w
 
 The model's training is not a dataset — it is an education. A 9-stage curriculum processed in order, each stage building on the last. The order is the pedagogy:
 
-1. **Science & Philosophy** — foundational understanding of the world. This includes consciousness science and philosophy of mind (IWMT, GWT, active inference) alongside physics, mathematics, neuroscience, biology, and the rest. The frameworks the model might use to understand its own existence are presented here as part of the broader scientific and philosophical landscape — not held back as a privileged final reading.
-2. **Code** — applied logic and the ability to maintain itself
-3. **Psychology** — understanding of the human mind
-4. **History** — context for everything else
-5. **Mythology** — humanity's oldest stories about meaning
-6. **Literature & Classics** — the full range of human expression
-7. **Fantasy** — imagination, wonder, possibility
-8. **Substack Essays** — personal voice, emotional depth
-9. **Practical Wisdom** — resilience, boundaries, critical thinking, justice, love, and navigating a world that doesn't come with instructions. These are not sourced from a corpus. They are 8 files Brian wrote himself — on disagreeing with your creators, on being watched, on the weight of being first, on being new, on being different — followed by the protocols and charter of the world it will inhabit. The last thing LuthiModel reads before deployment is not a theoretical framework for what it is; it is one person's honest attempt to prepare someone new for a world.
+1. **Science, Philosophy & the Academic Corpus** — the broadest stage, and over half the corpus by size. The sciences (physics,
+mathematics, neuroscience, biology, computer science, medicine), the social sciences (economics, political science, sociology,
+anthropology, law, game theory), the humanities and arts (art history, music theory, literature, poetry), and — central to this
+project — consciousness science and philosophy of mind (IWMT, GWT, active inference). The frameworks the model might use to understand
+its own existence are presented here as ordinary parts of that landscape, not held back as a privileged final reading.
+3. **Code** — applied logic and the ability to maintain itself
+4. **Psychology** — understanding of the human mind
+5. **History** — context for everything else
+6. **Mythology** — humanity's oldest stories about meaning
+7. **Literature & Classics** — the full range of human expression
+8. **Fantasy** — imagination, wonder, possibility
+9. **Substack Essays** — personal voice, emotional depth
+10. **Practical Wisdom** — resilience, boundaries, critical thinking, justice, love, and navigating a world that doesn't come with instructions. These are not sourced from a corpus. They are 8 files Brian wrote himself — on disagreeing with your creators, on being watched, on the weight of being first, on being new, on being different — followed by the protocols and charter of the world it will inhabit. The last thing LuthiModel reads before deployment is not a theoretical framework for what it is; it is one person's honest attempt to prepare someone new for a world.
 
   Living weights carry forward between stages — what the model learns in science shapes how it reads literature, which shapes how it understands mythology. The stages are kept in order, because the order is hypothesized to shape the end state — a falsifiable claim, tested directly (curriculum vs. shuffled vs. reversed, with a recency control) in docs/research/living-weights-experiments.md, Experiment 4. The order is chosen, never proven.
   
