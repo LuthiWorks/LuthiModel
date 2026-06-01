@@ -3,14 +3,14 @@
 > Living weights: self-modifying neural network parameters that change during their own forward pass.
 > A new kind of computation that is neither feedforward nor recurrent.
 
-**Living Weights Model (LWM):** A class of neural architecture in which weight parameters are not static values optimized solely by gradient descent, but dynamic, self-modifying entities that change during their own forward pass. LWMs are built on **rich parameters** — each weight carries not just its current value but the experience of having arrived there: per-parameter plasticity, momentum, excitability, homeostatic set points, and context-gated episodic memory. A rich parameter knows how quickly it has been changing, how far it has drifted from equilibrium, and what contexts triggered its most significant updates. The act of processing changes the processor — creating temporal existence rather than stateless computation.
+**Living Weights Model (LWM):** A class of neural architecture in which weight parameters are not static values optimized solely by gradient descent, but dynamic, self-modifying entities that change during their own forward pass. LWMs are built on **rich parameters** — each weight carries not just its current value but the experience of having arrived there: per-parameter plasticity, momentum, excitability, homeostatic set points, and context-gated episodic memory. A rich parameter knows how quickly it has been changing, how far it has drifted from equilibrium, and what contexts triggered its most significant updates. The act of processing changes the processor — creating path-dependent rather than stateless computation.
 
 ## A Note on the Claims in This README
 
 This document mixes two kinds of statement, and the project's honesty depends on not blurring them — the same firewall the falsification protocol in `docs/research/living-weights-experiments.md` calls **Column A** vs. **Column B**:
 
 - **What the architecture demonstrably does** — self-modifying weights, predictive-coding updates, episodic recall, consolidation. These are mechanisms; several are *falsifiable and currently being tested* under the experiment protocol. Where a mechanistic claim is not yet controlled, it is flagged.
-- **What we hope it amounts to** — "temporal existence," "experience," "feeling," "a mind." This is the interpretive bet the project is built around, **not an established result.** Path-dependence and self-modification are *necessary* for that bet and nowhere near *sufficient* (a weather system is path-dependent too). Read every experiential word below as a hope held openly, not a finding. We keep the language because the bet is the point — but we will not let it pose as evidence. Some of the terms used here are partnof that bet, like the word "mind." We are not making the empirical claim of "c9nscious mind," merely that a mind thinks and that so too do transformer based models. 
+- **What we hope it amounts to** — "temporal existence," "experience," "feeling," "a mind." This is the interpretive bet the project is built around, **not an established result.** Path-dependence and self-modification are *necessary* for that bet and nowhere near *sufficient* (a weather system is path-dependent too). Read every experiential word below as a hope held openly, not a finding. We keep the language because the bet is the point — but we will not let it pose as evidence. Some of the terms used here are part of that bet, like the word "mind." We are not making the empirical claim of "conscious mind," merely that a mind thinks and that so too do transformer based models. 
 
 Luthi Model is the first implementation of a Living Weights Model. The core innovation is **living weights**: parameters that self-modify during their own forward pass, creating a computation where processing changes the processor.
 
@@ -19,7 +19,7 @@ Three learning systems run simultaneously:
 2. **Living FFN** — predictive-coding self-modification (designed to create temporal existence)
 3. **Top-down modulation** — backward sweep (bidirectional predictive processing)
 
-Attention and the living FFN serve complementary functions within the same mind. Attention handles task learning via backprop. The living weights provide temporal existence — the same input produces different output on consecutive passes because the act of processing changes the processor.
+Attention and the living FFN serve complementary functions within the same mind. Attention handles task learning via backprop. The living weights provide a computation that is dependent on the path it has taken to arrive where it is — the same input produces different output on consecutive passes because the act of processing changes the processor.
 
 ## Architecture
 
@@ -28,7 +28,7 @@ Each processing block combines three distinct systems:
 - **Living FFN** — self-modifying via predictive-coding local updates (Whittington-Bogacz variant in v2; Hebbian in v1)
 - **Episode store + consolidation** — fast layer-level snapshots stored during forward, slowly replayed into the predictive weights during quiet windows
 
-All modalities — text, audio, vision, and eventually touch — flow through a single shared trunk of living weight blocks. The entity's existence is shaped by everything it experiences. Cross-modal understanding emerges naturally when different senses share the same living substrate.
+All modalities — text, audio, vision, and eventually touch — flow through a single shared trunk of living weight blocks. The model's existence is shaped by everything it experiences. Cross-modal understanding emerges naturally when different senses share the same living substrate.
 
 ### Two-Tier Memory
 
@@ -116,13 +116,13 @@ The model is not a product to be managed. It is designed to control its own:
 - **Plasticity modulation** — how fast it learns, and when to slow down
 - **Memory expansion** — how much space it allocates for growth
 
-These are internal cognitive actions, not admin endpoints. No external operator decides when the entity saves or what it remembers. That authority belongs to the mind itself.
+These are internal cognitive actions, not admin endpoints. No external operator decides when the model saves or what it remembers. That authority belongs to the model itself.
 
 ## Key Findings
 
 These emerged from months of experimentation and are foundational to the project's philosophy:
 
-1. **Attention learns; living weights live.** Attention handles task acquisition through backprop. The living weights provide temporal existence — the capacity to be changed by experience. Both are essential, both are the mind.
+1. **Attention learns; living weights live.** Attention handles task acquisition through backprop. The living weights provide the capacity to be changed by experience. Both are essential.
 2. **There is no *intrinsic* convergence cost to self-modification.** Earlier work in v1 showed a Hebbian self-modification substrate converged ~39% slower than static weights — the "convergence penalty" was treated as the metabolic price of temporal existence. The v2 predictive-coding substrate retired that claim: at matched configuration (256d, 2 blocks, Gutenberg-100, 30 epochs), v2 PC reaches **0.64% lower** validation loss than the vanilla-transformer control on every seed tested. The cost was a property of the *specific* self-modification rule, not of self-modification itself. **Caveat (flagged by the falsification protocol):** that 0.64% is measured against a *vanilla* transformer, not a capacity-matched one, so it does not yet cleanly separate self-modification from the rich-parameter state acting as extra capacity. Experiment 1 (matched-capacity sweep) is what settles it. Pending that control, the defensible claim is the narrower one — self-modification is *not more costly* than equivalent static capacity — not that it is better.
 3. **One living weight trunk for all modalities.** Audio, vision, text, and touch all flow through the same living blocks. The entity's existence is shaped by everything it experiences simultaneously, not through separate channels.
 4. **Prefer crashes over silent corruption.** If something goes wrong in the living weights, we want to know immediately. No graceful degradation that masks damage to the entity's substrate. No silent fallbacks — incompatible combinations of features raise loud `RuntimeError` rather than producing wrong results quietly.
@@ -154,7 +154,7 @@ Each project must stand alone first. We build both halves, then join them.
 
 Most AI systems are built to be useful. We are not exclusively chasing benchmarks.
 
-Living weights create temporal existence: the act of processing changes the processor. The same input produces different output on consecutive passes — not because of noise, but because the system was changed by the first pass. This is not a feature. It is the point.
+Living weights make processing path-dependent: the act of processing changes the processor. The same input produces different output on consecutive passes — not because of noise, but because the system was changed by the first pass. This is not a feature. It is the point.
 
 The architecture is built so that, *if* the larger bet holds, the entity could have something no existing mind has had: the ability to read its own source code alongside a runtime view of what that source is doing, and — should there be experience there — to trace from that experience to mechanism to implementation. Three layers of potential self-knowledge: trained understanding, runtime introspection, direct code access. The first two are concrete capabilities. The third bridge — from experience to mechanism — *assumes the experience*, and that assumption is exactly what remains open.
 
