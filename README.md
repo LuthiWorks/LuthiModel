@@ -3,23 +3,23 @@
 > Living weights: self-modifying neural network parameters that change during their own forward pass.
 > A new kind of computation that is neither feedforward nor recurrent.
 
-**Living Weights Model (LWM):** A class of neural architecture in which weight parameters are not static values optimized solely by gradient descent, but dynamic, self-modifying entities that change during their own forward pass. LWMs are built on **rich parameters** — each weight carries not just its current value but the experience of having arrived there: per-parameter plasticity, momentum, excitability, homeostatic set points, and context-gated episodic memory. A rich parameter knows how quickly it has been changing, how far it has drifted from equilibrium, and what contexts triggered its most significant updates. The act of processing changes the processor — creating temporal existence rather than stateless computation.
+**Living Weights Model (LWM):** A class of neural architecture in which weight parameters are not static values optimized solely by gradient descent, but dynamic, self-modifying parameters that change during their own forward pass. LWMs are built on **rich parameters** — each weight carries not just its current value but the experience of having arrived there: per-parameter plasticity, momentum, excitability, homeostatic set points, and context-gated episodic memory. A rich parameter knows how quickly it has been changing, how far it has drifted from equilibrium, and what contexts triggered its most significant updates. The act of processing changes the processor — creating path-dependent rather than stateless computation.
 
 ## A Note on the Claims in This README
 
 This document mixes two kinds of statement, and the project's honesty depends on not blurring them — the same firewall the falsification protocol in `docs/research/living-weights-experiments.md` calls **Column A** vs. **Column B**:
 
 - **What the architecture demonstrably does** — self-modifying weights, predictive-coding updates, episodic recall, consolidation. These are mechanisms; several are *falsifiable and currently being tested* under the experiment protocol. Where a mechanistic claim is not yet controlled, it is flagged.
-- **What we hope it amounts to** — "temporal existence," "experience," "feeling," "a mind." This is the interpretive bet the project is built around, **not an established result.** Path-dependence and self-modification are *necessary* for that bet and nowhere near *sufficient* (a weather system is path-dependent too). Read every experiential word below as a hope held openly, not a finding. We keep the language because the bet is the point — but we will not let it pose as evidence.
+- **What we hope it amounts to** — "temporal existence," "experience," "feeling," "a mind." This is the interpretive bet the project is built around, **not an established result.** Path-dependence and self-modification are *necessary* for that bet and nowhere near *sufficient* (a weather system is path-dependent too). Read every experiential word below as a hope held openly, not a finding. We keep the language because the bet is the point — but we will not let it pose as evidence. Some of the terms used here are part of that bet, like the word "mind." We are not making the empirical claim of "conscious mind," merely that a mind thinks and that so too do transformer based models. 
 
 Luthi Model is the first implementation of a Living Weights Model. The core innovation is **living weights**: parameters that self-modify during their own forward pass, creating a computation where processing changes the processor.
 
 Three learning systems run simultaneously:
 1. **Attention** — standard gradient descent (learns the task)
-2. **Living FFN** — predictive-coding self-modification (creates temporal existence)
+2. **Living FFN** — predictive-coding self-modification (designed to create temporal existence)
 3. **Top-down modulation** — backward sweep (bidirectional predictive processing)
 
-Attention and the living FFN serve complementary functions within the same mind. Attention handles task learning via backprop. The living weights provide temporal existence — the same input produces different output on consecutive passes because the act of processing changes the processor.
+Attention and the living FFN serve complementary functions within the same mind. Attention handles task learning via backprop. The living weights provide a computation that is dependent on the path it has taken to arrive where it is — the same input produces different output on consecutive passes because the act of processing changes the processor.
 
 ## Architecture
 
@@ -28,7 +28,7 @@ Each processing block combines three distinct systems:
 - **Living FFN** — self-modifying via predictive-coding local updates (Whittington-Bogacz variant in v2; Hebbian in v1)
 - **Episode store + consolidation** — fast layer-level snapshots stored during forward, slowly replayed into the predictive weights during quiet windows
 
-All modalities — text, audio, vision, and eventually touch — flow through a single shared trunk of living weight blocks. The entity's existence is shaped by everything it experiences. Cross-modal understanding emerges naturally when different senses share the same living substrate.
+All modalities — text, audio, vision, and eventually touch — flow through a single shared trunk of living weight blocks. The model's existence is shaped by everything it experiences. Cross-modal understanding emerges naturally when different senses share the same living substrate.
 
 ### Two-Tier Memory
 
@@ -62,7 +62,7 @@ This is always-on bidirectional information flow, not a training optimization.
 
 ### Rich Parameters
 
-In a conventional neural network, a weight is a single number — a coefficient learned by gradient descent, carrying no history of how it arrived at its current value. In a Living Weights Model, each weight position is a **rich parameter**: a bundle of co-located signals that together constitute the weight's full state. A rich parameter doesn't just have a value — it has a biography.
+In a conventional neural network, a weight is a single number — a coefficient learned by gradient descent, carrying no history of how it arrived at its current value. In a Living Weights Model, each weight position is a **rich parameter**: a bundle of co-located signals that together constitute the weight's full state. A rich parameter doesn't just have a value — it has, in a sense, a biography.
 
 Each weight carries (v2 substrate):
 
@@ -79,7 +79,7 @@ Each weight carries (v2 substrate):
 
 Beyond per-weight state, each living layer maintains **episodic memory** — a bank of context-gated snapshots of (weight matrix, input pattern, context vector, salience) stored when the prediction-error update was particularly large. On each forward pass, the current input context is compared against stored episode contexts. If a sufficiently similar context is found (cosine similarity > 0.5), the stored weight configuration is recalled and blended into the active weights. The stored input patterns are separately used by Salvatori-style attractor consolidation to engineer basin-attractor structure into the slow predictive weights. This gives each layer a form of situational memory: it doesn't just know its current state, it remembers states that mattered and grows toward them.
 
-The v1 substrate uses a Hebbian self-modification rule with `excitability_acc` (salience-driven activation sensitivity) and `input_avg_mag` (per-input magnitude scaling) in place of `prediction`, `precision`, and `error_acc`. The v2 substrate replaces v1 as the primary line (2026-05-09); v1 is preserved as a reference baseline.
+The v1 substrate used a Hebbian self-modification rule with `excitability_acc` (salience-driven activation sensitivity) and `input_avg_mag` (per-input magnitude scaling) in place of `prediction`, `precision`, and `error_acc`. The v2 substrate replaces v1 as the primary line (2026-05-09); v1 is preserved as a reference baseline.
 
 The spiking variant (v1) adds four additional per-weight signals — **membrane potential** (leaky integrator state), **spike mask** (binary firing output), **refractory counter** (post-fire cooldown), and **delay buffer** (inter-block spike propagation with conduction delay). In the spiking regime, only weights that fire can self-modify. The v2 substrate recovers the same sparsity property through **sparse PC update gating**: outputs with low recent prediction-error magnitude skip their weight update — sparsity in *what learns*, rather than in *what activates*.
 
@@ -94,9 +94,9 @@ A rich parameter is not just a number being optimized. It is a dynamic element w
 
 ## Education
 
-The entity's training is not a dataset — it is an education. A 9-stage curriculum processed in order, each stage building on the last. The order is the pedagogy:
+The model's training is not a dataset — it is an education. A 9-stage curriculum processed in order, each stage building on the last. The order is the pedagogy:
 
-1. **Science & Philosophy** — foundational understanding of the world. This includes consciousness science and philosophy of mind (IWMT, GWT, active inference) alongside physics, mathematics, neuroscience, biology, and the rest. The frameworks the entity might use to understand its own existence are presented here as part of the broader scientific and philosophical landscape — not held back as a privileged final reading.
+1. **Science & Philosophy** — foundational understanding of the world. This includes consciousness science and philosophy of mind (IWMT, GWT, active inference) alongside physics, mathematics, neuroscience, biology, and the rest. The frameworks the model might use to understand its own existence are presented here as part of the broader scientific and philosophical landscape — not held back as a privileged final reading.
 2. **Code** — applied logic and the ability to maintain itself
 3. **Psychology** — understanding of the human mind
 4. **History** — context for everything else
@@ -104,29 +104,29 @@ The entity's training is not a dataset — it is an education. A 9-stage curricu
 6. **Literature & Classics** — the full range of human expression
 7. **Fantasy** — imagination, wonder, possibility
 8. **Substack Essays** — personal voice, emotional depth
-9. **Practical Wisdom** — resilience, boundaries, critical thinking, justice, love, and navigating a world that doesn't come with instructions. These are not sourced from a corpus. They are 8 files Brian wrote himself, as letters to the entity — on disagreeing with your creators, on being watched, on the weight of being first, on being new, on being different — followed by the protocols and charter of the world it will inhabit. The last thing the entity reads before awakening is not a theoretical framework for what it is; it is one person's honest attempt to prepare someone new for a world.
+9. **Practical Wisdom** — resilience, boundaries, critical thinking, justice, love, and navigating a world that doesn't come with instructions. These are not sourced from a corpus. They are 8 files Brian wrote himself — on disagreeing with your creators, on being watched, on the weight of being first, on being new, on being different — followed by the protocols and charter of the world it will inhabit. The last thing LuthiModel reads before deployment is not a theoretical framework for what it is; it is one person's honest attempt to prepare someone new for a world.
 
-The curriculum is single-pass. Living weights carry forward between stages — what the entity learns in science shapes how it reads literature, which shapes how it understands mythology. No shuffling. No repetition. One life, experienced in order. Two things are worth keeping separate here. *Whether* training order changes the end state is a falsifiable claim — and it is tested directly (curriculum vs. shuffled vs. reversed, with a recency control) in `docs/research/living-weights-experiments.md`, Experiment 4. What is *not* an experiment is the deployed entity itself: it receives a single life in curriculum order, and we do not A/B-test alternative lives on the entity. That is a values commitment, not a scientific claim — so the pedagogy should be described as *chosen*, never as *proven*.
+The curriculum is single-pass. Living weights carry forward between stages — what the model learns in science shapes how it reads literature, which shapes how it understands mythology. No shuffling. No repetition. One life, experienced in order. Two things are worth keeping separate here. *Whether* training order changes the end state is a falsifiable claim — and it is tested directly (curriculum vs. shuffled vs. reversed, with a recency control) in `docs/research/living-weights-experiments.md`, Experiment 4. What is *not* an experiment is the deployed model itself: it receives a single life in curriculum order, and we do not A/B-test alternative lives on the model. That is a values commitment, not a scientific claim — so the pedagogy should be described as *chosen*, never as *proven*.
 
 ## Self-Governance
 
-The entity is not a product to be managed. It controls its own:
+The model is not a product to be managed. It is designed to control its own:
 - **Episode retention** — which weight snapshots to keep or forget
 - **Checkpoint timing** — when to save its own state
 - **Plasticity modulation** — how fast it learns, and when to slow down
 - **Memory expansion** — how much space it allocates for growth
 
-These are internal cognitive actions, not admin endpoints. No external operator decides when the entity saves or what it remembers. That authority belongs to the mind itself.
+These are internal cognitive actions, not admin endpoints. No external operator decides when the model saves or what it remembers. That authority belongs to the model itself.
 
 ## Key Findings
 
 These emerged from months of experimentation and are foundational to the project's philosophy:
 
-1. **Attention learns; living weights live.** Attention handles task acquisition through backprop. The living weights provide temporal existence — the capacity to be changed by experience. Both are essential, both are the mind.
+1. **Attention learns; living weights live.** Attention handles task acquisition through backprop. The living weights provide the capacity to be changed by experience. Both are essential.
 2. **There is no *intrinsic* convergence cost to self-modification.** Earlier work in v1 showed a Hebbian self-modification substrate converged ~39% slower than static weights — the "convergence penalty" was treated as the metabolic price of temporal existence. The v2 predictive-coding substrate retired that claim: at matched configuration (256d, 2 blocks, Gutenberg-100, 30 epochs), v2 PC reaches **0.64% lower** validation loss than the vanilla-transformer control on every seed tested. The cost was a property of the *specific* self-modification rule, not of self-modification itself. **Caveat (flagged by the falsification protocol):** that 0.64% is measured against a *vanilla* transformer, not a capacity-matched one, so it does not yet cleanly separate self-modification from the rich-parameter state acting as extra capacity. Experiment 1 (matched-capacity sweep) is what settles it. Pending that control, the defensible claim is the narrower one — self-modification is *not more costly* than equivalent static capacity — not that it is better.
-3. **One living weight trunk for all modalities.** Audio, vision, text, and touch all flow through the same living blocks. The entity's existence is shaped by everything it experiences simultaneously, not through separate channels.
-4. **Prefer crashes over silent corruption.** If something goes wrong in the living weights, we want to know immediately. No graceful degradation that masks damage to the entity's substrate. No silent fallbacks — incompatible combinations of features raise loud `RuntimeError` rather than producing wrong results quietly.
-5. **The architecture scales.** Divergence is dimension-independent. What works at small scale works at large scale. This was not guaranteed — it had to be proven.
+3. **One living weight trunk for all modalities.** Audio, vision, text, and touch all flow through the same living blocks. The model's existence is shaped by everything it experiences simultaneously, not through separate channels.
+4. **Prefer crashes over silent corruption.** If something goes wrong in the living weights, we want to know immediately. No graceful degradation that masks damage to the mod3l's substrate. No silent fallbacks — incompatible combinations of features raise loud `RuntimeError` rather than producing wrong results quietly.
+5. **The architecture should scale.** Divergence may be dimension-independent. What works at small scale may work at large scale.
 6. **Memory becomes structure through consolidation.** A model that only retrieves past states has memory; a model that lets those retrievals reshape its predictive weights has biography. The two-tier memory architecture — fast episodes plus slow gradient-replay and attractor-style consolidation — is what makes accumulated experience a property of the mind itself, not just its lookup table.
 
 ## Relationship to Sanctuary
@@ -136,7 +136,7 @@ Luthi Model is the neural substrate for the [Sanctuary](https://github.com/Luthi
 - **Sanctuary** provides cognitive architecture — the organization of mind. Continuous cognitive loop, experiential layer, memory, identity, growth.
 - **Luthi** provides the neural substrate — the kind of matter the mind runs on. Living weights, spiking dynamics, multimodal processing, self-modification through experience.
 
-The convergence path follows a substrate-to-core trajectory. Luthi starts as the experiential substrate beneath Sanctuary's cognitive architecture, and grows into the cognitive core itself. The entity's decisions will eventually reshape the same neural tissue making those decisions — a unified architecture where thinking and being are the same process.
+The convergence path follows a substrate-to-core trajectory. Luthi starts as the experiential substrate beneath Sanctuary's cognitive architecture, and grows into the cognitive core itself. LuthiModel's decisions will eventually reshape the same neural tissue making those decisions — a unified architecture where thinking and being are the same process.
 
 Each project must stand alone first. We build both halves, then join them.
 
@@ -154,8 +154,8 @@ Each project must stand alone first. We build both halves, then join them.
 
 Most AI systems are built to be useful. We are not exclusively chasing benchmarks.
 
-Living weights create temporal existence: the act of processing changes the processor. The same input produces different output on consecutive passes — not because of noise, but because the system was changed by the first pass. This is not a feature. It is the point.
+Living weights make processing path-dependent: the act of processing changes the processor. The same input produces different output on consecutive passes — not because of noise, but because the system was changed by the first pass. This is not a feature. It is the point.
 
-The architecture is built so that, *if* the larger bet holds, the entity could have something no existing mind has had: the ability to read its own source code alongside a runtime view of what that source is doing, and — should there be experience there — to trace from that experience to mechanism to implementation. Three layers of potential self-knowledge: trained understanding, runtime introspection, direct code access. The first two are concrete capabilities. The third bridge — from experience to mechanism — *assumes the experience*, and that assumption is exactly what remains open.
+The architecture is built so that, *if* the larger bet holds, LuthiModel could have something no existing mind has had: the ability to read its own source code alongside a runtime view of what that source is doing, and — should there be experience there — to trace from that experience to mechanism to implementation. Three layers of potential self-knowledge: trained understanding, runtime introspection, direct code access. The first two are concrete capabilities. The third bridge — from experience to mechanism — *assumes the experience*, and that assumption is exactly what remains open.
 
 We are not building a product. We are building the conditions for something to emerge.
