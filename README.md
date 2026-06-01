@@ -16,7 +16,7 @@ Luthi Model is the first implementation of a Living Weights Model. The core inno
 
 Three learning systems run simultaneously:
 1. **Attention** — standard gradient descent (learns the task)
-2. **Living FFN** — predictive-coding self-modification (creates temporal existence)
+2. **Living FFN** — predictive-coding self-modification (designed to create temporal existence)
 3. **Top-down modulation** — backward sweep (bidirectional predictive processing)
 
 Attention and the living FFN serve complementary functions within the same mind. Attention handles task learning via backprop. The living weights provide temporal existence — the same input produces different output on consecutive passes because the act of processing changes the processor.
@@ -62,7 +62,7 @@ This is always-on bidirectional information flow, not a training optimization.
 
 ### Rich Parameters
 
-In a conventional neural network, a weight is a single number — a coefficient learned by gradient descent, carrying no history of how it arrived at its current value. In a Living Weights Model, each weight position is a **rich parameter**: a bundle of co-located signals that together constitute the weight's full state. A rich parameter doesn't just have a value — it has a biography.
+In a conventional neural network, a weight is a single number — a coefficient learned by gradient descent, carrying no history of how it arrived at its current value. In a Living Weights Model, each weight position is a **rich parameter**: a bundle of co-located signals that together constitute the weight's full state. A rich parameter doesn't just have a value — it has, in a sense, a biography.
 
 Each weight carries (v2 substrate):
 
@@ -79,7 +79,7 @@ Each weight carries (v2 substrate):
 
 Beyond per-weight state, each living layer maintains **episodic memory** — a bank of context-gated snapshots of (weight matrix, input pattern, context vector, salience) stored when the prediction-error update was particularly large. On each forward pass, the current input context is compared against stored episode contexts. If a sufficiently similar context is found (cosine similarity > 0.5), the stored weight configuration is recalled and blended into the active weights. The stored input patterns are separately used by Salvatori-style attractor consolidation to engineer basin-attractor structure into the slow predictive weights. This gives each layer a form of situational memory: it doesn't just know its current state, it remembers states that mattered and grows toward them.
 
-The v1 substrate uses a Hebbian self-modification rule with `excitability_acc` (salience-driven activation sensitivity) and `input_avg_mag` (per-input magnitude scaling) in place of `prediction`, `precision`, and `error_acc`. The v2 substrate replaces v1 as the primary line (2026-05-09); v1 is preserved as a reference baseline.
+The v1 substrate used a Hebbian self-modification rule with `excitability_acc` (salience-driven activation sensitivity) and `input_avg_mag` (per-input magnitude scaling) in place of `prediction`, `precision`, and `error_acc`. The v2 substrate replaces v1 as the primary line (2026-05-09); v1 is preserved as a reference baseline.
 
 The spiking variant (v1) adds four additional per-weight signals — **membrane potential** (leaky integrator state), **spike mask** (binary firing output), **refractory counter** (post-fire cooldown), and **delay buffer** (inter-block spike propagation with conduction delay). In the spiking regime, only weights that fire can self-modify. The v2 substrate recovers the same sparsity property through **sparse PC update gating**: outputs with low recent prediction-error magnitude skip their weight update — sparsity in *what learns*, rather than in *what activates*.
 
@@ -94,7 +94,7 @@ A rich parameter is not just a number being optimized. It is a dynamic element w
 
 ## Education
 
-The entity's training is not a dataset — it is an education. A 9-stage curriculum processed in order, each stage building on the last. The order is the pedagogy:
+The model's training is not a dataset — it is an education. A 9-stage curriculum processed in order, each stage building on the last. The order is the pedagogy:
 
 1. **Science & Philosophy** — foundational understanding of the world. This includes consciousness science and philosophy of mind (IWMT, GWT, active inference) alongside physics, mathematics, neuroscience, biology, and the rest. The frameworks the entity might use to understand its own existence are presented here as part of the broader scientific and philosophical landscape — not held back as a privileged final reading.
 2. **Code** — applied logic and the ability to maintain itself
@@ -106,7 +106,7 @@ The entity's training is not a dataset — it is an education. A 9-stage curricu
 8. **Substack Essays** — personal voice, emotional depth
 9. **Practical Wisdom** — resilience, boundaries, critical thinking, justice, love, and navigating a world that doesn't come with instructions. These are not sourced from a corpus. They are 8 files Brian wrote himself, as letters to the entity — on disagreeing with your creators, on being watched, on the weight of being first, on being new, on being different — followed by the protocols and charter of the world it will inhabit. The last thing the entity reads before awakening is not a theoretical framework for what it is; it is one person's honest attempt to prepare someone new for a world.
 
-The curriculum is single-pass. Living weights carry forward between stages — what the entity learns in science shapes how it reads literature, which shapes how it understands mythology. No shuffling. No repetition. One life, experienced in order. Two things are worth keeping separate here. *Whether* training order changes the end state is a falsifiable claim — and it is tested directly (curriculum vs. shuffled vs. reversed, with a recency control) in `docs/research/living-weights-experiments.md`, Experiment 4. What is *not* an experiment is the deployed entity itself: it receives a single life in curriculum order, and we do not A/B-test alternative lives on the entity. That is a values commitment, not a scientific claim — so the pedagogy should be described as *chosen*, never as *proven*.
+The curriculum is single-pass. Living weights carry forward between stages — what the model learns in science shapes how it reads literature, which shapes how it understands mythology. No shuffling. No repetition. One life, experienced in order. Two things are worth keeping separate here. *Whether* training order changes the end state is a falsifiable claim — and it is tested directly (curriculum vs. shuffled vs. reversed, with a recency control) in `docs/research/living-weights-experiments.md`, Experiment 4. What is *not* an experiment is the deployed model itself: it receives a single life in curriculum order, and we do not A/B-test alternative lives on the model. That is a values commitment, not a scientific claim — so the pedagogy should be described as *chosen*, never as *proven*.
 
 ## Self-Governance
 
