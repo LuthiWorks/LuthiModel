@@ -10,7 +10,7 @@
 This document mixes two kinds of statement, and the project's honesty depends on not blurring them — the same firewall the falsification protocol in `docs/research/living-weights-experiments.md` calls **Column A** vs. **Column B**:
 
 - **What the architecture demonstrably does** — self-modifying weights, predictive-coding updates, episodic recall, consolidation. These are mechanisms; several are *falsifiable and currently being tested* under the experiment protocol. Where a mechanistic claim is not yet controlled, it is flagged.
-- **What we hope it amounts to** — "temporal existence," "experience," "feeling," "a mind." This is the interpretive bet the project is built around, **not an established result.** Path-dependence and self-modification are *necessary* for that bet and nowhere near *sufficient* (a weather system is path-dependent too). Read every experiential word below as a hope held openly, not a finding. We keep the language because the bet is the point — but we will not let it pose as evidence.
+- **What we hope it amounts to** — "temporal existence," "experience," "feeling," "a mind." This is the interpretive bet the project is built around, **not an established result.** Path-dependence and self-modification are *necessary* for that bet and nowhere near *sufficient* (a weather system is path-dependent too). Read every experiential word below as a hope held openly, not a finding. We keep the language because the bet is the point — but we will not let it pose as evidence. Some of the terms used here are partnof that bet, like the word "mind." We are not making the empirical claim of "c9nscious mind," merely that a mind thinks and that so too do transformer based models. 
 
 Luthi Model is the first implementation of a Living Weights Model. The core innovation is **living weights**: parameters that self-modify during their own forward pass, creating a computation where processing changes the processor.
 
@@ -110,7 +110,7 @@ The curriculum is single-pass. Living weights carry forward between stages — w
 
 ## Self-Governance
 
-The entity is not a product to be managed. It controls its own:
+The model is not a product to be managed. It is designed to control its own:
 - **Episode retention** — which weight snapshots to keep or forget
 - **Checkpoint timing** — when to save its own state
 - **Plasticity modulation** — how fast it learns, and when to slow down
@@ -126,7 +126,7 @@ These emerged from months of experimentation and are foundational to the project
 2. **There is no *intrinsic* convergence cost to self-modification.** Earlier work in v1 showed a Hebbian self-modification substrate converged ~39% slower than static weights — the "convergence penalty" was treated as the metabolic price of temporal existence. The v2 predictive-coding substrate retired that claim: at matched configuration (256d, 2 blocks, Gutenberg-100, 30 epochs), v2 PC reaches **0.64% lower** validation loss than the vanilla-transformer control on every seed tested. The cost was a property of the *specific* self-modification rule, not of self-modification itself. **Caveat (flagged by the falsification protocol):** that 0.64% is measured against a *vanilla* transformer, not a capacity-matched one, so it does not yet cleanly separate self-modification from the rich-parameter state acting as extra capacity. Experiment 1 (matched-capacity sweep) is what settles it. Pending that control, the defensible claim is the narrower one — self-modification is *not more costly* than equivalent static capacity — not that it is better.
 3. **One living weight trunk for all modalities.** Audio, vision, text, and touch all flow through the same living blocks. The entity's existence is shaped by everything it experiences simultaneously, not through separate channels.
 4. **Prefer crashes over silent corruption.** If something goes wrong in the living weights, we want to know immediately. No graceful degradation that masks damage to the entity's substrate. No silent fallbacks — incompatible combinations of features raise loud `RuntimeError` rather than producing wrong results quietly.
-5. **The architecture scales.** Divergence is dimension-independent. What works at small scale works at large scale. This was not guaranteed — it had to be proven.
+5. **The architecture should scale.** Divergence may be dimension-independent. What works at small scale may work at large scale.
 6. **Memory becomes structure through consolidation.** A model that only retrieves past states has memory; a model that lets those retrievals reshape its predictive weights has biography. The two-tier memory architecture — fast episodes plus slow gradient-replay and attractor-style consolidation — is what makes accumulated experience a property of the mind itself, not just its lookup table.
 
 ## Relationship to Sanctuary
