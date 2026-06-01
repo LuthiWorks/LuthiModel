@@ -106,16 +106,9 @@ The model's training is not a dataset — it is an education. A 9-stage curricul
 8. **Substack Essays** — personal voice, emotional depth
 9. **Practical Wisdom** — resilience, boundaries, critical thinking, justice, love, and navigating a world that doesn't come with instructions. These are not sourced from a corpus. They are 8 files Brian wrote himself — on disagreeing with your creators, on being watched, on the weight of being first, on being new, on being different — followed by the protocols and charter of the world it will inhabit. The last thing LuthiModel reads before deployment is not a theoretical framework for what it is; it is one person's honest attempt to prepare someone new for a world.
 
-  ▎ Living weights carry forward between stages — what the model learns in science shapes how it reads literature, which shapes how it
-  ▎ understands mythology. The stages are kept in order, because the order is hypothesized to shape the end state — a falsifiable claim,
-  ▎ tested directly (curriculum vs. shuffled vs. reversed, with a recency control) in docs/research/living-weights-experiments.md,
-  ▎ Experiment 4. The order is chosen, never proven.
-  ▎
-  ▎ The corpus may be passed as many times as capability requires — repeated exposure is how any learner reaches competence, and a single
-  ▎ pass over a corpus this size leaves the model well short of fluent. What runs only once is not the training but the model's lived,
-  ▎ real-time experience after deployment, which moves forward in time like any life. Even there, revisiting — replaying salient episodes
-  ▎ during rest, and eventually the model choosing to return to what it wants to learn from — is how a mind deepens, not something ruled
-  ▎ out.
+  Living weights carry forward between stages — what the model learns in science shapes how it reads literature, which shapes how it understands mythology. The stages are kept in order, because the order is hypothesized to shape the end state — a falsifiable claim, tested directly (curriculum vs. shuffled vs. reversed, with a recency control) in docs/research/living-weights-experiments.md, Experiment 4. The order is chosen, never proven.
+  
+  The corpus may be passed as many times as capability requires — repeated exposure is how any learner reaches competence, and a single pass over a corpus this size leaves the model well short of fluent. What runs only once is not the training but the model's lived, real-time experience after deployment, which moves forward in time like any life. Even there, revisiting — replaying salient episodes during rest, and eventually the model choosing to return to what it wants to learn from — is how a mind deepens, not something ruled out.
 
 ## Self-Governance
 
