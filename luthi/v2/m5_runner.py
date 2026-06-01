@@ -476,6 +476,20 @@ def main():
              "corpus is curated/staged and val_fraction's tail-of-tokens "
              "split would give a non-representative val signal.",
     )
+    parser.add_argument(
+        "--init-from", dest="init_from", type=str, default=None,
+        help="Optional path to a .luthi checkpoint to load as starting "
+             "weights before training begins. Intended for runs that "
+             "continue from an existing substrate (e.g., an expanded "
+             "checkpoint produced by luthi.v2.width_expand) rather than "
+             "starting from scratch. The checkpoint's config is validated "
+             "against the run's d_model, n_heads, n_blocks, and "
+             "ffn_expansion — mismatches fail loud at load time. State "
+             "is strict-loaded (no missing or unexpected keys allowed). "
+             "Optimizer state is NOT loaded: this is for starting a new "
+             "training run from an existing substrate's weights, not for "
+             "resuming a paused run.",
+    )
     parser.add_argument("--lr_schedule", type=str, default="cosine",
                         choices=["constant", "cosine"])
     parser.add_argument("--lr_warmup_epochs", type=int, default=2)
@@ -582,6 +596,45 @@ def main():
     n_train = sum(p.numel() for p in model.parameters() if p.requires_grad)
     n_buffer = sum(b.numel() for b in model.buffers())
     print(f"[model] arch={args.arch} trainable={n_train:,} buffers={n_buffer:,}")
+
+    # --- Optional init-from: load an existing substrate's state ---
+    if args.init_from:
+        from luthi.checkpoint import load_checkpoint
+        print(f"[init-from] loading {args.init_from}")
+        ckpt = load_checkpoint(args.init_from, trusted=True)
+        ckpt_config = ckpt.get("config", {})
+        for key, run_val in (
+            ("d_model", args.d_model),
+            ("n_heads", args.n_heads),
+            ("n_blocks", args.n_blocks),
+            ("ffn_expansion", args.ffn_expansion),
+        ):
+            ckpt_val = ckpt_config.get(key)
+            if ckpt_val is None:
+                raise ValueError(
+                    f"--init-from checkpoint config missing '{key}' "
+                    f"(checkpoint config keys: {list(ckpt_config.keys())})"
+                )
+            if ckpt_val != run_val:
+                raise ValueError(
+                    f"--init-from {key} mismatch: checkpoint has "
+                    f"{ckpt_val!r}, run is configured for {run_val!r}"
+                )
+        expanded_from = ckpt_config.get("expanded_from")
+        if expanded_from:
+            print(
+                f"[init-from] checkpoint lineage: expanded from "
+                f"{expanded_from.get('source_path')} "
+                f"({expanded_from.get('source_d_model')}d -> "
+                f"{args.d_model}d, factor="
+                f"{expanded_from.get('expansion_factor')}, "
+                f"noise={expanded_from.get('noise')})"
+            )
+        model.load_state_dict(ckpt["model_state_dict"], strict=True)
+        print(
+            f"[init-from] loaded substrate state "
+            f"(source epoch={ckpt.get('epoch', 0)})"
+        )
 
     # --- Optimizer (DirectMLAdamW for DirectML compatibility) ---
     from luthi.optimizer import DirectMLAdamW

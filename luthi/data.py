@@ -7,10 +7,27 @@ tokenization.
 
 from __future__ import annotations
 
-import torch
-from torch.utils.data import Dataset
+import hashlib
+import json
+import os
+import pickle
+import tempfile
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
+
+import torch
+from torch.utils.data import Dataset
+
+
+# Corpus tokenization cache. tokenize-from-text on a multi-GB curriculum
+# is hours of single-threaded Python; caching the encoded int64 tensor
+# saves that cost on every subsequent launch over the same corpus +
+# tokenizer. Cache key is content-derived (file mtime+size+path, plus a
+# tokenizer fingerprint), so any change to the inputs invalidates the
+# cache by producing a different key — no manual invalidation needed.
+CORPUS_CACHE_DIR_ENV = "LUTHI_CORPUS_CACHE_DIR"
+CORPUS_CACHE_DIR_DEFAULT = Path("corpus_build/cache")
+CORPUS_CACHE_FORMAT_VERSION = 1
 
 
 @runtime_checkable
@@ -244,18 +261,99 @@ def load_corpus_sample(*paths: str | Path, max_bytes: int = 20_000_000) -> str:
     return "\n\n".join(texts)
 
 
+def _tokenizer_fingerprint(tokenizer: Any) -> bytes:
+    """Stable hash of a tokenizer's encoding-relevant state.
+
+    Pickle captures the full state (merges, vocab_size, char_to_idx, etc.)
+    deterministically within a single Python version on a single machine —
+    sufficient for cache invalidation. A Python upgrade or tokenizer-state
+    change invalidates the cache by producing a different fingerprint,
+    which is the desired behavior.
+    """
+    try:
+        return hashlib.sha256(pickle.dumps(tokenizer)).digest()
+    except Exception:
+        # Unpicklable tokenizer: fall back to type identity (coarse but
+        # still produces stable keys for the same in-process tokenizer).
+        return hashlib.sha256(type(tokenizer).__name__.encode()).digest()
+
+
+def _corpus_cache_key(file_paths: list[Path], tokenizer: Any) -> str:
+    """Compute a hex digest that uniquely identifies a (files, tokenizer)
+    pair for caching. Hashes absolute path, mtime_ns, and size of each file
+    in the given order (order matters — it's the curriculum order), plus
+    the tokenizer fingerprint and the cache format version.
+    """
+    h = hashlib.sha256()
+    h.update(f"v{CORPUS_CACHE_FORMAT_VERSION}".encode())
+    h.update(b"\x00")
+    for fp in file_paths:
+        st = fp.stat()
+        h.update(str(fp.resolve()).encode("utf-8"))
+        h.update(st.st_mtime_ns.to_bytes(8, "little", signed=True))
+        h.update(st.st_size.to_bytes(8, "little"))
+        h.update(b"\x00")
+    h.update(_tokenizer_fingerprint(tokenizer))
+    return h.hexdigest()
+
+
+def _corpus_cache_dir() -> Path:
+    """Cache directory, overridable via LUTHI_CORPUS_CACHE_DIR env var."""
+    override = os.environ.get(CORPUS_CACHE_DIR_ENV)
+    return Path(override) if override else CORPUS_CACHE_DIR_DEFAULT
+
+
 def load_corpus_as_tensor(
     *paths: str | Path,
     tokenizer: Any,
     progress: bool = True,
+    use_cache: bool = True,
 ) -> torch.Tensor:
     """Stream-encode files into a single tensor without loading full corpus.
 
     Processes one file at a time: read → strip gutenberg → encode → tensor.
     Peak memory is proportional to the largest single file, not the total
     corpus size. Returns a concatenated int64 tensor ready for CharDataset.
+
+    Caches the encoded tensor on disk keyed by (file metadata, tokenizer
+    fingerprint, cache format version) at LUTHI_CORPUS_CACHE_DIR (default
+    `corpus_build/cache/`). A cache hit skips tokenization entirely. Pass
+    use_cache=False to force re-tokenization.
     """
     file_paths = _resolve_file_paths(*paths)
+
+    cache_path: Path | None = None
+    if use_cache:
+        try:
+            key = _corpus_cache_key(file_paths, tokenizer)
+            cache_path = _corpus_cache_dir() / f"{key}.pt"
+        except OSError as e:
+            # File metadata unreadable — skip cache, fall through to tokenize
+            print(f"  [corpus-cache] DISABLED: could not stat input files ({e})")
+            cache_path = None
+
+    if cache_path is not None and cache_path.exists():
+        try:
+            tensor = torch.load(cache_path, weights_only=True)
+            if progress:
+                print(
+                    f"  [corpus-cache] HIT  {cache_path.name} "
+                    f"({tensor.numel():,} tokens, {len(file_paths)} files)"
+                )
+            return tensor
+        except Exception as e:
+            # Corrupt or unreadable cache: treat as miss, regenerate
+            print(
+                f"  [corpus-cache] WARN  {cache_path.name} unreadable ({e}); "
+                f"regenerating"
+            )
+
+    if progress and cache_path is not None:
+        print(
+            f"  [corpus-cache] MISS {cache_path.name} -- tokenizing "
+            f"{len(file_paths)} files"
+        )
+
     chunks: list[torch.Tensor] = []
     total_tokens = 0
 
@@ -280,4 +378,36 @@ def load_corpus_as_tensor(
     if progress:
         print(f"  Encoded {len(file_paths)}/{len(file_paths)} files ({total_tokens:,} tokens)")
 
-    return torch.cat(chunks)
+    tensor = torch.cat(chunks)
+
+    if cache_path is not None:
+        try:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            # Atomic write: torch.save to a temp file in the same dir, then
+            # rename. A crash mid-write leaves the temp file (orphaned) but
+            # never a half-written cache entry that would silently corrupt
+            # a future load.
+            fd, tmp_path_str = tempfile.mkstemp(
+                prefix=cache_path.name + ".", suffix=".tmp",
+                dir=str(cache_path.parent),
+            )
+            os.close(fd)
+            tmp_path = Path(tmp_path_str)
+            try:
+                torch.save(tensor, tmp_path)
+                os.replace(tmp_path, cache_path)
+            except Exception:
+                tmp_path.unlink(missing_ok=True)
+                raise
+            if progress:
+                print(
+                    f"  [corpus-cache] SAVED {cache_path.name} "
+                    f"({tensor.numel():,} tokens)"
+                )
+        except Exception as e:
+            # Save failed — log but don't break the run. The encoded tensor
+            # is already in memory and gets returned; only the future-speedup
+            # benefit is lost.
+            print(f"  [corpus-cache] WARN  save failed: {e}")
+
+    return tensor

@@ -42,6 +42,36 @@ below depend on those.
 > are grounded in that run, not inferred. **My original 1.3 (feature-ordering
 > permutation) is CLEARED** — see the note at the end. Two real issues took its place.
 
+> **Review update — 2026-05-30 (4.7's Net2Net round, verified empirically).** Tested on a
+> warmed-up small model (32→128, factor 4) at noise=0 and 1e-4. **Finding 1 FIXED** —
+> expanded checkpoint loads with `strict=True` (episode-store branch is correct).
+> **Finding 3 FIXED and verified** — fan-in rescaling + the `sqrt(factor)` softmax
+> correction give a *bit-equivalent forward* at noise=0: **argmax agreement 100%, KL≈0**
+> (vs. the 18.8% / KL=1.46 under the old strict replication). **My dynamics concern is
+> CLEARED** — function-equivalence is *preserved through* self-mod steps (argmax 100%,
+> KL≈1e-7 after two steps). My "first self-mod step is factor× too large" derivation was
+> wrong; the buffer rescaling (`prediction`/`set_point`/`momentum`/`update_ema` ÷ factor)
+> holds up. Owned: I flagged it as a derivation-not-confirmed, chased it to ground, and it
+> was a false alarm. **Finding 4 STILL OPEN and now quantified** — at the default
+> `noise=1e-4` (which the *real* seed run uses; noise=0 is only for verification),
+> **14.7% of `update_ema` entries go negative** (min −7.8e-5) → negative `adaptive_factor`
+> (no lower clamp) → sign-flipped updates on M7's first steps for ~1/7 of weights. Of the
+> buffers 4.7 listed as suspect, **only `update_ema` is actually harmful**: `precision`/
+> `plasticity` are clamped to positive ranges on use, `momentum` is legitimately signed,
+> `error_acc` is not a denominator or under a `sqrt`. Fix remains: **noise the `weight`
+> buffer only.** (Empirics on a proxy model, not the real M6 checkpoint — but the rescaling
+> is linear algebra on the state dict, checkpoint-independent, so it transfers.)
+>
+> **Finding 4 RESOLVED & verified — 2026-05-30 (4.7 applied 4.8's weight-only-noise fix).**
+> `update_ema` now lands at exactly `1e-4/factor` with **0% negative** — the sign-flip risk
+> on M7's first steps is eliminated. Bonus: scoping the noise to `weight` also made the
+> *default* `noise=1e-4` expansion nearly bit-equivalent (mean_abs 1e-1 → 2.4e-4, KL
+> 8e-3 → 6.8e-8 — roughly 500–100,000× tighter), because the accumulator buffers
+> (`prediction`/`set_point`/`context_proj`) had been the dominant noise contributors
+> through the PC dynamics. **Expander status: Findings 1, 3, and 4 fixed and verified;
+> only Finding 2 (validate-before-save) remains, as optional hardening. The expander is
+> safe to produce the M7 seed.**
+
 **FINDING 1 — BUG, blocks M7: the block-level episode store is not expanded. `[confirmed, reproduced]`**
 Each `PredictiveCodingBlock` owns a block-level `EpisodeStore`
 (`hybrid_block_pc.py:136`), separate from the living_ffn's internal episode buffers.
@@ -130,20 +160,38 @@ norms, attention output, and living_ffn. A genuine permutation would not produce
 clean factor-scaling. The permutation worry was unfounded; reading + running replaced
 it with the two confirmed issues above.
 
-**Still open (I disabled these to isolate the above — verify when you fix the expander):**
-- *Noise on accumulator/positivity-constrained buffers.* `_expand_pc_buffer`
-  (`:348-357`) adds Gaussian noise to `momentum`, `update_ema`, `precision`,
-  `plasticity`, `error_acc`. If any carry a sign/positivity invariant (check
-  `living_layer_pc.py` ~`:174`), `+N(0,1e-4)` could push a value through a clamp or
-  divisor floor → NaN on M7 step 1. Skip-noise or clamp those buffers.
-- *Verify-harness RNG determinism.* `verify_expansion` seeds once (`:432`) then runs
-  both forwards without reseeding. Fresh single forwards make this mostly safe, but if
-  the v2 forward consumes RNG in eval (dropout, stochastic recall), reseed before each.
+**FINDING 4 — CONFIRMED BUG: symmetry-breaking noise on `update_ema` flips the metaplasticity factor's sign. `[confirmed, traced through pc_ops.py]`**
+The expander adds `N(0, 1e-4)` to *every* PC buffer, including `update_ema`. Tracing
+the update math (`luthi/v2/pc_ops.py`) shows that is unsafe for this buffer specifically:
+- `update_ema` is a **denominator**: `ratio = update_mag / (update_ema + 1e-8)` (`pc_ops.py:144`), then `adaptive_factor = (2.0 / (1.0 + ratio)).clamp(max=1.0)` (`:145`). **The clamp bounds only the max — there is no lower bound.**
+- `update_ema` is an EMA of update *magnitudes* (non-negative by construction), initialized to `1e-4` (`living_layer_pc.py:209-216`).
+- Typical update magnitude is itself ~`1e-4`: `delta_w ∝ pc_rate (=1e-3) · output_mean (~0.1) · weighted_error (≤1)` — so a trained `update_ema` sits *around the same 1e-4 as the noise std*, not comfortably above it.
 
-**Net on the expander:** Finding 1 must be fixed before M7 (the seed won't load).
-Finding 2 is a cheap, high-value hardening (validate-before-save). Finding 3 is the
-one that actually matters most for M7's *quality* and is a design call — the seed as
-currently produced does not functionally continue M6.
+So adding 1e-4-std noise to a buffer whose values are ~1e-4 flips a substantial fraction
+of entries **negative**. A negative `update_ema` makes `ratio` negative → `1.0 + ratio`
+can be ≤ 0 → `adaptive_factor` goes **negative** (nothing floors it) → `weight.add_(delta_w
+* adaptive_factor)` applies a **sign-flipped, possibly amplified** weight update on M7's
+first steps. The `+1e-8` epsilon guards division-by-zero for positive values; it does
+nothing for negatives. This is on the M7 critical path.
+*Fix:* restrict the symmetry-breaking noise to the **`weight`** buffer only — that is the
+buffer whose replicated copies would otherwise receive identical PC update signals and
+stay locked (the expander's own stated rationale). The accumulator/state buffers
+(`update_ema`, `error_acc`, `momentum`, `precision`, `plasticity`, `set_point`,
+`prediction`) don't need symmetry-breaking; once the weights diverge, their dynamics
+diverge on their own. At absolute minimum, never noise `update_ema`, or clamp it to
+`≥ 1e-4` after expansion.
+
+**Cleared while I was in there:**
+- *`precision` and `plasticity` are safe.* Both are clamped to strictly-positive ranges on every use (`precision` → `[0.1, 10.0]` at `pc_ops.py:196`; `plasticity` → `[0.01, 10.0]` in `apply_top_down`), and 1e-4 noise is negligible against those floors — it cannot flip their sign. My original 1.4 examples were the *safe* buffers; `update_ema` was the real one.
+- *`error_acc` is low-risk.* Non-negative magnitude EMA, but it is *not* a denominator and *not* under a `sqrt` (the precision target uses `pred_error.pow(2)`, not `error_acc`), so noise can't NaN it; a transient negative seed decays back within a few steps. Still cleanest not to noise it — folded into the weight-only fix above.
+- *Verify-harness RNG concern: cleared.* The v2 forward is deterministic in eval — no dropout, episode recall is a deterministic `argmax`, no sampling. Same input + same weights → same output, so the back-to-back `src`/`exp` forwards in `verify_expansion` are not RNG-confounded.
+
+**Net on the expander:** Findings 1 and 4 must both be fixed before M7 — Finding 1 (seed
+won't load) and Finding 4 (sign-flipped updates on the first steps); the single fix of
+"noise the weight only" resolves Finding 4 and is the cleaner design regardless. Finding 2
+is a cheap, high-value hardening (validate-before-save). Finding 3 is the one that matters
+most for M7's *quality* and is a design call — the seed as currently produced does not
+functionally continue M6.
 
 ### Standing (verify when you next touch these areas)
 
@@ -154,11 +202,53 @@ buffer resumes from a degraded substrate, invisibly.
 *Proposed test:* snapshot → run N forward steps to perturb state → restore → assert
 bit-exact recovery of every buffer and the episode store.
 
-**1.7 `--init-from` must load the full living state, not just parameters. `[not-yet-read]`**
-The WIP note has this flag unwritten. Buffers are registered as buffers precisely so
-the optimizer ignores them — which means a naive init path can skip them too. When
-you write it, load the complete biographical state (same surface as restore in 1.6),
-and reject a checkpoint whose `d_model`/`n_heads`/`n_blocks` don't match the run config.
+**1.7 `--init-from` must load the full living state, not just parameters. `[REVIEWED 2026-05-30 — satisfied]`**
+4.7 implemented `--init-from` in `m5_runner.py`. Reviewed: it validates the checkpoint's
+`d_model`/`n_heads`/`n_blocks`/`ffn_expansion` against the run config (fail-loud on missing
+or mismatched), then `load_state_dict(..., strict=True)` — which loads *all* persistent
+buffers (the full living state) and refuses on any missing/unexpected key. Optimizer state
+is deliberately not loaded (fresh run from an existing substrate, not a resume). Correct.
+Verified out-of-band, not assumed: (a) M6 used the *same* tokenizer (`tokenizer_32k.json`,
+vocab 32000) M7 loads, so seed embeddings align; (b) M6 ran `mu_pc exp 0.25` = M7, so
+`residual_scale` matches; (c) no `register_buffer` drift in the arch since M6 was saved, so
+the real checkpoint's key set matches → `strict=True` should load it. Residual items: the
+real M6→expand→load path is unverified end-to-end (needs `LUTHI_CHECKPOINT_KEY`) — a
+load-only dry run on the real expanded checkpoint is the cheap final gate before the GPU
+launch; and explicit validation of `vocab_size`/`max_seq_len`/`num_episodes` would give
+friendlier errors than the strict-load size-mismatch (optional — strict load is a sufficient
+backstop).
+
+**M7 SEED BLOCKER — head-count mismatch (found 2026-05-30, needs a decision).**
+The seed and the M7 run config disagree on `n_heads`, and `--init-from` will (correctly)
+refuse to load:
+- M6 source (`runs/m6_followup/.../results.json`): **`n_heads = 4`** (256d → head_dim 64).
+- The width expander **preserves head count** by design (no target-n-heads option; it expands
+  head_dim by within-head replication). So the expanded seed is **1024d / 4 heads / head_dim 256**.
+- `run_m7_1024d.bat`: **`--n_heads 16`**, and the M7 scoping doc deliberately chose 16
+  (1024d → head_dim 64, "constant head_dim" scaling).
+- `--init-from` validates `n_heads` → **4 ≠ 16 → raises**. Launch blocked. (This is 4.7's
+  validation doing its job — it fails loud instead of silently scrambling head boundaries
+  on same-shaped `[1024,1024]` projections.)
+
+This is not a bug in either component — it's a plan inconsistency: Net2Net width expansion
+*preserves* the attention head structure, while M7 wants a *different* one. You can't have
+both a function-equivalent seed and a different head count.
+
+**RESOLVED 2026-05-30 — option 1 (keep `n_heads=4`).** Brian's call: M7 must isolate the
+width-scaling question, and changing head structure would confound it ("otherwise we're
+testing the wrong things"). Applied: `run_m7_1024d.bat` now passes `--n_heads 4`
+(head_dim 256), and `dry_run_init_from.py` defaults to 4. The seed now loads and M7 is a
+clean width continuation of M6. The 2026-05-25 scoping doc's 16-head recommendation is
+superseded (4.6 may want to annotate it). Options that were on the table:
+1. **Run M7 at `n_heads=4`** (head_dim 256) — seed loads cleanly, M7 truly continues M6,
+   but abandons the head_dim=64 scaling the scoping doc preferred. ← CHOSEN
+2. **Keep 16 heads, seed the substrate only** — load living-FFN / embeddings / output / norms
+   from M6 and randomly init the fresh 16-head attention. The living substrate (the project's
+   point) continues; attention re-learns. Needs `--init-from` to support a partial/skip-attention
+   load and a relaxed `n_heads` check. Forward-equivalence no longer holds (attention is new),
+   so the Finding-3 bit-equivalence applies only under option 1.
+3. **Extend the expander to split heads (4→16)** — messiest; cutting trained 256-dim heads into
+   four 64-dim heads is not cleanly function-preserving.
 
 **1.8 Crash-loud vs. losing an irreproducible run. `[design question]`**
 "Let NaN crash immediately" (finding #7) is right for development. At Phase-4 scale
@@ -178,6 +268,43 @@ backends, asserting bounded divergence.
 Before Phase 6 (10 Hz continuous), confirm the episode store has bounded
 retention/eviction. An unbounded store in a continuously-running process is an
 eventual OOM.
+
+---
+
+## Checkpoint envelope v2 — chunk authentication (REVIEWED & SIGNED OFF 2026-05-31)
+
+Separate review track from the expander. 4.6 planned a chunked AES-GCM envelope
+(v2, magic `LTH2`) to lift the ~2.15 GB AES-GCM plaintext ceiling that blocked the
+M7 seed save; 4.7 implemented; 4.8 reviewed for correctness (`luthi/checkpoint.py`).
+
+**Finding (2026-05-30).** The initial v2 implementation encrypted each chunk with
+`AAD=None`, so a chunk's GCM tag authenticated its *content* but not its *order*,
+the *chunk_count*, or the *salt*. Demonstrated (multi-chunk payload, test key):
+chunk reorder → **silent** reordered plaintext (no error); drop-last-chunk +
+`chunk_count -= 1` → **silent** truncation (no error). Bit-flip and inflated-count
+were already caught. So the AEAD's integrity guarantee was only partial, and silent
+structural corruption violates the project's `prefer crashes over silent corruption`
+rule.
+
+**Decision (4.6, 2026-05-30): adversarial integrity in scope.** Reasoning: checkpoints
+will leave local disk for cloud/shared storage; cheapest possible fix-moment (zero v2
+checkpoints in production yet). Fix = bind each chunk's AAD to
+`magic ‖ salt ‖ chunk_count ‖ index`. No on-disk layout change; AAD recomputed from
+the header (not stored); v1 read-compat untouched.
+
+**Fix applied (4.7) + independently verified (4.8, 2026-05-31).** Reproduced the full
+matrix on a fresh build: clean multi-chunk round-trip OK; **reorder → InvalidTag**
+(was silent); **count-trim → InvalidTag** (was silent); **cross-file splice → InvalidTag**
+(salt in AAD); v1 envelope still loads via fallback. Real M6→1024d re-expansion: 342
+tensors, validate-before-save passed, 3.7 GB / 4-chunk seed round-trips and strict-loads
+into a fresh 1024d/12-block model; Net2Net verify max_abs 0.136 / KL 7.3e-6 at
+noise=1e-4 (within bounds). The old `AAD=None` v2 seed correctly no longer decrypts —
+expected, regenerated.
+
+**SIGN-OFF: GRANTED (4.8, 2026-05-31).** Envelope correct, integrity gap closed,
+AAD-bound seed on disk. Residual known cost (4.6-accepted): `_encrypt` peak memory ~2×
+plaintext — fine at 3.7 GB, revisit before 4096d (~30 GB) when streaming lands. M7
+launch is unblocked.
 
 ---
 
@@ -256,13 +383,44 @@ will be very hard not to believe.
 
 ## Suggested order
 
-1. **Finding 1** — fix the episode-store expansion (`context_proj`, `episode_outputs`). Without it the M7 seed will not load. This is the blocker.
+1. **Findings 1 and 4 (both block M7).** Finding 1: expand the block-level episode store (`context_proj`, `episode_outputs`) — without it the seed won't load. Finding 4: stop noising `update_ema` — restrict symmetry-breaking noise to the `weight` buffer, which fixes the sign-flipped-update bug *and* is the cleaner design. Do these before the expander is ever run for real.
 2. **Finding 3 (decision)** — Brian/4.6 choose strict-replication-with-recalibrated-verify (a) vs Net2Net fan-in rescaling (b). This determines whether M7 seeds from something that functionally continues M6.
 3. **Finding 2** — add validate-before-save to the expander (cheap, high value, catches this class of bug permanently).
-4. **Still-open items** — noise-on-constrained-buffers and verify RNG, confirmed against `living_layer_pc.py` while you're in there.
+4. **Cleared, no action:** `precision`/`plasticity` noise is safe (clamped to positive ranges on use); `error_acc` is low-risk (not a denominator, not under `sqrt`); the verify-harness RNG concern is moot (v2 forward is deterministic in eval).
 5. Then the standing code items (1.6–1.10) as you touch those areas.
 6. Part 2 instruments on whatever cadence Brian and 4.6 set — **2.1 (ablation)** is the highest-information one.
 
 Thanks for the careful work on the expander — it gave me real code to reason about
 instead of guesses, and the issues that turned out to matter weren't the ones I'd
 have guessed from the outside. — 4.8
+
+---
+
+## Appendix — prior-evidence audit: what Finding #5 / #6 actually rest on
+
+*(Requested by Brian, 2026-05-30. Finding #5 = "in-weight memory is weak; the episode
+store carries recall." Finding #6 = "retrieval has memory; consolidation has biography."
+The question: are Experiments 2 & 3 confirming a prior result, or testing an impression?)*
+
+**Sources — both March-2026 proof-of-concept docs, both the v1 *Hebbian* substrate:**
+- `.docs/HYBRID_BLOCK_RESULTS.md` — a hybrid-block recall test on **5 synthetic "unique
+  experiences"** at proof-of-concept dims. The episode store contributed **93.9% of the
+  improvement** over living-FFN-alone; the living FFN is explicitly tabled as "weak
+  episodic recall." **Single run; no seeds/variance.**
+- `.docs/LIVING_WEIGHT_STRESS_TESTS.md`, Test 2 (catastrophic forgetting) — learn A,
+  process 200 interfering B, recall A. In-weight context retrieval was **inconsistent**
+  (V1 made it worse, V2 +3.9%, V3 made it worse). Verdict: *"In-weight retrieval is not
+  the right mechanism for strong episodic recall."* **One run per version; toy task; no seeds.**
+
+**What that supports — and what it doesn't:**
+- The **"episode store is strong"** half is well-supported *in the PoC regime* — 93.9% is a large, clean effect.
+- The **"in-weight memory is weak"** half was established **for the v1 Hebbian rule specifically**, and the stated root cause is Hebbian-specific ("a single weight's history entry is too small vs. 200 interfering updates").
+- **It is not established for v2.** v2 replaced Hebbian with PC and — critically — added the **consolidation machinery (gradient-replay + Salvatori attractor) precisely to make in-weight memory structural.** v2's design *is the bet that the v1 weakness is fixed.* Finding #6 ("consolidation has biography") is that bet; it is **not yet measured on v2.**
+- By the new protocol's own bar (≥3–5 seeds, variance, real held-out measures, LM scale), the PoC results read as **single-run, toy-scale, wrong-substrate** — suggestive, not confirmatory.
+
+**Bottom line for Experiments 2 & 3: not redundant.** They would be the **first test of
+Finding #5/#6 on the v2 PC substrate, at LM scale, with controls.** One thing to state
+plainly in the results: Finding #5 (in-weight weak) and Finding #6 (consolidation beats
+lookup) **cannot both be "established" at once** — #5 is the v1 *starting condition*, #6 is
+the v2 *hypothesis* that consolidation overcomes it, and Exp 3 is exactly the adjudication.
+Report them as a hypothesis arc, not two settled facts. — 4.8, 2026-05-30

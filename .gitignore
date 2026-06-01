@@ -1,5 +1,6 @@
 # Corpus data (too large for GitHub)
 corpus_build/gutenberg*/
+corpus_build/cache/
 data/LibriSpeech/
 data/*.tar.gz
 data/*.flac

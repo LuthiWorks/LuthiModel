@@ -30,7 +30,13 @@ REM per-epoch held-out perplexity measurement. Trained on different
 REM material; in-distribution English narrative.
 REM
 REM Configuration choices (Brian-confirmed 2026-05-25):
-REM   - d_model 1024 / n_blocks 12 / n_heads 16 (head_dim=64, standard)
+REM   - d_model 1024 / n_blocks 12 / n_heads 4 (head_dim=256). Kept at 4 to
+REM     MATCH THE M6 SEED: the Net2Net width-expander preserves head count, so
+REM     the expanded seed is 4-head. Running M7 at 4 heads keeps it a clean
+REM     width scale-up that continues M6 (decision 2026-05-30; supersedes the
+REM     scoping doc's 16-head recommendation, which would have changed head
+REM     structure and confounded the width-scaling question). See
+REM     docs/reviews/2026-05-28_concerns-for-4.7.md head-count decision.
 REM   - ffn_expansion 1 (matched 256d baseline)
 REM   - muPC exp=0.25 (matched 256d; tests whether the exponent generalizes
 REM     to production width)
@@ -66,9 +72,18 @@ REM   - pred_frob saturation in deep blocks (last 3-4 blocks plateau)
 REM   - err_acc climbing past 0.15 for sustained periods after warmup
 REM   - Wall-clock > 14 days without major-milestone progress
 REM
-REM Tokenizer: corpus_build/tokenizer_32k.json -- 32K BPE trained on the
-REM full curriculum corpus (better fit to the M7 corpus than the M6
-REM tokenizer, which was trained on gutenberg coverage).
+REM Tokenizer: corpus_build/tokenizer_32k.json -- the SAME 32K BPE tokenizer
+REM M6 was trained with (see runs/m6_followup/.../results.json: load_tokenizer
+REM = corpus_build/tokenizer_32k.json), so the expanded seed's embeddings align
+REM with M7's token IDs. No re-tokenization between M6 and M7.
+REM
+REM Init-from (added 2026-05-30): M7 starts from runs/m7_seed/expanded_from_m6.luthi,
+REM a Net2Net width-expanded continuation of the M6 follow-up 256d substrate.
+REM Per Finding 3 of 4.8's review of width_expand.py (2026-05-28), the expansion
+REM uses fan-in rescaling so the seed is function-equivalent to M6 on next-token
+REM logits — M7's early training continues M6's predictive behavior instead of
+REM undoing a deterministic scaling. Run the expander once before launching this
+REM (see luthi/v2/width_expand.py --help).
 REM
 REM Resulting checkpoint at runs/m7_1024d/.../checkpoint.luthi becomes
 REM the first v2 substrate at scale that SanctuaryRunner + PCIntensitySource
@@ -86,10 +101,11 @@ python -u -m luthi.v2.m5_runner ^
   --arch v2 ^
   --d_model 1024 ^
   --n_blocks 12 ^
-  --n_heads 16 ^
+  --n_heads 4 ^
   --ffn_expansion 1 ^
   --mu-pc-enabled ^
   --mu-pc-exponent 0.25 ^
+  --init-from runs/m7_seed/expanded_from_m6.luthi ^
   --file-list corpus_build/m7_filelist.txt ^
   --probe-file-list corpus_build/m7_probe_filelist.txt ^
   --val_fraction 0 ^

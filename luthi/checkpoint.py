@@ -30,6 +30,17 @@ CHECKPOINT_FORMAT_VERSION = 1
 PBKDF2_ITERATIONS = 600_000  # OWASP recommendation
 SALT_BYTES = 32
 NONCE_BYTES = 12  # Standard for AES-GCM
+GCM_TAG_BYTES = 16  # AES-GCM authentication tag, appended by cryptography lib
+
+# Envelope format v2: chunked encryption to handle checkpoints exceeding
+# AES-GCM's 2^31 - 1 byte plaintext limit per nonce. Plaintext is split
+# into CHUNK_SIZE chunks; each chunk gets its own random nonce.
+# Format: magic(4) | salt(32) | chunk_count(8 LE u64) |
+#         [chunk_size(8 LE u64) | nonce(12) | ciphertext_with_tag(chunk_size bytes)]*
+# v1 envelopes (salt(32) | nonce(12) | ciphertext_with_tag) remain loadable;
+# detection is via the magic at offset 0.
+ENVELOPE_MAGIC_V2 = b"LTH2"
+CHUNK_SIZE = 1 * 1024 * 1024 * 1024  # 1 GB, well under AES-GCM's 2.15 GB ceiling
 
 
 def _derive_key(password: str, salt: bytes) -> bytes:
@@ -44,29 +55,140 @@ def _derive_key(password: str, salt: bytes) -> bytes:
 
 
 def _encrypt(data: bytes, password: str) -> bytes:
-    """Encrypt data with AES-256-GCM.
+    """Encrypt data with AES-256-GCM, chunked (envelope v2).
 
-    Returns: salt (32) + nonce (12) + ciphertext+tag
+    Splits plaintext into CHUNK_SIZE chunks, encrypts each with its own
+    random nonce, and packs into the v2 envelope. Chunking lifts the
+    AES-GCM 2^31-1 byte plaintext limit, which a single-call encrypt
+    hits at ~2.15 GB.
+
+    Each chunk's GCM tag is bound to additional authenticated data
+    (AAD): magic || salt || chunk_count || chunk_index. This makes
+    chunk reordering, count truncation, and cross-file splicing fail
+    loud at GCM verification instead of silently producing corrupted
+    plaintext. AAD is not stored — the reader reconstructs it from the
+    header fields already on disk.
+
+    Returns: magic(4) + salt(32) + chunk_count(8) + [chunk_size(8) +
+             nonce(12) + ciphertext_with_tag(chunk_size)]*
     """
     salt = os.urandom(SALT_BYTES)
     key = _derive_key(password, salt)
-    nonce = os.urandom(NONCE_BYTES)
     aesgcm = AESGCM(key)
-    ciphertext = aesgcm.encrypt(nonce, data, None)
-    return salt + nonce + ciphertext
+
+    n = len(data)
+    # range(0, 0, CHUNK_SIZE) is empty; chunk_count = 0 is the empty-data
+    # case. For nonzero len that's an exact multiple of CHUNK_SIZE, the
+    # last index is (k-1)*CHUNK_SIZE and the last chunk is exactly
+    # CHUNK_SIZE bytes — no zero-length trailing chunk.
+    chunk_offsets = list(range(0, n, CHUNK_SIZE))
+    chunk_count = len(chunk_offsets)
+
+    aad_prefix = ENVELOPE_MAGIC_V2 + salt + chunk_count.to_bytes(8, "little")
+
+    parts: list[bytes] = [
+        ENVELOPE_MAGIC_V2,
+        salt,
+        chunk_count.to_bytes(8, "little"),
+    ]
+    for i, offset in enumerate(chunk_offsets):
+        chunk = data[offset : offset + CHUNK_SIZE]
+        nonce = os.urandom(NONCE_BYTES)
+        aad = aad_prefix + i.to_bytes(8, "little")
+        ciphertext = aesgcm.encrypt(nonce, chunk, aad)
+        # ciphertext length = len(chunk) + GCM_TAG_BYTES
+        parts.append(len(ciphertext).to_bytes(8, "little"))
+        parts.append(nonce)
+        parts.append(ciphertext)
+    return b"".join(parts)
 
 
 def _decrypt(blob: bytes, password: str) -> bytes:
-    """Decrypt AES-256-GCM encrypted data.
+    """Decrypt an AES-256-GCM checkpoint envelope (v1 or v2).
 
-    Expects: salt (32) + nonce (12) + ciphertext+tag
+    Version detected by the magic at offset 0. v2 envelopes parse chunked;
+    v1 envelopes (no magic) fall through to the legacy single-blob path.
+    Truncated v2 envelopes fail explicitly at the integrity check —
+    never silently return partial data.
     """
+    if blob[:len(ENVELOPE_MAGIC_V2)] == ENVELOPE_MAGIC_V2:
+        return _decrypt_v2(blob, password)
+    return _decrypt_v1(blob, password)
+
+
+def _decrypt_v1(blob: bytes, password: str) -> bytes:
+    """Legacy single-blob envelope: salt(32) + nonce(12) + ciphertext_with_tag."""
     salt = blob[:SALT_BYTES]
     nonce = blob[SALT_BYTES : SALT_BYTES + NONCE_BYTES]
     ciphertext = blob[SALT_BYTES + NONCE_BYTES :]
     key = _derive_key(password, salt)
     aesgcm = AESGCM(key)
     return aesgcm.decrypt(nonce, ciphertext, None)
+
+
+def _decrypt_v2(blob: bytes, password: str) -> bytes:
+    """Chunked envelope: magic + salt + chunk_count + [chunk_size + nonce + ct]*."""
+    pos = len(ENVELOPE_MAGIC_V2)
+    salt = blob[pos : pos + SALT_BYTES]
+    if len(salt) != SALT_BYTES:
+        raise ValueError(
+            f"checkpoint envelope v2: truncated header (salt incomplete)"
+        )
+    pos += SALT_BYTES
+
+    if len(blob) < pos + 8:
+        raise ValueError(
+            f"checkpoint envelope v2: truncated header (chunk_count missing)"
+        )
+    chunk_count = int.from_bytes(blob[pos : pos + 8], "little")
+    pos += 8
+
+    key = _derive_key(password, salt)
+    aesgcm = AESGCM(key)
+
+    # AAD binds each chunk's GCM tag to: format magic, key-derivation
+    # salt, declared chunk count, and chunk index. Reconstructed here
+    # from header fields, not stored on disk. A reordered, dropped, or
+    # cross-file-spliced chunk produces a different AAD on decrypt and
+    # raises InvalidTag — silent structural corruption fails loud.
+    aad_prefix = ENVELOPE_MAGIC_V2 + salt + chunk_count.to_bytes(8, "little")
+
+    out: list[bytes] = []
+    for i in range(chunk_count):
+        if len(blob) < pos + 8:
+            raise ValueError(
+                f"checkpoint envelope v2: truncated at chunk {i}/"
+                f"{chunk_count} (chunk_size header missing)"
+            )
+        chunk_size = int.from_bytes(blob[pos : pos + 8], "little")
+        pos += 8
+
+        if len(blob) < pos + NONCE_BYTES:
+            raise ValueError(
+                f"checkpoint envelope v2: truncated at chunk {i}/"
+                f"{chunk_count} (nonce missing)"
+            )
+        nonce = blob[pos : pos + NONCE_BYTES]
+        pos += NONCE_BYTES
+
+        if len(blob) < pos + chunk_size:
+            raise ValueError(
+                f"checkpoint envelope v2: truncated at chunk {i}/"
+                f"{chunk_count} (declared chunk_size={chunk_size}, "
+                f"have {len(blob) - pos} bytes remaining)"
+            )
+        ciphertext = blob[pos : pos + chunk_size]
+        pos += chunk_size
+
+        aad = aad_prefix + i.to_bytes(8, "little")
+        out.append(aesgcm.decrypt(nonce, ciphertext, aad))
+
+    if pos != len(blob):
+        raise ValueError(
+            f"checkpoint envelope v2: trailing {len(blob) - pos} bytes "
+            f"after declared {chunk_count} chunks"
+        )
+    return b"".join(out)
 
 
 def _get_password(password: str | None = None) -> str:

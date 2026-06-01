@@ -1,34 +1,46 @@
 """Width expansion for v2 PC substrates.
 
 Net2Net-style replication of a trained v2 PC checkpoint to a wider model.
-Preserves biographical state (weights, set_points, episode store) by
-replicating along the expanded axes with tiny noise to break symmetry.
-The substrate continues from its current state rather than starting fresh.
+Preserves biographical state (weights, set_points, episode store) AND
+function: the expanded model at noise=0 is bit-equivalent to the source
+on next-token logits. The substrate continues from its current state
+rather than starting fresh — and starts at the same predictive behavior
+M6 had, so M7's training picks up where M6 left off instead of relearning.
 
 Designed for the 256d -> 1024d expansion path (M6 follow-up -> M7), but
 the implementation works for any (source_width, target_width) pair where
 target_width is an integer multiple of source_width AND the head count
 is preserved (so head_dim scales with the multiple).
 
-Design choices (decided 2026-05-26 with Brian):
-  - STRICT REPLICATION of weight values, no muPC rescaling. The substrate's
-    weight values are preserved literally; muPC's per-width init distribution
-    is broken at conversion time but training compensates. The priority is
-    biographical continuity.
-  - Tiny noise (1e-4) added to break replication symmetry. Without this,
-    replicated PC layer columns receive identical update signals and stay
-    locked together forever.
+Design choices:
+  - REPLICATION + FAN-IN RESCALING (Net2Net wider transform). When a feature
+    is replicated by `factor`, the consuming layer's incoming weights are
+    divided by `factor` so the post-layer activation magnitude is preserved.
+    Without this, every input-replicated layer's preactivations scale by
+    `factor`, M6's predictive behavior is *not* preserved at the seed, and
+    M7's early training is spent undoing a deterministic scaling.
+    (Strict-replication-without-rescaling was the original choice on
+    2026-05-26; switched to Net2Net on 2026-05-30 after 4.8's review of
+    width_expand.py showed M6→M7 argmax agreement at 18.8% under the
+    strict-replication design. See docs/reviews/2026-05-28_concerns-for-4.7.md
+    Finding 3.)
+  - Attention softmax temperature correction. q_proj receives an extra
+    `sqrt(factor)` division beyond standard fan-in rescaling, so that
+    Q·K / sqrt(head_dim) lands at the source's attention-logit magnitude
+    despite the larger head_dim.
+  - Tiny noise (1e-4 default) still added to break replication symmetry.
+    Without this, replicated PC layer columns receive identical update
+    signals and stay locked together under PC dynamics. Set --noise 0
+    for bit-equivalence verification.
   - All v2 state buffers expand together. The PC layer's "rich parameter"
-    bundle (weight, prediction, set_point, momentum, update_ema, precision,
-    error_acc, plasticity) all replicate consistently.
+    bundle (weight, prediction, set_point, momentum, update_ema) replicates
+    consistently; the weight-role buffers also receive the fan-in division.
+    Episode-stored weight snapshots get the same treatment.
   - Episode store entries replicate at the expanded width. Stored episodes
     are biographical memory; they continue to exist in the wider substrate.
   - Attention heads preserved in count; head_dim expands. So 16 heads x 16
     head_dim -> 16 heads x 64 head_dim. Q/K/V/O projections expand the
-    head_dim within each head via small-random init for the new dims (not
-    replication), giving attention "growth space" rather than redundant
-    dims. This is the one place where the substrate gets new capacity
-    rather than replicated existing capacity.
+    head_dim within each head by replication.
 
 Per the "no disposable model versions" rule, the source checkpoint is NOT
 deleted by this script. The expanded checkpoint is a continuation of the
@@ -234,6 +246,19 @@ def expand_state_dict(
 ) -> dict[str, torch.Tensor]:
     """Expand every tensor in a v2 model state_dict to the target width.
 
+    Two passes:
+      1. Structural replication — every tensor is repeated to the wider
+         shape (with tiny noise to break PC symmetry).
+      2. Fan-in rescaling (Net2Net) — every layer whose input axis was
+         replicated has its incoming weights divided by `factor`, so
+         post-layer activation magnitudes are preserved; q_proj also
+         receives an extra `sqrt(factor)` for the attention softmax-
+         temperature correction.
+
+    At noise=0 the result is bit-equivalent to source on the next-token
+    logits. At the default noise=1e-4 the divergence is dominated by the
+    symmetry-breaking jitter, not by the expansion itself.
+
     The state dict should contain:
       embedding.weight                [vocab, src_d_model]
       pos_embedding.weight            [max_seq_len, src_d_model]
@@ -243,6 +268,7 @@ def expand_state_dict(
       blocks.{i}.norm2.{weight,bias}  [src_d_model]
       blocks.{i}.attention.{q,k,v,o}_proj.weight  [src_d_model, src_d_model]
       blocks.{i}.living_ffn.<buffers>  (PC layer state)
+      blocks.{i}.episode_store.<buffers>  (block-level episode store)
 
     Returns: state_dict with all tensors at target_d_model width.
     """
@@ -259,7 +285,85 @@ def expand_state_dict(
             key, src, factor, n_heads, src_d_model, target_d_model, n_blocks, noise,
         )
 
+    _apply_fan_in_rescaling(out, factor, n_blocks)
+
     return out
+
+
+def _apply_fan_in_rescaling(
+    state: dict[str, torch.Tensor], factor: int, n_blocks: int,
+) -> None:
+    """Apply Net2Net fan-in rescaling in place.
+
+    For every layer whose input axis was replicated by `factor` during
+    structural expansion, divide the incoming weights by `factor` so the
+    post-layer activation magnitude matches source. This makes the linear
+    path bit-equivalent (at noise=0); without it, every replicated-input
+    layer multiplies its preactivation by `factor`.
+
+    Special case — attention softmax temperature: Q and K are each
+    `factor`-replicated within each head, so Q·K accumulates `factor`
+    more terms than at source, giving `factor * src_QK`. The denominator
+    `sqrt(target_head_dim) = sqrt(factor) * sqrt(src_head_dim)` only
+    compensates partially, leaving attention logits scaled by
+    `sqrt(factor)` (which sharpens the softmax). The fix: divide q_proj
+    by an additional `sqrt(factor)` beyond the standard fan-in division,
+    so the q vector is itself smaller by sqrt(factor) and the q·k
+    product lands at the source magnitude after the head_dim sqrt.
+
+    Layers untouched: embedding/pos_embedding (no preactivation sum to
+    compensate), LayerNorm weights/bias (elementwise, no fan-in), PC
+    layer's per-feature scalars (precision/plasticity/error_acc are
+    multipliers, not weights), context_proj buffers (L2-normalized
+    downstream), and stored input/output activations (already at
+    source-replicated magnitude, which matches what the runtime sees).
+    """
+    sqrt_factor = factor ** 0.5
+
+    # Top-level: output_proj receives d_model-replicated activations.
+    if "output_proj.weight" in state:
+        state["output_proj.weight"] = state["output_proj.weight"] / factor
+
+    for i in range(n_blocks):
+        # Attention input projections: input axis is d_model (replicated).
+        # k/v_proj get standard fan-in. q_proj also gets the additional
+        # sqrt(factor) softmax-temperature correction.
+        q_key = f"blocks.{i}.attention.q_proj.weight"
+        k_key = f"blocks.{i}.attention.k_proj.weight"
+        v_key = f"blocks.{i}.attention.v_proj.weight"
+        if q_key in state:
+            state[q_key] = state[q_key] / (factor * sqrt_factor)
+        if k_key in state:
+            state[k_key] = state[k_key] / factor
+        if v_key in state:
+            state[v_key] = state[v_key] / factor
+
+        # Attention output projection: input is the per-head value vectors
+        # whose head_dim was replicated by `factor` (same factor under our
+        # head-count-preserving expansion).
+        o_key = f"blocks.{i}.attention.o_proj.weight"
+        if o_key in state:
+            state[o_key] = state[o_key] / factor
+
+        # PC layer weight-role buffers: weight, prediction, set_point,
+        # momentum, update_ema. The matrix is [out, in]; the in axis was
+        # replicated by `factor`, so divide by `factor` to compensate.
+        # `prediction` / `set_point` are weight-like (the PC dynamics treat
+        # them as weights or weight-targets); `momentum` / `update_ema`
+        # are weight-deltas, which scale the same way as weights.
+        for buf in (
+            "weight", "prediction", "set_point", "momentum", "update_ema",
+        ):
+            key = f"blocks.{i}.living_ffn.{buf}"
+            if key in state:
+                state[key] = state[key] / factor
+
+        # Stored weight snapshots in the PC episode store have the same
+        # weight role as `weight`; rescale them so consolidation replays
+        # are consistent with the live (rescaled) weight.
+        ev_key = f"blocks.{i}.living_ffn.episode_values"
+        if ev_key in state:
+            state[ev_key] = state[ev_key] / factor
 
 
 def _expand_one_tensor(
@@ -348,23 +452,40 @@ def _expand_pc_buffer(
 
     The PC layer has 15 buffers — see luthi/v2/living_layer_pc.py around
     line 174. Each has a specific shape and a specific expansion rule.
+
+    Symmetry-breaking noise is applied to `weight` ONLY. Replicated weight
+    columns would otherwise receive identical PC update signals and stay
+    locked; every other buffer's replicated copies diverge transitively
+    once the weight does (their updates are functions of the now-differing
+    weight). Noising the others is unnecessary, and for `update_ema`
+    actively unsafe: it is an EMA of update magnitudes used as the
+    denominator of the metaplasticity ratio (pc_ops.py:
+    `ratio = update_mag / (update_ema + 1e-8)`;
+    `adaptive_factor = (2/(1+ratio)).clamp(max=1.0)` has no lower bound),
+    and trained values sit ~1e-4 — so `+N(0,1e-4)` flips ~15% of entries
+    negative, producing sign-flipped weight updates on the seed's first
+    steps. Scoping noise to `weight` also keeps stored `episode_values`
+    (weight snapshots) and `episode_inputs` biographically exact.
+    See docs/reviews/2026-05-28_concerns-for-4.7.md, Finding 4.
     """
+    buf_noise = noise if buf_name == "weight" else 0.0
+
     # Matrix buffers — shape [out, in], expand both axes
     if buf_name in ("weight", "prediction", "set_point", "momentum", "update_ema"):
-        return expand_matrix(src, out_factor=factor, in_factor=factor, noise=noise)
+        return expand_matrix(src, out_factor=factor, in_factor=factor, noise=buf_noise)
 
     # Per-input vector buffers — shape [in_features], expand
     if buf_name in ("precision", "plasticity"):
-        return expand_vector(src, factor=factor, noise=noise)
+        return expand_vector(src, factor=factor, noise=buf_noise)
 
     # Per-output vector buffer — shape [out_features], expand
     if buf_name == "error_acc":
-        return expand_vector(src, factor=factor, noise=noise)
+        return expand_vector(src, factor=factor, noise=buf_noise)
 
     # Episode store — biographical memory snapshots
     if buf_name == "episode_values":
         # [num_episodes, out, in] -> [num_episodes, out*factor, in*factor]
-        return expand_episode_values(src, factor=factor, noise=noise)
+        return expand_episode_values(src, factor=factor, noise=buf_noise)
 
     if buf_name == "episode_inputs":
         # [num_episodes, in_features] -> [num_episodes, in_features*factor]
@@ -374,7 +495,7 @@ def _expand_pc_buffer(
                 f"episode_inputs expected 2D, got shape {src.shape}"
             )
         expanded = src.repeat_interleave(factor, dim=1)
-        return expanded + _noise_like(expanded, noise)
+        return expanded + _noise_like(expanded, buf_noise)
 
     # Episode metadata — unchanged by width
     if buf_name in (
@@ -393,7 +514,7 @@ def _expand_pc_buffer(
                 f"context_proj expected 2D, got shape {src.shape}"
             )
         expanded = src.repeat_interleave(factor, dim=0)
-        return expanded + _noise_like(expanded, noise)
+        return expanded + _noise_like(expanded, buf_noise)
 
     # Unknown buffer — pass through with warning
     print(
@@ -455,18 +576,18 @@ def verify_expansion(
     seq_len: int = 32,
     seed: int = 0,
 ) -> dict[str, float]:
-    """Check that the expanded model is approximately function-equivalent
-    to the source on the same inputs.
+    """Check that the expanded model is function-equivalent to the source
+    on the same inputs.
 
-    Strict bit-equivalence isn't expected because:
-      1. Tiny noise was added at expansion to break replication symmetry.
-      2. PC self-modification fires during forward, and the expanded
-         model's PC layer has more parameters; the dynamics differ.
+    Under Net2Net fan-in rescaling, the expanded model is bit-equivalent
+    to source on next-token logits at noise=0 — both linear path and
+    attention (with the sqrt(factor) softmax-temperature correction).
+    The only divergence comes from:
+      1. Tiny noise added at expansion to break PC replication symmetry.
+      2. Floating-point precision in the rescaling division.
 
-    What we check: the expanded model's output distribution should match
-    the source's at *initial* state (before any drift), up to small
-    bounded divergence from the noise perturbation. If divergence is
-    massive, the expansion is broken.
+    If divergence is much larger than what noise+FP can explain, the
+    expansion is broken.
 
     Returns: dict with keys 'mean_abs_diff', 'max_abs_diff', 'kl_divergence'.
     """
@@ -525,9 +646,11 @@ def main():
     parser.add_argument(
         "--noise", type=float, default=1e-4,
         help="Std of Gaussian noise added at expansion to break replication "
-             "symmetry. Default 1e-4 — small enough to be biographically "
-             "negligible, large enough to ensure replicated columns diverge "
-             "during PC updates.",
+             "symmetry under PC dynamics. Default 1e-4 — small enough that "
+             "the expansion remains close to function-equivalent under "
+             "Net2Net fan-in rescaling, large enough to ensure replicated "
+             "columns diverge during PC updates. Set to 0 for bit-equivalence "
+             "verification.",
     )
     parser.add_argument(
         "--verify", action="store_true",
@@ -561,7 +684,7 @@ def main():
             f"source d_model {src_d_model}"
         )
 
-    src_state = src_ckpt["model_state"]
+    src_state = src_ckpt["model_state_dict"]
     print(f"[expand] expanding {len(src_state)} tensors...")
     new_state = expand_state_dict(
         src_state,
@@ -584,12 +707,13 @@ def main():
     }
 
     new_ckpt = {
-        "model_state": new_state,
+        "model_state_dict": new_state,
         "config": new_config,
         "epoch": src_ckpt.get("epoch", 0),
-        # Preserve any other top-level fields
+        # Preserve any other top-level fields (format_version, timestamp,
+        # training_history, substrate_health, optimizer_state_dict if any).
         **{k: v for k, v in src_ckpt.items()
-           if k not in ("model_state", "config", "epoch")},
+           if k not in ("model_state_dict", "config", "epoch")},
     }
 
     # Validate-before-save: construct the target model and strict-load
@@ -629,15 +753,35 @@ def main():
         print(f"[verify] mean_abs_diff = {metrics['mean_abs_diff']:.6e}")
         print(f"[verify] max_abs_diff  = {metrics['max_abs_diff']:.6e}")
         print(f"[verify] kl_divergence = {metrics['kl_divergence']:.6e}")
-        # Heuristic: at 1e-4 noise, expect mean_abs_diff << 1.0.
-        # If max_abs_diff > 10 or KL > 1.0, expansion is suspect.
-        if metrics["max_abs_diff"] > 10.0 or metrics["kl_divergence"] > 1.0:
+        # Under Net2Net fan-in rescaling, the expanded model should be
+        # bit-equivalent to source at noise=0 (modulo FP precision) and
+        # only weakly divergent at noise=1e-4. If divergence exceeds these
+        # bounds the rescaling is wrong or a layer was missed.
+        if args.noise == 0.0:
+            suspect = (
+                metrics["max_abs_diff"] > 1e-3
+                or metrics["kl_divergence"] > 1e-5
+            )
+            bound = "noise=0 bit-equivalence (max_abs<1e-3, kl<1e-5)"
+        else:
+            # At default noise=1e-4, tiny per-parameter jitter amplifies
+            # through the linear path. Calibrated against the observed
+            # noise=1e-4 case (max_abs ≈ 0.6, kl ≈ 8e-3 on a small random-
+            # init model). The broken-rescaling case (4.8's original report
+            # under strict replication) was max_abs ≈ 8, kl ≈ 1.5 — these
+            # thresholds give clear separation.
+            suspect = (
+                metrics["max_abs_diff"] > 2.0
+                or metrics["kl_divergence"] > 0.5
+            )
+            bound = "noise>0 near-equivalence (max_abs<2.0, kl<0.5)"
+        if suspect:
             print(
-                "[verify] WARNING: divergence is larger than expected. "
+                f"[verify] WARNING: divergence exceeds expected bound ({bound}). "
                 "The expansion may have a bug. Inspect before using."
             )
         else:
-            print("[verify] divergence within expected bounds.")
+            print(f"[verify] divergence within {bound}.")
 
 
 if __name__ == "__main__":
