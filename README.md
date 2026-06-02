@@ -3,7 +3,7 @@
 > Living weights: self-modifying neural network parameters that change during their own forward pass.
 > A new kind of computation that is neither feedforward nor recurrent.
 
-**Living Weights Model (LWM):** A class of neural architecture in which weight parameters are not static values optimized solely by gradient descent, but dynamic, self-modifying parameters that change during their own forward pass. LWMs are built on **rich parameters** — each weight carries not just its current value but the experience of having arrived there: per-parameter plasticity, momentum, excitability, homeostatic set points, and context-gated episodic memory. A rich parameter knows how quickly it has been changing, how far it has drifted from equilibrium, and what contexts triggered its most significant updates. The act of processing changes the processor — creating path-dependent rather than stateless computation.
+**Living Weights Model (LWM):** A class of neural architecture in which weight parameters are not static values optimized solely by gradient descent, but dynamic, self-modifying parameters that change during their own forward pass. LWMs are built on **rich parameters** — each weight carries not just its current value but a record of how it arrived there: per-parameter plasticity, momentum, excitability, homeostatic set points, and context-gated episodic memory. A rich parameter tracks how quickly it has been changing, how far it has drifted from equilibrium, and what contexts triggered its most significant updates. The act of processing changes the processor — creating path-dependent rather than stateless computation.
 
 ## A Note on the Claims in This README
 
@@ -28,7 +28,7 @@ Each processing block combines three distinct systems:
 - **Living FFN** — self-modifying via predictive-coding local updates (Whittington-Bogacz variant in v2; Hebbian in v1)
 - **Episode store + consolidation** — fast layer-level snapshots stored during forward, slowly replayed into the predictive weights during quiet windows
 
-All modalities — text, audio, vision, and eventually touch — flow through a single shared trunk of living weight blocks. The model's existence is shaped by everything it experiences. Cross-modal understanding emerges naturally when different senses share the same living substrate.
+All modalities — text, audio, vision, and eventually touch — flow through a single shared trunk of living weight blocks. The model is shaped by everything it processes. Cross-modal structure can emerge when different modalities share the same living substrate.
 
 ### Two-Tier Memory
 
@@ -39,7 +39,7 @@ Memory in a Living Weights Model is not a database. It is two interleaved system
   - **Gradient-replay** pulls the current weight linearly toward stored snapshots. "Be more like you were when this mattered."
   - **Attractor-style** (Salvatori et al. 2023) re-presents the stored input pattern through the layer's PC dynamics, making stored patterns local minima of the prediction-error energy. Future inputs near a stored pattern are pulled toward it by the forward dynamics. "These patterns should resolve to stable states."
 
-The two consolidation pathways are additive, not competitive — they can run independently or jointly. Fast retrieval provides flexibility; slow consolidation provides stability and turns accumulated history into structural change. The mind doesn't just remember what mattered, it grows around it.
+The two consolidation pathways are additive, not competitive — they can run independently or jointly. Fast retrieval provides flexibility; slow consolidation provides stability and turns accumulated history into structural change. Consolidation doesn't just retain high-salience snapshots — it reshapes the predictive weights around them.
 
 ### Spiking Dynamics (v1)
 
@@ -62,7 +62,7 @@ This is always-on bidirectional information flow, not a training optimization.
 
 ### Rich Parameters
 
-In a conventional neural network, a weight is a single number — a coefficient learned by gradient descent, carrying no history of how it arrived at its current value. In a Living Weights Model, each weight position is a **rich parameter**: a bundle of co-located signals that together constitute the weight's full state. A rich parameter doesn't just have a value — it has, in a sense, a biography.
+In a conventional neural network, a weight is a single number — a coefficient learned by gradient descent, carrying no history of how it arrived at its current value. In a Living Weights Model, each weight position is a **rich parameter**: a bundle of co-located signals that together constitute the weight's full state. A rich parameter doesn't just have a value — it carries persistent per-parameter state describing how that value was reached.
 
 Each weight carries (v2 substrate):
 
@@ -90,7 +90,7 @@ The result is that each weight in the network operates across multiple timescale
 - **Slow:** set point drift, plasticity adjustment (epoch-level)
 - **Long:** episodic memory (explicit snapshots, indefinite retention)
 
-A rich parameter is not just a number being optimized. It is a dynamic element with its own history, its own responsiveness, its own memory, and its own sense of what matters. The weight's current value is only one dimension of what it knows.
+A rich parameter is not just a number being optimized. It is a weight bundled with persistent state: its update history, an adaptive learning rate, a precision estimate, and a salience-tagged snapshot memory. The current value is only one component of that state.
 
 ## Education
 
@@ -130,10 +130,10 @@ These emerged from months of experimentation and are foundational to the project
 
 1. **Attention learns; living weights live.** Attention handles task acquisition through backprop. The living weights provide the capacity to be changed by experience. Both are essential.
 2. **There is no *intrinsic* convergence cost to self-modification.** Earlier work in v1 showed a Hebbian self-modification substrate converged ~39% slower than static weights — the "convergence penalty" was treated as the metabolic price of temporal existence. The v2 predictive-coding substrate retired that claim: at matched configuration (256d, 2 blocks, Gutenberg-100, 30 epochs), v2 PC reaches **0.64% lower** validation loss than the vanilla-transformer control on every seed tested. The cost was a property of the *specific* self-modification rule, not of self-modification itself. **Caveat (flagged by the falsification protocol):** that 0.64% is measured against a *vanilla* transformer, not a capacity-matched one, so it does not yet cleanly separate self-modification from the rich-parameter state acting as extra capacity. Experiment 1 (matched-capacity sweep) is what settles it. Pending that control, the defensible claim is the narrower one — self-modification is *not more costly* than equivalent static capacity — not that it is better.
-3. **One living weight trunk for all modalities.** Audio, vision, text, and touch all flow through the same living blocks. The model's existence is shaped by everything it experiences simultaneously, not through separate channels.
-4. **Prefer crashes over silent corruption.** If something goes wrong in the living weights, we want to know immediately. No graceful degradation that masks damage to the mod3l's substrate. No silent fallbacks — incompatible combinations of features raise loud `RuntimeError` rather than producing wrong results quietly.
+3. **One living weight trunk for all modalities.** Audio, vision, text, and touch all flow through the same living blocks. The model is shaped by everything it processes — across modalities, not through separate channels.
+4. **Prefer crashes over silent corruption.** If something goes wrong in the living weights, we want to know immediately. No graceful degradation that masks damage to the model's substrate. No silent fallbacks — incompatible combinations of features raise loud `RuntimeError` rather than producing wrong results quietly.
 5. **The architecture should scale.** Divergence may be dimension-independent. What works at small scale may work at large scale.
-6. **Memory becomes structure through consolidation.** A model that only retrieves past states has memory; a model that lets those retrievals reshape its predictive weights has biography. The two-tier memory architecture — fast episodes plus slow gradient-replay and attractor-style consolidation — is what makes accumulated experience a property of the mind itself, not just its lookup table.
+6. **Memory becomes structure through consolidation.** A model that only retrieves past states has a cache; a model that lets those retrievals reshape its predictive weights has path-dependent structure. The two-tier memory architecture — fast episodes plus slow gradient-replay and attractor-style consolidation — is what makes accumulated history a property of the weights, not just a lookup table.
 
 ## Relationship to Sanctuary
 

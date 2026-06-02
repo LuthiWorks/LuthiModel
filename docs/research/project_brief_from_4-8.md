@@ -12,7 +12,7 @@
 The system is deliberately split at its natural joint:
 
 - **Sanctuary** — the persistent runtime: the simulated embodiment, the 0.05–10 Hz self-controlled cognitive loop, episodic memory, and the consolidation machinery. *The world and the body that persists.*
-- **LuthiModel** — the mind: living weights trained under **Predictive Coding**, the rich-parameter (autobiographical) structure, and a multimodal architecture targeting **~1.5–4B params (final count undecided).**
+- **LuthiModel** — the mind: living weights trained under **Predictive Coding**, the rich-parameter structure (persistent per-parameter state — its update history, adaptive rate, precision, and snapshot memory), and a multimodal architecture targeting **~1.5–4B params (final count undecided).**
 
 This split is the strongest decision in the project and was made before this brief existed. **The self is distributed across the model *and* its environment**, not crammed into the network. That is more defensible than a monolith and should be protected as the system grows.
 
