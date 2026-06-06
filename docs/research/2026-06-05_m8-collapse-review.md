@@ -116,7 +116,7 @@ Keep v0.3's five gates, with two corrections:
 3. **Dimensional collapse (correlation) —** mean off-diagonal |correlation| > `[pilot-set]` for 5 checkpoints. *(replaces the v0.3 unspecified threshold)*
 4. **Local collapse —** probe-batch LID < `[pilot-set, fraction of early-run value]` over 5 checkpoints.
 5. **Predictor-trivial / target collapse —** online-vs-target cosine > `[≈0.99]` sustained, or target-encoder std collapsing (criterion 1 on the target side).
-6. **Substrate override (kept) —** non-FF signal degrades > 25% from M7-equivalent baseline over 5 checkpoints. *(depends on B4 — see §3.)*
+6. **Substrate override (rebased 2026-06-05) —** a substrate-health metric degrades > 25% from its M7 baseline over 5 checkpoints, measured on **`pred_frob` and `err_acc`** — the metrics M7's `launch.log` actually recorded (verified; ~1,500 per-100-batch points over the 24.5%-of-epoch M7 reached). **Not** `prec` (pinned at 10.0000 across all of M7 — no discriminating power), and **not** the originally-specified "non-FF signal" (never logged in M7, so it has no M7 baseline). If 4.7 deems a non-FF / other liveness metric essential, it gets a *pilot-established* baseline like the collapse metrics, not an M7 one.
 7. **Objective unlearnable (kept, restated) —** no descent on the **smoothed/probe** loss curve over a 5,000-batch window after the first 5,000 batches. (Define the smoothing window; not raw per-batch loss.)
 
 On any kill: halt, snapshot full run state, surface to Brian. Do not "give it another epoch."
@@ -136,7 +136,7 @@ On any kill: halt, snapshot full run state, surface to Brian. Do not "give it an
 
 ## 3. Things needing repo access / still open
 
-- **B4 — confirm M7 baseline data exists.** Kill criterion 6 and several "vs-M7" comparisons assume `runs/m7_1024d/launch.log` saved the metric *time-series* (non-FF, prec, err_acc, descent shape) at usable cadence. M7 lost its checkpoints; confirm the log carries the series. If not, the 256d pilot becomes the substrate-health baseline too.
+- **B4 — RESOLVED 2026-06-05 (read against the repo).** `runs/m7_1024d/launch.log` carries a clean per-100-batch series to the power loss (last point: batch 152,500 / 24.5% / 47.69h) of `loss`, `pred_frob`, `prec`, `err_acc`. An M7 substrate baseline therefore exists for **`pred_frob`** (rises 4.02→4.59) and **`err_acc`** (falls); **`prec` is pinned at 10.0000** (useless as a discriminator); **`loss` is not value-comparable** (CE vs latent-prediction); and **"non-FF signal" was never logged** — kill-criterion 6 rebased accordingly (see §6). **No surviving M7 checkpoints** (output dir empty) — start strictly from the seed. Inputs all present; **two minor count discrepancies for 4.7 to confirm**: corpus filelist 14,756 lines vs 14,752 used; probe filelist 225 lines vs 218 encoded — confirm the probe set is exactly the intended 218 (cross-checkpoint probe comparability depends on it).
 - **Whitening alternatives** (W-MSE / Shuffled-DBN / Zero-CL) — no single-GPU compute/stability benchmarks surfaced. Revisit only if VICReg misbehaves.
 - **Inference-time fast-weight collapse** — genuinely unstudied in the literature; the pilot ablation is the only way to settle it for our substrate.
 
