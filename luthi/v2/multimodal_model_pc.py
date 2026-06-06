@@ -1,0 +1,411 @@
+"""MultimodalPredictiveCodingLM -- audio + vision + text through shared PC trunk.
+
+The v2 counterpart to v1's MultimodalLuthiLM. Same external shape:
+
+    vision -> VisionEncoder -> [d_model tokens] -+
+    audio  -> AudioEncoder  -> [d_model tokens] -+-> + modality_emb
+    text   -> TextEmbedding -> [d_model tokens] -+
+                                                  |
+                                  [PredictiveCodingBlock x N]  (shared trunk)
+                                    ^ bottom-up  v top-down (PC)
+                                                  |
+                                  per-modality latents -- via encode()    (for JEPA)
+                                  text positions -> output_proj -> logits (for LM API)
+
+Key differences from v1's MultimodalLuthiLM:
+- Blocks are PredictiveCodingBlock (PC dynamics), not SpikingHybridBlock.
+- No apply_living_errors post-backward step -- PC handles error-driven
+  learning intrinsically during forward.
+- Exposes per-modality latent streams via encode() for JEPA training.
+  The LM API (forward returning text logits) is preserved.
+
+This is the "MultimodalPredictiveCodingLM" anticipated in v1's
+multimodal_model.py comment from 2026-05-11.
+
+Sequence order in the shared trunk: [vision, audio, text] -- text attends
+to all sensory context via natural causal masking.
+
+KV cache support is not yet wired into this model. v1's multimodal forward
+also lacked cache support (per the same 2026-05-11 comment). Adding it is
+nontrivial because the sensory tokens must persist across generation steps
+rather than being re-encoded each step. Future work; not needed for M8
+training.
+"""
+
+import torch
+import torch.nn as nn
+
+from luthi.audio_encoder import AudioEncoder
+from luthi.vision_encoder import VisionEncoder
+from luthi.v2.hybrid_block_pc import PredictiveCodingBlock
+from luthi.v2.backward_pass_pc import create_initial_signal
+
+
+class MultimodalPredictiveCodingLM(nn.Module):
+    """Multimodal predictive-coding language model.
+
+    Processes audio + vision + text through shared PC living-weight blocks.
+    Perceptual tokens precede text tokens in the sequence so text can attend
+    to all sensory context via causal masking. The substrate is a single
+    trunk; modality-specific encoders project sensory inputs into d_model
+    space. A learned modality embedding distinguishes input types within
+    the shared sequence.
+
+    Two main interfaces:
+      - encode(...): returns per-modality latent streams plus span metadata.
+        Used by the JEPA loss (online and EMA target encoders).
+      - forward(...): returns text-position logits. LM-style API matching
+        v1's MultimodalLuthiLM.forward. Used by next-token training and
+        generation.
+    """
+
+    def __init__(
+        self,
+        vocab_size: int,
+        d_model: int = 256,
+        n_blocks: int = 12,
+        n_heads: int = 4,
+        ffn_expansion: int = 1,
+        max_seq_len: int = 512,
+        # PC layer parameters (match PredictiveCodingLM defaults)
+        pc_rate: float = 0.001,
+        pred_learning_rate: float = 0.0001,
+        homeostatic_decay: float = 0.001,
+        set_point_adapt_rate: float = 1e-6,
+        num_episodes: int = 64,
+        episode_blend: float = 0.3,
+        compressed_episodes: bool = False,
+        consolidation_enabled: bool = False,
+        consolidation_style: str = "gradient",
+        consolidation_attractor_passes: int = 1,
+        mu_pc_enabled: bool = False,
+        mu_pc_exponent: float = 0.5,
+        backward_pass_enabled: bool = True,
+        buffer_dtypes: dict[str, torch.dtype] | None = None,
+        # Multimodal parameters
+        n_modalities: int = 3,
+        # Audio encoder parameters
+        audio_sample_rate: int = 16000,
+        audio_n_mels: int = 80,
+        audio_hop_length: int = 160,
+        audio_n_fft: int = 400,
+        audio_patch_frames: int = 16,
+        max_audio_tokens: int = 1000,
+        # Vision encoder parameters
+        vision_image_size: int = 224,
+        vision_patch_size: int = 16,
+        max_vision_tokens: int = 256,
+    ):
+        super().__init__()
+        self.d_model = d_model
+        self.n_heads = n_heads
+        self.max_seq_len = max_seq_len
+        self.max_audio_tokens = max_audio_tokens
+        self.max_vision_tokens = max_vision_tokens
+        self.backward_pass_enabled = backward_pass_enabled
+        self.vocab_size = vocab_size
+
+        # Text embedding (matches PredictiveCodingLM)
+        self.embedding = nn.Embedding(vocab_size, d_model)
+        self.pos_embedding = nn.Embedding(max_seq_len, d_model)
+
+        # Audio encoder reused from v1 -- substrate-agnostic (no living-weight,
+        # plasticity, or spiking machinery; pure perceptual encoder).
+        self.audio_encoder = AudioEncoder(
+            d_model=d_model,
+            sample_rate=audio_sample_rate,
+            n_mels=audio_n_mels,
+            hop_length=audio_hop_length,
+            n_fft=audio_n_fft,
+            patch_frames=audio_patch_frames,
+            max_audio_tokens=max_audio_tokens,
+        )
+
+        # Vision encoder reused from v1 -- substrate-agnostic for the same
+        # reasons as the audio encoder.
+        self.vision_encoder = VisionEncoder(
+            d_model=d_model,
+            image_size=vision_image_size,
+            patch_size=vision_patch_size,
+            max_vision_tokens=max_vision_tokens,
+        )
+
+        # Modality embeddings: text=0, audio=1, vision=2.
+        self.modality_embedding = nn.Embedding(n_modalities, d_model)
+
+        # Shared PC living-weight trunk.
+        self.blocks = nn.ModuleList([
+            PredictiveCodingBlock(
+                d_model=d_model,
+                n_heads=n_heads,
+                ffn_expansion=ffn_expansion,
+                pc_rate=pc_rate,
+                pred_learning_rate=pred_learning_rate,
+                homeostatic_decay=homeostatic_decay,
+                set_point_adapt_rate=set_point_adapt_rate,
+                num_episodes=num_episodes,
+                episode_blend=episode_blend,
+                compressed_episodes=compressed_episodes,
+                consolidation_enabled=consolidation_enabled,
+                consolidation_style=consolidation_style,
+                consolidation_attractor_passes=consolidation_attractor_passes,
+                mu_pc_enabled=mu_pc_enabled,
+                mu_pc_exponent=mu_pc_exponent,
+                n_blocks_total=n_blocks,
+                buffer_dtypes=buffer_dtypes,
+            )
+            for _ in range(n_blocks)
+        ])
+
+        # Output projection (text only; used by the LM-style forward API).
+        self.final_norm = nn.LayerNorm(d_model)
+        self.output_proj = nn.Linear(d_model, vocab_size)
+
+    def _encode_modality_streams(
+        self,
+        text_tokens: torch.Tensor | None,
+        audio_waveform: torch.Tensor | None,
+        audio_tokens: torch.Tensor | None,
+        image: torch.Tensor | None,
+        vision_tokens: torch.Tensor | None,
+    ) -> tuple[torch.Tensor | None, torch.Tensor | None, torch.Tensor | None]:
+        """Encode each modality to d_model token sequences with positional
+        + modality embeddings applied. Returns (vision_emb, audio_emb,
+        text_emb); any may be None if the modality wasn't provided.
+        """
+        device = next(self.parameters()).device
+
+        # Text (modality 0)
+        if text_tokens is not None:
+            _, text_len = text_tokens.shape
+            text_positions = torch.arange(text_len, device=device).unsqueeze(0)
+            text_emb = (
+                self.embedding(text_tokens)
+                + self.pos_embedding(text_positions)
+                + self.modality_embedding(
+                    torch.zeros(1, dtype=torch.long, device=device)
+                )
+            )
+        else:
+            text_emb = None
+
+        # Vision (modality 2)
+        if vision_tokens is not None:
+            vision_emb = vision_tokens + self.modality_embedding(
+                torch.full((1,), 2, dtype=torch.long, device=device)
+            )
+        elif image is not None:
+            vision_emb = self.vision_encoder(image)
+            vision_emb = vision_emb + self.modality_embedding(
+                torch.full((1,), 2, dtype=torch.long, device=device)
+            )
+        else:
+            vision_emb = None
+
+        # Audio (modality 1)
+        if audio_tokens is not None:
+            audio_emb = audio_tokens + self.modality_embedding(
+                torch.ones(1, dtype=torch.long, device=device)
+            )
+        elif audio_waveform is not None:
+            audio_emb = self.audio_encoder(audio_waveform)
+            audio_emb = audio_emb + self.modality_embedding(
+                torch.ones(1, dtype=torch.long, device=device)
+            )
+        else:
+            audio_emb = None
+
+        return vision_emb, audio_emb, text_emb
+
+    def _concatenate_modalities(
+        self,
+        vision_emb: torch.Tensor | None,
+        audio_emb: torch.Tensor | None,
+        text_emb: torch.Tensor | None,
+    ) -> tuple[torch.Tensor, dict[str, slice]]:
+        """Concatenate per-modality embeddings in order [vision, audio, text].
+        Returns (combined_sequence, position_spans) where position_spans
+        maps modality name to its slice in the combined sequence.
+        """
+        parts: list[torch.Tensor] = []
+        spans: dict[str, slice] = {}
+        offset = 0
+
+        for name, emb in (
+            ("vision", vision_emb),
+            ("audio", audio_emb),
+            ("text", text_emb),
+        ):
+            if emb is not None:
+                length = emb.shape[1]
+                spans[name] = slice(offset, offset + length)
+                parts.append(emb)
+                offset += length
+
+        if not parts:
+            raise ValueError("At least one modality input must be provided.")
+
+        h = torch.cat(parts, dim=1)
+        return h, spans
+
+    def encode(
+        self,
+        text_tokens: torch.Tensor | None = None,
+        audio_waveform: torch.Tensor | None = None,
+        audio_tokens: torch.Tensor | None = None,
+        image: torch.Tensor | None = None,
+        vision_tokens: torch.Tensor | None = None,
+        causal: bool = False,
+    ) -> dict:
+        """Encode multimodal input through the shared PC trunk and return
+        per-modality latent streams.
+
+        Used by the JEPA loss to obtain latent representations from both
+        the online encoder and the EMA target encoder. The shared trunk
+        processes all provided modalities jointly; per-modality latents
+        are extracted by slicing the trunk output along the modality
+        position spans.
+
+        Args:
+            text_tokens: Optional [batch, text_seq_len] token indices.
+            audio_waveform: Optional [batch, samples] raw audio.
+            audio_tokens: Optional [batch, n_audio_tokens, d_model]
+                pre-encoded audio tokens (skip the audio encoder).
+            image: Optional [batch, 3, H, W] normalized RGB images.
+            vision_tokens: Optional [batch, n_vision_tokens, d_model]
+                pre-encoded vision tokens (skip the vision encoder).
+            causal: Attention masking policy. Default False (bidirectional)
+                is the JEPA-encoder convention -- representations benefit
+                from each position attending to all others within the
+                visible context. Set True for LM-style usage where the
+                trunk feeds a next-token output projection; forward()
+                does this internally to preserve parity with v1.
+
+        Returns:
+            Dict with:
+                "latents": [batch, total_seq_len, d_model] post-trunk
+                    latents over the full concatenated sequence.
+                "spans": dict[str, slice] mapping modality name to its
+                    span in `latents`. Modalities not provided are absent.
+                "per_modality": dict[str, Tensor] convenience accessor;
+                    each value is `latents[:, spans[name], :]`.
+        """
+        vision_emb, audio_emb, text_emb = self._encode_modality_streams(
+            text_tokens, audio_waveform, audio_tokens, image, vision_tokens,
+        )
+        h, spans = self._concatenate_modalities(vision_emb, audio_emb, text_emb)
+
+        # Phase 1: bottom-up forward through PC blocks.
+        for block in self.blocks:
+            h = block(h, causal=causal)
+
+        # Phase 2: top-down backward sweep (PC).
+        if self.training and self.backward_pass_enabled:
+            with torch.no_grad():
+                signal = create_initial_signal(h.detach())
+                for i in reversed(range(len(self.blocks))):
+                    signal = self.blocks[i].top_down_pass(signal)
+
+        per_modality = {name: h[:, span, :] for name, span in spans.items()}
+        return {
+            "latents": h,
+            "spans": spans,
+            "per_modality": per_modality,
+        }
+
+    def forward(
+        self,
+        text_tokens: torch.Tensor,
+        audio_waveform: torch.Tensor | None = None,
+        audio_tokens: torch.Tensor | None = None,
+        image: torch.Tensor | None = None,
+        vision_tokens: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """LM-style forward returning text-position logits.
+
+        Matches v1 MultimodalLuthiLM.forward shape for backward compatibility
+        with the next-token training path. Internally calls encode() and
+        projects the text-position latents to vocab logits.
+
+        Args:
+            text_tokens: [batch, text_seq_len] integer token indices.
+            audio_waveform / audio_tokens / image / vision_tokens: optional
+                modality inputs, same semantics as encode().
+
+        Returns:
+            [batch, text_seq_len, vocab_size] logits for text positions.
+        """
+        # LM API: causal masking preserved for parity with v1's
+        # MultimodalLuthiLM.forward (and PredictiveCodingLM.forward),
+        # which feed an autoregressive output projection.
+        result = self.encode(
+            text_tokens=text_tokens,
+            audio_waveform=audio_waveform,
+            audio_tokens=audio_tokens,
+            image=image,
+            vision_tokens=vision_tokens,
+            causal=True,
+        )
+        text_latents = result["per_modality"].get("text")
+        if text_latents is None:
+            raise ValueError(
+                "forward() requires text_tokens; use encode() for "
+                "text-less multimodal encoding."
+            )
+        h_text = self.final_norm(text_latents)
+        logits = self.output_proj(h_text)
+        return logits
+
+    def clear_forward_cache(self) -> None:
+        """Release per-layer forward-pass snapshots across all blocks.
+
+        Trainers should call this after optimizer.step() to free the
+        gradient-checkpoint replay tensors that would otherwise accumulate
+        between steps. Inherited convention from PredictiveCodingLM.
+        """
+        for block in self.blocks:
+            if hasattr(block.living_ffn, "clear_forward_cache"):
+                block.living_ffn.clear_forward_cache()
+
+    def aliveness_report(self) -> list[dict[str, float]]:
+        """Per-block aliveness diagnostics (PC layer + episode store stats)."""
+        return [block.aliveness() for block in self.blocks]
+
+    def total_parameters(self) -> dict[str, int]:
+        """Count trainable parameters vs living-weight buffers.
+
+        Trainable: embeddings (text + modality), audio/vision encoders,
+        attention, layer norms, output projection.
+        Living buffers: PC layer state per block (weight, prediction,
+        set_point, momentum, update_ema, precision, error_acc, plasticity,
+        episode_*).
+        """
+        trainable = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        living_buffers = 0
+        for block in self.blocks:
+            for _, buf in block.living_ffn.named_buffers():
+                living_buffers += buf.numel()
+        return {
+            "trainable": trainable,
+            "living_buffers": living_buffers,
+            "total": trainable + living_buffers,
+        }
+
+    def non_feedforward_signal(self, **encode_kwargs) -> float:
+        """Mean abs difference between two consecutive identical-input
+        encode() passes at the trunk output level. Positive value confirms
+        the model as a whole is not feedforward.
+
+        kwargs are forwarded to encode(); pass whatever modality inputs
+        the run is exercising.
+        """
+        was_training = self.training
+        self.eval()
+        try:
+            with torch.no_grad():
+                out1 = self.encode(**encode_kwargs)["latents"]
+                out2 = self.encode(**encode_kwargs)["latents"]
+                return (out2 - out1).abs().mean().item()
+        finally:
+            if was_training:
+                self.train()
