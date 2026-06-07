@@ -435,6 +435,16 @@ class JEPATrainer:
 
         # State.
         self.global_step = 0
+        # Per-modality step counter (4.8 review 2026-06-06 item A). The
+        # cadence for diagnostics, kill-criteria history pushes, and the
+        # kill-criteria warmup all key off the modality's *own* step
+        # count so rare-modality kill windows mean "consecutive
+        # observations of that modality" rather than "consecutive
+        # observations of anything." Without this, audio at ~0.9% of
+        # global steps would have kill windows that fire once per ~40K
+        # global steps -- effectively dead detection on the very axis
+        # the per-modality design exists to protect.
+        self.modality_step: dict[str, int] = {m: 0 for m in MODALITIES}
         self.epoch = 0
         self.tokens_consumed: dict[str, int] = {m: 0 for m in MODALITIES}
         self.epoch_token_baseline: dict[str, int] = {m: 0 for m in MODALITIES}
@@ -511,8 +521,25 @@ class JEPATrainer:
         # convention -- audit fix 2026-05-11).
         self.loss_module.online_encoder.clear_forward_cache()
 
+        loss_value = float(loss.detach().item())
+
+        # Append to the smoothed-loss buffer every step (4.8 review
+        # 2026-06-06 item D). Previously this lived in
+        # _compute_and_log_diagnostics, which fires every N steps, so
+        # loss_descent_window=5000 actually measured 5000*N steps and
+        # the config name lied. Mixed modalities here is intentional --
+        # criterion 7 is about total objective trainability per §7.7;
+        # per-modality collapse is caught by criteria 1-5.
+        self._smoothed_loss_buf.append(loss_value)
+
+        # Per-modality step counter advanced here (4.8 review 2026-06-06
+        # item A) so callers don't need to remember to do it; the
+        # post-train_step value is what cadence checks should read.
+        self.global_step += 1
+        self.modality_step[modality] += 1
+
         return {
-            "loss": float(loss.detach().item()),
+            "loss": loss_value,
             "modality": modality,
             "raw": result,
         }
@@ -561,7 +588,8 @@ class JEPATrainer:
             record["deep"] = deep_m
             self.history.push(modality, deep_m)
 
-        self._smoothed_loss_buf.append(step_out["loss"])
+        # Note: _smoothed_loss_buf.append is now in train_step (4.8 item D
+        # fix 2026-06-06) so it runs every step rather than every N steps.
 
         # Persist to JSONL.
         with open(self.metric_log_path, "a", encoding="utf-8") as f:
@@ -590,8 +618,14 @@ class JEPATrainer:
 
     def _check_kill_criteria(self, modality: str) -> Optional[str]:
         """Returns kill reason string if any criterion triggers for this
-        modality's recent history, else None. Activates only after warmup."""
-        if self.global_step < self.config.kill_criteria.warmup_batches:
+        modality's recent history, else None. Activates only after the
+        modality's *own* warmup -- per 4.8 review 2026-06-06 item A, the
+        warmup is per-modality so a rare modality's kill criteria activate
+        once it has actually been observed enough times, not once enough
+        global steps have happened (which at alpha=0.7 would let audio
+        run for ~5.5M global steps before its kill window had 5 audio
+        observations to evaluate against)."""
+        if self.modality_step[modality] < self.config.kill_criteria.warmup_batches:
             return None
 
         cfg = self.config.kill_criteria
@@ -728,6 +762,7 @@ class JEPATrainer:
 
         state = {
             "global_step": self.global_step,
+            "modality_step": dict(self.modality_step),
             "epoch": self.epoch,
             "tokens_consumed": dict(self.tokens_consumed),
             "epoch_token_baseline": dict(self.epoch_token_baseline),
@@ -776,6 +811,18 @@ class JEPATrainer:
         for production use, which falls back to older slots."""
         state = torch.load(ckpt_path, map_location="cpu")
         self.global_step = state["global_step"]
+        # modality_step added 2026-06-06 (item A). Older checkpoints
+        # without it resume at zero per-modality counts; that's a
+        # degraded resume (per-modality kill warmup restarts and
+        # cadence shifts) but better than a crash.
+        if "modality_step" in state:
+            self.modality_step = dict(state["modality_step"])
+        else:
+            logger.warning(
+                "Checkpoint missing modality_step; resuming at zero per-"
+                "modality counts. Per-modality kill warmup will restart."
+            )
+            self.modality_step = {m: 0 for m in MODALITIES}
         self.epoch = state["epoch"]
         self.tokens_consumed = dict(state["tokens_consumed"])
         self.epoch_token_baseline = dict(state["epoch_token_baseline"])
@@ -872,14 +919,20 @@ class JEPATrainer:
                     continue
 
                 step_out = self.train_step(modality, batch)
+                # train_step has already advanced both self.global_step
+                # and self.modality_step[modality] -- do NOT increment
+                # again here (4.8 review 2026-06-06 item A).
                 self._update_coverage(modality, batch)
 
-                # Logging.
+                # Logging fires on this modality's *own* step count, so
+                # rare modalities are instrumented on their own cadence
+                # rather than on the global step counter (item A).
+                m_step = self.modality_step[modality]
                 light_due = (
-                    (self.global_step + 1) % self.config.logging.light_interval_batches == 0
+                    m_step % self.config.logging.light_interval_batches == 0
                 )
                 deep_due = (
-                    (self.global_step + 1) % self.config.logging.deep_interval_batches == 0
+                    m_step % self.config.logging.deep_interval_batches == 0
                 )
                 if light_due or deep_due:
                     record = self._compute_and_log_diagnostics(
@@ -897,7 +950,6 @@ class JEPATrainer:
                     self._checkpoint(reason=f"kill:{kill_reason}")
                     return f"killed:{kill_reason}"
 
-                self.global_step += 1
                 steps_this_epoch += 1
 
                 if (

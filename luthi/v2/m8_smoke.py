@@ -191,15 +191,19 @@ def run_smoke_phase(
         modality = sampler.sample()
         batch = trainer.data_loader.next_batch(modality)
         step_out = trainer.train_step(modality, batch)
+        # train_step advances both global_step and modality_step[modality]
+        # internally (per 4.8 review 2026-06-06 item A) -- don't increment
+        # them again in this loop.
         trainer._update_coverage(modality, batch)
 
+        # Cadence keys off the modality's own step counter so rare
+        # modalities are instrumented on their own clock (item A).
+        m_step = trainer.modality_step[modality]
         light_due = (
-            (trainer.global_step + 1)
-            % trainer.config.logging.light_interval_batches == 0
+            m_step % trainer.config.logging.light_interval_batches == 0
         )
         deep_due = (
-            (trainer.global_step + 1)
-            % trainer.config.logging.deep_interval_batches == 0
+            m_step % trainer.config.logging.deep_interval_batches == 0
         )
         if light_due or deep_due:
             record = trainer._compute_and_log_diagnostics(
@@ -222,7 +226,6 @@ def run_smoke_phase(
                 f"smoke (warmup should have masked it): {kill_reason}"
             )
 
-        trainer.global_step += 1
     return records
 
 
@@ -357,6 +360,7 @@ def main() -> int:
         "loader_state": trainer1.data_loader.state_dict(),
         "sampler_gen_state": trainer1.sampler.generator.get_state().clone(),
         "global_step": trainer1.global_step,
+        "modality_step": dict(trainer1.modality_step),
         "tokens_consumed": dict(trainer1.tokens_consumed),
     }
 
@@ -392,8 +396,14 @@ def main() -> int:
     # fail the smoke).
     if trainer2.global_step != pre_kill["global_step"]:
         raise AssertionError(
-            f"[smoke] resume step mismatch: trainer2={trainer2.global_step} "
+            f"[smoke] resume global_step mismatch: trainer2={trainer2.global_step} "
             f"pre_kill={pre_kill['global_step']}"
+        )
+    if dict(trainer2.modality_step) != pre_kill["modality_step"]:
+        raise AssertionError(
+            f"[smoke] resume modality_step mismatch: "
+            f"trainer2={dict(trainer2.modality_step)} "
+            f"pre_kill={pre_kill['modality_step']}"
         )
     if dict(trainer2.tokens_consumed) != pre_kill["tokens_consumed"]:
         raise AssertionError(
