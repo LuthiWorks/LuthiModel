@@ -63,8 +63,23 @@ from luthi.v2.multimodal_model_pc import MultimodalPredictiveCodingLM
 
 # Defaults assume the standard repo layout.
 DEFAULT_TOKENIZER = Path("corpus_build/tokenizer_32k.json")
+# Plumbing smoke is corpus-agnostic; pointing at m7_filelist.txt for
+# convenience (any 5 text files would work). Does NOT imply this is the
+# M8 baseline corpus -- v0.5 §2 specifies gutenberg_4gb, and that
+# question is separate from this smoke's pass/fail.
 DEFAULT_FILELIST = Path("corpus_build/m7_filelist.txt")
 DEFAULT_RUN_DIR = Path("runs/m8_smoke")
+
+
+def _param_l1_checksum(module: torch.nn.Module) -> float:
+    """Sum of L1 norms across all parameters. Deterministic single float
+    that changes if any parameter changes -- used to verify resume
+    actually round-trips state (not just "loss didn't explode").
+    """
+    total = 0.0
+    for p in module.parameters():
+        total += float(p.detach().abs().sum().item())
+    return total
 
 
 def parse_args() -> argparse.Namespace:
@@ -138,8 +153,16 @@ def build_smoke_trainer(
         checkpoint=CheckpointConfig(interval_seconds=10**9, rolling_slots=3),
         logging=LoggingConfig(light_interval_batches=5, deep_interval_batches=20),
         kill_criteria=KillCriteriaConfig(
-            warmup_batches=10,  # short warmup so kill checks activate during smoke
-            loss_descent_window=200,  # large enough not to trigger in smoke
+            # Set warmup beyond the smoke length so kill criteria stay
+            # inactive throughout. Early in training the EMA target is
+            # ~identical to online (deepcopy + momentum 0.996 has barely
+            # diverged), so encoder-asymmetry cosine reads ~1.0 -- not
+            # because of collapse but because of initialization. Tripping
+            # kill-5 in the smoke would be a false positive. Real-run
+            # warmup is 5000; a synthetic-collapse test exercises the
+            # kill path separately.
+            warmup_batches=10**9,
+            loss_descent_window=200,
         ),
         epoch=EpochConfig(max_epochs=1, max_batches_per_epoch=10**9),
     )
@@ -184,11 +207,15 @@ def run_smoke_phase(
             )
             records.append(record)
 
+        # Kill checks are run but only logged in the smoke -- with warmup
+        # set beyond the smoke length, they should never trigger; if they
+        # do, surface the fact rather than failing the smoke (kill-path
+        # behavior gets its own dedicated test, not this plumbing run).
         kill_reason = trainer._check_kill_criteria(modality)
         if kill_reason is not None:
-            raise RuntimeError(
-                f"[smoke {phase_name}] Unexpected kill at step "
-                f"{trainer.global_step}: {kill_reason}"
+            print(
+                f"[smoke {phase_name}] WARN: kill criterion fired during "
+                f"smoke (warmup should have masked it): {kill_reason}"
             )
 
         trainer.global_step += 1
@@ -316,6 +343,19 @@ def main() -> int:
         raise AssertionError(f"[smoke] no checkpoint written under {ckpt_dir}")
     print(f"[smoke] Checkpoint written: {ckpts[-1].name}")
 
+    # Snapshot state before kill so we can verify resume actually
+    # round-trips, not just that loss didn't explode (per 4.8 review
+    # 2026-06-06).
+    pre_kill = {
+        "online_checksum": _param_l1_checksum(trainer1.loss_module.online_encoder),
+        "target_checksum": _param_l1_checksum(trainer1.loss_module.target_encoder),
+        "predictor_checksum": _param_l1_checksum(trainer1.loss_module.predictor),
+        "loader_state": trainer1.data_loader.state_dict(),
+        "sampler_gen_state": trainer1.sampler.generator.get_state().clone(),
+        "global_step": trainer1.global_step,
+        "tokens_consumed": dict(trainer1.tokens_consumed),
+    }
+
     # Drop trainer1 to simulate process death.
     final_step_phase1 = trainer1.global_step
     del trainer1
@@ -341,11 +381,53 @@ def main() -> int:
     print(
         f"[smoke] Resumed from {ckpt_loaded.name} at step {trainer2.global_step}"
     )
-    if trainer2.global_step != final_step_phase1:
+
+    # Verify resume actually round-tripped state (per 4.8 review
+    # 2026-06-06: not just "loss didn't explode" -- exact state match
+    # so a regression where resume_from_latest silently re-inits would
+    # fail the smoke).
+    if trainer2.global_step != pre_kill["global_step"]:
         raise AssertionError(
             f"[smoke] resume step mismatch: trainer2={trainer2.global_step} "
-            f"phase1_final={final_step_phase1}"
+            f"pre_kill={pre_kill['global_step']}"
         )
+    if dict(trainer2.tokens_consumed) != pre_kill["tokens_consumed"]:
+        raise AssertionError(
+            f"[smoke] resume tokens_consumed mismatch: "
+            f"trainer2={dict(trainer2.tokens_consumed)} "
+            f"pre_kill={pre_kill['tokens_consumed']}"
+        )
+    post = {
+        "online_checksum": _param_l1_checksum(trainer2.loss_module.online_encoder),
+        "target_checksum": _param_l1_checksum(trainer2.loss_module.target_encoder),
+        "predictor_checksum": _param_l1_checksum(trainer2.loss_module.predictor),
+    }
+    for key in ("online_checksum", "target_checksum", "predictor_checksum"):
+        if post[key] != pre_kill[key]:
+            raise AssertionError(
+                f"[smoke] resume {key} mismatch: "
+                f"pre={pre_kill[key]:.6f} post={post[key]:.6f} "
+                f"(loaded state != saved state -- resume_from_latest "
+                f"is not actually restoring parameters)"
+            )
+    post_loader_state = trainer2.data_loader.state_dict()
+    if post_loader_state != pre_kill["loader_state"]:
+        raise AssertionError(
+            f"[smoke] resume loader state mismatch: "
+            f"pre={pre_kill['loader_state']} post={post_loader_state} "
+            f"(without-replacement guarantee not surviving resume)"
+        )
+    post_sampler_gen = trainer2.sampler.generator.get_state()
+    if not torch.equal(post_sampler_gen, pre_kill["sampler_gen_state"]):
+        raise AssertionError(
+            "[smoke] resume sampler generator state mismatch "
+            "(sampler RNG not restored from checkpoint)"
+        )
+    print(
+        "[smoke] Resume state round-trip OK: "
+        "online/target/predictor params + loader shuffle position + "
+        "sampler RNG all match pre-kill snapshot."
+    )
 
     print(f"[smoke] Phase 2: running {args.phase2_steps} steps ...")
     records2 = run_smoke_phase(trainer2, sampler2, args.phase2_steps, "phase2")

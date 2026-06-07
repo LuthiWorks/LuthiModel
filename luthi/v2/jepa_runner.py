@@ -160,18 +160,24 @@ class ModalitySampler:
 
     def __init__(self, config: SamplerConfig, generator: Optional[torch.Generator] = None):
         sizes = config.corpus_sizes_tokens
-        missing = [m for m in MODALITIES if m not in sizes]
-        if missing:
+        if not sizes:
+            raise ValueError("corpus_sizes_tokens cannot be empty")
+        unknown = [m for m in sizes if m not in MODALITIES]
+        if unknown:
             raise ValueError(
-                f"corpus_sizes_tokens missing modalities: {missing}"
+                f"corpus_sizes_tokens has unknown modalities: {unknown}; "
+                f"expected subset of {MODALITIES}"
             )
-
+        # Only modalities present in sizes participate in sampling. Text-
+        # only smoke / single-modality runs configure sizes with just
+        # {"text": ...}; absent modalities are silently zero-probability.
+        present = tuple(m for m in MODALITIES if m in sizes)
         weights = torch.tensor(
-            [sizes[m] ** config.alpha for m in MODALITIES],
+            [sizes[m] ** config.alpha for m in present],
             dtype=torch.float64,
         )
         self.probs = weights / weights.sum()
-        self.modalities = MODALITIES
+        self.modalities = present
         self.generator = generator
         self.alpha = config.alpha
         self.corpus_sizes_tokens = dict(sizes)
@@ -655,10 +661,13 @@ class JEPATrainer:
         self.tokens_consumed[modality] += n_tokens
 
     def _epoch_done(self) -> bool:
-        """Coverage anchor: every modality has consumed >= 1 corpus-worth
-        of tokens beyond its epoch baseline (v0.5 §3, F5 from 4.8 2026-06-06).
+        """Coverage anchor: every modality registered with the sampler has
+        consumed >= 1 corpus-worth of tokens beyond its epoch baseline
+        (v0.5 §3, F5 from 4.8 2026-06-06). Modalities absent from the
+        sampler (e.g. text-only runs) are skipped -- they cannot be
+        sampled, so they have no coverage to wait on.
         """
-        for m in MODALITIES:
+        for m in self.sampler.modalities:
             target = self.sampler.corpus_sizes_tokens[m]
             if self.tokens_consumed[m] - self.epoch_token_baseline[m] < target:
                 return False
