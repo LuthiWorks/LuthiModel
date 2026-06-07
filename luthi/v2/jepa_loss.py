@@ -495,5 +495,10 @@ class JEPALoss(nn.Module):
             "target_std_ema": target_std_ema.detach().clone(),
             "online_context_latents": online_context_latents.detach(),
             "target_latents": target_latents.detach(),
+            # predicted_target detached so the runner can compute the
+            # predictor-trivial cosine (kill-5's second axis) without
+            # retaining the predictor's compute graph (4.8 review
+            # 2026-06-06 #9 cheap-win 2026-06-07).
+            "predicted_target": predicted_target.detach(),
             "ctx_len": ctx_len,
         }

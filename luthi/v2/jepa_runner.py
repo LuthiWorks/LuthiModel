@@ -570,16 +570,15 @@ class JEPATrainer:
             light_m = _light_collapse_metrics(
                 online_context_latents=raw["online_context_latents"],
                 target_latents=raw["target_latents"],
-                predicted_target=None,  # see note below
+                # JEPALoss returns predicted_target detached (no graph
+                # retention), so the predictor-trivial cosine is now live
+                # in the light metrics (kill-5's second axis -- 4.8 review
+                # 2026-06-06 #9 cheap-win 2026-06-07).
+                predicted_target=raw.get("predicted_target"),
                 ctx_len=raw["ctx_len"],
                 online_std=raw["online_std"],
                 target_std=raw["target_std"],
             )
-            # Note: predicted_target isn't in raw because we chose not to
-            # surface it from JEPALoss to avoid retaining it across the
-            # backward graph. Predictor-trivial cosine in a later pass
-            # via an inference-only call if we want it; for now the
-            # encoder-asymmetry cosine is the primary kill-5 signal.
             record["light"] = light_m
             self.history.push(modality, light_m)
 
@@ -658,7 +657,8 @@ class JEPATrainer:
                 f"{cfg.dimensional_sustained_checkpoints} checkpoints"
             )
 
-        # Criterion 5: predictor-trivial / encoder-asymmetry cosine.
+        # Criterion 5: encoder-asymmetry cosine -- online and target
+        # encoders collapsed to the same representation.
         recent_cos = self.history.recent(
             modality,
             "encoder_asymmetry_cosine_mean",
@@ -670,6 +670,26 @@ class JEPATrainer:
             return (
                 f"kill-5 (encoder asymmetry lost) on {modality}: "
                 f"online-vs-target cosine > {cfg.cosine_collapse_threshold} for "
+                f"{cfg.dimensional_sustained_checkpoints} checkpoints"
+            )
+
+        # Criterion 5 (second axis, added 2026-06-07): predictor-trivial
+        # cosine -- predictor learned the identity / target representation
+        # without learning to predict it. Distinct from encoder-asymmetry
+        # because the encoders can be diverged but the predictor still
+        # trivial; both indicate kill-5 family failures (4.8 review
+        # 2026-06-06 #9 cheap-win).
+        recent_pred_cos = self.history.recent(
+            modality,
+            "predictor_trivial_cosine_mean",
+            cfg.dimensional_sustained_checkpoints,
+        )
+        if len(recent_pred_cos) >= cfg.dimensional_sustained_checkpoints and all(
+            v > cfg.cosine_collapse_threshold for v in recent_pred_cos
+        ):
+            return (
+                f"kill-5 (predictor-trivial) on {modality}: "
+                f"predicted-vs-target cosine > {cfg.cosine_collapse_threshold} for "
                 f"{cfg.dimensional_sustained_checkpoints} checkpoints"
             )
 
