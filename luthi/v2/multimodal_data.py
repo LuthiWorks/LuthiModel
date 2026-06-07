@@ -294,31 +294,318 @@ class _ModalityStub:
         return None
 
 
-class AudioDataset(_ModalityStub):
-    """LibriSpeech waveform stream (NOT YET IMPLEMENTED).
+# ---------------------------------------------------------------------------
+# Audio dataset (LibriSpeech)
+# ---------------------------------------------------------------------------
 
-    When implemented, will yield ``{"audio_waveform": Tensor[B, samples]}``
-    of raw 16 kHz audio. The AudioEncoder in the model will run the mel
-    spectrogram + patch embedding inside its forward, so the encoder
-    trains. Do NOT pre-compute audio_tokens here -- bypassing the
-    encoder during training is the gradient trap 4.8 flagged.
+
+@dataclass
+class AudioDatasetConfig:
+    """Configuration for the LibriSpeech audio path.
+
+    root: directory containing .flac files (recursively scanned). For M8
+        baseline: ``Path("E:/data/LibriSpeech/train-clean-100")``; use
+        ``dev-clean`` for held-out evaluation.
+    batch_size: waveforms per batch.
+    max_audio_samples: fixed sample length; waveforms padded/truncated to
+        this. Default 80000 = 5 seconds at 16 kHz.
+    sample_rate: target sample rate; loaded waveforms resampled if
+        different. LibriSpeech is 16 kHz natively.
+    audio_encoder_hop_length / audio_encoder_patch_frames: must match
+        the model's AudioEncoder so ``tokens_per_pass`` matches the actual
+        per-batch token output. Defaults match
+        ``MultimodalPredictiveCodingLM`` defaults.
+    base_seed: deterministic seed for shuffling.
+
+    **Yields RAW waveforms** -- ``{"audio_waveform": Tensor[B, samples]}``,
+    NOT pre-encoded audio_tokens. The AudioEncoder runs inside the model's
+    forward; yielding tokens here would bypass the encoder and starve it
+    of gradient (per 4.8 review 2026-06-06 yield-raw contract).
     """
 
-    def __init__(self):
-        super().__init__("audio")
+    root: Path
+    batch_size: int
+    max_audio_samples: int = 80000  # 5s @ 16 kHz
+    sample_rate: int = 16000
+    audio_encoder_hop_length: int = 160
+    audio_encoder_patch_frames: int = 16
+    base_seed: int = 42
 
 
-class VisionDataset(_ModalityStub):
-    """COCO image stream (NOT YET IMPLEMENTED).
+class AudioDataset:
+    """LibriSpeech waveform stream. Yields raw waveform tensors.
 
-    When implemented, will yield ``{"image": Tensor[B, 3, H, W]}`` of
-    ImageNet-normalized RGB images at 224x224 (matching VisionEncoder
-    defaults). The VisionEncoder will produce 196 patch tokens internally.
-    Do NOT pre-compute vision_tokens here.
+    Indexes .flac files recursively from ``config.root`` on construction;
+    per-batch lazy-loads waveforms via ``torchaudio.load``. One sample per
+    file per epoch in a deterministic shuffled order; reshuffles between
+    epochs.
     """
 
-    def __init__(self):
-        super().__init__("vision")
+    def __init__(self, config: AudioDatasetConfig):
+        # Lazy import torchaudio so a text-only run doesn't require it
+        # at module-load time.
+        import torchaudio
+        self._torchaudio = torchaudio
+        self.config = config
+
+        root = Path(config.root)
+        if not root.exists():
+            raise FileNotFoundError(
+                f"AudioDataset root does not exist: {root}. For M8 the "
+                f"typical path is E:/data/LibriSpeech/train-clean-100."
+            )
+        self._audio_paths = sorted(root.rglob("*.flac"))
+        if not self._audio_paths:
+            raise ValueError(
+                f"AudioDataset found no .flac files under {root}. "
+                f"LibriSpeech subset directories contain "
+                f"<speaker>/<chapter>/*.flac."
+            )
+        self._n_samples = len(self._audio_paths)
+
+        # tokens_per_sample matches AudioEncoder's internal patch math:
+        # mel frames = samples // hop_length; tokens = frames // patch_frames.
+        n_frames = config.max_audio_samples // config.audio_encoder_hop_length
+        self._tokens_per_sample = n_frames // config.audio_encoder_patch_frames
+        if self._tokens_per_sample < 1:
+            raise ValueError(
+                f"AudioDataset config yields < 1 token per sample "
+                f"(max_audio_samples={config.max_audio_samples}, "
+                f"hop_length={config.audio_encoder_hop_length}, "
+                f"patch_frames={config.audio_encoder_patch_frames})."
+            )
+
+        # Iteration state (mirrors TextDataset).
+        self._epoch_index = 0
+        self._pos_within_epoch = 0
+        self._shuffle: Optional[torch.Tensor] = None
+        self._build_shuffle_for_epoch(self._epoch_index)
+
+    # -- Public API --
+
+    def next_batch(self) -> dict:
+        bs = self.config.batch_size
+        if self._shuffle is None:
+            self._build_shuffle_for_epoch(self._epoch_index)
+        assert self._shuffle is not None
+
+        end_pos = self._pos_within_epoch + bs
+        if end_pos > self._n_samples:
+            partial = self._shuffle[self._pos_within_epoch :].tolist()
+            self._epoch_index += 1
+            self._build_shuffle_for_epoch(self._epoch_index)
+            self._pos_within_epoch = 0
+            rem = bs - len(partial)
+            second = self._shuffle[:rem].tolist()
+            self._pos_within_epoch = rem
+            indices = partial + second
+        else:
+            indices = self._shuffle[self._pos_within_epoch : end_pos].tolist()
+            self._pos_within_epoch = end_pos
+
+        waveforms = [self._load_one(self._audio_paths[i]) for i in indices]
+        return {"audio_waveform": torch.stack(waveforms, dim=0)}
+
+    def batch_token_count(self, batch: dict) -> int:
+        return int(batch["audio_waveform"].shape[0]) * int(self._tokens_per_sample)
+
+    def tokens_per_pass(self) -> int:
+        return int(self._n_samples) * int(self._tokens_per_sample)
+
+    def unique_sample_count(self) -> int:
+        return int(self._n_samples)
+
+    def state_dict(self) -> dict:
+        return {
+            "epoch_index": int(self._epoch_index),
+            "pos_within_epoch": int(self._pos_within_epoch),
+        }
+
+    def load_state_dict(self, state: dict) -> None:
+        self._epoch_index = int(state["epoch_index"])
+        self._pos_within_epoch = int(state["pos_within_epoch"])
+        self._build_shuffle_for_epoch(self._epoch_index)
+
+    # -- Internals --
+
+    def _load_one(self, path: Path) -> torch.Tensor:
+        """Load + mono + resample + pad/truncate."""
+        waveform, sr = self._torchaudio.load(str(path))
+        if waveform.shape[0] > 1:
+            waveform = waveform.mean(dim=0, keepdim=True)
+        waveform = waveform.squeeze(0)  # [samples]
+        if sr != self.config.sample_rate:
+            resampler = self._torchaudio.transforms.Resample(sr, self.config.sample_rate)
+            waveform = resampler(waveform)
+        n = waveform.shape[0]
+        if n > self.config.max_audio_samples:
+            waveform = waveform[: self.config.max_audio_samples]
+        elif n < self.config.max_audio_samples:
+            pad = torch.zeros(self.config.max_audio_samples - n)
+            waveform = torch.cat([waveform, pad])
+        return waveform
+
+    def _build_shuffle_for_epoch(self, epoch_index: int) -> None:
+        seed = self.config.base_seed ^ (epoch_index * 0x9E3779B97F4A7C15) & 0xFFFFFFFFFFFFFFFF
+        gen = torch.Generator(device="cpu")
+        gen.manual_seed(int(seed & 0x7FFFFFFFFFFFFFFF))
+        self._shuffle = torch.randperm(self._n_samples, generator=gen)
+
+
+# ---------------------------------------------------------------------------
+# Vision dataset (COCO)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class VisionDatasetConfig:
+    """Configuration for the COCO vision path.
+
+    root: directory containing .jpg images. For M8 baseline:
+        ``Path("E:/data/coco/train2017")``; use ``val2017`` for held-out
+        evaluation.
+    batch_size: images per batch.
+    image_size: square size in pixels. Default 224 matches VisionEncoder.
+    patch_size: patch size in pixels. Default 16 matches VisionEncoder
+        (224 / 16 = 14, so 14*14 = 196 tokens per image).
+    normalization: ``"imagenet"`` applies ImageNet mean/std (recommended);
+        ``"none"`` skips. VisionEncoder expects approximately zero-mean
+        unit-variance input.
+    base_seed: deterministic seed for shuffling.
+
+    **Yields RAW images** -- ``{"image": Tensor[B, 3, H, W]}`` --
+    NOT pre-encoded vision_tokens. The VisionEncoder runs inside the
+    model's forward.
+    """
+
+    root: Path
+    batch_size: int
+    image_size: int = 224
+    patch_size: int = 16
+    normalization: str = "imagenet"
+    base_seed: int = 42
+
+
+class VisionDataset:
+    """COCO image stream. Yields raw normalized image tensors.
+
+    Indexes .jpg files (flat) from ``config.root`` on construction;
+    per-batch lazy-loads via PIL + torchvision transforms. One sample
+    per image per epoch in a deterministic shuffled order.
+    """
+
+    def __init__(self, config: VisionDatasetConfig):
+        # Lazy imports.
+        from PIL import Image
+        from torchvision import transforms
+        self._Image = Image
+        self.config = config
+
+        root = Path(config.root)
+        if not root.exists():
+            raise FileNotFoundError(
+                f"VisionDataset root does not exist: {root}. For M8 the "
+                f"typical path is E:/data/coco/train2017."
+            )
+        # COCO train2017/val2017 are flat directories of .jpg files.
+        self._image_paths = sorted(root.glob("*.jpg"))
+        if not self._image_paths:
+            raise ValueError(
+                f"VisionDataset found no .jpg files in {root}."
+            )
+        self._n_samples = len(self._image_paths)
+
+        if config.image_size % config.patch_size != 0:
+            raise ValueError(
+                f"image_size={config.image_size} not divisible by "
+                f"patch_size={config.patch_size}"
+            )
+        per_side = config.image_size // config.patch_size
+        self._tokens_per_sample = per_side * per_side
+
+        if config.normalization == "imagenet":
+            self._transform = transforms.Compose([
+                transforms.Resize((config.image_size, config.image_size)),
+                transforms.ToTensor(),
+                transforms.Normalize(
+                    mean=[0.485, 0.456, 0.406],
+                    std=[0.229, 0.224, 0.225],
+                ),
+            ])
+        elif config.normalization == "none":
+            self._transform = transforms.Compose([
+                transforms.Resize((config.image_size, config.image_size)),
+                transforms.ToTensor(),
+            ])
+        else:
+            raise ValueError(f"Unknown normalization: {config.normalization!r}")
+
+        # Iteration state.
+        self._epoch_index = 0
+        self._pos_within_epoch = 0
+        self._shuffle: Optional[torch.Tensor] = None
+        self._build_shuffle_for_epoch(self._epoch_index)
+
+    # -- Public API --
+
+    def next_batch(self) -> dict:
+        bs = self.config.batch_size
+        if self._shuffle is None:
+            self._build_shuffle_for_epoch(self._epoch_index)
+        assert self._shuffle is not None
+
+        end_pos = self._pos_within_epoch + bs
+        if end_pos > self._n_samples:
+            partial = self._shuffle[self._pos_within_epoch :].tolist()
+            self._epoch_index += 1
+            self._build_shuffle_for_epoch(self._epoch_index)
+            self._pos_within_epoch = 0
+            rem = bs - len(partial)
+            second = self._shuffle[:rem].tolist()
+            self._pos_within_epoch = rem
+            indices = partial + second
+        else:
+            indices = self._shuffle[self._pos_within_epoch : end_pos].tolist()
+            self._pos_within_epoch = end_pos
+
+        images = [self._load_one(self._image_paths[i]) for i in indices]
+        return {"image": torch.stack(images, dim=0)}
+
+    def batch_token_count(self, batch: dict) -> int:
+        return int(batch["image"].shape[0]) * int(self._tokens_per_sample)
+
+    def tokens_per_pass(self) -> int:
+        return int(self._n_samples) * int(self._tokens_per_sample)
+
+    def unique_sample_count(self) -> int:
+        return int(self._n_samples)
+
+    def state_dict(self) -> dict:
+        return {
+            "epoch_index": int(self._epoch_index),
+            "pos_within_epoch": int(self._pos_within_epoch),
+        }
+
+    def load_state_dict(self, state: dict) -> None:
+        self._epoch_index = int(state["epoch_index"])
+        self._pos_within_epoch = int(state["pos_within_epoch"])
+        self._build_shuffle_for_epoch(self._epoch_index)
+
+    # -- Internals --
+
+    def _load_one(self, path: Path) -> torch.Tensor:
+        with self._Image.open(path) as pil:
+            # Some COCO images are grayscale (mode "L"); convert to RGB
+            # so the Conv2d patch embedding gets 3 channels.
+            if pil.mode != "RGB":
+                pil = pil.convert("RGB")
+            return self._transform(pil)
+
+    def _build_shuffle_for_epoch(self, epoch_index: int) -> None:
+        seed = self.config.base_seed ^ (epoch_index * 0x9E3779B97F4A7C15) & 0xFFFFFFFFFFFFFFFF
+        gen = torch.Generator(device="cpu")
+        gen.manual_seed(int(seed & 0x7FFFFFFFFFFFFFFF))
+        self._shuffle = torch.randperm(self._n_samples, generator=gen)
 
 
 # ---------------------------------------------------------------------------
@@ -471,3 +758,52 @@ def build_text_only_loader(
         base_seed=base_seed,
     ))
     return MultimodalDataLoaderImpl(text=text)
+
+
+def build_multimodal_loader(
+    text_source_paths: list[Path | str],
+    text_tokenizer_path: Path,
+    text_batch_size: int,
+    audio_root: Path,
+    audio_batch_size: int,
+    vision_root: Path,
+    vision_batch_size: int,
+    text_seq_len: int = 128,
+    text_stride: int = 64,
+    audio_max_samples: int = 80000,
+    vision_image_size: int = 224,
+    vision_patch_size: int = 16,
+    base_seed: int = 42,
+) -> MultimodalDataLoaderImpl:
+    """Builds a three-modality ``MultimodalDataLoaderImpl`` for multimodal
+    M8 runs and the multimodal smoke. Each per-modality dataset gets a
+    slightly offset seed so the three modalities' shuffles do not
+    accidentally correlate.
+
+    Paths for the v0.5 §2 baseline (Brian's hardware as of 2026-06-07):
+        text:   files / dirs under E:/data/gutenberg_4gb (or m7 subset)
+        audio:  E:/data/LibriSpeech/train-clean-100
+        vision: E:/data/coco/train2017
+    """
+    text = TextDataset(TextDatasetConfig(
+        source_paths=list(text_source_paths),
+        tokenizer_path=Path(text_tokenizer_path),
+        batch_size=text_batch_size,
+        seq_len=text_seq_len,
+        stride=text_stride,
+        base_seed=base_seed,
+    ))
+    audio = AudioDataset(AudioDatasetConfig(
+        root=Path(audio_root),
+        batch_size=audio_batch_size,
+        max_audio_samples=audio_max_samples,
+        base_seed=base_seed + 1,
+    ))
+    vision = VisionDataset(VisionDatasetConfig(
+        root=Path(vision_root),
+        batch_size=vision_batch_size,
+        image_size=vision_image_size,
+        patch_size=vision_patch_size,
+        base_seed=base_seed + 2,
+    ))
+    return MultimodalDataLoaderImpl(text=text, audio=audio, vision=vision)
