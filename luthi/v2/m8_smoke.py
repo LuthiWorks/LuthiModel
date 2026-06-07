@@ -206,6 +206,10 @@ def run_smoke_phase(
                 step_out, light=light_due, deep=deep_due,
             )
             records.append(record)
+            # Exercise the human-readable log path too (per 4.8 2026-06-06:
+            # the prior smoke skipped this and training.log was never
+            # written; we want to verify both log writers work).
+            trainer._human_log_line(record)
 
         # Kill checks are run but only logged in the smoke -- with warmup
         # set beyond the smoke length, they should never trigger; if they
@@ -449,6 +453,20 @@ def main() -> int:
         cfg = json.load(f)
     if "sampler_probabilities" not in cfg:
         raise AssertionError("[smoke] run_config.json missing sampler_probabilities")
+
+    # Both log writers exercised? (per 4.8 2026-06-06).
+    jsonl_path = args.run_dir / "training_log.jsonl"
+    human_log_path = args.run_dir / "training.log"
+    if not jsonl_path.exists():
+        raise AssertionError(f"[smoke] training_log.jsonl not written at {jsonl_path}")
+    if not human_log_path.exists():
+        raise AssertionError(
+            f"[smoke] training.log not written at {human_log_path} -- "
+            f"the smoke's loop must call trainer._human_log_line after "
+            f"_compute_and_log_diagnostics to exercise that path."
+        )
+    if human_log_path.stat().st_size == 0:
+        raise AssertionError(f"[smoke] training.log is empty at {human_log_path}")
 
     print("[smoke] PASSED")
     return 0
