@@ -118,6 +118,14 @@ class KillCriteriaConfig:
     # Sustained-trigger requirements (consecutive checkpoint counts).
     collapse_sustained_checkpoints: int = 3
     dimensional_sustained_checkpoints: int = 5
+    # Kill-6 substrate-health baselines, per modality (v0.5 §7.6).
+    # Width-dependent: at 1024d set from M7 launch.log (literal M7
+    # baseline, batch-aligned); at 256d leave None and pilot-set from
+    # the warmup window (the pilot-set derivation lives in a follow-up
+    # #9 item -- kill-6's wiring is here, baseline derivation comes
+    # next). When a modality has no entry, kill-6 stays inert for it.
+    # Each entry: {"pred_frob": float, "err_acc": float}.
+    substrate_health_baselines: Optional[dict[str, dict[str, float]]] = None
 
 
 @dataclass
@@ -329,6 +337,42 @@ def _light_collapse_metrics(
         metrics["predictor_output_std_p50"] = _percentile(pred_std, 0.50)
 
     return metrics
+
+
+def _substrate_health_metrics(model: MultimodalPredictiveCodingLM) -> dict:
+    """Per-step substrate-health aggregates (v0.5 §7.6 / kill-6 source).
+
+    Calls ``model.aliveness_report()`` to get per-block PC layer state,
+    then aggregates to single scalars matching the M7 launch.log
+    conventions:
+
+    - ``pred_frob`` = mean of ``prediction_norm`` across blocks. M7
+      baseline at 1024d climbed 4.02 -> 4.59 over the 47h run; healthy
+      trajectory is monotonically increasing (substrate building
+      predictive structure). Kill-6: degraded = below baseline by
+      ``substrate_health_degradation_pct``.
+    - ``err_acc`` = mean of ``error_acc_mean`` across blocks. M7
+      baseline at 1024d descended 0.015 -> 0.003; healthy trajectory is
+      decreasing (substrate learning to predict its own input).
+      Kill-6: degraded = above baseline by the same fraction.
+    """
+    aliveness = model.aliveness_report()
+    pred_norms = [
+        a["prediction_norm"] for a in aliveness if "prediction_norm" in a
+    ]
+    err_accs = [
+        a["error_acc_mean"] for a in aliveness if "error_acc_mean" in a
+    ]
+    return {
+        "pred_frob": (
+            float(sum(pred_norms) / len(pred_norms))
+            if pred_norms else float("nan")
+        ),
+        "err_acc": (
+            float(sum(err_accs) / len(err_accs))
+            if err_accs else float("nan")
+        ),
+    }
 
 
 def _deep_collapse_metrics(online_context_latents: torch.Tensor) -> dict:
@@ -582,6 +626,16 @@ class JEPATrainer:
             record["light"] = light_m
             self.history.push(modality, light_m)
 
+            # Kill-6 source (v0.5 §7.6 / 4.8 review 2026-06-06 #9 item):
+            # substrate health from aliveness_report. Computed every
+            # light firing so the same per-modality cadence governs
+            # kill-6 as the collapse criteria.
+            substrate_m = _substrate_health_metrics(
+                self.loss_module.online_encoder,
+            )
+            record["substrate"] = substrate_m
+            self.history.push(modality, substrate_m)
+
         if deep:
             deep_m = _deep_collapse_metrics(raw["online_context_latents"])
             record["deep"] = deep_m
@@ -692,6 +746,54 @@ class JEPATrainer:
                 f"predicted-vs-target cosine > {cfg.cosine_collapse_threshold} for "
                 f"{cfg.dimensional_sustained_checkpoints} checkpoints"
             )
+
+        # Criterion 6: substrate override on pred_frob / err_acc
+        # (v0.5 §7.6, wired 2026-06-08). Per-modality baseline either
+        # comes from KillCriteriaConfig.substrate_health_baselines (at
+        # 1024d: literal M7 launch.log values; at 256d: pilot-set from
+        # warmup -- the pilot-set derivation is the next #9 item).
+        # When no baseline is provided for a modality, kill-6 stays
+        # inert for that modality.
+        if cfg.substrate_health_baselines is not None:
+            baseline = cfg.substrate_health_baselines.get(modality)
+            if baseline is not None:
+                deg = cfg.substrate_health_degradation_pct
+                pf_baseline = baseline.get("pred_frob")
+                ea_baseline = baseline.get("err_acc")
+
+                if pf_baseline is not None:
+                    pf_threshold = pf_baseline * (1.0 - deg)
+                    recent_pf = self.history.recent(
+                        modality, "pred_frob", cfg.substrate_health_window,
+                    )
+                    if (
+                        len(recent_pf) >= cfg.substrate_health_window
+                        and all(v < pf_threshold for v in recent_pf)
+                    ):
+                        return (
+                            f"kill-6 (substrate override, pred_frob) on "
+                            f"{modality}: pred_frob < {pf_threshold:.4f} "
+                            f"(baseline {pf_baseline:.4f}, degradation "
+                            f"threshold {deg:.0%}) for "
+                            f"{cfg.substrate_health_window} checkpoints"
+                        )
+
+                if ea_baseline is not None:
+                    ea_threshold = ea_baseline * (1.0 + deg)
+                    recent_ea = self.history.recent(
+                        modality, "err_acc", cfg.substrate_health_window,
+                    )
+                    if (
+                        len(recent_ea) >= cfg.substrate_health_window
+                        and all(v > ea_threshold for v in recent_ea)
+                    ):
+                        return (
+                            f"kill-6 (substrate override, err_acc) on "
+                            f"{modality}: err_acc > {ea_threshold:.4f} "
+                            f"(baseline {ea_baseline:.4f}, degradation "
+                            f"threshold {deg:.0%}) for "
+                            f"{cfg.substrate_health_window} checkpoints"
+                        )
 
         # Criterion 7 (smoothed total loss descent) is global, not per-
         # modality; check it after warmup once smoothed buffer is full.
