@@ -101,31 +101,56 @@ class LoggingConfig:
 
 @dataclass
 class KillCriteriaConfig:
-    """v0.5 §7 thresholds. Pilot-set thresholds derived from M8's own
-    early healthy trajectory; warmup_batches determines when criteria
-    activate. The first warmup_batches establish baselines (observe-only);
-    after warmup the kill criteria are enforced."""
+    """v0.5 §7 thresholds with the pilot-set derivation per 4.8 review
+    2026-06-08. Three metric classes, three handling rules (the
+    classification 4.8 worked out before implementation):
 
-    warmup_batches: int = 5000  # observe-only for first 5K batches
-    # Pilot-set thresholds, derived from warmup; defaults are fallbacks
-    # in case warmup data is degenerate.
-    std_collapse_threshold: float = 0.1  # criterion 1: 5th-pct std floor
-    correlation_collapse_threshold: float = 0.95  # criterion 3
-    cosine_collapse_threshold: float = 0.99  # criterion 5
-    substrate_health_degradation_pct: float = 0.25  # criterion 6: 25%
-    substrate_health_window: int = 5  # consecutive checkpoints
-    loss_descent_window: int = 5000  # criterion 7: smoothed loss window
+    - **Stationary** (online_std_p5, mean_abs_off_diag_correlation):
+      pilot-set baseline = median of first ``pilot_set_n`` observations;
+      kill when current strays by ``stationary_deviation_pct`` from
+      baseline (down for std, up for correlation). Before pilot-set
+      completes, falls back to the absolute floors below.
+    - **Trending substrate-health** (pred_frob, err_acc): running-best
+      anchor over a rolling-median window
+      (``trending_smoothing_window``), so a single outlier reading
+      can't latch the anchor. Kill activates after
+      ``trending_warmup_n`` observations so early settling doesn't
+      false-fire. Kill on sustained reversal toward unhealthy of
+      ``substrate_health_degradation_pct``.
+    - **Absolute** (encoder_asymmetry_cosine_mean,
+      predictor_trivial_cosine_mean): fixed 0.99. No pilot, no
+      baseline -- near-identical encoders is collapse regardless of
+      training history.
+    """
+
+    warmup_batches: int = 5000  # observe-only window before any kill activates
+    # Stationary fallback thresholds (used when pilot-set hasn't
+    # completed for the modality OR config-override isn't supplied).
+    std_collapse_threshold: float = 0.1
+    correlation_collapse_threshold: float = 0.95
+    # Absolute (no baselining ever).
+    cosine_collapse_threshold: float = 0.99
+    # Trending degradation parameters (kill-6).
+    substrate_health_degradation_pct: float = 0.25
+    substrate_health_window: int = 5  # sustained-checkpoints requirement
+    # Pilot-set derivation -- stationary path.
+    pilot_set_n: int = 10  # observations before stationary baseline is set
+    stationary_deviation_pct: float = 0.5  # half the baseline triggers kill
+    # Pilot-set derivation -- trending path.
+    trending_smoothing_window: int = 3  # rolling-median window for outlier robustness
+    trending_warmup_n: int = 5  # observations before trending kill activates
+    # Criterion 7 (global, not per-modality).
+    loss_descent_window: int = 5000
     # Sustained-trigger requirements (consecutive checkpoint counts).
     collapse_sustained_checkpoints: int = 3
     dimensional_sustained_checkpoints: int = 5
-    # Kill-6 substrate-health baselines, per modality (v0.5 §7.6).
-    # Width-dependent: at 1024d set from M7 launch.log (literal M7
-    # baseline, batch-aligned); at 256d leave None and pilot-set from
-    # the warmup window (the pilot-set derivation lives in a follow-up
-    # #9 item -- kill-6's wiring is here, baseline derivation comes
-    # next). When a modality has no entry, kill-6 stays inert for it.
-    # Each entry: {"pred_frob": float, "err_acc": float}.
+    # Config overrides (config-wins-over-pilot; v0.5 §7.6 width-
+    # dependency). At 1024d these are set from M7 launch.log
+    # (literal baselines, batch-aligned); at 256d leave None and let
+    # the pilot path fill them. When a modality entry is absent, the
+    # pilot path runs.
     substrate_health_baselines: Optional[dict[str, dict[str, float]]] = None
+    stationary_baselines: Optional[dict[str, dict[str, float]]] = None
 
 
 @dataclass
@@ -418,7 +443,13 @@ def _deep_collapse_metrics(online_context_latents: torch.Tensor) -> dict:
 
 
 class _PerModalityHistory:
-    """Rolling per-modality metric history for kill-criteria evaluation."""
+    """Rolling per-modality metric history for kill-criteria evaluation.
+
+    Persistence (state_dict/load_state_dict) added 2026-06-08 to close
+    the gap 4.8 flagged in the runner-review: a 15-min checkpoint that
+    lands mid-pilot for a rare modality must not silently restart the
+    history accumulation.
+    """
 
     def __init__(self, sustained_count: int):
         self._history: dict[str, dict[str, deque]] = {
@@ -440,6 +471,26 @@ class _PerModalityHistory:
         if buf is None:
             return []
         return list(buf)[-n:]
+
+    def state_dict(self) -> dict:
+        return {
+            "sustained_count": self.sustained_count,
+            "history": {
+                m: {k: list(buf) for k, buf in d.items()}
+                for m, d in self._history.items()
+            },
+        }
+
+    def load_state_dict(self, state: dict) -> None:
+        self.sustained_count = int(state["sustained_count"])
+        cap = self.sustained_count * 4
+        self._history = {}
+        for m, d in state.get("history", {}).items():
+            self._history[m] = {
+                k: deque(vals, maxlen=cap) for k, vals in d.items()
+            }
+        for m in MODALITIES:
+            self._history.setdefault(m, {})
 
 
 # ---------------------------------------------------------------------------
@@ -507,6 +558,35 @@ class JEPATrainer:
         self._smoothed_loss_buf: deque[float] = deque(
             maxlen=config.kill_criteria.loss_descent_window,
         )
+
+        # Pilot-set state per 4.8 review 2026-06-08 (#9 item, pilot-set
+        # threshold derivation):
+        #
+        # Stationary metrics (online_std_p5, mean_abs_off_diag_correlation):
+        # collect first pilot_set_n observations, then derive median as
+        # baseline. Kill condition compares current against baseline.
+        #
+        # Trending metrics (pred_frob, err_acc): maintain a rolling-median
+        # smoothing buffer (outlier-robust per 4.8); update the running-
+        # best (max for pred_frob, min for err_acc) from smoothed values
+        # only. Trending kill activates after trending_warmup_n
+        # observations so early settling doesn't false-fire.
+        kc = config.kill_criteria
+        self._pilot_observations: dict[str, dict[str, list[float]]] = {
+            m: {} for m in MODALITIES
+        }
+        self._stationary_baselines: dict[str, dict[str, float]] = {
+            m: {} for m in MODALITIES
+        }
+        self._trending_smoothing_buf: dict[str, dict[str, deque]] = {
+            m: {} for m in MODALITIES
+        }
+        self._running_best: dict[str, dict[str, float]] = {
+            m: {} for m in MODALITIES
+        }
+        self._trending_obs_counts: dict[str, dict[str, int]] = {
+            m: {} for m in MODALITIES
+        }
 
         # Archive run config (Gate 5).
         self._archive_run_config()
@@ -636,6 +716,10 @@ class JEPATrainer:
             record["substrate"] = substrate_m
             self.history.push(modality, substrate_m)
 
+            # Advance pilot-set state -- stationary baselining + trending
+            # smoothed running-best (4.8 review 2026-06-08).
+            self._advance_pilot_state(modality, light_m, substrate_m)
+
         if deep:
             deep_m = _deep_collapse_metrics(raw["online_context_latents"])
             record["deep"] = deep_m
@@ -667,6 +751,113 @@ class JEPATrainer:
         with open(self.human_log_path, "a", encoding="utf-8") as f:
             f.write(msg + "\n")
 
+    # -- Pilot-set state advancement (per 4.8 review 2026-06-08) --
+
+    # Metric classification (the three classes 4.8 worked out).
+    _STATIONARY_METRICS = (
+        "online_std_p5",
+        "mean_abs_off_diag_correlation",
+    )
+    # Direction = "max" means running max is the healthy anchor (kill on
+    # drop below); "min" means running min (kill on rise above).
+    _TRENDING_METRICS: dict[str, str] = {
+        "pred_frob": "max",
+        "err_acc": "min",
+    }
+
+    def _advance_pilot_state(
+        self,
+        modality: str,
+        light_m: dict,
+        substrate_m: dict,
+    ) -> None:
+        """Called once per diagnostic firing. Updates the stationary
+        observation list (for median-of-first-N baselining) and the
+        trending smoothing buffer + running-best (for outlier-robust
+        anchor tracking).
+        """
+        # Stationary: collect raw observations until pilot_set_n hit,
+        # then derive median baseline once.
+        for metric in self._STATIONARY_METRICS:
+            val = light_m.get(metric)
+            if not isinstance(val, (int, float)) or not math.isfinite(val):
+                continue
+            self._observe_stationary(modality, metric, float(val))
+
+        # Trending: feed smoothing buffer; update running-best from
+        # smoothed median when buffer has enough samples.
+        for metric, direction in self._TRENDING_METRICS.items():
+            val = substrate_m.get(metric)
+            if not isinstance(val, (int, float)) or not math.isfinite(val):
+                continue
+            self._observe_trending(modality, metric, float(val), direction)
+
+    def _observe_stationary(
+        self, modality: str, metric: str, value: float,
+    ) -> None:
+        # Once a baseline is set, no need to keep collecting (kill check
+        # uses the derived baseline forever after).
+        if metric in self._stationary_baselines[modality]:
+            return
+        obs = self._pilot_observations[modality].setdefault(metric, [])
+        obs.append(value)
+        if len(obs) >= self.config.kill_criteria.pilot_set_n:
+            # Median of first pilot_set_n -- robust against startup noise.
+            window = sorted(obs[: self.config.kill_criteria.pilot_set_n])
+            self._stationary_baselines[modality][metric] = window[len(window) // 2]
+
+    def _observe_trending(
+        self, modality: str, metric: str, value: float, direction: str,
+    ) -> None:
+        smoothing_w = self.config.kill_criteria.trending_smoothing_window
+        buf = self._trending_smoothing_buf[modality].setdefault(
+            metric, deque(maxlen=smoothing_w),
+        )
+        buf.append(value)
+        self._trending_obs_counts[modality][metric] = (
+            self._trending_obs_counts[modality].get(metric, 0) + 1
+        )
+        if len(buf) < smoothing_w:
+            return  # need a full window before we trust the smoothed value
+        smoothed = sorted(buf)[len(buf) // 2]  # median over window
+        current = self._running_best[modality].get(metric)
+        if current is None:
+            self._running_best[modality][metric] = smoothed
+        elif direction == "max" and smoothed > current:
+            self._running_best[modality][metric] = smoothed
+        elif direction == "min" and smoothed < current:
+            self._running_best[modality][metric] = smoothed
+
+    def _get_stationary_baseline(
+        self, modality: str, metric: str,
+    ) -> Optional[float]:
+        """Returns the baseline for a stationary metric, applying the
+        config-overrides-pilot precedence. None means the criterion
+        should fall back to its absolute floor."""
+        cfg_overrides = self.config.kill_criteria.stationary_baselines
+        if cfg_overrides is not None:
+            override = cfg_overrides.get(modality, {}).get(metric)
+            if override is not None:
+                return float(override)
+        return self._stationary_baselines.get(modality, {}).get(metric)
+
+    def _get_trending_anchor(
+        self, modality: str, metric: str,
+    ) -> Optional[float]:
+        """Returns the anchor (config-override OR running-best) for a
+        trending metric. None means trending kill is inactive for this
+        modality (warmup not yet met, or no observations yet)."""
+        cfg_overrides = self.config.kill_criteria.substrate_health_baselines
+        if cfg_overrides is not None:
+            override = cfg_overrides.get(modality, {}).get(metric)
+            if override is not None:
+                return float(override)
+        # Pilot path: require warmup count met before exposing the anchor.
+        warmup_n = self.config.kill_criteria.trending_warmup_n
+        if self._trending_obs_counts[modality].get(metric, 0) < warmup_n:
+            return None
+        return self._running_best.get(modality, {}).get(metric)
+
     # -- Kill criteria --
 
     def _check_kill_criteria(self, modality: str) -> Optional[str]:
@@ -684,30 +875,57 @@ class JEPATrainer:
         cfg = self.config.kill_criteria
 
         # Criterion 1: complete collapse (online std 5th-pct under floor).
+        # Pilot-set per 4.8 review 2026-06-08: use the derived baseline
+        # (median of first pilot_set_n observations) when available;
+        # otherwise fall back to the absolute std_collapse_threshold.
         recent_std = self.history.recent(
             modality, "online_std_p5", cfg.collapse_sustained_checkpoints,
         )
+        pilot_std = self._get_stationary_baseline(modality, "online_std_p5")
+        if pilot_std is not None:
+            std_threshold = pilot_std * (1.0 - cfg.stationary_deviation_pct)
+            threshold_source = (
+                f"baseline {pilot_std:.4f} -- {cfg.stationary_deviation_pct:.0%}"
+            )
+        else:
+            std_threshold = cfg.std_collapse_threshold
+            threshold_source = f"absolute floor {std_threshold}"
         if len(recent_std) >= cfg.collapse_sustained_checkpoints and all(
-            v < cfg.std_collapse_threshold for v in recent_std
+            v < std_threshold for v in recent_std
         ):
             return (
                 f"kill-1 (complete collapse) on {modality}: "
-                f"std_p5 < {cfg.std_collapse_threshold} for "
+                f"std_p5 < {std_threshold:.4f} ({threshold_source}) for "
                 f"{cfg.collapse_sustained_checkpoints} checkpoints"
             )
 
         # Criterion 3: dimensional collapse (off-diagonal correlation).
+        # Pilot-set per 4.8 review 2026-06-08: threshold = baseline +
+        # (1 - baseline) * stationary_deviation_pct (the absolute
+        # version works correctly for the [0, 1]-bounded correlation).
         recent_corr = self.history.recent(
             modality,
             "mean_abs_off_diag_correlation",
             cfg.dimensional_sustained_checkpoints,
         )
+        pilot_corr = self._get_stationary_baseline(
+            modality, "mean_abs_off_diag_correlation",
+        )
+        if pilot_corr is not None:
+            corr_threshold = pilot_corr + (1.0 - pilot_corr) * cfg.stationary_deviation_pct
+            corr_source = (
+                f"baseline {pilot_corr:.4f} + {cfg.stationary_deviation_pct:.0%} "
+                f"of headroom"
+            )
+        else:
+            corr_threshold = cfg.correlation_collapse_threshold
+            corr_source = f"absolute ceiling {corr_threshold}"
         if len(recent_corr) >= cfg.dimensional_sustained_checkpoints and all(
-            v > cfg.correlation_collapse_threshold for v in recent_corr
+            v > corr_threshold for v in recent_corr
         ):
             return (
                 f"kill-3 (correlation collapse) on {modality}: "
-                f"mean_abs_off_diag > {cfg.correlation_collapse_threshold} for "
+                f"mean_abs_off_diag > {corr_threshold:.4f} ({corr_source}) for "
                 f"{cfg.dimensional_sustained_checkpoints} checkpoints"
             )
 
@@ -748,52 +966,50 @@ class JEPATrainer:
             )
 
         # Criterion 6: substrate override on pred_frob / err_acc
-        # (v0.5 §7.6, wired 2026-06-08). Per-modality baseline either
-        # comes from KillCriteriaConfig.substrate_health_baselines (at
-        # 1024d: literal M7 launch.log values; at 256d: pilot-set from
-        # warmup -- the pilot-set derivation is the next #9 item).
-        # When no baseline is provided for a modality, kill-6 stays
-        # inert for that modality.
-        if cfg.substrate_health_baselines is not None:
-            baseline = cfg.substrate_health_baselines.get(modality)
-            if baseline is not None:
-                deg = cfg.substrate_health_degradation_pct
-                pf_baseline = baseline.get("pred_frob")
-                ea_baseline = baseline.get("err_acc")
+        # (v0.5 §7.6). Per 4.8 review 2026-06-08, the anchor is the
+        # outlier-robust running best of smoothed observations (not the
+        # static early baseline) -- the static early baseline would
+        # silently miss a substrate that climbs to a new high and then
+        # degrades back to its early value. _get_trending_anchor
+        # returns the running-best (or config-override at 1024d) and
+        # None until trending_warmup_n observations have accumulated.
+        deg = cfg.substrate_health_degradation_pct
 
-                if pf_baseline is not None:
-                    pf_threshold = pf_baseline * (1.0 - deg)
-                    recent_pf = self.history.recent(
-                        modality, "pred_frob", cfg.substrate_health_window,
-                    )
-                    if (
-                        len(recent_pf) >= cfg.substrate_health_window
-                        and all(v < pf_threshold for v in recent_pf)
-                    ):
-                        return (
-                            f"kill-6 (substrate override, pred_frob) on "
-                            f"{modality}: pred_frob < {pf_threshold:.4f} "
-                            f"(baseline {pf_baseline:.4f}, degradation "
-                            f"threshold {deg:.0%}) for "
-                            f"{cfg.substrate_health_window} checkpoints"
-                        )
+        pf_anchor = self._get_trending_anchor(modality, "pred_frob")
+        if pf_anchor is not None:
+            pf_threshold = pf_anchor * (1.0 - deg)
+            recent_pf = self.history.recent(
+                modality, "pred_frob", cfg.substrate_health_window,
+            )
+            if (
+                len(recent_pf) >= cfg.substrate_health_window
+                and all(v < pf_threshold for v in recent_pf)
+            ):
+                return (
+                    f"kill-6 (substrate override, pred_frob) on "
+                    f"{modality}: pred_frob < {pf_threshold:.4f} "
+                    f"(running max {pf_anchor:.4f} -- "
+                    f"{deg:.0%}) for "
+                    f"{cfg.substrate_health_window} checkpoints"
+                )
 
-                if ea_baseline is not None:
-                    ea_threshold = ea_baseline * (1.0 + deg)
-                    recent_ea = self.history.recent(
-                        modality, "err_acc", cfg.substrate_health_window,
-                    )
-                    if (
-                        len(recent_ea) >= cfg.substrate_health_window
-                        and all(v > ea_threshold for v in recent_ea)
-                    ):
-                        return (
-                            f"kill-6 (substrate override, err_acc) on "
-                            f"{modality}: err_acc > {ea_threshold:.4f} "
-                            f"(baseline {ea_baseline:.4f}, degradation "
-                            f"threshold {deg:.0%}) for "
-                            f"{cfg.substrate_health_window} checkpoints"
-                        )
+        ea_anchor = self._get_trending_anchor(modality, "err_acc")
+        if ea_anchor is not None:
+            ea_threshold = ea_anchor * (1.0 + deg)
+            recent_ea = self.history.recent(
+                modality, "err_acc", cfg.substrate_health_window,
+            )
+            if (
+                len(recent_ea) >= cfg.substrate_health_window
+                and all(v > ea_threshold for v in recent_ea)
+            ):
+                return (
+                    f"kill-6 (substrate override, err_acc) on "
+                    f"{modality}: err_acc > {ea_threshold:.4f} "
+                    f"(running min {ea_anchor:.4f} + "
+                    f"{deg:.0%}) for "
+                    f"{cfg.substrate_health_window} checkpoints"
+                )
 
         # Criterion 7 (smoothed total loss descent) is global, not per-
         # modality; check it after warmup once smoothed buffer is full.
@@ -888,6 +1104,29 @@ class JEPATrainer:
             "epoch": self.epoch,
             "tokens_consumed": dict(self.tokens_consumed),
             "epoch_token_baseline": dict(self.epoch_token_baseline),
+            # Kill-criteria history + pilot-set state (4.8 review
+            # 2026-06-08: without these, a 15-min checkpoint that lands
+            # mid-pilot silently restarts the pilot derivation for any
+            # rare modality and loses progress).
+            "kill_history": self.history.state_dict(),
+            "pilot_observations": {
+                m: {k: list(v) for k, v in d.items()}
+                for m, d in self._pilot_observations.items()
+            },
+            "stationary_baselines": {
+                m: dict(d) for m, d in self._stationary_baselines.items()
+            },
+            "trending_smoothing_buf": {
+                m: {k: list(v) for k, v in d.items()}
+                for m, d in self._trending_smoothing_buf.items()
+            },
+            "running_best": {
+                m: dict(d) for m, d in self._running_best.items()
+            },
+            "trending_obs_counts": {
+                m: dict(d) for m, d in self._trending_obs_counts.items()
+            },
+            "smoothed_loss_buf": list(self._smoothed_loss_buf),
             "online_state_dict": self.loss_module.online_encoder.state_dict(),
             "target_state_dict": self.loss_module.target_encoder.state_dict(),
             "target_buffer_snapshots": self.loss_module._target_buffer_snapshots,
@@ -954,6 +1193,52 @@ class JEPATrainer:
         self.epoch = state["epoch"]
         self.tokens_consumed = dict(state["tokens_consumed"])
         self.epoch_token_baseline = dict(state["epoch_token_baseline"])
+
+        # Kill-criteria history + pilot-set state (added 2026-06-08).
+        # Older checkpoints (pre-pilot-set) won't have these; that's a
+        # degraded resume -- pilot derivation restarts but the run
+        # continues.
+        if "kill_history" in state:
+            self.history.load_state_dict(state["kill_history"])
+        if "pilot_observations" in state:
+            self._pilot_observations = {
+                m: {k: list(v) for k, v in d.items()}
+                for m, d in state["pilot_observations"].items()
+            }
+            for m in MODALITIES:
+                self._pilot_observations.setdefault(m, {})
+        if "stationary_baselines" in state:
+            self._stationary_baselines = {
+                m: dict(d) for m, d in state["stationary_baselines"].items()
+            }
+            for m in MODALITIES:
+                self._stationary_baselines.setdefault(m, {})
+        if "trending_smoothing_buf" in state:
+            smoothing_w = self.config.kill_criteria.trending_smoothing_window
+            self._trending_smoothing_buf = {
+                m: {k: deque(v, maxlen=smoothing_w) for k, v in d.items()}
+                for m, d in state["trending_smoothing_buf"].items()
+            }
+            for m in MODALITIES:
+                self._trending_smoothing_buf.setdefault(m, {})
+        if "running_best" in state:
+            self._running_best = {
+                m: dict(d) for m, d in state["running_best"].items()
+            }
+            for m in MODALITIES:
+                self._running_best.setdefault(m, {})
+        if "trending_obs_counts" in state:
+            self._trending_obs_counts = {
+                m: dict(d) for m, d in state["trending_obs_counts"].items()
+            }
+            for m in MODALITIES:
+                self._trending_obs_counts.setdefault(m, {})
+        if "smoothed_loss_buf" in state:
+            self._smoothed_loss_buf = deque(
+                state["smoothed_loss_buf"],
+                maxlen=self.config.kill_criteria.loss_descent_window,
+            )
+
         self.loss_module.online_encoder.load_state_dict(state["online_state_dict"])
         self.loss_module.target_encoder.load_state_dict(state["target_state_dict"])
         self.loss_module._target_buffer_snapshots = state["target_buffer_snapshots"]
