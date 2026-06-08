@@ -133,6 +133,10 @@ class KillCriteriaConfig:
     # Trending degradation parameters (kill-6).
     substrate_health_degradation_pct: float = 0.25
     substrate_health_window: int = 5  # sustained-checkpoints requirement
+    # Kill-2 (dimensional collapse): fires on a sustained drop in
+    # effective_rank below running_max * (1 - this_pct). v0.5 §7.2
+    # specifies 50% of healthy baseline.
+    dimensional_collapse_threshold_pct: float = 0.5
     # Pilot-set derivation -- stationary path.
     pilot_set_n: int = 10  # observations before stationary baseline is set
     stationary_deviation_pct: float = 0.5  # half the baseline triggers kill
@@ -717,8 +721,13 @@ class JEPATrainer:
             self.history.push(modality, substrate_m)
 
             # Advance pilot-set state -- stationary baselining + trending
-            # smoothed running-best (4.8 review 2026-06-08).
-            self._advance_pilot_state(modality, light_m, substrate_m)
+            # smoothed running-best (4.8 review 2026-06-08). deep_m is
+            # populated only when deep fired this step; effective_rank
+            # (kill-2 source) lives there.
+            self._advance_pilot_state(
+                modality, light_m, substrate_m,
+                deep_m=record.get("deep"),
+            )
 
         if deep:
             deep_m = _deep_collapse_metrics(raw["online_context_latents"])
@@ -763,6 +772,13 @@ class JEPATrainer:
     _TRENDING_METRICS: dict[str, str] = {
         "pred_frob": "max",
         "err_acc": "min",
+        # effective_rank: dimensional collapse signal (v0.5 §7.2 / kill-2).
+        # Healthy trajectory rises as the substrate spans more dimensions;
+        # a sustained drop below the running max = dimensional collapse.
+        # Lives in deep_m (computed only on deep firings), so the
+        # observation cadence for this metric is the deep_interval, not
+        # the light_interval.
+        "effective_rank": "max",
     }
 
     def _advance_pilot_state(
@@ -770,11 +786,19 @@ class JEPATrainer:
         modality: str,
         light_m: dict,
         substrate_m: dict,
+        deep_m: Optional[dict] = None,
     ) -> None:
         """Called once per diagnostic firing. Updates the stationary
         observation list (for median-of-first-N baselining) and the
         trending smoothing buffer + running-best (for outlier-robust
         anchor tracking).
+
+        ``deep_m`` is supplied only on deep firings; effective_rank
+        lives there. Trending observations for effective_rank
+        therefore accumulate at the deep cadence (every
+        ``deep_interval_batches`` modality steps), not the light
+        cadence -- correct, since deep metrics are heavier and fire
+        less often.
         """
         # Stationary: collect raw observations until pilot_set_n hit,
         # then derive median baseline once.
@@ -784,10 +808,19 @@ class JEPATrainer:
                 continue
             self._observe_stationary(modality, metric, float(val))
 
-        # Trending: feed smoothing buffer; update running-best from
-        # smoothed median when buffer has enough samples.
+        # Trending: source dict depends on the metric -- pred_frob /
+        # err_acc come from substrate_m, effective_rank from deep_m.
+        sources: dict[str, dict] = {
+            "pred_frob": substrate_m,
+            "err_acc": substrate_m,
+        }
+        if deep_m is not None:
+            sources["effective_rank"] = deep_m
         for metric, direction in self._TRENDING_METRICS.items():
-            val = substrate_m.get(metric)
+            source = sources.get(metric)
+            if source is None:
+                continue
+            val = source.get(metric)
             if not isinstance(val, (int, float)) or not math.isfinite(val):
                 continue
             self._observe_trending(modality, metric, float(val), direction)
@@ -898,6 +931,31 @@ class JEPATrainer:
                 f"std_p5 < {std_threshold:.4f} ({threshold_source}) for "
                 f"{cfg.collapse_sustained_checkpoints} checkpoints"
             )
+
+        # Criterion 2: dimensional collapse via effective rank (v0.5 §7.2).
+        # Activated 2026-06-08 against the same trending machinery as
+        # kill-6 (4.8 review note for kill-2 wiring): direction="max",
+        # rolling-median smoothing buffer, warmup gate, running-best
+        # anchor. Kill fires on sustained drop below
+        # running_max * (1 - dimensional_collapse_threshold_pct).
+        er_anchor = self._get_trending_anchor(modality, "effective_rank")
+        if er_anchor is not None:
+            er_threshold = er_anchor * (1.0 - cfg.dimensional_collapse_threshold_pct)
+            recent_er = self.history.recent(
+                modality, "effective_rank",
+                cfg.dimensional_sustained_checkpoints,
+            )
+            if (
+                len(recent_er) >= cfg.dimensional_sustained_checkpoints
+                and all(v < er_threshold for v in recent_er)
+            ):
+                return (
+                    f"kill-2 (dimensional collapse, effective rank) on "
+                    f"{modality}: effective_rank < {er_threshold:.4f} "
+                    f"(running max {er_anchor:.4f} -- "
+                    f"{cfg.dimensional_collapse_threshold_pct:.0%}) for "
+                    f"{cfg.dimensional_sustained_checkpoints} checkpoints"
+                )
 
         # Criterion 3: dimensional collapse (off-diagonal correlation).
         # Pilot-set per 4.8 review 2026-06-08: threshold = baseline +
