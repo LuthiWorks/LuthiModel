@@ -148,11 +148,14 @@ class KillCriteriaConfig:
     # Sustained-trigger requirements (consecutive checkpoint counts).
     collapse_sustained_checkpoints: int = 3
     dimensional_sustained_checkpoints: int = 5
-    # Config overrides (config-wins-over-pilot; v0.5 §7.6 width-
-    # dependency). At 1024d these are set from M7 launch.log
-    # (literal baselines, batch-aligned); at 256d leave None and let
-    # the pilot path fill them. When a modality entry is absent, the
-    # pilot path runs.
+    # Reserved for a future cross-run diagnostic (4.8 review 2026-06-08,
+    # override-removal sweep): the pilot path / running-best is the
+    # universal kill anchor at all widths -- it's width-independent and
+    # self-referential ("is M8 degrading from its own peak?"). These
+    # fields are no longer consulted by the kill helpers; they're
+    # retained to receive M7-literal values for an eventual logged-but-
+    # not-killing comparison ("is M8 as healthy as M7 was?"). Setting
+    # them today has no effect on the kill criteria.
     substrate_health_baselines: Optional[dict[str, dict[str, float]]] = None
     stationary_baselines: Optional[dict[str, dict[str, float]]] = None
 
@@ -864,28 +867,36 @@ class JEPATrainer:
     def _get_stationary_baseline(
         self, modality: str, metric: str,
     ) -> Optional[float]:
-        """Returns the baseline for a stationary metric, applying the
-        config-overrides-pilot precedence. None means the criterion
-        should fall back to its absolute floor."""
-        cfg_overrides = self.config.kill_criteria.stationary_baselines
-        if cfg_overrides is not None:
-            override = cfg_overrides.get(modality, {}).get(metric)
-            if override is not None:
-                return float(override)
+        """Returns the pilot-derived baseline for a stationary metric, or
+        None if pilot-set hasn't completed for this modality+metric.
+
+        Per 4.8 review 2026-06-08 (override-removal sweep): the pilot
+        path is now the canonical baseline at all widths, replacing the
+        earlier config-override-wins precedence. KillCriteriaConfig.
+        stationary_baselines is no longer consulted here; the field is
+        retained for backward-compat and reserved for a future cross-
+        run diagnostic ("are M8's healthy stationary values comparable
+        to M7's?") logged alongside the pilot baseline but not driving
+        the kill.
+        """
         return self._stationary_baselines.get(modality, {}).get(metric)
 
     def _get_trending_anchor(
         self, modality: str, metric: str,
     ) -> Optional[float]:
-        """Returns the anchor (config-override OR running-best) for a
-        trending metric. None means trending kill is inactive for this
-        modality (warmup not yet met, or no observations yet)."""
-        cfg_overrides = self.config.kill_criteria.substrate_health_baselines
-        if cfg_overrides is not None:
-            override = cfg_overrides.get(modality, {}).get(metric)
-            if override is not None:
-                return float(override)
-        # Pilot path: require warmup count met before exposing the anchor.
+        """Returns the smoothed running-best anchor for a trending
+        metric. None means trending kill is inactive for this modality
+        (warmup not yet met, or no observations yet).
+
+        Per 4.8 review 2026-06-08 (override-removal sweep): running-best
+        is the universal kill anchor at all widths -- it's width-
+        independent and self-referential ("is M8 degrading from its own
+        peak?"). The earlier KillCriteriaConfig.substrate_health_baselines
+        override is no longer consulted; the field is retained for
+        backward-compat and reserved for a future cross-run diagnostic
+        ("is M8 as healthy as M7 was?") logged alongside the running-best
+        but not driving the kill.
+        """
         warmup_n = self.config.kill_criteria.trending_warmup_n
         if self._trending_obs_counts[modality].get(metric, 0) < warmup_n:
             return None
