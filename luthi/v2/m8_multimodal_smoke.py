@@ -205,18 +205,72 @@ def build_trainer(
     )
 
 
+def _assert_encoder_grad_alive(
+    model: MultimodalPredictiveCodingLM, modality: str,
+) -> None:
+    """The yield-raw contract assertion (4.8 review 2026-06-07).
+
+    Right after train_step's loss.backward(), the perceptual encoder for
+    the modality that ran should have at least one parameter with a
+    non-None, nonzero ``.grad``. A silent regression to pre-encoded
+    ``*_tokens`` would bypass the encoder during training and starve it
+    of gradient -- finite-metric checks cannot catch this because the
+    trunk trains regardless.
+    """
+    if modality == "audio":
+        encoder = model.audio_encoder
+    elif modality == "vision":
+        encoder = model.vision_encoder
+    else:
+        return  # text has no separate perceptual encoder
+
+    for p in encoder.parameters():
+        if p.grad is not None and float(p.grad.abs().sum().item()) > 0.0:
+            return  # found a live gradient
+
+    raise AssertionError(
+        f"[smoke] yield-raw contract regression: {modality}_encoder has "
+        f"no live nonzero gradient after a {modality} step. The dataset "
+        f"may be pre-encoding to {modality}_tokens, silently bypassing "
+        f"the perceptual encoder during training (the gradient trap 4.8 "
+        f"flagged 2026-06-07). Finite-metric checks cannot catch this "
+        f"because the trunk trains regardless."
+    )
+
+
 def run_steps(
     trainer: JEPATrainer,
     sampler: ModalitySampler,
     n_steps: int,
     phase_name: str,
+    verify_encoder_grads: bool = False,
 ) -> list[dict]:
-    """Drive train_step + diagnostics + kill check directly."""
+    """Drive train_step + diagnostics + kill check directly.
+
+    When verify_encoder_grads is True, the first audio step and the
+    first vision step are followed by a check that the corresponding
+    perceptual encoder has a live nonzero gradient (the yield-raw
+    contract). Grads are live between train_step's backward and the
+    next iteration's zero_grad -- the check must run right after
+    train_step.
+    """
     records: list[dict] = []
+    verified_modalities: set[str] = set()
     for _ in range(n_steps):
         modality = sampler.sample()
         batch = trainer.data_loader.next_batch(modality)
         step_out = trainer.train_step(modality, batch)
+
+        if (
+            verify_encoder_grads
+            and modality in ("audio", "vision")
+            and modality not in verified_modalities
+        ):
+            _assert_encoder_grad_alive(
+                trainer.loss_module.online_encoder, modality,
+            )
+            verified_modalities.add(modality)
+
         trainer._update_coverage(modality, batch)
 
         m_step = trainer.modality_step[modality]
@@ -324,7 +378,10 @@ def main() -> int:
     )
 
     print(f"[smoke] Phase 1: running {args.integration_steps} steps ...")
-    records1 = run_steps(trainer, sampler1, args.integration_steps, "phase1")
+    records1 = run_steps(
+        trainer, sampler1, args.integration_steps, "phase1",
+        verify_encoder_grads=True,
+    )
     assert_finite(records1, "phase1")
 
     # Every modality must have been sampled and produced at least one record.
@@ -380,17 +437,23 @@ def main() -> int:
     audio_records_p2 = audio_records_total - pre_p2_audio_records
 
     # Expected count, derived from per-modality cadence math:
-    #   audio_records_in_p2 = floor(audio_step_after_p2 / interval)
-    #                       - floor(audio_step_after_p1 / interval_p1)
-    # In phase 1 interval was 5; in phase 2 it's 2. The audio records
-    # *during phase 2* should equal:
-    #   floor(audio_step_after_p2 / 2) - floor(audio_step_after_p1 / 2)
-    # ...because the cadence at the boundary changes mid-stream. But
-    # actually the runner fires diagnostics based on the *current* interval
-    # value, so the relevant divisor for the boundary check is light_interval
-    # at the moment each step ran. Easier: assert that the total audio
-    # records logged equals the number of integer multiples of the
-    # respective intervals hit, summed by phase.
+    # phase 1 interval was 5; phase 2 interval is 2. Each phase fires
+    # diagnostics when modality_step hits a multiple of the *then-current*
+    # interval, so:
+    #   phase-1 audio records = audio_step_after_p1 // 5
+    #   phase-2 audio records = (audio_step_after_p2 // 2)
+    #                         - (audio_step_after_p1 // 2)
+    # The second term captures only the multiples of 2 in the audio_step
+    # range that elapsed during phase 2.
+    #
+    # Latent fragility (4.8 review 2026-06-07): this formula assumes that
+    # both light_interval values divide evenly into the audio step ranges
+    # such that no "deep-only" firings (deep without light) are recorded
+    # separately. With ``deep_interval`` set to a multiple of
+    # ``light_interval`` in both phases (20 % 5 == 0, 50 % 2 == 0), every
+    # deep firing coincides with a light firing -- a single record per
+    # cadence hit. If either interval is reconfigured to break that
+    # invariant, the assertion math must be revisited.
     audio_step_after_p1 = pre_p2["audio"]
     audio_step_after_p2 = modality_step_after_p2["audio"]
     expected_p1_audio_records = audio_step_after_p1 // 5

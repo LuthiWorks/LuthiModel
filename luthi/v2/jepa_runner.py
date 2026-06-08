@@ -829,7 +829,13 @@ class JEPATrainer:
         """Load state from a specific checkpoint and continue from where
         it left off. Raises on load failure -- prefer resume_from_latest
         for production use, which falls back to older slots."""
-        state = torch.load(ckpt_path, map_location="cpu")
+        # weights_only=False is explicit (silences the FutureWarning):
+        # our checkpoint contains optimizer state with Python objects
+        # that pickle-loads must reconstruct -- not weights_only-safe.
+        # Allowlisting via add_safe_globals is the long-term answer if
+        # PyTorch flips the default; for now explicit-False matches the
+        # current default and stays warning-quiet.
+        state = torch.load(ckpt_path, map_location="cpu", weights_only=False)
         self.global_step = state["global_step"]
         # modality_step added 2026-06-06 (item A). Older checkpoints
         # without it resume at zero per-modality counts; that's a
