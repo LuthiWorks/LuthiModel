@@ -140,9 +140,20 @@ class KillCriteriaConfig:
     # Pilot-set derivation -- stationary path.
     pilot_set_n: int = 10  # observations before stationary baseline is set
     stationary_deviation_pct: float = 0.5  # half the baseline triggers kill
-    # Pilot-set derivation -- trending path.
-    trending_smoothing_window: int = 3  # rolling-median window for outlier robustness
-    trending_warmup_n: int = 5  # observations before trending kill activates
+    # Pilot-set derivation -- trending path. Per 4.8 review 2026-06-08,
+    # light-cadence (pred_frob, err_acc) and deep-cadence
+    # (effective_rank) trending metrics get separate warmup and
+    # smoothing parameters: each deep observation covers ~10x the
+    # training-progress of a light observation (deep_interval is
+    # typically 10x light_interval), so the deep warmup needs to be
+    # smaller in count so kill-2 actually arms on rare modalities
+    # within a realistic run. Effective_rank on a fixed probe batch is
+    # also lower-noise than the light metrics, so the deep smoothing
+    # window can be smaller too.
+    trending_smoothing_window: int = 3  # rolling-median window (light cadence)
+    trending_warmup_n: int = 5  # observations before trending kill activates (light)
+    trending_smoothing_window_deep: int = 2  # deep cadence (effective_rank)
+    trending_warmup_n_deep: int = 2  # deep cadence (effective_rank)
     # Criterion 7 (global, not per-modality).
     loss_descent_window: int = 5000
     # Sustained-trigger requirements (consecutive checkpoint counts).
@@ -697,6 +708,18 @@ class JEPATrainer:
             "elapsed_seconds": time.monotonic() - self.run_start_time,
         }
 
+        # Compute light + substrate + deep metrics independently first,
+        # then push to history and advance pilot state once. This makes
+        # the pilot-state update correct regardless of whether
+        # deep ⊂ light (the latent fragility 4.8 flagged 2026-06-08:
+        # the old code called _advance_pilot_state inside if light: and
+        # passed record.get("deep"), which would always be None because
+        # the deep branch hadn't run yet -- effective_rank was being
+        # silently dropped on deep-only steps AND co-fire steps).
+        light_m: Optional[dict] = None
+        substrate_m: Optional[dict] = None
+        deep_m: Optional[dict] = None
+
         if light:
             light_m = _light_collapse_metrics(
                 online_context_latents=raw["online_context_latents"],
@@ -713,29 +736,30 @@ class JEPATrainer:
             record["light"] = light_m
             self.history.push(modality, light_m)
 
-            # Kill-6 source (v0.5 §7.6 / 4.8 review 2026-06-06 #9 item):
-            # substrate health from aliveness_report. Computed every
-            # light firing so the same per-modality cadence governs
-            # kill-6 as the collapse criteria.
+            # Kill-6 source (v0.5 §7.6): substrate health from
+            # aliveness_report. Computed every light firing so the same
+            # per-modality cadence governs kill-6 as the collapse criteria.
             substrate_m = _substrate_health_metrics(
                 self.loss_module.online_encoder,
             )
             record["substrate"] = substrate_m
             self.history.push(modality, substrate_m)
 
-            # Advance pilot-set state -- stationary baselining + trending
-            # smoothed running-best (4.8 review 2026-06-08). deep_m is
-            # populated only when deep fired this step; effective_rank
-            # (kill-2 source) lives there.
-            self._advance_pilot_state(
-                modality, light_m, substrate_m,
-                deep_m=record.get("deep"),
-            )
-
         if deep:
             deep_m = _deep_collapse_metrics(raw["online_context_latents"])
             record["deep"] = deep_m
             self.history.push(modality, deep_m)
+
+        # Pilot-set state advancement -- runs whenever at least one
+        # metric block was computed this firing. Empty dicts for absent
+        # metrics let _advance_pilot_state skip them cleanly.
+        if light_m is not None or deep_m is not None:
+            self._advance_pilot_state(
+                modality,
+                light_m=light_m or {},
+                substrate_m=substrate_m or {},
+                deep_m=deep_m,
+            )
 
         # Note: _smoothed_loss_buf.append is now in train_step (4.8 item D
         # fix 2026-06-06) so it runs every step rather than every N steps.
@@ -772,16 +796,17 @@ class JEPATrainer:
     )
     # Direction = "max" means running max is the healthy anchor (kill on
     # drop below); "min" means running min (kill on rise above).
-    _TRENDING_METRICS: dict[str, str] = {
-        "pred_frob": "max",
-        "err_acc": "min",
+    # Cadence = "light" updates every light firing; "deep" updates every
+    # deep firing (effective_rank lives in the heavier deep metrics).
+    # Cadence determines which smoothing window + warmup count applies
+    # (per 4.8 review 2026-06-08).
+    _TRENDING_METRICS: dict[str, dict[str, str]] = {
+        "pred_frob": {"direction": "max", "cadence": "light"},
+        "err_acc": {"direction": "min", "cadence": "light"},
         # effective_rank: dimensional collapse signal (v0.5 §7.2 / kill-2).
         # Healthy trajectory rises as the substrate spans more dimensions;
         # a sustained drop below the running max = dimensional collapse.
-        # Lives in deep_m (computed only on deep firings), so the
-        # observation cadence for this metric is the deep_interval, not
-        # the light_interval.
-        "effective_rank": "max",
+        "effective_rank": {"direction": "max", "cadence": "deep"},
     }
 
     def _advance_pilot_state(
@@ -813,20 +838,22 @@ class JEPATrainer:
 
         # Trending: source dict depends on the metric -- pred_frob /
         # err_acc come from substrate_m, effective_rank from deep_m.
-        sources: dict[str, dict] = {
+        sources: dict[str, Optional[dict]] = {
             "pred_frob": substrate_m,
             "err_acc": substrate_m,
+            "effective_rank": deep_m,
         }
-        if deep_m is not None:
-            sources["effective_rank"] = deep_m
-        for metric, direction in self._TRENDING_METRICS.items():
+        for metric, info in self._TRENDING_METRICS.items():
             source = sources.get(metric)
             if source is None:
                 continue
             val = source.get(metric)
             if not isinstance(val, (int, float)) or not math.isfinite(val):
                 continue
-            self._observe_trending(modality, metric, float(val), direction)
+            self._observe_trending(
+                modality, metric, float(val),
+                direction=info["direction"], cadence=info["cadence"],
+            )
 
     def _observe_stationary(
         self, modality: str, metric: str, value: float,
@@ -843,12 +870,27 @@ class JEPATrainer:
             self._stationary_baselines[modality][metric] = window[len(window) // 2]
 
     def _observe_trending(
-        self, modality: str, metric: str, value: float, direction: str,
+        self,
+        modality: str,
+        metric: str,
+        value: float,
+        direction: str,
+        cadence: str,
     ) -> None:
-        smoothing_w = self.config.kill_criteria.trending_smoothing_window
-        buf = self._trending_smoothing_buf[modality].setdefault(
-            metric, deque(maxlen=smoothing_w),
-        )
+        # Cadence-specific smoothing window: light-cadence metrics
+        # observe ~10x more frequently than deep-cadence ones at
+        # production intervals, so the deep window can be smaller
+        # (effective_rank on a fixed probe batch is also lower-noise).
+        if cadence == "deep":
+            smoothing_w = self.config.kill_criteria.trending_smoothing_window_deep
+        else:
+            smoothing_w = self.config.kill_criteria.trending_smoothing_window
+        buf = self._trending_smoothing_buf[modality].get(metric)
+        if buf is None or buf.maxlen != smoothing_w:
+            # First observation OR cadence-config changed since the
+            # buffer was built (handles config-tweaks between resumes).
+            buf = deque(buf or [], maxlen=smoothing_w)
+            self._trending_smoothing_buf[modality][metric] = buf
         buf.append(value)
         self._trending_obs_counts[modality][metric] = (
             self._trending_obs_counts[modality].get(metric, 0) + 1
@@ -896,8 +938,17 @@ class JEPATrainer:
         backward-compat and reserved for a future cross-run diagnostic
         ("is M8 as healthy as M7 was?") logged alongside the running-best
         but not driving the kill.
+
+        Cadence-specific warmup: deep-cadence trending metrics
+        (effective_rank) need fewer warmup observations because each
+        deep observation covers more training-progress.
         """
-        warmup_n = self.config.kill_criteria.trending_warmup_n
+        info = self._TRENDING_METRICS.get(metric)
+        cadence = info["cadence"] if info else "light"
+        if cadence == "deep":
+            warmup_n = self.config.kill_criteria.trending_warmup_n_deep
+        else:
+            warmup_n = self.config.kill_criteria.trending_warmup_n
         if self._trending_obs_counts[modality].get(metric, 0) < warmup_n:
             return None
         return self._running_best.get(modality, {}).get(metric)
