@@ -51,6 +51,13 @@ from luthi.tokenizer import BPETokenizer
 from luthi.v2.jepa_loss import MODALITIES
 
 
+# Canonical M8 text corpus (v0.5 §2): the gutenberg_4gb directory -- ~2.2B
+# tokens across 11,113 .txt files. Single source of truth for "the M8 text
+# corpus"; default to this, NOT the M7 curriculum subset
+# (corpus_build/m7_filelist.txt is a different ~1.27B-token corpus).
+M8_TEXT_CORPUS = Path("E:/data/gutenberg_4gb")
+
+
 # ---------------------------------------------------------------------------
 # Text dataset
 # ---------------------------------------------------------------------------
