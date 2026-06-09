@@ -53,6 +53,7 @@ from luthi.v2.jepa_runner import (
     SamplerConfig,
 )
 from luthi.v2.multimodal_data import (
+    M8_TEXT_CORPUS,
     MultimodalDataLoaderImpl,
     TextDataset,
     TextDatasetConfig,
@@ -63,11 +64,10 @@ from luthi.v2.multimodal_model_pc import MultimodalPredictiveCodingLM
 
 # Defaults assume the standard repo layout.
 DEFAULT_TOKENIZER = Path("corpus_build/tokenizer_32k.json")
-# Plumbing smoke is corpus-agnostic; pointing at m7_filelist.txt for
-# convenience (any 5 text files would work). Does NOT imply this is the
-# M8 baseline corpus -- v0.5 §2 specifies gutenberg_4gb, and that
-# question is separate from this smoke's pass/fail.
-DEFAULT_FILELIST = Path("corpus_build/m7_filelist.txt")
+# Default to the canonical M8 text corpus (gutenberg_4gb, v0.5 §2). The smoke
+# only takes the first --n-files of it, so it stays a fast plumbing check --
+# it just no longer defaults to the M7 subset.
+DEFAULT_TEXT_CORPUS = M8_TEXT_CORPUS
 DEFAULT_RUN_DIR = Path("runs/m8_smoke")
 
 
@@ -86,8 +86,9 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="M8 Gate-1 smoke test")
     p.add_argument("--tokenizer", type=Path, default=DEFAULT_TOKENIZER)
     p.add_argument(
-        "--filelist", type=Path, default=DEFAULT_FILELIST,
-        help="Filelist from which to take the first --n-files entries.",
+        "--filelist", type=Path, default=DEFAULT_TEXT_CORPUS,
+        help="Text corpus: a directory (globs *.txt, e.g. gutenberg_4gb) or a "
+             "filelist. The smoke takes the first --n-files of it.",
     )
     p.add_argument("--n-files", type=int, default=5)
     p.add_argument("--run-dir", type=Path, default=DEFAULT_RUN_DIR)
@@ -232,7 +233,7 @@ def run_smoke_phase(
 def assert_finite(records: list[dict], stage: str) -> None:
     for i, rec in enumerate(records):
         # Top-level loss components.
-        for key in ("loss", "l_pred", "l_var", "l_cov"):
+        for key in ("loss", "l_pred", "l_sigreg"):
             val = rec.get(key)
             if val is not None and not math.isfinite(val):
                 raise AssertionError(
@@ -290,11 +291,15 @@ def main() -> int:
         print(f"[smoke] FAIL: filelist not found at {args.filelist}", file=sys.stderr)
         return 2
 
-    # Build a tiny source list from the filelist.
-    all_files = _read_filelist(args.filelist)
+    # Build a tiny source list: glob *.txt if the corpus is a directory
+    # (the gutenberg_4gb default), else read it as a filelist.
+    if args.filelist.is_dir():
+        all_files = sorted(args.filelist.glob("*.txt"))
+    else:
+        all_files = [Path(p) for p in _read_filelist(args.filelist)]
     if len(all_files) < args.n_files:
         print(
-            f"[smoke] FAIL: filelist has {len(all_files)} entries, "
+            f"[smoke] FAIL: text corpus has {len(all_files)} .txt files, "
             f"need {args.n_files}", file=sys.stderr,
         )
         return 2
@@ -353,10 +358,13 @@ def main() -> int:
     # Snapshot state before kill so we can verify resume actually
     # round-trips, not just that loss didn't explode (per 4.8 review
     # 2026-06-06).
+    # LeJEPA refactor 2026-06-09: no EMA target encoder; instead the
+    # loss module carries per-modality projection heads (Linear -> BN)
+    # whose params must also round-trip on resume.
     pre_kill = {
         "online_checksum": _param_l1_checksum(trainer1.loss_module.online_encoder),
-        "target_checksum": _param_l1_checksum(trainer1.loss_module.target_encoder),
         "predictor_checksum": _param_l1_checksum(trainer1.loss_module.predictor),
+        "projection_heads_checksum": _param_l1_checksum(trainer1.loss_module.projection_heads),
         "loader_state": trainer1.data_loader.state_dict(),
         "sampler_gen_state": trainer1.sampler.generator.get_state().clone(),
         "global_step": trainer1.global_step,
@@ -413,10 +421,10 @@ def main() -> int:
         )
     post = {
         "online_checksum": _param_l1_checksum(trainer2.loss_module.online_encoder),
-        "target_checksum": _param_l1_checksum(trainer2.loss_module.target_encoder),
         "predictor_checksum": _param_l1_checksum(trainer2.loss_module.predictor),
+        "projection_heads_checksum": _param_l1_checksum(trainer2.loss_module.projection_heads),
     }
-    for key in ("online_checksum", "target_checksum", "predictor_checksum"):
+    for key in ("online_checksum", "predictor_checksum", "projection_heads_checksum"):
         if post[key] != pre_kill[key]:
             raise AssertionError(
                 f"[smoke] resume {key} mismatch: "
@@ -439,8 +447,8 @@ def main() -> int:
         )
     print(
         "[smoke] Resume state round-trip OK: "
-        "online/target/predictor params + loader shuffle position + "
-        "sampler RNG all match pre-kill snapshot."
+        "online/predictor/projection_heads params + loader shuffle "
+        "position + sampler RNG all match pre-kill snapshot."
     )
 
     print(f"[smoke] Phase 2: running {args.phase2_steps} steps ...")

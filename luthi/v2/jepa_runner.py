@@ -312,19 +312,24 @@ def _light_collapse_metrics(
     predicted_target: Optional[torch.Tensor],
     ctx_len: int,
     online_std: torch.Tensor,
-    target_std: torch.Tensor,
+    l_sigreg: float,
 ) -> dict:
-    """v0.5 §5 light metrics, per modality. All computed on the latents
-    this modality's loss step produced.
+    """Per-modality light metrics. LeJEPA refactor 2026-06-09: dropped
+    target_std (still produced by the loss but not as a distinct kill
+    metric) and encoder_asymmetry_cosine (no asymmetry without an EMA
+    target). Kept online_std, mean-abs off-diag correlation,
+    predictor_trivial_cosine, and added the SIGReg loss value as a
+    direct per-modality collapse signal (rising SIGReg = drifting off
+    isotropic Gaussian, the regularizer's anti-collapse target).
 
-    online_context_latents: [B, ctx_len, D] - online encoder's
-        context-only output. The encoder-asymmetry cosine compares this
-        against target_latents[:, :ctx_len] (position-aligned, per 4.8
-        2026-06-06).
-    target_latents: [B, seq_len, D] - target encoder's full output.
-    predicted_target: [B, tgt_len, D] - predictor's output (optional;
-        the predictor-trivial cosine compares this against
-        target_latents[:, ctx_len:]).
+    online_context_latents: [B, ctx_len, D] online encoder's
+        context-only output.
+    target_latents: [B, seq_len, D] full-sequence online encoder
+        output (gradients flow; same encoder, no EMA twin).
+    predicted_target: [B, tgt_len, D] predictor's output. The
+        predictor-trivial cosine compares this against
+        target_latents[:, ctx_len:].
+    l_sigreg: scalar SIGReg statistic from this loss step.
     """
     metrics: dict = {}
 
@@ -335,13 +340,6 @@ def _light_collapse_metrics(
     metrics["online_std_p95"] = _percentile(online_std_sorted, 0.95)
     metrics["online_std_below_0.1"] = int((online_std_sorted < 0.1).sum().item())
     metrics["online_std_below_0.5"] = int((online_std_sorted < 0.5).sum().item())
-
-    # Per-dim std summary (target full-sequence).
-    target_std_flat = target_std.detach().float().flatten()
-    metrics["target_std_p5"] = _percentile(target_std_flat, 0.05)
-    metrics["target_std_p50"] = _percentile(target_std_flat, 0.50)
-    metrics["target_std_p95"] = _percentile(target_std_flat, 0.95)
-    metrics["target_std_below_0.1"] = int((target_std_flat < 0.1).sum().item())
 
     # Off-diagonal correlation (mean abs).
     flat = online_context_latents.detach().float().reshape(-1, online_context_latents.shape[-1])
@@ -354,18 +352,16 @@ def _light_collapse_metrics(
     d = corr.shape[0]
     metrics["mean_abs_off_diag_correlation"] = float(off_diag.abs().sum().item()) / max(d * (d - 1), 1)
 
-    # Encoder-asymmetry cosine: online_context vs target_at_context_positions.
-    # Position-aligned per 4.8 2026-06-06 review of jepa_loss.py.
-    target_at_context = target_latents[:, :ctx_len, :].detach().float()
-    cos_asym = F.cosine_similarity(
-        online_context_latents.detach().float(),
-        target_at_context,
-        dim=-1,
-    )  # [B, ctx_len]
-    metrics["encoder_asymmetry_cosine_mean"] = float(cos_asym.mean().item())
-    metrics["encoder_asymmetry_cosine_std"] = float(cos_asym.std().item())
+    # SIGReg statistic -- direct per-modality collapse signal. Rising
+    # SIGReg = encoder output drifting away from isotropic Gaussian,
+    # the regularizer's target. The kill criterion based on this is the
+    # natural LeJEPA-era replacement for the EMA-asymmetry kill-5.
+    metrics["sigreg"] = float(l_sigreg)
 
-    # Predictor-trivial cosine (if predicted_target provided).
+    # Predictor-trivial cosine: kill-5's surviving axis. Predicted
+    # vs target-block (same encoder, target positions). Still a
+    # meaningful degeneracy signal in the LeJEPA refactor -- predictor
+    # collapsing to identity / target-copy is the failure mode.
     if predicted_target is not None:
         target_block = target_latents[:, ctx_len:, :].detach().float()
         cos_pred = F.cosine_similarity(
@@ -618,14 +614,13 @@ class JEPATrainer:
         # Add per-modality sampler probabilities (auditable).
         config_dict["sampler_probabilities"] = self.sampler.per_modality_probs()
         # Add loss-module hyperparameters that aren't in RunnerConfig.
+        # LeJEPA refactor 2026-06-09: SIGReg replaces the VICReg + EMA
+        # parameter block. Only sigreg_lambd, SIGReg's own params, and
+        # the masking context_fraction are loss-side knobs now.
         config_dict["loss"] = {
-            "invariance_weight": self.loss_module.invariance_weight,
-            "variance_weight": self.loss_module.variance_weight,
-            "covariance_weight": self.loss_module.covariance_weight,
-            "variance_target": self.loss_module.variance_target,
-            "ema_momentum": self.loss_module.ema_momentum,
-            "std_ema_momentum": self.loss_module.std_ema_momentum,
-            "std_ema_floor": self.loss_module.std_ema_floor,
+            "sigreg_lambd": self.loss_module.sigreg_lambd,
+            "sigreg_knots": int(self.loss_module.sigreg.t.numel()),
+            "sigreg_num_proj": int(self.loss_module.sigreg.num_proj),
             "context_fraction": self.loss_module.context_fraction,
         }
         with open(config_path, "w", encoding="utf-8") as f:
@@ -655,9 +650,9 @@ class JEPATrainer:
         loss.backward()
         self.optimizer.step()
 
-        # EMA target update (after optimizer step so online has just been
-        # updated and the EMA tracks the latest slow params).
-        self.loss_module.update_target_ema()
+        # LeJEPA refactor 2026-06-09: no EMA target encoder to update.
+        # SIGReg + projection-head BN handles anti-collapse via a direct
+        # per-batch regularizer instead of the asymmetric EMA twin.
 
         # Free per-layer forward-pass snapshots (PredictiveCodingLM
         # convention -- audit fix 2026-05-11).
@@ -702,8 +697,10 @@ class JEPATrainer:
             "modality": modality,
             "loss": step_out["loss"],
             "l_pred": float(raw["l_pred"].item()),
-            "l_var": float(raw["l_var"].item()),
-            "l_cov": float(raw["l_cov"].item()),
+            # LeJEPA refactor 2026-06-09: l_var / l_cov replaced by
+            # l_sigreg. SIGReg is the single anti-collapse term that
+            # subsumes both variance and covariance regularization.
+            "l_sigreg": float(raw["l_sigreg"].item()),
             "tokens_consumed": dict(self.tokens_consumed),
             "elapsed_seconds": time.monotonic() - self.run_start_time,
         }
@@ -724,14 +721,12 @@ class JEPATrainer:
             light_m = _light_collapse_metrics(
                 online_context_latents=raw["online_context_latents"],
                 target_latents=raw["target_latents"],
-                # JEPALoss returns predicted_target detached (no graph
-                # retention), so the predictor-trivial cosine is now live
-                # in the light metrics (kill-5's second axis -- 4.8 review
-                # 2026-06-06 #9 cheap-win 2026-06-07).
                 predicted_target=raw.get("predicted_target"),
                 ctx_len=raw["ctx_len"],
                 online_std=raw["online_std"],
-                target_std=raw["target_std"],
+                # LeJEPA refactor: SIGReg loss value is the per-modality
+                # collapse signal (no more target-encoder std).
+                l_sigreg=float(raw["l_sigreg"].item()),
             )
             record["light"] = light_m
             self.history.push(modality, light_m)
@@ -777,10 +772,9 @@ class JEPATrainer:
             f"[step {record['step']:>7}] mod={record['modality']:<6} "
             f"loss={record['loss']:.4f} "
             f"L_pred={record['l_pred']:.4f} "
-            f"L_var={record['l_var']:.4f} "
-            f"L_cov={record['l_cov']:.4f} "
+            f"L_sigreg={record['l_sigreg']:.4f} "
             f"std_p5={light.get('online_std_p5', float('nan')):.4f} "
-            f"cos_enc={light.get('encoder_asymmetry_cosine_mean', float('nan')):.4f} "
+            f"cos_pred={light.get('predictor_trivial_cosine_mean', float('nan')):.4f} "
             f"elapsed={elapsed_h:.2f}h"
         )
         logger.info(msg)
@@ -1049,28 +1043,13 @@ class JEPATrainer:
                 f"{cfg.dimensional_sustained_checkpoints} checkpoints"
             )
 
-        # Criterion 5: encoder-asymmetry cosine -- online and target
-        # encoders collapsed to the same representation.
-        recent_cos = self.history.recent(
-            modality,
-            "encoder_asymmetry_cosine_mean",
-            cfg.dimensional_sustained_checkpoints,
-        )
-        if len(recent_cos) >= cfg.dimensional_sustained_checkpoints and all(
-            v > cfg.cosine_collapse_threshold for v in recent_cos
-        ):
-            return (
-                f"kill-5 (encoder asymmetry lost) on {modality}: "
-                f"online-vs-target cosine > {cfg.cosine_collapse_threshold} for "
-                f"{cfg.dimensional_sustained_checkpoints} checkpoints"
-            )
-
-        # Criterion 5 (second axis, added 2026-06-07): predictor-trivial
-        # cosine -- predictor learned the identity / target representation
-        # without learning to predict it. Distinct from encoder-asymmetry
-        # because the encoders can be diverged but the predictor still
-        # trivial; both indicate kill-5 family failures (4.8 review
-        # 2026-06-06 #9 cheap-win).
+        # Criterion 5: predictor-trivial cosine. LeJEPA refactor
+        # 2026-06-09 removed the encoder-asymmetry axis (no EMA target,
+        # so the "online vs target divergence" framing is moot). The
+        # predictor-trivial axis survives unchanged: predictor learned
+        # the identity / target-copy is the failure mode, distinct from
+        # encoder distributional collapse (which SIGReg + kill-1/2/3
+        # catch).
         recent_pred_cos = self.history.recent(
             modality,
             "predictor_trivial_cosine_mean",
@@ -1248,13 +1227,23 @@ class JEPATrainer:
             },
             "smoothed_loss_buf": list(self._smoothed_loss_buf),
             "online_state_dict": self.loss_module.online_encoder.state_dict(),
-            "target_state_dict": self.loss_module.target_encoder.state_dict(),
-            "target_buffer_snapshots": self.loss_module._target_buffer_snapshots,
             "predictor_state_dict": self.loss_module.predictor.state_dict(),
+            # LeJEPA refactor 2026-06-09: per-modality projection heads
+            # (Linear -> BN) are part of the loss module's state.
+            "projection_heads_state_dict": self.loss_module.projection_heads.state_dict(),
             "loss_module_buffers": {
                 name: buf.detach().clone()
                 for name, buf in self.loss_module.named_buffers()
-                if not name.startswith(("online_encoder.", "target_encoder.", "predictor."))
+                # online_encoder.* and predictor.* are saved above; SIGReg's
+                # quadrature buffers and the action_token are reconstructed
+                # at init from constants, so we exclude them too.
+                if not name.startswith((
+                    "online_encoder.",
+                    "predictor.",
+                    "projection_heads.",
+                    "sigreg.",
+                ))
+                and name != "action_token"
             },
             "optimizer_state_dict": self.optimizer.state_dict(),
             "rng_state": torch.get_rng_state(),
@@ -1360,10 +1349,16 @@ class JEPATrainer:
             )
 
         self.loss_module.online_encoder.load_state_dict(state["online_state_dict"])
-        self.loss_module.target_encoder.load_state_dict(state["target_state_dict"])
-        self.loss_module._target_buffer_snapshots = state["target_buffer_snapshots"]
         self.loss_module.predictor.load_state_dict(state["predictor_state_dict"])
-        # Loss-module's own buffers (action_token, *_target_std_ema).
+        # LeJEPA refactor 2026-06-09: projection heads added; older
+        # checkpoints (pre-refactor) won't have them.
+        if "projection_heads_state_dict" in state:
+            self.loss_module.projection_heads.load_state_dict(
+                state["projection_heads_state_dict"],
+            )
+        # Loss-module's miscellaneous buffers (none currently exposed
+        # outside of online_encoder / predictor / projection_heads /
+        # sigreg / action_token, all of which are handled separately).
         own_state = dict(self.loss_module.named_buffers())
         for name, val in state["loss_module_buffers"].items():
             if name in own_state:

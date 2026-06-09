@@ -55,6 +55,7 @@ from luthi.v2.jepa_runner import (
     SamplerConfig,
 )
 from luthi.v2.multimodal_data import (
+    M8_TEXT_CORPUS,
     AudioDataset,
     AudioDatasetConfig,
     MultimodalDataLoaderImpl,
@@ -70,7 +71,9 @@ from luthi.v2.multimodal_model_pc import MultimodalPredictiveCodingLM
 # Defaults assume the standard repo layout + the disk paths Brian confirmed
 # 2026-06-07.
 DEFAULT_TOKENIZER = Path("corpus_build/tokenizer_32k.json")
-DEFAULT_TEXT_FILELIST = Path("corpus_build/m7_filelist.txt")
+# Default to the canonical M8 text corpus (gutenberg_4gb, v0.5 §2); the smoke
+# takes the first --n-text-files of it. No longer the M7 subset.
+DEFAULT_TEXT_FILELIST = M8_TEXT_CORPUS
 DEFAULT_AUDIO_ROOT = Path("E:/data/LibriSpeech/dev-clean")
 DEFAULT_VISION_ROOT = Path("E:/data/coco/val2017")
 DEFAULT_RUN_DIR = Path("runs/m8_multimodal_smoke")
@@ -118,12 +121,16 @@ def build_tiny_multimodal_model(vocab_size: int) -> MultimodalPredictiveCodingLM
 def build_loader(args: argparse.Namespace) -> MultimodalDataLoaderImpl:
     """Builds the three-modality loader, one tiny per-modality subset each."""
     # Tiny text subset.
-    all_text = _read_filelist(args.text_filelist)
+    if args.text_filelist.is_dir():
+        all_text = sorted(args.text_filelist.glob("*.txt"))
+    else:
+        all_text = [Path(p) for p in _read_filelist(args.text_filelist)]
     if len(all_text) < args.n_text_files:
         raise ValueError(
-            f"text filelist has {len(all_text)} entries, need {args.n_text_files}"
+            f"text corpus {args.text_filelist} has {len(all_text)} .txt "
+            f"files, need {args.n_text_files}"
         )
-    text_paths = [Path(p) for p in all_text[: args.n_text_files]]
+    text_paths = list(all_text[: args.n_text_files])
 
     text = TextDataset(TextDatasetConfig(
         source_paths=text_paths,
@@ -299,7 +306,7 @@ def run_steps(
 
 def assert_finite(records: list[dict], stage: str) -> None:
     for i, rec in enumerate(records):
-        for key in ("loss", "l_pred", "l_var", "l_cov"):
+        for key in ("loss", "l_pred", "l_sigreg"):
             val = rec.get(key)
             if val is not None and not math.isfinite(val):
                 raise AssertionError(
