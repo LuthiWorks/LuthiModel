@@ -71,11 +71,14 @@ MODALITIES = ("text", "audio", "vision")
 class JEPAPredictor(nn.Module):
     """Two-layer transformer predictor for the JEPA objective.
 
-    Preserved from v0.5 unchanged. Takes the online encoder's
-    context latents (K/V), learned target-position queries, and a
-    constant action-token stub appended to K/V. Returns predicted
-    target latents. Kept small by design so the substrate carries
-    the representation load, not the predictor.
+    M8: action-token slot is a constant zero stub (degenerate).
+    M9 step 1: accepts a real per-batch action `a_t` and gates it
+    through a learned self/world mask before injection (plan §1).
+    The mask is `sigmoid(self.self_world_mask)`, elementwise on the
+    [d_model] action: mask -> 1 means the predictor treats that dim
+    as entity-controllable; mask -> 0 means the world dictates it.
+    Hard-splitting is the fallback if the soft partition doesn't
+    separate. K-M9-8 reads the sigmoid'd values for stability.
     """
 
     def __init__(
@@ -98,6 +101,12 @@ class JEPAPredictor(nn.Module):
         )
         self.layers = nn.TransformerDecoder(decoder_layer, num_layers=n_layers)
         self.output_norm = nn.LayerNorm(d_model)
+        # Self/world gating mask (plan §1). sigmoid(0) = 0.5 is
+        # neutral; training lets dims separate toward self (-> 1) or
+        # world (-> 0). Under M8 the action is zero so the mask
+        # receives no gradient and stays neutral -- M8 dynamics are
+        # unchanged.
+        self.self_world_mask = nn.Parameter(torch.zeros(d_model))
 
     def forward(
         self,
@@ -107,16 +116,28 @@ class JEPAPredictor(nn.Module):
     ) -> torch.Tensor:
         """Predict target latents from context + target position queries.
 
-        Action-token stub prepended to context K/V keeps the M9
-        action-conditioning interface structurally live (the M8
-        stub itself is degenerate).
+        `action_token` accepted as either:
+          - [d_model]              -- M8 backward compat (constant
+                                      stub broadcast to batch).
+          - [batch, d_model]       -- M9 real per-batch action `a_t`;
+                                      gradients flow back into whatever
+                                      produced it (habit net / MCTS
+                                      leaf evaluation).
         """
         batch = context_latents.shape[0]
-        action_kv = action_token.view(1, 1, -1).expand(batch, 1, -1)
+        if action_token.dim() == 1:
+            action_token = action_token.unsqueeze(0).expand(batch, -1)
+        gated_action = action_token * torch.sigmoid(self.self_world_mask)
+        action_kv = gated_action.unsqueeze(1)  # [B, 1, D]
         memory = torch.cat([action_kv, context_latents], dim=1)
         target_queries = self.target_pos_embedding(target_positions)
         out = self.layers(target_queries, memory)
         return self.output_norm(out)
+
+    def self_world_mask_values(self) -> torch.Tensor:
+        """Sigmoid'd mask values [d_model] -- K-M9-8 instrumentation."""
+        with torch.no_grad():
+            return torch.sigmoid(self.self_world_mask).detach()
 
 
 class JEPALoss(nn.Module):
