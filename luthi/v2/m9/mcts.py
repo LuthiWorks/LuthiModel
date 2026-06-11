@@ -47,7 +47,7 @@ import torch
 import torch.nn as nn
 
 
-@dataclass
+@dataclass(eq=False)
 class MCTSNode:
     """One node in the persistent tree.
 
