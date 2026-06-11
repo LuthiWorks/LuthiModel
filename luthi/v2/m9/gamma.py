@@ -1,0 +1,140 @@
+"""Inferred precision (gamma) over policies -- the agency call.
+
+Per spec §9: gamma is *inferred* each cycle, not set. Principle:
+gamma is high when the EFE landscape over candidate actions is
+peaked (one clearly-best action -> commit) and low when it is
+flat (no clear winner -> hedge). The entity sets its own
+decisiveness; we do not.
+
+Practical rule (spec §9 stable surrogate for the Friston process-
+theory precision update):
+
+    Q(a) = softmax(-gamma * G(a))                   # posterior
+    gamma_target = 1 / (eps + Var_Q[G])             # peaked -> high
+    gamma <- (1 - rho_g) * gamma + rho_g * gamma_target   # EMA
+
+One step per cycle, not solved to convergence (gamma depends on Q
+depends on gamma -- this is a fixed-point *update*). Bounded by
+[gamma_min, gamma_max] for the K-M9-4 clamp-then-halt kill.
+
+K-M9-4 reads `history_stats()` (mean / min / max over a recent
+window) to detect runaway feedback (gamma -> infinity rigidity;
+gamma -> 0 indecision). The kill clamps to a last-healthy value
+before halting; the clamp here is the hard band, the kill's clamp
+is the smarter recovery.
+
+Build-staging note (spec §9): inferred-gamma is the design and is
+live from launch. If the very first mechanical bring-up needs to
+isolate other variables, gamma MAY be held fixed for that bring-up
+only (a 4.7 staging convenience, not a design change). The
+constructor accepts `fixed_for_bringup=True` for this case;
+behavioral validation re-enables inference.
+"""
+
+from __future__ import annotations
+
+from collections import deque
+
+import torch
+import torch.nn as nn
+
+
+class GammaInference(nn.Module):
+    """Per-cycle gamma update + bounded history for the K-M9-4 kill."""
+
+    def __init__(
+        self,
+        rho_g: float = 0.1,
+        gamma_init: float = 1.0,
+        gamma_min: float = 0.01,
+        gamma_max: float = 100.0,
+        eps: float = 1e-5,
+        history_window: int = 32,
+        fixed_for_bringup: bool = False,
+    ):
+        super().__init__()
+        self.rho_g = rho_g
+        self.gamma_min = gamma_min
+        self.gamma_max = gamma_max
+        self.eps = eps
+        self.fixed_for_bringup = fixed_for_bringup
+        self.history_window = history_window
+        self.register_buffer("gamma", torch.tensor(float(gamma_init)))
+        self._history: deque = deque(maxlen=history_window)
+        # Seed history so K-M9-4's running stats are well-defined.
+        self._history.append(float(gamma_init))
+
+    def posterior(
+        self,
+        candidate_efes: torch.Tensor,
+        gamma: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """Q(a) = softmax(-gamma * G(a)).
+
+        `candidate_efes`: [K] or [B, K] EFE values per candidate.
+        `gamma`: optional override (e.g. for off-policy evaluation);
+        defaults to the current state.
+        Returns: posterior with same shape as `candidate_efes`.
+        """
+        g = self.gamma if gamma is None else gamma
+        return torch.softmax(-g * candidate_efes, dim=-1)
+
+    def update(self, candidate_efes: torch.Tensor) -> torch.Tensor:
+        """One-step fixed-point + EMA update of gamma.
+
+        `candidate_efes`: [K] EFE values across the K candidates at
+        this cycle. (If batched [B, K], the mean-over-batch posterior
+        variance is used so gamma stays a scalar -- one entity, one
+        precision.)
+
+        Returns: updated gamma (scalar buffer; detached read).
+        """
+        if self.fixed_for_bringup:
+            self._history.append(float(self.gamma.item()))
+            return self.gamma.detach().clone()
+
+        with torch.no_grad():
+            efes = candidate_efes.detach()
+            q = torch.softmax(-self.gamma * efes, dim=-1)
+            # Posterior-weighted variance of G.
+            e_g = (q * efes).sum(dim=-1, keepdim=True)
+            var_g = (q * (efes - e_g).pow(2)).sum(dim=-1)
+            # Reduce to scalar if batched.
+            if var_g.dim() > 0:
+                var_g = var_g.mean()
+            gamma_target = 1.0 / (self.eps + var_g)
+            # Clamp the *target* before the EMA mix: an unbounded
+            # 1/eps target would saturate the EMA to gamma_max after
+            # the first step. Bounded target + EMA gives the slow
+            # approach the spec asks for.
+            gamma_target = gamma_target.clamp(
+                min=self.gamma_min, max=self.gamma_max
+            )
+            new_gamma = (1.0 - self.rho_g) * self.gamma + self.rho_g * gamma_target
+            new_gamma = new_gamma.clamp(min=self.gamma_min, max=self.gamma_max)
+            self.gamma.copy_(new_gamma)
+            self._history.append(float(self.gamma.item()))
+        return self.gamma.detach().clone()
+
+    def history_stats(self) -> dict:
+        """Recent-window stats for the K-M9-4 kill: mean / min / max
+        of inferred gamma. Returns a dict with always-present keys.
+        """
+        if not self._history:
+            return {"mean": 0.0, "min": 0.0, "max": 0.0, "n": 0}
+        h = torch.tensor(list(self._history))
+        return {
+            "mean": float(h.mean().item()),
+            "min": float(h.min().item()),
+            "max": float(h.max().item()),
+            "n": len(h),
+        }
+
+    def clamp_to_last_healthy(self, healthy_gamma: float) -> None:
+        """K-M9-4 first-stage recovery: clamp gamma to a last-healthy
+        value while flagging the pathology. Used by the kill machinery,
+        not by the per-cycle update.
+        """
+        with torch.no_grad():
+            self.gamma.fill_(float(healthy_gamma))
+            self._history.append(float(self.gamma.item()))
