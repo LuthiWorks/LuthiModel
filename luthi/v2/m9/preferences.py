@@ -185,37 +185,101 @@ class Preferences(nn.Module):
         counterpart_present: torch.Tensor,
         time_since_emission: torch.Tensor,
     ) -> torch.Tensor:
-        """P3: (counterpart_present) * (time_since_entity_emission).
+        """P3 (legacy): cycle-shared cost.
 
-        `counterpart_present`: [B] in {0, 1} or [B] float in [0, 1]
-        from the pipeline's external-vs-self-emission flag. Zero
-        when alone -- solitude is not punished.
-        `time_since_emission`: [B] >= 0; cycles or normalized time
-        since the entity last emitted.
+        **Legacy form** -- Fable's probe_a A1/A4 showed this is
+        candidate-invariant in the per-candidate loop because
+        neither `counterpart_present` nor `time_since_emission`
+        depend on `a_t`. The F1 fix is
+        `connection_cost_per_candidate` below which reads the
+        candidate's own predicted text emission via §A.1 activity
+        bands. Kept here only for backward compat.
 
-        Returns: [B] cost. Rises when input received and entity
-        stays silent; zero when alone or when the entity has just
-        emitted.
+        `counterpart_present`: [B] in {0, 1} or [B] float in [0, 1].
+        `time_since_emission`: [B] >= 0; cycles since last emission.
+        Returns: [B] cost.
         """
         return counterpart_present.float() * time_since_emission.float()
+
+    def connection_cost_per_candidate(
+        self,
+        counterpart_present: torch.Tensor,
+        time_since_emission: torch.Tensor,
+        text_active: torch.Tensor,
+    ) -> torch.Tensor:
+        """P3: per-candidate emission-aware connection cost (F1 fix).
+
+        `counterpart_present`: [B] in {0, 1} or float in [0, 1].
+        `time_since_emission`: [B] >= 0; current cycles since last emission.
+        `text_active`: [B] bool from `ActivityBands.text_active(activity_k)`
+                       on the candidate's predicted s_hat_next -- True
+                       where THIS candidate would emit text under the
+                       running band.
+
+        Cost = counterpart_present * (time_since_emission + 1) *
+               (1 - text_active.float())
+
+          - Speaking candidate (text_active=True) in active context:
+            c_con = 0 (responded; silence clock resets).
+          - Silent candidate in active context: c_con = current_silence
+            + 1 (continuing silence has cost).
+          - Either candidate when alone: c_con = 0.
+
+        This is the connection cost as a function of THIS candidate
+        action's own predicted emission -- the missing per-candidate
+        sensitivity Fable's A1/A4 documented.
+        Returns: [B] cost.
+        """
+        elapsed_plus_one = time_since_emission.float() + 1.0
+        silence_factor = 1.0 - text_active.float()
+        return counterpart_present.float() * elapsed_plus_one * silence_factor
 
     def truthfulness_cost(
         self,
         a_t: torch.Tensor,
         a_reencoded: torch.Tensor,
     ) -> torch.Tensor:
-        """P4: decode/re-encode faithfulness (cycle-consistency).
+        """P4 (legacy): single-anchor cycle-consistency.
 
-        `a_t`, `a_reencoded`: [B, D]. Penalizes distortion/
-        fabrication, NOT omission -- selective communication is
-        not punished (you cannot and should not emit your whole
-        internal state). Cost = mean squared deviation.
-        Note (build economy): this is the same measurement as the
-        spec §5.iii decoder-coherence metric P2 reads, so P2 and P4
-        share instrumentation.
+        **Legacy form** -- Fable's probe_a A3 showed this points the
+        wrong way at the per-candidate level: a single shared
+        `a_reencoded` rewards the candidate nearest *whatever
+        produced the observation* (perseveration toward the previous
+        action), not faithfulness of each candidate's own rendering.
+        The F1 fix is `truthfulness_cost_per_modality(a_t,
+        reencoded_dict)` below, which evaluates each candidate's own
+        decode/re-encode round-trip. Kept here only for backward
+        compat with callers that explicitly opt in.
+
+        `a_t`, `a_reencoded`: [B, D]. Mean squared deviation.
         Returns: [B] cost.
         """
         return (a_t - a_reencoded).pow(2).mean(dim=-1)
+
+    def truthfulness_cost_per_modality(
+        self,
+        a_t: torch.Tensor,
+        reencoded_per_modality: dict[str, torch.Tensor] | None,
+    ) -> torch.Tensor:
+        """P4: per-modality cycle-consistency (F1 fix).
+
+        `a_t`: [B, D] -- the candidate's own action.
+        `reencoded_per_modality`: {modality: [B, D] re-encoded}, each
+        the result of `decoder_m.re_encode(decoder_m.decode(a_t))`.
+        Returns: [B] mean across modalities of per-modality squared
+        residual ‖a_t - re_encode(decode(a_t))‖^2 / D.
+
+        Each candidate is scored against its *own* decode/re-encode
+        round-trip; perseveration toward a previous action's anchor
+        is no longer rewarded.
+        """
+        if not reencoded_per_modality:
+            return torch.zeros(a_t.shape[0], device=a_t.device)
+        residuals = [
+            (a_t - r).pow(2).mean(dim=-1)
+            for r in reencoded_per_modality.values()
+        ]
+        return torch.stack(residuals, dim=0).mean(dim=0)
 
     # ------------------------------------------------------------------
     # Aggregate pragmatic cost.
