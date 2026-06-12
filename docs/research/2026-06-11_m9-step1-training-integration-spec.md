@@ -51,7 +51,7 @@ Honest list of the load-bearing, unverified assumptions in the above — the gat
 2. **Cycle-consistency decoders don't collapse to trivial identity.** I claim discreteness blocks it. *Break it:* a decoder that emits near-constant valid tokens while re-encoding to ~`a_t` (faithful by the metric, useless as output).
 3. **Stop-grad isolation actually holds.** One missed `.detach()` lets a planning head's gradient reshape the representation and fight SIGReg. *Break it:* trace every head input for a gradient path into the encoder.
 4. **Realized-action world-model training yields enough action-sensitivity.** If the realized action correlates with `s_t`, the predictor can ignore `a_t` and still fit. kill-5-redux guards; *break it:* a regime where `Var_a[s_hat]` stays above band yet the action is effectively ignored.
-5. **Plastic-state vs the resume checksum** (§5) — the one intentional non-bit-exact path.
+5. **The MCTS-tree cold-rebuild** (§5) — the one intentional non-bit-exact resume path; verify recency-decay actually self-heals it within the recovery window rather than planning cold for too long.
 
 ---
 
@@ -72,7 +72,7 @@ Extend the `_checkpoint` payload (L1200-1254) and `resume` (L1278) **symmetrical
 
 **Two intentional decisions, both must be documented so the resume smoke's assertion set is correct:**
 - **Persistent MCTS tree — NOT persisted; cold-rebuild on resume.** It is recency-decayed and drift-tied, so it self-heals within the budgeted recovery window (same mechanism as the §4.v spike recovery). Persisting a full tree is heavy serialization of state that washes out anyway. **The resume-equality smoke must EXCLUDE the tree** (otherwise strict assertions flag a by-design "mismatch"). Warm-tree resume (bounded top-N snapshot) is a later optimization.
-- **Plastic / living-weight state — substrate-owner coordination point.** If the substrate stores fast-weight/Hebbian-trace tensors separately, they are inference-time state. **Recommend: persist them and include in the resume-equality assertion** — because the M8 smoke asserts param-L1-checksum equality across resume, and a cold-reset plastic state would break that assertion *unless explicitly excluded*. Decide with the substrate owners: persist-and-assert (recommended, exact resume) vs. document-as-cold-reset-and-exclude. Do **not** leave it implicit — that's how a "resume mismatch" ghost appears.
+- **Plastic / living-weight state — already handled, no action (verified 2026-06-11).** In `living_layer_pc.py` the living weights (`weight` L180, `plasticity` L241, error/metaplasticity buffers) are `register_buffer`s modified **in place** under `no_grad` during inference, and **no buffer in `luthi/v2` is `persistent=False`**. They are therefore already in `online_encoder.state_dict()` → saved as `online_state_dict` (jepa_runner.py:1229) and restored exactly on resume (:1351). M8 resume is *already* bit-exact including the drifted living weights, and the param-checksum assertion already covers them. **No new key, no decision, no exclusion** — M9 inherits it. The only thing that would ever break this is someone adding a living-weight buffer with `persistent=False`; if that happens, that buffer cold-resets and must be handled then.
 
 **Resume smoke extension:** the M8 strict-resume smoke (param-L1 checksum + loader state) extends to assert equality of the new module params (V, V', habit, decoders) + `gamma` + preference weights + (plastic state, if persisted); **EXCLUDE the MCTS tree** (documented cold-rebuild). One intentional exception, everything else stays bit-exact.
 
@@ -85,7 +85,7 @@ Extend the `_checkpoint` payload (L1200-1254) and `resume` (L1278) **symmetrical
 3. Add habit net (visit-weighted MLE distillation); MCTS produces the targets.
 4. Add decoders (cycle-consistency + text LM); decode-entropy guard.
 5. Wire all M9 metrics into the existing pilot/kill framework as new keys; register K-M9-1..9.
-6. Extend checkpoint payload + resume + the resume smoke per §5 (document the tree exclusion + settle the plastic-state call with substrate owners).
+6. Extend checkpoint payload + resume + the resume smoke per §5 (document the tree cold-rebuild exclusion; plastic/living-weight state already rides `online_state_dict` — no action).
 7. Separate M9 optimizer; stop-grad every head input from the core.
 
 Pilot-set values (LRs, `gamma_d`, `H`, `K`, `rho`, `V'` rate, preference weights/floor, all kill bands) are tuned during bring-up — not pre-decided.
