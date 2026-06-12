@@ -56,6 +56,12 @@ class TextDecoder(nn.Module):
     The intensity scalar is a sigmoid'd linear from the action; the
     inverse `re_encode` is a learned linear from vocab logits back
     to d_model.
+
+    `activity(a)` exposes a *pre-sigmoid* magnitude scalar -- the L2
+    norm of the raw logits -- for the §A.1 unified activity signal
+    that F1 P3 and F4 K-M9-5 both consume. Reading raw logits keeps
+    the signal meaningful at random init (the F4 root cause was
+    reading a sigmoid'd untrained head).
     """
 
     def __init__(
@@ -80,6 +86,20 @@ class TextDecoder(nn.Module):
     def re_encode(self, out: dict) -> torch.Tensor:
         """Cycle-consistency inverse: vocab logits + intensity -> [B, D]."""
         return self.reencode_head(out["logits"])
+
+    def activity(self, a_t: torch.Tensor) -> torch.Tensor:
+        """Pre-sigmoid activity scalar (§A.1).
+
+        L2 norm of raw output logits per batch element, normalized
+        by sqrt(vocab_size) to a per-element RMS magnitude. Reads
+        the pre-sigmoid rendering signal -- not the intensity head --
+        so the activity remains meaningful at random init.
+
+        Returns: [B] activity scalar.
+        """
+        with torch.no_grad():
+            logits = self.output_proj(a_t)
+            return logits.norm(dim=-1) / (self.vocab_size ** 0.5)
 
 
 class AttentionDecoder(nn.Module):
@@ -121,6 +141,19 @@ class AttentionDecoder(nn.Module):
         )
         return self.reencode_head(combined)
 
+    def activity(self, a_t: torch.Tensor) -> torch.Tensor:
+        """Pre-sigmoid activity scalar (§A.1).
+
+        L2 norm of raw gate_head output per batch element, normalized
+        by sqrt(n_modalities). Pre-sigmoid so the signal remains
+        meaningful at random init.
+
+        Returns: [B] activity scalar.
+        """
+        with torch.no_grad():
+            raw_gates = self.gate_head(a_t)                 # [B, n_modalities]
+            return raw_gates.norm(dim=-1) / (self.n_modalities ** 0.5)
+
 
 class MemoryDecoder(nn.Module):
     """Reads `a_t` -> memory-write salience + intensity.
@@ -149,6 +182,18 @@ class MemoryDecoder(nn.Module):
             dim=-1,
         )
         return self.reencode_head(combined)
+
+    def activity(self, a_t: torch.Tensor) -> torch.Tensor:
+        """Pre-sigmoid activity scalar (§A.1).
+
+        |salience_head output| per batch element. Pre-sigmoid so the
+        signal remains meaningful at random init.
+
+        Returns: [B] activity scalar.
+        """
+        with torch.no_grad():
+            raw_salience = self.salience_head(a_t).squeeze(-1)  # [B]
+            return raw_salience.abs()
 
 
 class DecoderRegistry(nn.Module):
@@ -224,14 +269,40 @@ class DecoderRegistry(nn.Module):
 
     def external_stasis(self, outs: dict) -> torch.Tensor:
         """[B] bool: True where ALL decoder intensities are below their
-        thresholds. The K-M9-5 dark-room kill reads this with the
-        internal-change signal: only sustained internal AND external
-        stasis fires the kill.
+        thresholds. **Legacy intensity-head form** -- F4 (probe_d)
+        demonstrated this is disarmed at random init in ~90% of seeds
+        because the intensity heads are untrained `nn.Linear` -> sigmoid
+        at launch and can sit anywhere in [0,1]. The replacement is
+        `activity_external_stasis(...)` which reads pre-sigmoid raw
+        decoder activity vs a running band; that signal is meaningful
+        at random init. Kept here only for backward compatibility with
+        callers that explicitly opt in -- new callers must use the
+        activity-band path.
         """
         text_silent = outs["text"]["intensity"] < self.intensity_thresholds["text"]
         attn_silent = outs["attention"]["intensity"] < self.intensity_thresholds["attention"]
         mem_silent = outs["memory"]["intensity"] < self.intensity_thresholds["memory"]
         return text_silent & attn_silent & mem_silent
+
+    # ------------------------------------------------------------------
+    # §A.1 activity signal (raw, pre-sigmoid). The unified emission /
+    # external-activity signal that F1 P3 and F4 K-M9-5 both consume.
+    # ------------------------------------------------------------------
+    def activity(self, a_t: torch.Tensor) -> dict:
+        """Per-modality pre-sigmoid activity scalars.
+
+        `a_t`: [B, D]. Returns {modality: [B] activity}. Reads raw
+        decoder output magnitude (text logits L2 norm, attention raw
+        gate_head L2 norm, memory raw salience_head abs) -- never the
+        intensity heads. Activity at random init varies with `a_t`,
+        so the band-based active/silent predicate is meaningful from
+        cycle 0.
+        """
+        return {
+            "text": self.text.activity(a_t),
+            "attention": self.attention.activity(a_t),
+            "memory": self.memory.activity(a_t),
+        }
 
     # ------------------------------------------------------------------
     # Instrumentation: spec §11.i "action -> readable summary".

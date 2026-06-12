@@ -122,12 +122,41 @@ class KillRegistry:
         entropy_min_warmup: int = 8,
         entropy_low_floor: float = 0.5,  # bits; below = single dominant branch
         entropy_sustained: int = 5,
+        # N1 guard (Fable lower-confidence note): skip the entropy
+        # floor while the tree is too narrow to make the metric
+        # meaningful. A root with only 1-2 children naturally has
+        # entropy 0-1 bits and would trip the kill on a *merely
+        # immature* tree -- the legacy MCTS-pathology kill could
+        # fire on normal early planning. Pilot-set; the loop
+        # configures based on per-cycle MCTS expansion budget.
+        entropy_min_children: int = 3,
         consistency_max: float = 2.0,
         consistency_sustained: int = 5,
         value_band_k: float = 6.0,
         value_sustained: int = 4,
+        # K-M9-3 round-2 extension (4.8 audit): absolute |V| ceiling.
+        # A value stuck at a high constant recalibrates the trending
+        # band (median → constant, MAD → 0) and goes invisible -- same
+        # meta-pattern as the gamma ratchet (B3) and dark-room band
+        # self-disarm (R1). Sustained |V| above this ceiling fires
+        # the kill regardless of the band.
+        value_abs_ceiling: float = 1e3,
+        value_ceiling_sustained: int = 8,
         gamma_runaway_k: float = 4.0,
         gamma_sustained: int = 4,
+        # F2 K-M9-4 fix: clamp-proximity as the primary divergence signal.
+        # Sustained gamma near either clamp -> fire. Active from cycle 1
+        # (no warmup gating; saturation is pathological regardless of when
+        # it happens). Threshold is fractional proximity to the clamp.
+        gamma_clamp_threshold: float = 0.05,
+        gamma_clamp_sustained: int = 8,
+        gamma_min: float = 0.01,
+        gamma_max: float = 100.0,
+        # F2 K-M9-4 fix: extend the trending-band warmup so the EMA
+        # ramp from gamma_init does not false-positive. Old min_warmup
+        # = 8 (Fable's B3) tripped during cycles 11-21 on the legacy
+        # ratchet trajectory.
+        gamma_band_min_warmup: int = 32,
         darkroom_internal_threshold: float = 1e-3,
         darkroom_sustained_cycles: int = 30,
         staleness_failover_sustained: int = 8,
@@ -141,6 +170,8 @@ class KillRegistry:
         self.entropy_low_floor = entropy_low_floor
         self.entropy_sustained = entropy_sustained
         self.entropy_min_warmup = entropy_min_warmup
+        # N1: minimum root children before the entropy floor is gated.
+        self.entropy_min_children = entropy_min_children
         self._entropy_count = 0
         self._entropy_state = KillState.HEALTHY
         self._entropy_observations = 0
@@ -152,19 +183,33 @@ class KillRegistry:
         self._consistency_count = 0
         self._consistency_state = KillState.HEALTHY
 
-        # K-M9-3 value divergence: trending band on V(s) running
-        # estimates. Direction = both (oscillation or runaway).
+        # K-M9-3 value divergence: trending band + absolute |V|
+        # ceiling. The band catches oscillation/relative drift; the
+        # absolute ceiling catches a V stuck at a high constant that
+        # would recalibrate the band invisibly (4.8's round-2
+        # extension of Fable's meta-pattern).
         self._value_band = TrendingBand(
             window=32, direction="both", k=value_band_k,
             sustained_cycles=value_sustained, min_warmup=8,
         )
+        self.value_abs_ceiling = value_abs_ceiling
+        self.value_ceiling_sustained = value_ceiling_sustained
+        self._value_ceiling_consecutive = 0
         self._value_state = KillState.HEALTHY
 
-        # K-M9-4 gamma divergence: trending band on gamma. Direction
-        # = both (rigidity at high, indecision at low).
+        # K-M9-4 gamma divergence: F2 primary = clamp-proximity;
+        # secondary = trending band (with extended warmup so the EMA
+        # ramp does not trip it). Direction = both for the band
+        # (rigidity at high, indecision at low).
+        self.gamma_min = gamma_min
+        self.gamma_max = gamma_max
+        self.gamma_clamp_threshold = gamma_clamp_threshold
+        self.gamma_clamp_sustained = gamma_clamp_sustained
+        self._gamma_clamp_consecutive = 0
         self._gamma_band = TrendingBand(
             window=32, direction="both", k=gamma_runaway_k,
-            sustained_cycles=gamma_sustained, min_warmup=8,
+            sustained_cycles=gamma_sustained,
+            min_warmup=gamma_band_min_warmup,
         )
         self._gamma_state = KillState.HEALTHY
 
@@ -175,6 +220,15 @@ class KillRegistry:
         self.darkroom_sustained_cycles = darkroom_sustained_cycles
         self._darkroom_consecutive = 0
         self._darkroom_state = KillState.HEALTHY
+        # F4 (2026-06-11): the armed-state log -- mandatory per
+        # 4.8's gate-repairs spec. Per cycle we record whether the
+        # kill was CAPABLE of firing given current bands. A disarmed
+        # safety backstop is visible here, not silent.
+        self._darkroom_armed_history: deque = deque(maxlen=128)
+        self._darkroom_disarmed_consecutive = 0
+        # If disarmed for `darkroom_disarmed_window` consecutive cycles
+        # while operation continues, that itself is a defect flag.
+        self.darkroom_disarmed_window = darkroom_sustained_cycles
 
         # K-M9-7 staleness runaway: drives off the StalenessManager's
         # `in_failover()` state. Fires after sustained failover.
@@ -194,9 +248,23 @@ class KillRegistry:
     # Per-cycle observation methods.
     # ------------------------------------------------------------------
     def observe_mcts_entropy(self, visit_distribution: torch.Tensor) -> None:
-        """K-M9-2 entropy axis."""
+        """K-M9-2 entropy axis.
+
+        N1 guard (Fable's spec §13 lower-confidence note): if the
+        root has fewer than `entropy_min_children` children, the
+        entropy floor is not meaningful (a 1-2 child root naturally
+        has 0-1 bits of entropy). Skip the floor check and reset
+        the consecutive counter so an immature tree cannot fire the
+        MCTS-pathology kill.
+        """
         self._entropy_observations += 1
-        if len(visit_distribution) == 0:
+        n_children = int(len(visit_distribution))
+        if n_children == 0:
+            return
+        if n_children < self.entropy_min_children:
+            # N1: tree too narrow to score -- skip without firing.
+            self._entropy_count = 0
+            self._entropy_state = KillState.HEALTHY
             return
         p = visit_distribution.clamp(min=1e-12)
         entropy = float((-p * p.log()).sum().item())
@@ -232,37 +300,145 @@ class KillRegistry:
             self._consistency_state = KillState.HEALTHY
 
     def observe_value(self, v_estimate: float) -> None:
-        """K-M9-3 value divergence."""
-        s = self._value_band.observe(float(v_estimate))
-        self._value_state = KillState(s)
+        """K-M9-3 value divergence.
+
+        Two signals OR'd:
+        - **Absolute ceiling** (no warmup): sustained |V| >=
+          `value_abs_ceiling` over `value_ceiling_sustained` cycles
+          fires the kill. Catches a V stuck at a high constant that
+          recalibrates the band (4.8's round-2 extension of Fable's
+          meta-pattern).
+        - **Trending band**: catches oscillation / relative drift
+          within the operating range.
+
+        Ceiling fire takes precedence over band fire.
+        """
+        v_abs = abs(float(v_estimate))
+        if v_abs >= self.value_abs_ceiling:
+            self._value_ceiling_consecutive += 1
+        else:
+            self._value_ceiling_consecutive = 0
+        band_state = KillState(self._value_band.observe(float(v_estimate)))
+        if self._value_ceiling_consecutive >= self.value_ceiling_sustained:
+            self._value_state = KillState.FIRED
+        elif self._value_ceiling_consecutive > 0:
+            self._value_state = (
+                KillState.FLAGGED if band_state == KillState.HEALTHY else band_state
+            )
+        else:
+            self._value_state = band_state
 
     def observe_gamma(self, gamma_value: float) -> None:
-        """K-M9-4 gamma divergence. (Separate from GammaInference's
-        own clamp -- this kill watches the *trend* of gamma over time,
-        so a slow drift to the band edge fires even if no single
-        cycle is clamped.)
+        """K-M9-4 gamma divergence (F2 fix).
+
+        Two signals OR'd:
+        - **Primary: clamp-proximity** (no warmup gating). Sustained
+          gamma within `gamma_clamp_threshold` of either clamp bound
+          for `gamma_clamp_sustained` cycles -> fire. This catches
+          the legacy ratchet's saturation-then-pinned failure mode
+          which the trending band could not see (MAD->0 at saturation
+          makes the band blind, Fable's B3).
+        - **Secondary: trending-band** (gated by extended warmup so
+          the initial EMA ramp from gamma_init does not false-positive).
+          Catches in-band divergent oscillation that wouldn't hit
+          either clamp.
+
+        State precedence: clamp-FIRED beats band-* (clamp pathology
+        is the louder signal).
         """
-        s = self._gamma_band.observe(float(gamma_value))
-        self._gamma_state = KillState(s)
+        # F2 primary: clamp-proximity. Anchor each threshold to its
+        # OWN clamp (multiplicative) rather than to the (max-min)
+        # range, so the formula stays meaningful when min and max are
+        # orders of magnitude apart (default gamma_min=0.01,
+        # gamma_max=100). Linear-range form would put clamp_low at
+        # ~5, swallowing the normal operating range.
+        clamp_high = self.gamma_max * (1.0 - self.gamma_clamp_threshold)
+        clamp_low = self.gamma_min * (1.0 + self.gamma_clamp_threshold)
+        at_clamp = (gamma_value >= clamp_high) or (gamma_value <= clamp_low)
+        if at_clamp:
+            self._gamma_clamp_consecutive += 1
+        else:
+            self._gamma_clamp_consecutive = 0
+
+        # F2 secondary: trending band (warmup-gated).
+        band_state = KillState(self._gamma_band.observe(float(gamma_value)))
+
+        # Compose: clamp fires take precedence over band.
+        if self._gamma_clamp_consecutive >= self.gamma_clamp_sustained:
+            self._gamma_state = KillState.FIRED
+        elif self._gamma_clamp_consecutive > 0:
+            # In clamp but not sustained -> at least FLAGGED.
+            self._gamma_state = KillState.FLAGGED \
+                if band_state == KillState.HEALTHY else band_state
+        else:
+            self._gamma_state = band_state
 
     def observe_darkroom(
         self,
         internal_change_magnitude: float,
         external_stasis: bool,
     ) -> None:
-        """K-M9-5 dark room: both internal AND external stasis.
+        """K-M9-5 dark room: both internal AND external stasis (legacy).
 
-        `internal_change_magnitude` = ||Delta s|| over latent dims
-        (the same signal P1 reads).
-        `external_stasis` = caller-derived flag indicating no decoder
-        emitted above its intensity threshold this cycle. At step 1
-        with text-only output, this is "the text decoder produced
-        nothing significant."
+        **Legacy path** -- this signature reads `external_stasis` from
+        whatever the caller provided (originally the sigmoid intensity
+        head path, which Fable's probe_d showed was disarmed in ~90%
+        of random inits). The F4 fix path is `observe_darkroom_v2`
+        below, which consumes the §A band-based signals + an explicit
+        armed flag. Existing callers and the test suite use this
+        signature; new code MUST use v2.
+
+        `internal_change_magnitude` = ||Delta s|| over latent dims.
+        `external_stasis` = caller-derived flag.
+        Armed-state is assumed True (legacy).
         """
+        self._darkroom_armed_history.append(True)
+        self._darkroom_disarmed_consecutive = 0
         is_stasis = (
             internal_change_magnitude < self.darkroom_internal_threshold
             and external_stasis
         )
+        self._advance_darkroom_state(is_stasis)
+
+    def observe_darkroom_v2(
+        self,
+        internal_silent: bool,
+        external_silent: bool,
+        is_armed: bool = True,
+    ) -> None:
+        """F4 fix path: K-M9-5 from §A band-based silent predicates.
+
+        `internal_silent`: True iff the cycle's ‖Δs_internal‖ is below
+                          DeltaSBand.silent_threshold() (the §A.2
+                          internal-stasis signal). The loop computes
+                          this once and fans the same value to P1's
+                          engagement_cost_from_delta_s.
+        `external_silent`: True iff ActivityBands.external_stasis(...)
+                          is True for this cycle's decoder activities
+                          (the §A.1 signal; raw pre-sigmoid magnitudes
+                          vs running band, NOT intensity heads).
+        `is_armed`: True iff both bands are warm enough that the silent
+                    predicates above are meaningful. When False, the
+                    kill cannot fire this cycle and the armed-state
+                    log records the disarmed cycle; sustained disarmed
+                    operation is itself a flag.
+
+        Armed by construction at any decoder init -- the F4 fix
+        property. probe_d goes from 26/256 armable to 256/256.
+        """
+        self._darkroom_armed_history.append(bool(is_armed))
+        if not is_armed:
+            self._darkroom_disarmed_consecutive += 1
+            # State left at its previous value -- a disarmed cycle is
+            # not "healthy" or "fired", it is uninformed. The
+            # k_m9_5_disarmed_sustained() flag below is the escalation.
+            return
+        self._darkroom_disarmed_consecutive = 0
+        is_stasis = bool(internal_silent and external_silent)
+        self._advance_darkroom_state(is_stasis)
+
+    def _advance_darkroom_state(self, is_stasis: bool) -> None:
+        """Shared state-machine step for the dark-room kill."""
         if is_stasis:
             self._darkroom_consecutive += 1
         else:
@@ -273,6 +449,32 @@ class KillRegistry:
             self._darkroom_state = KillState.FLAGGED
         else:
             self._darkroom_state = KillState.HEALTHY
+
+    # ------------------------------------------------------------------
+    # F4 armed-state instrumentation (mandatory per 4.8's spec).
+    # ------------------------------------------------------------------
+    def darkroom_armed_now(self) -> bool:
+        """True iff the most recent observe_darkroom_v2 call reported
+        the kill as armed (bands warm). The loop logs this per cycle
+        so a disarmed safety backstop is visible, not silent.
+        """
+        return bool(self._darkroom_armed_history[-1]) if self._darkroom_armed_history else False
+
+    def darkroom_armed_fraction(self) -> float:
+        """Fraction of recent cycles in which the kill was armed.
+        Sustained low fraction is a defect: a safety backstop that's
+        off is not a neutral state.
+        """
+        if not self._darkroom_armed_history:
+            return 0.0
+        return sum(self._darkroom_armed_history) / len(self._darkroom_armed_history)
+
+    def k_m9_5_disarmed_sustained(self) -> bool:
+        """True if K-M9-5 has been disarmed for `darkroom_disarmed_window`
+        consecutive cycles -- that itself is a flag per 4.8's
+        escalation rule.
+        """
+        return self._darkroom_disarmed_consecutive >= self.darkroom_disarmed_window
 
     def observe_staleness(self, in_failover: bool) -> None:
         """K-M9-7 staleness runaway. Fires after sustained failover."""
@@ -325,6 +527,10 @@ class KillRegistry:
         self._entropy_count = 0
         self._consistency_count = 0
         self._darkroom_consecutive = 0
+        self._darkroom_armed_history = deque(maxlen=128)
+        self._darkroom_disarmed_consecutive = 0
+        self._gamma_clamp_consecutive = 0
+        self._value_ceiling_consecutive = 0
         self._staleness_failover_count = 0
         self._value_band = TrendingBand(
             window=self._value_band.window,

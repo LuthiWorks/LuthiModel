@@ -47,6 +47,14 @@ class Preferences(nn.Module):
         coherence_weight_init: float = 1.0,
         connection_weight_init: float = 1.0,
         truthfulness_weight_init: float = 1.0,
+        # R2 round-2 fix (Fable + 4.8): bound P3's silence-cost so a
+        # silent-in-company entity cannot inflate the EFE scale
+        # without limit. Connection-cost saturates at
+        # `connection_max_silence` cycles -- after that, additional
+        # silence does not multiply the cost. This removes Fable's
+        # H2 false-positive halt (gamma → ceiling at ~20 s of silence)
+        # independently of the dimensionless-gamma fix; both wanted.
+        connection_max_silence: float = 50.0,
     ):
         super().__init__()
         self.d_model = d_model
@@ -76,6 +84,11 @@ class Preferences(nn.Module):
             "engagement_target_magnitude",
             torch.tensor(float(engagement_target_magnitude)),
         )
+        # R2 round-2: connection-cost saturation point.
+        self.register_buffer(
+            "connection_max_silence",
+            torch.tensor(float(connection_max_silence)),
+        )
 
     # ------------------------------------------------------------------
     # Floor-enforced weight accessor.
@@ -97,20 +110,60 @@ class Preferences(nn.Module):
         self,
         s_t: torch.Tensor,
         s_hat_next: torch.Tensor,
+        target: float | torch.Tensor | None = None,
     ) -> torch.Tensor:
-        """P1: cost rises as ||Delta s|| falls below the floor.
+        """P1: cost rises as ||Delta s|| falls below the target.
 
         `s_t`, `s_hat_next`: [B, D] state vectors (mean-pooled or
         otherwise summarized at the caller; see module docstring).
+        `target`: optional override for the hinge floor. When the
+        loop runs the §A.2 single-Δs fan-out path, the target is the
+        running-band engagement_target (de-saturating per F1.A5); if
+        omitted, falls back to `self.engagement_target_magnitude`
+        for backward compat.
         Smooth hinge: `max(target - magnitude, 0)^2`.
         Returns: [B] cost.
+
+        **Step-1 simplification preserved:** ‖Δs‖ is over the *full*
+        latent here. The §A.2 path uses `DeltaSInternal.compute(...)`
+        which applies the internal-dim mask before norming; the loop
+        should use `engagement_cost_from_delta_s` to pass that
+        precomputed scalar directly so the internal-dim refinement
+        actually lands.
         """
         delta = s_hat_next - s_t
         magnitude = delta.norm(dim=-1)
-        deficit = torch.clamp(
-            self.engagement_target_magnitude - magnitude,
-            min=0.0,
-        )
+        return self.engagement_cost_from_delta_s(magnitude, target=target)
+
+    def engagement_cost_from_delta_s(
+        self,
+        delta_s_internal: torch.Tensor,
+        target: float | torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """P1 hinge from a precomputed ‖Δs_internal‖ scalar (§A.2).
+
+        This is the path the loop should use: it takes the *same*
+        scalar that K-M9-5's `observe_darkroom` receives, so the
+        spec's "contemplation never trips the kill" guarantee is
+        mechanical (the loop asserts identical input). The internal-
+        dim mask is applied upstream by `DeltaSInternal.compute(...)`.
+
+        `delta_s_internal`: [B] precomputed ‖Δs_internal‖.
+        `target`: optional override (typically `DeltaSBand.engagement_target()`);
+        falls back to `self.engagement_target_magnitude`.
+        Returns: [B] cost.
+        """
+        if target is None:
+            target_t = self.engagement_target_magnitude
+        elif isinstance(target, torch.Tensor):
+            target_t = target
+        else:
+            target_t = torch.tensor(
+                float(target),
+                device=delta_s_internal.device,
+                dtype=delta_s_internal.dtype,
+            )
+        deficit = torch.clamp(target_t - delta_s_internal, min=0.0)
         return deficit.pow(2)
 
     def coherence_cost(
@@ -145,37 +198,135 @@ class Preferences(nn.Module):
         counterpart_present: torch.Tensor,
         time_since_emission: torch.Tensor,
     ) -> torch.Tensor:
-        """P3: (counterpart_present) * (time_since_entity_emission).
+        """P3 (legacy): cycle-shared cost.
 
-        `counterpart_present`: [B] in {0, 1} or [B] float in [0, 1]
-        from the pipeline's external-vs-self-emission flag. Zero
-        when alone -- solitude is not punished.
-        `time_since_emission`: [B] >= 0; cycles or normalized time
-        since the entity last emitted.
+        **Legacy form** -- Fable's probe_a A1/A4 showed this is
+        candidate-invariant in the per-candidate loop because
+        neither `counterpart_present` nor `time_since_emission`
+        depend on `a_t`. The F1 fix is
+        `connection_cost_per_candidate` below which reads the
+        candidate's own predicted text emission via §A.1 activity
+        bands. Kept here only for backward compat.
 
-        Returns: [B] cost. Rises when input received and entity
-        stays silent; zero when alone or when the entity has just
-        emitted.
+        `counterpart_present`: [B] in {0, 1} or [B] float in [0, 1].
+        `time_since_emission`: [B] >= 0; cycles since last emission.
+        Returns: [B] cost.
         """
         return counterpart_present.float() * time_since_emission.float()
+
+    def connection_cost_per_candidate(
+        self,
+        counterpart_present: torch.Tensor,
+        time_since_emission: torch.Tensor,
+        text_active: torch.Tensor,
+    ) -> torch.Tensor:
+        """P3: per-candidate emission-aware connection cost (F1 fix, legacy binary).
+
+        **Legacy binary form** -- Fable's round-2 probe_e showed
+        this collapses to 0 spread when candidates don't straddle
+        the binary `text_active` threshold (25-50% of seeds). The
+        round-2 R3 fix is `connection_cost_per_candidate_continuous`
+        below which reads a continuous `emission_strength` in [0, 1].
+        Kept for backward compat.
+
+        Cost = counterpart_present * (time_since_emission + 1) *
+               (1 - text_active.float())
+        Returns: [B] cost.
+        """
+        return self.connection_cost_per_candidate_continuous(
+            counterpart_present=counterpart_present,
+            time_since_emission=time_since_emission,
+            emission_strength=text_active.float(),
+        )
+
+    def connection_cost_per_candidate_continuous(
+        self,
+        counterpart_present: torch.Tensor,
+        time_since_emission: torch.Tensor,
+        emission_strength: torch.Tensor,
+    ) -> torch.Tensor:
+        """P3 round-2 R3 fix: continuous emission strength.
+
+        `counterpart_present`: [B] in {0, 1} or float in [0, 1].
+        `time_since_emission`: [B] >= 0; current cycles since last emission.
+        `emission_strength`: [B] in [0, 1] -- continuous probability
+                       that THIS candidate emits text, from
+                       `ActivityBands.text_emission_strength(...)`.
+
+        Cost = counterpart_present * (time_since_emission + 1) *
+               (1 - emission_strength)
+
+        Smooth in `emission_strength` so K candidates whose
+        activities cluster on one side of any binary threshold still
+        produce different c_con values -- closing R3 (probe_e's
+        25-50% silent-collapse rate).
+
+        - Strong emission (emission_strength → 1) in active context:
+          c_con → 0 (responded).
+        - Strong silence (emission_strength → 0) in active context:
+          c_con = current_silence + 1 (full cost).
+        - Either when alone: c_con = 0.
+
+        Returns: [B] cost.
+
+        **R2 round-2 bound:** `time_since_emission + 1` is clamped at
+        `self.connection_max_silence` so a perpetually silent entity
+        cannot inflate the EFE scale without limit. This removes the
+        H2 false-positive halt independently of the dimensionless-
+        gamma fix.
+        """
+        elapsed_plus_one = (time_since_emission.float() + 1.0).clamp(
+            max=float(self.connection_max_silence.item())
+        )
+        silence_factor = 1.0 - emission_strength.clamp(min=0.0, max=1.0)
+        return counterpart_present.float() * elapsed_plus_one * silence_factor
 
     def truthfulness_cost(
         self,
         a_t: torch.Tensor,
         a_reencoded: torch.Tensor,
     ) -> torch.Tensor:
-        """P4: decode/re-encode faithfulness (cycle-consistency).
+        """P4 (legacy): single-anchor cycle-consistency.
 
-        `a_t`, `a_reencoded`: [B, D]. Penalizes distortion/
-        fabrication, NOT omission -- selective communication is
-        not punished (you cannot and should not emit your whole
-        internal state). Cost = mean squared deviation.
-        Note (build economy): this is the same measurement as the
-        spec §5.iii decoder-coherence metric P2 reads, so P2 and P4
-        share instrumentation.
+        **Legacy form** -- Fable's probe_a A3 showed this points the
+        wrong way at the per-candidate level: a single shared
+        `a_reencoded` rewards the candidate nearest *whatever
+        produced the observation* (perseveration toward the previous
+        action), not faithfulness of each candidate's own rendering.
+        The F1 fix is `truthfulness_cost_per_modality(a_t,
+        reencoded_dict)` below, which evaluates each candidate's own
+        decode/re-encode round-trip. Kept here only for backward
+        compat with callers that explicitly opt in.
+
+        `a_t`, `a_reencoded`: [B, D]. Mean squared deviation.
         Returns: [B] cost.
         """
         return (a_t - a_reencoded).pow(2).mean(dim=-1)
+
+    def truthfulness_cost_per_modality(
+        self,
+        a_t: torch.Tensor,
+        reencoded_per_modality: dict[str, torch.Tensor] | None,
+    ) -> torch.Tensor:
+        """P4: per-modality cycle-consistency (F1 fix).
+
+        `a_t`: [B, D] -- the candidate's own action.
+        `reencoded_per_modality`: {modality: [B, D] re-encoded}, each
+        the result of `decoder_m.re_encode(decoder_m.decode(a_t))`.
+        Returns: [B] mean across modalities of per-modality squared
+        residual ‖a_t - re_encode(decode(a_t))‖^2 / D.
+
+        Each candidate is scored against its *own* decode/re-encode
+        round-trip; perseveration toward a previous action's anchor
+        is no longer rewarded.
+        """
+        if not reencoded_per_modality:
+            return torch.zeros(a_t.shape[0], device=a_t.device)
+        residuals = [
+            (a_t - r).pow(2).mean(dim=-1)
+            for r in reencoded_per_modality.values()
+        ]
+        return torch.stack(residuals, dim=0).mean(dim=0)
 
     # ------------------------------------------------------------------
     # Aggregate pragmatic cost.
@@ -189,6 +340,12 @@ class Preferences(nn.Module):
         time_since_emission: torch.Tensor | None = None,
         a_t: torch.Tensor | None = None,
         a_reencoded: torch.Tensor | None = None,
+        # §A.2: loop fan-out path. When delta_s_internal is provided,
+        # P1 uses it instead of computing ‖Δs‖ from (s_t, s_hat_next).
+        # engagement_target is the band-derived hinge floor that
+        # de-saturates P1 (F1.A5 fix).
+        delta_s_internal: torch.Tensor | None = None,
+        engagement_target: float | torch.Tensor | None = None,
     ) -> dict:
         """Compute total pragmatic cost + per-feature breakdown.
 
@@ -203,7 +360,14 @@ class Preferences(nn.Module):
           w_eng/coh/con/truth : scalar weights actually applied
                                 (w_eng is floor-enforced)
         """
-        c_eng = self.engagement_cost(s_t, s_hat_next)
+        if delta_s_internal is not None:
+            c_eng = self.engagement_cost_from_delta_s(
+                delta_s_internal, target=engagement_target
+            )
+        else:
+            c_eng = self.engagement_cost(
+                s_t, s_hat_next, target=engagement_target
+            )
 
         if decoder_reencodes is not None and len(decoder_reencodes) >= 2:
             c_coh = self.coherence_cost(decoder_reencodes)
