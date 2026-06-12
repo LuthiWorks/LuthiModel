@@ -44,7 +44,7 @@ def _build_mcts():
         d_model=D, n_layers=1, n_heads=2, ffn_expansion=2, max_target_len=32
     )
     prefs = Preferences(d_model=D, engagement_target_magnitude=0.0)
-    efe = EFEEvaluator(predictor, prefs)
+    efe = EFEEvaluator(predictor, prefs, allow_legacy=True)
     habit = HabitNet(d_model=D, log_std_init=0.0)
     v = ValueHead(d_model=D)
     mcts = MCTS(habit, efe, v, max_depth=1)

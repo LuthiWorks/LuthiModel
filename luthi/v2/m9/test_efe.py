@@ -73,7 +73,7 @@ def test_value_head_gradient_flows():
 def test_efe_step1_pragmatic_only_shape():
     predictor = _build_predictor()
     prefs = _build_preferences()
-    efe = EFEEvaluator(predictor, prefs)
+    efe = EFEEvaluator(predictor, prefs, allow_legacy=True)
     context, target_positions = _context_and_positions()
     s_t = torch.randn(B, D)
     a_t = torch.randn(B, D)
@@ -95,7 +95,7 @@ def test_efe_step1_pragmatic_only_shape():
 def test_efe_step1_blocks_epistemic():
     predictor = _build_predictor()
     prefs = _build_preferences()
-    efe = EFEEvaluator(predictor, prefs)
+    efe = EFEEvaluator(predictor, prefs, allow_legacy=True)
     context, target_positions = _context_and_positions()
     try:
         efe.compute_g(
@@ -114,7 +114,7 @@ def test_efe_value_head_bootstrap():
     predictor = _build_predictor()
     prefs = _build_preferences()
     v = ValueHead(d_model=D)
-    efe = EFEEvaluator(predictor, prefs, value_head=v)
+    efe = EFEEvaluator(predictor, prefs, value_head=v, allow_legacy=True)
     context, target_positions = _context_and_positions()
     out = efe.compute_g(
         s_t=torch.zeros(B, D),
@@ -136,7 +136,7 @@ def test_efe_action_sensitivity():
     torch.manual_seed(0)
     predictor = _build_predictor()
     prefs = _build_preferences()
-    efe = EFEEvaluator(predictor, prefs)
+    efe = EFEEvaluator(predictor, prefs, allow_legacy=True)
     context, target_positions = _context_and_positions()
     s_t = torch.zeros(B, D)
     # K distinct random candidate actions per batch element.
@@ -164,7 +164,7 @@ def test_efe_candidate_batching_matches_per_candidate():
     torch.manual_seed(0)
     predictor = _build_predictor()
     prefs = _build_preferences()
-    efe = EFEEvaluator(predictor, prefs)
+    efe = EFEEvaluator(predictor, prefs, allow_legacy=True)
     predictor.eval()
     context, target_positions = _context_and_positions()
     s_t = torch.zeros(B, D)
@@ -198,7 +198,7 @@ def test_efe_threads_through_observation_kwargs():
     """Decoder re-encodes / counterpart / re-encoded a_t threaded through."""
     predictor = _build_predictor()
     prefs = _build_preferences()
-    efe = EFEEvaluator(predictor, prefs)
+    efe = EFEEvaluator(predictor, prefs, allow_legacy=True)
     context, target_positions = _context_and_positions()
     s_t = torch.zeros(B, D)
     a_t = torch.randn(B, D)

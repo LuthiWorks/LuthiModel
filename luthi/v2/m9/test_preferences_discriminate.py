@@ -230,7 +230,7 @@ def test_evaluator_without_a_modules_falls_back_to_legacy():
         d_model=D, n_layers=1, n_heads=2, ffn_expansion=2, max_target_len=32
     )
     prefs = Preferences(d_model=D)
-    efe = EFEEvaluator(predictor, prefs)
+    efe = EFEEvaluator(predictor, prefs, allow_legacy=True)
     assert not efe.has_per_candidate_path()
     torch.manual_seed(0)
     s_t = torch.randn(1, D)

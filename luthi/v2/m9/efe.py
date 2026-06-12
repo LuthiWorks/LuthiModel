@@ -73,12 +73,39 @@ class EFEEvaluator(nn.Module):
         activity_bands: object | None = None,      # ActivityBands
         delta_s_module: nn.Module | None = None,   # DeltaSInternal
         delta_s_band: object | None = None,        # DeltaSBand
+        allow_legacy: bool = False,
     ):
         super().__init__()
         self.predictor = predictor
         self.preferences = preferences
         self.value_head = value_head
-        # Optional §A wiring -- None means the legacy fallback path.
+        # §A wiring. F-C (round-2 fix): fail-loud on partial wiring.
+        # Either all four §A modules are provided (F1 per-candidate
+        # path) or none are provided AND allow_legacy=True (explicit
+        # legacy/test path). Any partial wiring -- 1 to 3 modules --
+        # silently fell back to the legacy bug-mode path; that seam
+        # is closed by raising here at construction time.
+        modules = (decoders, activity_bands, delta_s_module, delta_s_band)
+        provided = [m is not None for m in modules]
+        if any(provided) and not all(provided):
+            names = ("decoders", "activity_bands", "delta_s_module", "delta_s_band")
+            missing = [n for n, p in zip(names, provided) if not p]
+            given = [n for n, p in zip(names, provided) if p]
+            raise ValueError(
+                f"Partial §A wiring on EFEEvaluator: provided "
+                f"{given!r}, missing {missing!r}. The per-candidate "
+                f"F1 path requires ALL four §A modules; if you want "
+                f"the legacy single-shared-observation path (bug-mode), "
+                f"omit ALL four and pass allow_legacy=True."
+            )
+        if not any(provided) and not allow_legacy:
+            raise ValueError(
+                "EFEEvaluator constructed without any §A modules; the "
+                "F1 per-candidate path requires decoders + activity_bands "
+                "+ delta_s_module + delta_s_band. Pass allow_legacy=True "
+                "to explicitly opt into the legacy bug-mode path (used "
+                "for backward-compat tests of the pre-F1 behavior)."
+            )
         self.decoders = decoders
         self.activity_bands = activity_bands
         self.delta_s_module = delta_s_module
