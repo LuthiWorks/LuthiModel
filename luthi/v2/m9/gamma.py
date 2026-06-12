@@ -51,12 +51,17 @@ class GammaInference(nn.Module):
         eps: float = 1e-5,
         history_window: int = 32,
         fixed_for_bringup: bool = False,
+        # F2: gamma_scale relates the uniform spread to the precision
+        # target. Default 1.0; pilot-set if the natural EFE scale
+        # doesn't match the desired precision range.
+        gamma_scale: float = 1.0,
     ):
         super().__init__()
         self.rho_g = rho_g
         self.gamma_min = gamma_min
         self.gamma_max = gamma_max
         self.eps = eps
+        self.gamma_scale = gamma_scale
         self.fixed_for_bringup = fixed_for_bringup
         self.history_window = history_window
         self.register_buffer("gamma", torch.tensor(float(gamma_init)))
@@ -80,12 +85,31 @@ class GammaInference(nn.Module):
         return torch.softmax(-g * candidate_efes, dim=-1)
 
     def update(self, candidate_efes: torch.Tensor) -> torch.Tensor:
-        """One-step fixed-point + EMA update of gamma.
+        """One-step fixed-point + EMA update of gamma (F2 fix).
 
         `candidate_efes`: [K] EFE values across the K candidates at
-        this cycle. (If batched [B, K], the mean-over-batch posterior
-        variance is used so gamma stays a scalar -- one entity, one
-        precision.)
+        this cycle. (If batched [B, K], the mean-over-batch is used
+        so gamma stays a scalar -- one entity, one precision.)
+
+        **F2 fix (2026-06-11):** the precision target reads
+        landscape peakedness under **uniform** weighting, not the
+        gamma-sharpened posterior. The legacy form
+        `gamma_target = 1/(eps + Var_Q[G])` with `Q = softmax(-gamma G)`
+        had positive feedback (higher gamma → sharper Q → smaller
+        Var_Q[G] → higher gamma_target) whose only stable fixed
+        point is gamma_max. Fable's probe_b showed: flat landscapes
+        pinned gamma to the ceiling (the spec inversion); even
+        resampled landscapes ratcheted up over ~600 cycles.
+
+        The fix: `gamma_target = gamma_scale * std_uniform({G(a_k)})`.
+        - Peaked landscape (one a_k much better) → large uniform
+          spread → high gamma_target → commit.
+        - Flat landscape (no clear winner) → ~0 uniform spread →
+          low gamma_target → hedge.
+
+        No gamma in the target → no positive feedback. Reverses B1,
+        removes B2. EMA-smoothed as before with the same bounded
+        clamp on the target before the mix.
 
         Returns: updated gamma (scalar buffer; detached read).
         """
@@ -95,18 +119,20 @@ class GammaInference(nn.Module):
 
         with torch.no_grad():
             efes = candidate_efes.detach()
-            q = torch.softmax(-self.gamma * efes, dim=-1)
-            # Posterior-weighted variance of G.
-            e_g = (q * efes).sum(dim=-1, keepdim=True)
-            var_g = (q * (efes - e_g).pow(2)).sum(dim=-1)
-            # Reduce to scalar if batched.
-            if var_g.dim() > 0:
-                var_g = var_g.mean()
-            gamma_target = 1.0 / (self.eps + var_g)
-            # Clamp the *target* before the EMA mix: an unbounded
-            # 1/eps target would saturate the EMA to gamma_max after
-            # the first step. Bounded target + EMA gives the slow
-            # approach the spec asks for.
+            # F2: uniform-weighted std of {G(a_k)} -- gamma-independent.
+            if efes.dim() > 1:
+                # Batched [B, K]: mean across batch keeps gamma scalar.
+                spread = efes.std(dim=-1).mean()
+            else:
+                # Single landscape [K]: just std.
+                # Use unbiased=False to make a 1-element landscape
+                # produce 0 spread (would be NaN with default).
+                spread = efes.std(unbiased=False)
+            # gamma_scale is fixed to 1.0 by default; can be tuned in
+            # pilot-set if the spread's natural scale doesn't match
+            # the desired precision range.
+            gamma_target = self.gamma_scale * spread
+            # Clamp the *target* before the EMA mix.
             gamma_target = gamma_target.clamp(
                 min=self.gamma_min, max=self.gamma_max
             )

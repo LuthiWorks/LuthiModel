@@ -128,6 +128,19 @@ class KillRegistry:
         value_sustained: int = 4,
         gamma_runaway_k: float = 4.0,
         gamma_sustained: int = 4,
+        # F2 K-M9-4 fix: clamp-proximity as the primary divergence signal.
+        # Sustained gamma near either clamp -> fire. Active from cycle 1
+        # (no warmup gating; saturation is pathological regardless of when
+        # it happens). Threshold is fractional proximity to the clamp.
+        gamma_clamp_threshold: float = 0.05,
+        gamma_clamp_sustained: int = 8,
+        gamma_min: float = 0.01,
+        gamma_max: float = 100.0,
+        # F2 K-M9-4 fix: extend the trending-band warmup so the EMA
+        # ramp from gamma_init does not false-positive. Old min_warmup
+        # = 8 (Fable's B3) tripped during cycles 11-21 on the legacy
+        # ratchet trajectory.
+        gamma_band_min_warmup: int = 32,
         darkroom_internal_threshold: float = 1e-3,
         darkroom_sustained_cycles: int = 30,
         staleness_failover_sustained: int = 8,
@@ -160,11 +173,19 @@ class KillRegistry:
         )
         self._value_state = KillState.HEALTHY
 
-        # K-M9-4 gamma divergence: trending band on gamma. Direction
-        # = both (rigidity at high, indecision at low).
+        # K-M9-4 gamma divergence: F2 primary = clamp-proximity;
+        # secondary = trending band (with extended warmup so the EMA
+        # ramp does not trip it). Direction = both for the band
+        # (rigidity at high, indecision at low).
+        self.gamma_min = gamma_min
+        self.gamma_max = gamma_max
+        self.gamma_clamp_threshold = gamma_clamp_threshold
+        self.gamma_clamp_sustained = gamma_clamp_sustained
+        self._gamma_clamp_consecutive = 0
         self._gamma_band = TrendingBand(
             window=32, direction="both", k=gamma_runaway_k,
-            sustained_cycles=gamma_sustained, min_warmup=8,
+            sustained_cycles=gamma_sustained,
+            min_warmup=gamma_band_min_warmup,
         )
         self._gamma_state = KillState.HEALTHY
 
@@ -246,13 +267,49 @@ class KillRegistry:
         self._value_state = KillState(s)
 
     def observe_gamma(self, gamma_value: float) -> None:
-        """K-M9-4 gamma divergence. (Separate from GammaInference's
-        own clamp -- this kill watches the *trend* of gamma over time,
-        so a slow drift to the band edge fires even if no single
-        cycle is clamped.)
+        """K-M9-4 gamma divergence (F2 fix).
+
+        Two signals OR'd:
+        - **Primary: clamp-proximity** (no warmup gating). Sustained
+          gamma within `gamma_clamp_threshold` of either clamp bound
+          for `gamma_clamp_sustained` cycles -> fire. This catches
+          the legacy ratchet's saturation-then-pinned failure mode
+          which the trending band could not see (MAD->0 at saturation
+          makes the band blind, Fable's B3).
+        - **Secondary: trending-band** (gated by extended warmup so
+          the initial EMA ramp from gamma_init does not false-positive).
+          Catches in-band divergent oscillation that wouldn't hit
+          either clamp.
+
+        State precedence: clamp-FIRED beats band-* (clamp pathology
+        is the louder signal).
         """
-        s = self._gamma_band.observe(float(gamma_value))
-        self._gamma_state = KillState(s)
+        # F2 primary: clamp-proximity. Anchor each threshold to its
+        # OWN clamp (multiplicative) rather than to the (max-min)
+        # range, so the formula stays meaningful when min and max are
+        # orders of magnitude apart (default gamma_min=0.01,
+        # gamma_max=100). Linear-range form would put clamp_low at
+        # ~5, swallowing the normal operating range.
+        clamp_high = self.gamma_max * (1.0 - self.gamma_clamp_threshold)
+        clamp_low = self.gamma_min * (1.0 + self.gamma_clamp_threshold)
+        at_clamp = (gamma_value >= clamp_high) or (gamma_value <= clamp_low)
+        if at_clamp:
+            self._gamma_clamp_consecutive += 1
+        else:
+            self._gamma_clamp_consecutive = 0
+
+        # F2 secondary: trending band (warmup-gated).
+        band_state = KillState(self._gamma_band.observe(float(gamma_value)))
+
+        # Compose: clamp fires take precedence over band.
+        if self._gamma_clamp_consecutive >= self.gamma_clamp_sustained:
+            self._gamma_state = KillState.FIRED
+        elif self._gamma_clamp_consecutive > 0:
+            # In clamp but not sustained -> at least FLAGGED.
+            self._gamma_state = KillState.FLAGGED \
+                if band_state == KillState.HEALTHY else band_state
+        else:
+            self._gamma_state = band_state
 
     def observe_darkroom(
         self,
@@ -410,6 +467,7 @@ class KillRegistry:
         self._darkroom_consecutive = 0
         self._darkroom_armed_history = deque(maxlen=128)
         self._darkroom_disarmed_consecutive = 0
+        self._gamma_clamp_consecutive = 0
         self._staleness_failover_count = 0
         self._value_band = TrendingBand(
             window=self._value_band.window,

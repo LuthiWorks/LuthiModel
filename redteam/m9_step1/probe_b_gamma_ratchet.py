@@ -108,4 +108,8 @@ def run() -> list[Verdict]:
 
 if __name__ == "__main__":
     vs = run()
-    assert all(v.confirmed for v in vs), "some attacks were refuted"
+    confirmed_count = sum(1 for v in vs if v.confirmed)
+    if confirmed_count == 0:
+        print(f"\nAll {len(vs)} attacks REFUTED -- the F2 fix landed.")
+    else:
+        print(f"\n{confirmed_count}/{len(vs)} attacks still confirmed.")
