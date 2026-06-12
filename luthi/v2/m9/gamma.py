@@ -119,20 +119,33 @@ class GammaInference(nn.Module):
 
         with torch.no_grad():
             efes = candidate_efes.detach()
-            # F2: uniform-weighted std of {G(a_k)} -- gamma-independent.
+            # F-A round-2 fix: dimensionless peakedness target.
+            #
+            # Round-1 used raw std(G), which is NOT scale-invariant --
+            # Fable's H1 showed identical-shape × 50 EFE landscape →
+            # × 50 gamma, decisiveness tracking absolute cost magnitude
+            # rather than landscape shape. With P3 unbounded, growing
+            # silence-time inflated EFE → gamma → ceiling → K-M9-4
+            # false-positive halt (H2 at ~20 s).
+            #
+            # Replacement: `peakedness = (G_2nd − G_min) / (std + eps)`,
+            # the normalized best-vs-second-best gap (4.8's round-2
+            # spec). Numerator and denominator both scale identically
+            # with any linear EFE rescaling, so the ratio is
+            # dimensionless: × 50 EFE leaves gamma unchanged.
+            #
+            # Captures "one clearly best action vs flat landscape"
+            # exactly: large gap (best stands out) → high gamma
+            # (commit); small gap (best is tied with second) → low
+            # gamma (hedge). Better than CoV (std/|mean|) which
+            # blows up at mean ≈ 0.
             if efes.dim() > 1:
-                # Batched [B, K]: mean across batch keeps gamma scalar.
-                spread = efes.std(dim=-1).mean()
+                # Batched [B, K]: compute per-row and average.
+                gap = self._normalized_gap_batched(efes)
             else:
-                # Single landscape [K]: just std.
-                # Use unbiased=False to make a 1-element landscape
-                # produce 0 spread (would be NaN with default).
-                spread = efes.std(unbiased=False)
-            # gamma_scale is fixed to 1.0 by default; can be tuned in
-            # pilot-set if the spread's natural scale doesn't match
-            # the desired precision range.
-            gamma_target = self.gamma_scale * spread
-            # Clamp the *target* before the EMA mix.
+                gap = self._normalized_gap(efes)
+            gamma_target = self.gamma_scale * gap
+            # Clamp the target before the EMA mix.
             gamma_target = gamma_target.clamp(
                 min=self.gamma_min, max=self.gamma_max
             )
@@ -141,6 +154,56 @@ class GammaInference(nn.Module):
             self.gamma.copy_(new_gamma)
             self._history.append(float(self.gamma.item()))
         return self.gamma.detach().clone()
+
+    def _normalized_gap(self, efes: torch.Tensor) -> torch.Tensor:
+        """Dimensionless peakedness: (median − G_min) / (std + eps).
+
+        `efes`: [K] candidate costs. EFE is cost so the "winner" is
+        the lowest G. Measures how far the winner sits BELOW the
+        typical candidate, in units of spread.
+
+        - Single peaked winner: large (winner well below median).
+        - Flat: small (winner ≈ median).
+        - Bimodal (cluster of winners + cluster of losers, e.g. silent
+          vs active candidates under sustained P3 pressure): bounded,
+          because median tracks the inter-cluster gap and std tracks
+          the cluster spread; both scale identically with any linear
+          rescaling of EFE.
+
+        Both numerator and denominator scale linearly with the EFE
+        magnitude, so the ratio is dimensionless: rescaling EFE by
+        any positive constant leaves gamma_target unchanged. (4.8's
+        round-2 recommendation was `(G_2nd − G_min) / std`; we use
+        `(median − G_min) / std` because the 2nd-min form collapses
+        to ≈ 0 on bimodal landscapes -- exactly the regime the
+        sustained-silence probe_h H2 exercises -- and would push
+        gamma toward gamma_min there. Median is robust to both
+        single-winner and bimodal cases.)
+        """
+        if efes.numel() < 2:
+            return torch.tensor(0.0, device=efes.device, dtype=efes.dtype)
+        # Use quantile-0.5 (interpolated midpoint) rather than
+        # torch.median: torch.median returns the LOWER middle element
+        # for even-length tensors, which on a bimodal landscape with
+        # K=8 (4 active + 4 silent) gives the max of the active
+        # cluster -- right next to G_min, so (median - G_min) → ~0
+        # and gamma → gamma_min. Interpolated median lands BETWEEN
+        # the two clusters and gives the stable ~1.0 ratio the
+        # formula is designed to produce.
+        med = torch.quantile(efes, 0.5)
+        g_min = efes.min()
+        std = efes.std(unbiased=False)
+        return (med - g_min) / (std + self.eps)
+
+    def _normalized_gap_batched(self, efes: torch.Tensor) -> torch.Tensor:
+        """Batched [B, K] -> scalar (mean over B). See `_normalized_gap`."""
+        if efes.shape[-1] < 2:
+            return torch.tensor(0.0, device=efes.device, dtype=efes.dtype)
+        med = torch.quantile(efes, 0.5, dim=-1)  # [B]
+        g_min = efes.min(dim=-1).values          # [B]
+        std = efes.std(dim=-1, unbiased=False)   # [B]
+        per_row = (med - g_min) / (std + self.eps)
+        return per_row.mean()
 
     def history_stats(self) -> dict:
         """Recent-window stats for the K-M9-4 kill: mean / min / max

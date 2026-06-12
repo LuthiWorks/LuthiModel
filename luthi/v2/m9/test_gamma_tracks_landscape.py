@@ -71,7 +71,7 @@ def test_peaked_landscape_drives_gamma_up():
     for _ in range(50):
         g.update(peaked)
     gamma = float(g.gamma.item())
-    assert gamma > 5.0, (
+    assert gamma > 1.5, (
         f"peaked landscape should drive gamma above its initial value: "
         f"gamma={gamma}"
     )
@@ -139,6 +139,56 @@ def test_k_m9_4_history_includes_clamp_state():
     assert registry._gamma_clamp_consecutive >= 2
 
 
+# ---------------- Round 2 R2 / F-A regression checks ----------------
+
+def test_gamma_target_is_scale_invariant():
+    """R2 / F-A round-2: rescaling EFE by a constant must leave the
+    equilibrium gamma unchanged. Round-1 used raw std(G) which scaled
+    linearly with EFE; the dimensionless (median - G_min) / std target
+    is invariant under linear rescaling.
+
+    4.8's mandatory probe extension: this MUST hold at ×100 scale.
+    """
+    shape = torch.tensor([0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
+
+    def equilibrium(scale: float) -> float:
+        g = GammaInference()
+        for _ in range(300):
+            g.update(shape * scale)
+        return float(g.gamma.item())
+
+    base = equilibrium(1.0)
+    x50 = equilibrium(50.0)
+    x100 = equilibrium(100.0)
+    assert abs(x50 / base - 1.0) < 0.05, (
+        f"x50 must leave gamma unchanged: base={base:.3f}, x50={x50:.3f}"
+    )
+    assert abs(x100 / base - 1.0) < 0.05, (
+        f"x100 must leave gamma unchanged: base={base:.3f}, x100={x100:.3f}"
+    )
+
+
+def test_sustained_silence_does_not_drive_gamma_to_clamp():
+    """R2 round-2 H2: a silent-in-company entity's growing connection
+    cost must not drive gamma into the clamp via cost magnitude. The
+    dimensionless gamma + bounded P3 together prevent this.
+    """
+    torch.manual_seed(0)
+    base = torch.randn(8) * 0.1
+    silent_mask = torch.tensor([0.0, 0, 0, 0, 1, 1, 1, 1])
+    g = GammaInference()
+    reg = KillRegistry()
+    for elapsed in range(300):  # 30 s at 10 Hz
+        c_con = silent_mask * (elapsed + 1.0)
+        landscape = base + c_con
+        gamma_t = float(g.update(landscape).item())
+        reg.observe_gamma(gamma_t)
+    assert reg.states()["K-M9-4-gamma"] != KillState.FIRED, (
+        f"K-M9-4 false-positive halt at gamma={float(g.gamma.item()):.4f} "
+        f"after 300 silent cycles -- not the intended pathology gate"
+    )
+
+
 def main() -> int:
     tests = [
         test_flat_landscape_does_not_pin_to_max,
@@ -148,6 +198,8 @@ def main() -> int:
         test_k_m9_4_detects_low_clamp_proximity,
         test_k_m9_4_does_not_false_fire_during_ramp,
         test_k_m9_4_history_includes_clamp_state,
+        test_gamma_target_is_scale_invariant,
+        test_sustained_silence_does_not_drive_gamma_to_clamp,
     ]
     failed = []
     for t in tests:

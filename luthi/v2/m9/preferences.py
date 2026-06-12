@@ -47,6 +47,14 @@ class Preferences(nn.Module):
         coherence_weight_init: float = 1.0,
         connection_weight_init: float = 1.0,
         truthfulness_weight_init: float = 1.0,
+        # R2 round-2 fix (Fable + 4.8): bound P3's silence-cost so a
+        # silent-in-company entity cannot inflate the EFE scale
+        # without limit. Connection-cost saturates at
+        # `connection_max_silence` cycles -- after that, additional
+        # silence does not multiply the cost. This removes Fable's
+        # H2 false-positive halt (gamma → ceiling at ~20 s of silence)
+        # independently of the dimensionless-gamma fix; both wanted.
+        connection_max_silence: float = 50.0,
     ):
         super().__init__()
         self.d_model = d_model
@@ -75,6 +83,11 @@ class Preferences(nn.Module):
         self.register_buffer(
             "engagement_target_magnitude",
             torch.tensor(float(engagement_target_magnitude)),
+        )
+        # R2 round-2: connection-cost saturation point.
+        self.register_buffer(
+            "connection_max_silence",
+            torch.tensor(float(connection_max_silence)),
         )
 
     # ------------------------------------------------------------------
@@ -255,8 +268,16 @@ class Preferences(nn.Module):
         - Either when alone: c_con = 0.
 
         Returns: [B] cost.
+
+        **R2 round-2 bound:** `time_since_emission + 1` is clamped at
+        `self.connection_max_silence` so a perpetually silent entity
+        cannot inflate the EFE scale without limit. This removes the
+        H2 false-positive halt independently of the dimensionless-
+        gamma fix.
         """
-        elapsed_plus_one = time_since_emission.float() + 1.0
+        elapsed_plus_one = (time_since_emission.float() + 1.0).clamp(
+            max=float(self.connection_max_silence.item())
+        )
         silence_factor = 1.0 - emission_strength.clamp(min=0.0, max=1.0)
         return counterpart_present.float() * elapsed_plus_one * silence_factor
 
