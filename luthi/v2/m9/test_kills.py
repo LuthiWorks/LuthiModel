@@ -117,11 +117,16 @@ def test_value_divergence_fires_on_runaway():
 # ----------------- K-M9-4 gamma divergence -----------------
 
 def test_gamma_divergence_fires_on_runaway():
-    reg = KillRegistry(gamma_runaway_k=3.0, gamma_sustained=3)
+    """F2 K-M9-4: sustained clamp-proximity fires the kill (the F2
+    primary signal). Old test used 3 cycles past the trending band;
+    the F2 path uses gamma_clamp_sustained (default 8) on
+    clamp-proximity, so feed enough cycles to cross that.
+    """
+    reg = KillRegistry(gamma_clamp_sustained=3)
     for _ in range(12):
         reg.observe_gamma(1.0)
     for _ in range(3):
-        reg.observe_gamma(100.0)
+        reg.observe_gamma(99.0)  # within 5% of gamma_max=100
     assert reg.states()["K-M9-4-gamma"] == KillState.FIRED
 
 

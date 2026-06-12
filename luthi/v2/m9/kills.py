@@ -122,6 +122,14 @@ class KillRegistry:
         entropy_min_warmup: int = 8,
         entropy_low_floor: float = 0.5,  # bits; below = single dominant branch
         entropy_sustained: int = 5,
+        # N1 guard (Fable lower-confidence note): skip the entropy
+        # floor while the tree is too narrow to make the metric
+        # meaningful. A root with only 1-2 children naturally has
+        # entropy 0-1 bits and would trip the kill on a *merely
+        # immature* tree -- the legacy MCTS-pathology kill could
+        # fire on normal early planning. Pilot-set; the loop
+        # configures based on per-cycle MCTS expansion budget.
+        entropy_min_children: int = 3,
         consistency_max: float = 2.0,
         consistency_sustained: int = 5,
         value_band_k: float = 6.0,
@@ -154,6 +162,8 @@ class KillRegistry:
         self.entropy_low_floor = entropy_low_floor
         self.entropy_sustained = entropy_sustained
         self.entropy_min_warmup = entropy_min_warmup
+        # N1: minimum root children before the entropy floor is gated.
+        self.entropy_min_children = entropy_min_children
         self._entropy_count = 0
         self._entropy_state = KillState.HEALTHY
         self._entropy_observations = 0
@@ -224,9 +234,23 @@ class KillRegistry:
     # Per-cycle observation methods.
     # ------------------------------------------------------------------
     def observe_mcts_entropy(self, visit_distribution: torch.Tensor) -> None:
-        """K-M9-2 entropy axis."""
+        """K-M9-2 entropy axis.
+
+        N1 guard (Fable's spec §13 lower-confidence note): if the
+        root has fewer than `entropy_min_children` children, the
+        entropy floor is not meaningful (a 1-2 child root naturally
+        has 0-1 bits of entropy). Skip the floor check and reset
+        the consecutive counter so an immature tree cannot fire the
+        MCTS-pathology kill.
+        """
         self._entropy_observations += 1
-        if len(visit_distribution) == 0:
+        n_children = int(len(visit_distribution))
+        if n_children == 0:
+            return
+        if n_children < self.entropy_min_children:
+            # N1: tree too narrow to score -- skip without firing.
+            self._entropy_count = 0
+            self._entropy_state = KillState.HEALTHY
             return
         p = visit_distribution.clamp(min=1e-12)
         entropy = float((-p * p.log()).sum().item())
