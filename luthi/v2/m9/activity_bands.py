@@ -49,6 +49,20 @@ class ActivityBandConfig:
     # returns meaningful values. Before warmup, default to "active"
     # (do not fire safety kills against an uncalibrated band).
     min_warmup: int = 8
+    # R1 round-2 interim (4.8 + Fable): absolute floor. Activity at
+    # or below this is silent REGARDLESS of band. This is the
+    # non-adapting reference the round-2 audits demanded for the
+    # K-M9-5 stasis signal -- the band alone recalibrates to a
+    # catatonic constant (probe_g). The loop-integration target is
+    # an `a_rest`-based reference (activity within epsilon of
+    # decode(a_rest)); this absolute floor is the interim backstop.
+    absolute_silent_floor: float = 1e-3
+    # Sigmoid scale for the continuous emission signal (R3 fix). A
+    # candidate's emission strength is sigmoid((activity - floor)/scale),
+    # so c_con varies smoothly with predicted activity rather than
+    # collapsing to a binary text_active that fails when candidates
+    # bunch on one side of a threshold (probe_e).
+    emission_signal_scale: float = 0.1
 
 
 class ActivityBands:
@@ -115,10 +129,38 @@ class ActivityBands:
 
     def is_silent(self, modality: str, activity_value: torch.Tensor) -> torch.Tensor:
         """[B] bool -- True where this modality's activity is below
-        its band's silent threshold.
+        its band's silent threshold OR below the absolute floor.
+
+        R1 round-2 fix: the band-only form recalibrates to a sustained
+        catatonic constant (probe_g). OR-ing with an absolute floor
+        catches the sustained-constant case the band cannot see.
+        Interim until a_rest-based reference is wired at loop
+        integration.
         """
         thr = self.silent_threshold(modality)
-        return activity_value < thr
+        floor = self.config.absolute_silent_floor
+        return (activity_value < thr) | (activity_value <= floor)
+
+    def emission_strength(
+        self,
+        modality: str,
+        activity_value: torch.Tensor,
+    ) -> torch.Tensor:
+        """[B] in [0, 1] -- continuous probability that this modality
+        is *emitting* (not silent) given its current activity. R3 fix
+        replacing the binary `text_active = activity >= threshold`
+        that collapsed to 0-spread when candidates didn't straddle
+        the threshold (probe_e).
+
+        Implementation: sigmoid((activity - floor) / scale). Continuous
+        in `activity`, so even when K candidates' activities cluster
+        on one side of a threshold, their emission_strength values
+        differ smoothly -- c_con spread > 0 in the concentrated regime
+        the trained habit net actually produces.
+        """
+        scale = max(self.config.emission_signal_scale, 1e-8)
+        floor = self.config.absolute_silent_floor
+        return torch.sigmoid((activity_value - floor) / scale)
 
     def per_batch_silent(self, activity: dict) -> dict:
         """{modality: [B] bool} -- per-batch silent mask per modality."""
@@ -148,16 +190,28 @@ class ActivityBands:
         return out
 
     # ------------------------------------------------------------------
-    # F1 P3 emission signal.
+    # F1 P3 emission signal -- BINARY (legacy round-1) and CONTINUOUS
+    # (round-2 R3 fix).
     # ------------------------------------------------------------------
     def text_active(self, activity: dict) -> torch.Tensor:
         """[B] bool -- True where text activity is at or above its
-        silent threshold (i.e. NOT silent). Used by P3 to drive the
-        per-candidate emission signal: a candidate "emits" iff its
-        text activity is above the band.
+        silent threshold (i.e. NOT silent). **Legacy round-1 form**;
+        Fable's probe_e showed this collapses to 0-spread when K
+        candidates don't straddle the threshold (25-50% of seeds).
+        Kept for backward compatibility with callers that explicitly
+        request the binary gate; new callers must use
+        `text_emission_strength(...)` below.
         """
         thr = self.silent_threshold("text")
         return activity["text"] >= thr
+
+    def text_emission_strength(self, activity: dict) -> torch.Tensor:
+        """[B] in [0, 1] -- continuous emission probability for the
+        text modality. R3 fix: smooth in activity, so c_con varies
+        across K candidates even when their activities cluster on
+        one side of a binary threshold.
+        """
+        return self.emission_strength("text", activity["text"])
 
     # ------------------------------------------------------------------
     # F4 armed-state instrument (mandatory per gate-repairs spec).

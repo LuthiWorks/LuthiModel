@@ -185,11 +185,21 @@ class EFEEvaluator(nn.Module):
         outs_ak = self.decoders.decode_all(a_k)
         reencoded_ak = self.decoders.re_encode_all(outs_ak)
 
-        # P3 text_active under the band on the candidate's predicted activity.
+        # R3 round-2 fix: continuous emission_strength replaces binary
+        # text_active so c_con varies smoothly across candidates whose
+        # predicted activities cluster on one side of the threshold
+        # (Fable's probe_e showed binary collapsed to 0-spread in
+        # 25-50% of seeds).
         if counterpart_present is not None and time_since_emission is not None:
+            emission_strength = self.activity_bands.text_emission_strength(
+                activity_shat
+            )
+            # Backward-compat diagnostic: binary text_active still emitted
+            # so existing loop instrumentation continues to see it.
             text_active = self.activity_bands.text_active(activity_shat)
         else:
-            text_active = None  # signals zero P3 cost
+            emission_strength = None
+            text_active = None
 
         prag = self.preferences.pragmatic_cost(
             s_t=s_t,
@@ -206,11 +216,12 @@ class EFEEvaluator(nn.Module):
         # Replace the legacy-zeroed P3 and P4 with the per-candidate forms.
         c_eng = prag["c_eng"]
         c_coh = prag["c_coh"]  # already per-candidate via reencoded_shat
-        if text_active is not None:
-            c_con = self.preferences.connection_cost_per_candidate(
+        if emission_strength is not None:
+            # R3 round-2: use continuous emission_strength, not binary.
+            c_con = self.preferences.connection_cost_per_candidate_continuous(
                 counterpart_present=counterpart_present,
                 time_since_emission=time_since_emission,
-                text_active=text_active,
+                emission_strength=emission_strength,
             )
         else:
             c_con = torch.zeros_like(c_eng)

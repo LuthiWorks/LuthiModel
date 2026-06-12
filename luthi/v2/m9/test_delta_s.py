@@ -96,13 +96,22 @@ def test_normalization_by_effective_dim():
 
 # ---------- DeltaSBand ----------
 
-def test_band_disarmed_before_warmup():
-    band = DeltaSBand(min_warmup=8)
+def test_band_disarmed_before_warmup_uses_absolute_floor():
+    """R1 round-2: even before the band warms, the absolute floor
+    fires internal_silent for born-still (‖Δs‖ == 0). The band
+    alone recalibrates to a sustained-constant catatonia (probe_g
+    analog); the floor catches born-catatonia immediately.
+    """
+    band = DeltaSBand(min_warmup=8, absolute_silent_floor=1e-4)
     for _ in range(7):
         band.observe(1.0)
     assert not band.is_warm()
-    delta = torch.tensor([0.0, 0.0, 0.0, 0.0])
-    assert not torch.any(band.is_silent_per_batch(delta))
+    # ‖Δs‖ at 0 is below the absolute floor -> silent even before warmup.
+    delta_zero = torch.tensor([0.0, 0.0, 0.0, 0.0])
+    assert torch.all(band.is_silent_per_batch(delta_zero))
+    # ‖Δs‖ above the floor -> not silent before warmup (band not yet usable).
+    delta_above = torch.tensor([1.0, 1.0, 1.0, 1.0])
+    assert not torch.any(band.is_silent_per_batch(delta_above))
 
 
 def test_band_armed_after_warmup():
@@ -202,7 +211,7 @@ def main() -> int:
         test_internal_mask_applied,
         test_internal_mask_subset,
         test_normalization_by_effective_dim,
-        test_band_disarmed_before_warmup,
+        test_band_disarmed_before_warmup_uses_absolute_floor,
         test_band_armed_after_warmup,
         test_silent_per_batch_below_threshold,
         test_engagement_target_after_warmup_is_silent_threshold,

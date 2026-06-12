@@ -207,31 +207,57 @@ class Preferences(nn.Module):
         time_since_emission: torch.Tensor,
         text_active: torch.Tensor,
     ) -> torch.Tensor:
-        """P3: per-candidate emission-aware connection cost (F1 fix).
+        """P3: per-candidate emission-aware connection cost (F1 fix, legacy binary).
 
-        `counterpart_present`: [B] in {0, 1} or float in [0, 1].
-        `time_since_emission`: [B] >= 0; current cycles since last emission.
-        `text_active`: [B] bool from `ActivityBands.text_active(activity_k)`
-                       on the candidate's predicted s_hat_next -- True
-                       where THIS candidate would emit text under the
-                       running band.
+        **Legacy binary form** -- Fable's round-2 probe_e showed
+        this collapses to 0 spread when candidates don't straddle
+        the binary `text_active` threshold (25-50% of seeds). The
+        round-2 R3 fix is `connection_cost_per_candidate_continuous`
+        below which reads a continuous `emission_strength` in [0, 1].
+        Kept for backward compat.
 
         Cost = counterpart_present * (time_since_emission + 1) *
                (1 - text_active.float())
+        Returns: [B] cost.
+        """
+        return self.connection_cost_per_candidate_continuous(
+            counterpart_present=counterpart_present,
+            time_since_emission=time_since_emission,
+            emission_strength=text_active.float(),
+        )
 
-          - Speaking candidate (text_active=True) in active context:
-            c_con = 0 (responded; silence clock resets).
-          - Silent candidate in active context: c_con = current_silence
-            + 1 (continuing silence has cost).
-          - Either candidate when alone: c_con = 0.
+    def connection_cost_per_candidate_continuous(
+        self,
+        counterpart_present: torch.Tensor,
+        time_since_emission: torch.Tensor,
+        emission_strength: torch.Tensor,
+    ) -> torch.Tensor:
+        """P3 round-2 R3 fix: continuous emission strength.
 
-        This is the connection cost as a function of THIS candidate
-        action's own predicted emission -- the missing per-candidate
-        sensitivity Fable's A1/A4 documented.
+        `counterpart_present`: [B] in {0, 1} or float in [0, 1].
+        `time_since_emission`: [B] >= 0; current cycles since last emission.
+        `emission_strength`: [B] in [0, 1] -- continuous probability
+                       that THIS candidate emits text, from
+                       `ActivityBands.text_emission_strength(...)`.
+
+        Cost = counterpart_present * (time_since_emission + 1) *
+               (1 - emission_strength)
+
+        Smooth in `emission_strength` so K candidates whose
+        activities cluster on one side of any binary threshold still
+        produce different c_con values -- closing R3 (probe_e's
+        25-50% silent-collapse rate).
+
+        - Strong emission (emission_strength → 1) in active context:
+          c_con → 0 (responded).
+        - Strong silence (emission_strength → 0) in active context:
+          c_con = current_silence + 1 (full cost).
+        - Either when alone: c_con = 0.
+
         Returns: [B] cost.
         """
         elapsed_plus_one = time_since_emission.float() + 1.0
-        silence_factor = 1.0 - text_active.float()
+        silence_factor = 1.0 - emission_strength.clamp(min=0.0, max=1.0)
         return counterpart_present.float() * elapsed_plus_one * silence_factor
 
     def truthfulness_cost(

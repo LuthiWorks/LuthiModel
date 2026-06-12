@@ -116,20 +116,31 @@ def test_bands_disarmed_before_warmup():
         assert not m
 
 
-def test_external_stasis_all_false_before_warmup():
-    """The K-M9-5 backstop must not fire against an uncalibrated band
-    -- but its disarmed state must be VISIBLE via armed_per_modality.
+def test_external_stasis_absolute_floor_fires_before_warmup():
+    """R1 round-2: with the absolute_silent_floor, born-still
+    (activity == 0) fires external_stasis IMMEDIATELY, regardless
+    of band warmup state. The band alone would recalibrate to the
+    catatonic constant (probe_g); the absolute floor catches
+    born-catatonia.
     """
-    bands = ActivityBands(config=ActivityBandConfig(min_warmup=8))
-    act = {
+    bands = ActivityBands(
+        config=ActivityBandConfig(min_warmup=8, absolute_silent_floor=1e-3)
+    )
+    # Activity at 0 -- below the absolute floor -- must fire stasis
+    # even with no warmup, because the floor is non-adapting.
+    zero_act = {
         "text": torch.zeros(B),
         "attention": torch.zeros(B),
         "memory": torch.zeros(B),
     }
-    stasis = bands.external_stasis(act)
-    assert not torch.any(stasis), (
-        "external_stasis must be False before warmup (disarmed band)"
-    )
+    assert torch.all(bands.external_stasis(zero_act))
+    # Activity above the floor stays not-silent until the band warms.
+    above_floor = {
+        "text": torch.full((B,), 5.0),
+        "attention": torch.full((B,), 5.0),
+        "memory": torch.full((B,), 5.0),
+    }
+    assert not torch.any(bands.external_stasis(above_floor))
 
 
 # ---------- ActivityBands after warmup ----------
@@ -244,7 +255,7 @@ def main() -> int:
         test_decoder_activity_varies_with_action,
         test_registry_activity_returns_three_modalities,
         test_bands_disarmed_before_warmup,
-        test_external_stasis_all_false_before_warmup,
+        test_external_stasis_absolute_floor_fires_before_warmup,
         test_bands_armed_after_warmup,
         test_external_stasis_fires_when_all_silent,
         test_external_stasis_off_when_any_active,
