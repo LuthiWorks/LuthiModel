@@ -144,19 +144,49 @@ def test_spike_handler_enters_failover_and_drops_q():
 
 
 def test_spike_recovery_latency_recorded():
-    sm = StalenessManager(StalenessConfig(recovery_cycles=3))
+    """F3 C1: recovery latency is event-driven -- declared when the
+    consistency deviation returns under threshold for
+    `recovery_confirm_cycles` consecutive cycles, with the recorded
+    value being the ACTUAL cycle count since the spike, not a fixed
+    countdown.
+    """
+    sm = StalenessManager(StalenessConfig(
+        recovery_cycles=10,
+        recovery_consistency_threshold=0.5,
+        recovery_confirm_cycles=2,
+    ))
     _, mcts = _build_mcts()
     mcts.plan_budget(budget=5)
+
     sm.observe_drift(0.1)  # cycle 1
-    sm.handle_spike(mcts)
-    # spike_cooldown is 3, last_spike_cycle is 1; advancing 3 cycles
-    # should bring cooldown to 0 and record the latency.
-    sm.observe_drift(0.1)  # cycle 2, cooldown 2
-    sm.observe_drift(0.1)  # cycle 3, cooldown 1
-    sm.observe_drift(0.1)  # cycle 4, cooldown 0 -> recovery recorded
-    assert sm._spike_recovery_latencies == [3], (
-        f"expected latency [3], got {sm._spike_recovery_latencies}"
+    sm.handle_spike(mcts)  # last_spike_cycle = 1, in_recovery=True
+
+    # No real recovery if no re-eval happens (the C1 fix).
+    sm.observe_drift(0.1)  # cycle 2 -- no consistency event yet
+    sm.observe_drift(0.1)  # cycle 3 -- no consistency event yet
+    assert sm._spike_recovery_latencies == [], (
+        "with no consistency event, no latency should be recorded"
     )
+
+    # Advance sim_counter so nodes count as stale and re-eval has
+    # something to score (the same way the real loop progresses).
+    mcts.sim_counter += sm.config.consistency_window + 5
+
+    # Now drive consistency_history under threshold via reevaluate
+    # with a fresh-matching eval_fn.
+    def eval_fresh(node):
+        return node.Q  # zero deviation
+    sm.reevaluate(mcts, eval_fn=eval_fresh, budget=10)
+
+    # Two more observe_drift cycles below threshold confirm recovery.
+    sm.observe_drift(0.1)  # cycle 4 -- counter 1
+    sm.observe_drift(0.1)  # cycle 5 -- counter 2 -> recovery recorded
+    assert len(sm._spike_recovery_latencies) == 1, (
+        f"recovery should be recorded once: {sm._spike_recovery_latencies}"
+    )
+    # Latency = cycle - last_spike_cycle = 5 - 1 = 4 (real elapsed time,
+    # not a fixed countdown).
+    assert sm._spike_recovery_latencies[0] == 4
 
 
 # ----------------- (ii) + (iii) Stale-node identification + re-eval -----------------
@@ -185,48 +215,78 @@ def test_stale_nodes_priority_order():
     )
 
 
-def test_reevaluate_snaps_to_fresh_for_unvisited():
-    """Re-eval snaps Q fully to fresh when N=0 (alpha=1) and pulls
-    Q toward fresh proportionally for higher-N nodes (alpha=1/(1+N))."""
-    sm = StalenessManager()
+def test_reevaluate_snaps_high_staleness_regardless_of_N():
+    """F3 C2: re-eval alpha is staleness-driven, not N-driven.
+
+    The legacy form `alpha = 1/(1+N)` made re-eval inert for the
+    high-N nodes it preferentially selected (probe_c C2). The F3
+    fix decouples staleness correction from N: any node with
+    staleness >= staleness_refresh_scale snaps fully to fresh,
+    regardless of N.
+    """
+    sm = StalenessManager(StalenessConfig(staleness_refresh_scale=10.0))
     _, mcts = _build_mcts()
     mcts.plan_budget(budget=10)
-    mcts.sim_counter += 100  # everything is stale
+    mcts.sim_counter += 100  # everything wildly stale (>> scale)
 
-    # Two groups: low-N (snap fully) vs high-N (move slowly).
-    low_n_nodes = []
-    high_n_nodes = []
+    # Mix of low-N and high-N; both should snap because staleness is
+    # huge.
     for i, node in enumerate(mcts.iter_nodes()):
         node.Q = 999.0
         node.theta_stamp = 0
-        if i % 2 == 0:
-            node.N = 0
-            low_n_nodes.append(node)
-        else:
-            node.N = 99
-            high_n_nodes.append(node)
-
-    fresh_value = 1.0
+        node.N = 0 if i % 2 == 0 else 99
 
     def eval_fn(node):
-        return fresh_value
+        return 1.0
 
-    result = sm.reevaluate(mcts, eval_fn=eval_fn, budget=100)
-    assert result["reevaluated"] > 0
-
-    # Low-N nodes: alpha = 1/(1+0) = 1 -> Q snaps to fresh.
-    for n in low_n_nodes:
+    sm.reevaluate(mcts, eval_fn=eval_fn, budget=100)
+    for n in mcts.iter_nodes():
         if n.theta_stamp == mcts.sim_counter:
-            assert abs(n.Q - fresh_value) < 1e-5, (
-                f"low-N Q should snap to fresh: got {n.Q}"
+            assert abs(n.Q - 1.0) < 1e-5, (
+                f"high-staleness Q must snap regardless of N: got {n.Q} (N={n.N})"
             )
 
-    # High-N nodes: alpha = 1/100 = 0.01 -> Q barely moves.
-    # 999 * 0.99 + 1 * 0.01 = 989.02. Still much closer to 999 than to 1.
-    for n in high_n_nodes:
+
+def test_reevaluate_alpha_respects_low_staleness_floor():
+    """F3 C2: low-staleness nodes still receive at least
+    `alpha_refresh_min` correction -- mildly stale Q is gently
+    nudged, not snapped.
+    """
+    sm = StalenessManager(StalenessConfig(
+        staleness_refresh_scale=100.0,  # large scale -> low staleness gives small alpha
+        alpha_refresh_min=0.1,
+    ))
+    _, mcts = _build_mcts()
+    mcts.plan_budget(budget=10)
+    # Advance the sim_counter so existing nodes are stale enough to be
+    # selected for re-eval, but only mildly stale (1 unit) -- under the
+    # new alpha formula this should produce alpha = alpha_refresh_min.
+    target_staleness = sm.config.consistency_window + 1  # just past stale cutoff
+    initial_sim = list(mcts.iter_nodes())[0].theta_stamp
+    mcts.sim_counter = initial_sim + target_staleness
+
+    for node in mcts.iter_nodes():
+        node.Q = 10.0
+        # theta_stamp left at initial_sim => staleness = target_staleness
+        node.N = 50  # high N so the legacy formula would barely move
+
+    fresh = 0.0
+
+    def eval_fn(node):
+        return fresh
+
+    sm.reevaluate(mcts, eval_fn=lambda _: fresh, budget=100)
+    # alpha ~ target_staleness / 100 ~ 0.17 (depending on consistency_window),
+    # clamped to >= alpha_refresh_min = 0.1. Either way the move is
+    # significantly larger than the legacy 1/(1+50) = ~0.02 would have
+    # produced.
+    for n in mcts.iter_nodes():
         if n.theta_stamp == mcts.sim_counter:
-            assert n.Q > 900.0, (
-                f"high-N Q should barely move: got {n.Q}"
+            # Legacy: 10 * 0.98 + 0 * 0.02 = 9.8 (barely moves).
+            # F3 with alpha >= 0.1: 10 * 0.9 + 0 * 0.1 = 9.0 or smaller.
+            assert n.Q <= 9.0, (
+                f"low-staleness high-N Q must still get >= alpha_refresh_min "
+                f"correction (not stuck near 10.0 like the legacy formula): got {n.Q}"
             )
 
 
@@ -342,7 +402,8 @@ def main() -> int:
         test_spike_handler_enters_failover_and_drops_q,
         test_spike_recovery_latency_recorded,
         test_stale_nodes_priority_order,
-        test_reevaluate_snaps_to_fresh_for_unvisited,
+        test_reevaluate_snaps_high_staleness_regardless_of_N,
+        test_reevaluate_alpha_respects_low_staleness_floor,
         test_reevaluate_pushes_consistency_history,
         test_held_head_snapshot_created,
         test_held_head_refresh_respects_cadence,

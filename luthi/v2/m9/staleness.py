@@ -116,6 +116,23 @@ class StalenessConfig:
     # Re-eval priority weighting: priority = visits ** visit_pow * staleness ** stale_pow
     visit_pow: float = 1.0
     stale_pow: float = 1.0
+    # F3 C2 fix: staleness-driven refresh alpha. Separates MC value
+    # averaging (alpha = 1/(1+N), preserved for new-rollout updates)
+    # from staleness correction (alpha grows with staleness, decoupled
+    # from N). A node with staleness >= staleness_refresh_scale snaps
+    # fully to the fresh value (alpha clamped to 1.0). alpha_refresh_min
+    # gives even mildly stale nodes some pull toward fresh.
+    staleness_refresh_scale: float = 10.0
+    alpha_refresh_min: float = 0.1
+    # F3 C1 fix: event-driven recovery detection. Recovery is declared
+    # when the consistency deviation drops below this threshold for
+    # `recovery_confirm_cycles` consecutive cycles -- the spec §4.v
+    # "verified, not assumed" instrument. The legacy spike_cooldown
+    # countdown is now diagnostic-only; the recovery_cycles param
+    # still bounds how long the manager waits before signaling failure
+    # if recovery doesn't arrive.
+    recovery_consistency_threshold: float = 0.5
+    recovery_confirm_cycles: int = 2
 
 
 class StalenessManager:
@@ -148,7 +165,10 @@ class StalenessManager:
         # Held predictor snapshot (frozen). Refreshed every K cycles.
         self.held_predictor: nn.Module | None = None
         self._cycles_since_held_refresh = 0
-        # Spike state. spike_cooldown counts down recovery cycles.
+        # Spike state. spike_cooldown counts down recovery cycles
+        # (legacy diagnostic: a hard upper bound on the recovery
+        # window the manager waits before signaling failure if real
+        # recovery doesn't arrive).
         self.spike_cooldown = 0
         # Failover state machine.
         self._consistency_breaches = 0
@@ -159,22 +179,51 @@ class StalenessManager:
         # Instrumentation: recovery latency on spikes.
         self._last_spike_cycle: int | None = None
         self._spike_recovery_latencies: list[int] = []
+        # F3 C1 fix: event-driven recovery detection state.
+        self._in_recovery = False
+        self._recovery_confirm_counter = 0
 
     # ------------------------------------------------------------------
     # Per-cycle drift observation.
     # ------------------------------------------------------------------
     def observe_drift(self, delta_theta_norm: float) -> None:
-        """Push the cycle's `||Delta theta||` into the band."""
+        """Push the cycle's `||Delta theta||` into the band.
+
+        F3 C1 fix: recovery latency is now declared event-driven --
+        when the tree-consistency deviation returns under
+        `recovery_consistency_threshold` for `recovery_confirm_cycles`
+        consecutive cycles -- not by a fixed countdown. The legacy
+        spike_cooldown still bounds how long we wait; if it elapses
+        without an event-driven recovery, the manager exposes that
+        through `recovery_timed_out()` so the loop can escalate.
+        """
         self.drift_band.push(float(delta_theta_norm))
         self.cycle += 1
         self._cycles_since_held_refresh += 1
+
+        # Legacy spike_cooldown -- decrement but do NOT use it as the
+        # recovery latency source.
         if self.spike_cooldown > 0:
             self.spike_cooldown -= 1
-            if self.spike_cooldown == 0 and self._last_spike_cycle is not None:
-                # Recovery -- record the latency.
+
+        # F3 C1 event-driven recovery detection.
+        if self._in_recovery and self._consistency_history:
+            recent_dev = self._consistency_history[-1]
+            if recent_dev <= self.config.recovery_consistency_threshold:
+                self._recovery_confirm_counter += 1
+            else:
+                self._recovery_confirm_counter = 0
+            if (
+                self._recovery_confirm_counter
+                >= self.config.recovery_confirm_cycles
+            ):
+                # Real recovery: record actual elapsed cycles since spike.
+                assert self._last_spike_cycle is not None
                 self._spike_recovery_latencies.append(
                     self.cycle - self._last_spike_cycle
                 )
+                self._in_recovery = False
+                self._recovery_confirm_counter = 0
                 self._last_spike_cycle = None
 
     # ------------------------------------------------------------------
@@ -203,6 +252,9 @@ class StalenessManager:
         self._in_failover = True
         self.spike_cooldown = self.config.recovery_cycles
         self._last_spike_cycle = self.cycle
+        # F3 C1: enter recovery -- the real-latency instrument arms.
+        self._in_recovery = True
+        self._recovery_confirm_counter = 0
         # Drop Q values; keep N and structure.
         for node in mcts.iter_nodes():
             node.Q = 0.0
@@ -290,9 +342,18 @@ class StalenessManager:
             fresh = float(eval_fn(node))
             dev = abs(fresh - cached)
             deviations.append(dev)
-            # EMA toward fresh value, weighted by 1 / (1 + N) so wildly
-            # stale nodes snap to fresh fast.
-            alpha = 1.0 / (1.0 + max(node.N, 0))
+            # F3 C2 fix: staleness-driven refresh alpha, decoupled from
+            # visit count. Legacy alpha = 1/(1+N) was correct for MC
+            # value averaging (new rollouts) but inert for staleness
+            # correction on high-N nodes -- exactly the high-priority
+            # nodes re-eval selects first. The new alpha grows with
+            # staleness so a stale cached Q snaps toward fresh; alpha
+            # is clamped to [alpha_refresh_min, 1.0].
+            staleness = max(0, mcts.sim_counter - node.theta_stamp)
+            alpha = max(
+                self.config.alpha_refresh_min,
+                min(1.0, staleness / self.config.staleness_refresh_scale),
+            )
             node.Q = (1.0 - alpha) * cached + alpha * fresh
             node.theta_stamp = mcts.sim_counter
 
