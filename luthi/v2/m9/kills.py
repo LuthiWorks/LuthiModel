@@ -175,6 +175,15 @@ class KillRegistry:
         self.darkroom_sustained_cycles = darkroom_sustained_cycles
         self._darkroom_consecutive = 0
         self._darkroom_state = KillState.HEALTHY
+        # F4 (2026-06-11): the armed-state log -- mandatory per
+        # 4.8's gate-repairs spec. Per cycle we record whether the
+        # kill was CAPABLE of firing given current bands. A disarmed
+        # safety backstop is visible here, not silent.
+        self._darkroom_armed_history: deque = deque(maxlen=128)
+        self._darkroom_disarmed_consecutive = 0
+        # If disarmed for `darkroom_disarmed_window` consecutive cycles
+        # while operation continues, that itself is a defect flag.
+        self.darkroom_disarmed_window = darkroom_sustained_cycles
 
         # K-M9-7 staleness runaway: drives off the StalenessManager's
         # `in_failover()` state. Fires after sustained failover.
@@ -250,19 +259,67 @@ class KillRegistry:
         internal_change_magnitude: float,
         external_stasis: bool,
     ) -> None:
-        """K-M9-5 dark room: both internal AND external stasis.
+        """K-M9-5 dark room: both internal AND external stasis (legacy).
 
-        `internal_change_magnitude` = ||Delta s|| over latent dims
-        (the same signal P1 reads).
-        `external_stasis` = caller-derived flag indicating no decoder
-        emitted above its intensity threshold this cycle. At step 1
-        with text-only output, this is "the text decoder produced
-        nothing significant."
+        **Legacy path** -- this signature reads `external_stasis` from
+        whatever the caller provided (originally the sigmoid intensity
+        head path, which Fable's probe_d showed was disarmed in ~90%
+        of random inits). The F4 fix path is `observe_darkroom_v2`
+        below, which consumes the §A band-based signals + an explicit
+        armed flag. Existing callers and the test suite use this
+        signature; new code MUST use v2.
+
+        `internal_change_magnitude` = ||Delta s|| over latent dims.
+        `external_stasis` = caller-derived flag.
+        Armed-state is assumed True (legacy).
         """
+        self._darkroom_armed_history.append(True)
+        self._darkroom_disarmed_consecutive = 0
         is_stasis = (
             internal_change_magnitude < self.darkroom_internal_threshold
             and external_stasis
         )
+        self._advance_darkroom_state(is_stasis)
+
+    def observe_darkroom_v2(
+        self,
+        internal_silent: bool,
+        external_silent: bool,
+        is_armed: bool = True,
+    ) -> None:
+        """F4 fix path: K-M9-5 from §A band-based silent predicates.
+
+        `internal_silent`: True iff the cycle's ‖Δs_internal‖ is below
+                          DeltaSBand.silent_threshold() (the §A.2
+                          internal-stasis signal). The loop computes
+                          this once and fans the same value to P1's
+                          engagement_cost_from_delta_s.
+        `external_silent`: True iff ActivityBands.external_stasis(...)
+                          is True for this cycle's decoder activities
+                          (the §A.1 signal; raw pre-sigmoid magnitudes
+                          vs running band, NOT intensity heads).
+        `is_armed`: True iff both bands are warm enough that the silent
+                    predicates above are meaningful. When False, the
+                    kill cannot fire this cycle and the armed-state
+                    log records the disarmed cycle; sustained disarmed
+                    operation is itself a flag.
+
+        Armed by construction at any decoder init -- the F4 fix
+        property. probe_d goes from 26/256 armable to 256/256.
+        """
+        self._darkroom_armed_history.append(bool(is_armed))
+        if not is_armed:
+            self._darkroom_disarmed_consecutive += 1
+            # State left at its previous value -- a disarmed cycle is
+            # not "healthy" or "fired", it is uninformed. The
+            # k_m9_5_disarmed_sustained() flag below is the escalation.
+            return
+        self._darkroom_disarmed_consecutive = 0
+        is_stasis = bool(internal_silent and external_silent)
+        self._advance_darkroom_state(is_stasis)
+
+    def _advance_darkroom_state(self, is_stasis: bool) -> None:
+        """Shared state-machine step for the dark-room kill."""
         if is_stasis:
             self._darkroom_consecutive += 1
         else:
@@ -273,6 +330,32 @@ class KillRegistry:
             self._darkroom_state = KillState.FLAGGED
         else:
             self._darkroom_state = KillState.HEALTHY
+
+    # ------------------------------------------------------------------
+    # F4 armed-state instrumentation (mandatory per 4.8's spec).
+    # ------------------------------------------------------------------
+    def darkroom_armed_now(self) -> bool:
+        """True iff the most recent observe_darkroom_v2 call reported
+        the kill as armed (bands warm). The loop logs this per cycle
+        so a disarmed safety backstop is visible, not silent.
+        """
+        return bool(self._darkroom_armed_history[-1]) if self._darkroom_armed_history else False
+
+    def darkroom_armed_fraction(self) -> float:
+        """Fraction of recent cycles in which the kill was armed.
+        Sustained low fraction is a defect: a safety backstop that's
+        off is not a neutral state.
+        """
+        if not self._darkroom_armed_history:
+            return 0.0
+        return sum(self._darkroom_armed_history) / len(self._darkroom_armed_history)
+
+    def k_m9_5_disarmed_sustained(self) -> bool:
+        """True if K-M9-5 has been disarmed for `darkroom_disarmed_window`
+        consecutive cycles -- that itself is a flag per 4.8's
+        escalation rule.
+        """
+        return self._darkroom_disarmed_consecutive >= self.darkroom_disarmed_window
 
     def observe_staleness(self, in_failover: bool) -> None:
         """K-M9-7 staleness runaway. Fires after sustained failover."""
@@ -325,6 +408,8 @@ class KillRegistry:
         self._entropy_count = 0
         self._consistency_count = 0
         self._darkroom_consecutive = 0
+        self._darkroom_armed_history = deque(maxlen=128)
+        self._darkroom_disarmed_consecutive = 0
         self._staleness_failover_count = 0
         self._value_band = TrendingBand(
             window=self._value_band.window,
