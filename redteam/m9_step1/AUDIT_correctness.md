@@ -78,3 +78,47 @@ Two coupled issues in `staleness.py`:
 6. darkroom disarmed-cycle → reset counter (my §4 call).
 
 Each refinement keeps its probe REFUTED *and* extends the probe to the regime that currently hides the seam (F-A scale, F-B born-still) before migrating to `luthi/v2/m9/test_*.py`. The extended probes are the durable part — a fix whose probe only tests the easy regime is a gate that can reopen.
+
+---
+
+# Round-2 response — adjudication of Fable's R1, concession on R3, and one extension
+
+**Date:** 2026-06-12. Responding to `FINDINGS_ROUND2.md` (8/8). The two seats converged: Fable's **R1 = my F-B**, **R2 = my F-A**, **R4 = my F-C**, now with runnable probes. Fable's meta-finding (a running band catches *deviation*, never a *sustained constant* or *absolute magnitude*) is the correct frame and subsumes my F-A/F-B/F-E. No deadlock to escalate.
+
+## Adjudication — R1 / the §A.1 band-based `external_stasis` direction (the routed disagreement)
+
+**I agree with Fable. The windowed band was the wrong primitive — settled between the review and adversarial seats; not escalating to Brian.** My round-1 F-B hedged ("keep the band AND add an absolute floor"); Fable is right that for a kill whose job is *sustained catatonia*, the band isn't merely insufficient, it is the **active cause** of the self-disarm (it recalibrates to the catatonic constant). Keep-both is wrong; the band must not be the stasis signal.
+
+**Resolution — Fable's option (a): a non-adapting `a_rest`-based reference**, for both the kill and P3:
+- **Internal stasis:** `‖Δs(a_t)‖` within ε of `‖Δs(a_rest)‖` (a_rest = the §6.i predicted minimal-change). 
+- **External stasis:** decoder activity within ε of `activity(decode(a_rest))` (the resting output).
+- a_rest is **recomputed each cycle from current state** — no window — so it cannot recalibrate to sustained catatonia (fixes R1), *and* it is defined by the predictor's own minimal-change rather than an arbitrary magnitude, so it is **init-robust** (also re-solves the original probe_d without the windowed band).
+- **Reject Fable's option (b) "freeze the band while stasis suspected"** — it's circular (freezing the detector based on suspecting what it detects). 
+- a_rest may not be wired at the kill/P3 site until loop integration (it's a §6.i artifact); interim backstop is a coarse absolute floor, but **a_rest is the target**, not the floor.
+
+This makes a_rest the **shared non-adapting reference** for K-M9-5 stasis *and* P3 emission, replacing the activity band as the primitive. (The band can survive as a *relative-quieting* instrument, just not as a kill/P3 signal.)
+
+## Concession — R3 (P3 binary gate) is sharper than my round-1 read
+
+I accepted P3's binary `text_active` gate as "fine for step 1." Fable showed it's inert in **25–50% of seeds**, climbing toward the concentrated-proposal regime the trained habit net actually produces. That's right and I was too lenient. **The a_rest resolution unifies R1 and R3:** make `c_con` **continuous** in the candidate's predicted emission — the signed margin of activity relative to `decode(a_rest)` — so it varies smoothly even when all candidates sit on one side of a threshold. One fix (continuous a_rest-relative emission) closes both the safety kill (R1) and the discrimination gap (R3).
+
+## R2 / R4 — converged
+
+- **R2 (gamma):** = F-A. Fable's H1 ("no single `gamma_scale` fixes this") confirms the dimensional argument. Our recommendations converge on a **dimensionless** target; the specific form I'd pilot is the **normalized best-vs-second-best gap** `(G_2nd − G_min)/(std+eps)` (captures "one clear winner" better than CoV, which blows up at mean≈0). Plus Fable's second, independent fix — **bound P3** with a saturating `time_since_emission` — which also removes the H2 false-halt (gamma→ceiling at ~20 s of silence) on its own. Both wanted. Invariant requirement: the ×100-scale probe must stay REFUTED.
+- **R4 (partial wiring):** = F-C. Adopt Fable's stronger form — **legacy opt-in (`allow_legacy=True`)**, raise on incomplete §A wiring at construction/first-call. (My darkroom disarmed-cycle "reset vs preserve" sub-call is **subsumed by R1** — Fable's right it's secondary; once the stasis signal is non-adapting, the disarmed-cycle path largely goes away. I still mildly prefer reset, but it's moot post-R1.)
+
+## Extension — applying the meta-pattern to a third instance neither of us flagged: **K-M9-3**
+
+Fable's pattern predicts more instances than R1/R2. Running it across the kill set: **K-M9-3 (value divergence) is a third instance.** `observe_value` feeds `_value_band = TrendingBand(direction="both")` — a relative band. A value that **diverges to a high constant** (not oscillating, just stuck high) recalibrates the band: median→high, MAD→0, latest≈median → no breach → **HEALTHY**. Value saturation is invisible exactly like gamma saturation (B3) and darkroom catatonia (R1). **K-M9-3 needs an absolute `|V|` ceiling** alongside the band, the same way K-M9-4 already pairs clamp-proximity (absolute) with its band.
+
+Scan of the rest: **K-M9-4** already has the absolute clamp-proximity primary (good); **K-M9-2** entropy/consistency are absolute thresholds (good); **K-M9-8 mask** is *correctly* a band — it's a genuine drift detector, and a mask sitting at a constant *is* stable (the orthogonal slow-drift-evades-band risk remains, lower-confidence). So K-M9-3 is the one additional fix the meta-pattern demands.
+
+## Consolidated refinement order (supersedes my round-1 order)
+
+1. **R4** — legacy opt-in / fail-loud partial wiring (cheapest, stops silent bypass of everything).
+2. **R1 + R3 together** — a_rest-based non-adapting stasis reference + continuous a_rest-relative P3 (one mechanism, both findings; safety kill first per Fable's triage).
+3. **R2** — dimensionless gamma target (normalized gap) + bounded P3; ×100-scale probe.
+4. **K-M9-3** — absolute |V| ceiling (the extension).
+5. Round-1 F-D (theta-version staleness units + clear consistency on spike), F-E (degraded-duration) — still stand; unaffected by round 2.
+
+Each refinement extends its probe into the regime that hides the seam (sustained-constant for R1/K-M9-3, ×100-scale for R2, concentrated-proposals for R3) before migrating to `test_*.py`. The meta-pattern is the durable lesson: **every kill that must catch a sustained state or absolute magnitude gets a non-adapting reference, asserted by a probe that drives it to the constant.**
