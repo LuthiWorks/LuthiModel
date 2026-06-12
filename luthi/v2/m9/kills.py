@@ -134,6 +134,14 @@ class KillRegistry:
         consistency_sustained: int = 5,
         value_band_k: float = 6.0,
         value_sustained: int = 4,
+        # K-M9-3 round-2 extension (4.8 audit): absolute |V| ceiling.
+        # A value stuck at a high constant recalibrates the trending
+        # band (median → constant, MAD → 0) and goes invisible -- same
+        # meta-pattern as the gamma ratchet (B3) and dark-room band
+        # self-disarm (R1). Sustained |V| above this ceiling fires
+        # the kill regardless of the band.
+        value_abs_ceiling: float = 1e3,
+        value_ceiling_sustained: int = 8,
         gamma_runaway_k: float = 4.0,
         gamma_sustained: int = 4,
         # F2 K-M9-4 fix: clamp-proximity as the primary divergence signal.
@@ -175,12 +183,18 @@ class KillRegistry:
         self._consistency_count = 0
         self._consistency_state = KillState.HEALTHY
 
-        # K-M9-3 value divergence: trending band on V(s) running
-        # estimates. Direction = both (oscillation or runaway).
+        # K-M9-3 value divergence: trending band + absolute |V|
+        # ceiling. The band catches oscillation/relative drift; the
+        # absolute ceiling catches a V stuck at a high constant that
+        # would recalibrate the band invisibly (4.8's round-2
+        # extension of Fable's meta-pattern).
         self._value_band = TrendingBand(
             window=32, direction="both", k=value_band_k,
             sustained_cycles=value_sustained, min_warmup=8,
         )
+        self.value_abs_ceiling = value_abs_ceiling
+        self.value_ceiling_sustained = value_ceiling_sustained
+        self._value_ceiling_consecutive = 0
         self._value_state = KillState.HEALTHY
 
         # K-M9-4 gamma divergence: F2 primary = clamp-proximity;
@@ -286,9 +300,33 @@ class KillRegistry:
             self._consistency_state = KillState.HEALTHY
 
     def observe_value(self, v_estimate: float) -> None:
-        """K-M9-3 value divergence."""
-        s = self._value_band.observe(float(v_estimate))
-        self._value_state = KillState(s)
+        """K-M9-3 value divergence.
+
+        Two signals OR'd:
+        - **Absolute ceiling** (no warmup): sustained |V| >=
+          `value_abs_ceiling` over `value_ceiling_sustained` cycles
+          fires the kill. Catches a V stuck at a high constant that
+          recalibrates the band (4.8's round-2 extension of Fable's
+          meta-pattern).
+        - **Trending band**: catches oscillation / relative drift
+          within the operating range.
+
+        Ceiling fire takes precedence over band fire.
+        """
+        v_abs = abs(float(v_estimate))
+        if v_abs >= self.value_abs_ceiling:
+            self._value_ceiling_consecutive += 1
+        else:
+            self._value_ceiling_consecutive = 0
+        band_state = KillState(self._value_band.observe(float(v_estimate)))
+        if self._value_ceiling_consecutive >= self.value_ceiling_sustained:
+            self._value_state = KillState.FIRED
+        elif self._value_ceiling_consecutive > 0:
+            self._value_state = (
+                KillState.FLAGGED if band_state == KillState.HEALTHY else band_state
+            )
+        else:
+            self._value_state = band_state
 
     def observe_gamma(self, gamma_value: float) -> None:
         """K-M9-4 gamma divergence (F2 fix).
@@ -492,6 +530,7 @@ class KillRegistry:
         self._darkroom_armed_history = deque(maxlen=128)
         self._darkroom_disarmed_consecutive = 0
         self._gamma_clamp_consecutive = 0
+        self._value_ceiling_consecutive = 0
         self._staleness_failover_count = 0
         self._value_band = TrendingBand(
             window=self._value_band.window,

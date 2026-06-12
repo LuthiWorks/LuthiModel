@@ -182,6 +182,20 @@ class StalenessManager:
         # F3 C1 fix: event-driven recovery detection state.
         self._in_recovery = False
         self._recovery_confirm_counter = 0
+        # F-D round-2 fix (4.8): theta_version counter -- ticks once
+        # per cycle (per call to observe_drift). Replaces sim-units
+        # staleness in the proper accounting. MCTS continues to stamp
+        # nodes with sim_counter for backward compat; loop integration
+        # adopts theta_version stamping at expansion time and the
+        # manager re-keys staleness off theta_version.
+        self.theta_version: int = 0
+        # F-E round-2 fix (4.8): degraded-duration tracking. Records
+        # the FIRST spike of a perpetual-degradation streak so the
+        # latency instrument doesn't mask "the system has been
+        # degrading for 100 cycles" when subsequent spikes keep
+        # resetting the per-spike latency. Cleared only on REAL
+        # recovery, not on subsequent spikes.
+        self._first_unrecovered_spike_cycle: int | None = None
 
     # ------------------------------------------------------------------
     # Per-cycle drift observation.
@@ -196,9 +210,15 @@ class StalenessManager:
         spike_cooldown still bounds how long we wait; if it elapses
         without an event-driven recovery, the manager exposes that
         through `recovery_timed_out()` so the loop can escalate.
+
+        F-D round-2 fix: increment `theta_version` once per cycle.
+        Stale-node accounting uses this counter (one tick per weight
+        update) rather than sim_counter (one tick per simulation),
+        per 4.8's units correction.
         """
         self.drift_band.push(float(delta_theta_norm))
         self.cycle += 1
+        self.theta_version += 1
         self._cycles_since_held_refresh += 1
 
         # Legacy spike_cooldown -- decrement but do NOT use it as the
@@ -225,6 +245,11 @@ class StalenessManager:
                 self._in_recovery = False
                 self._recovery_confirm_counter = 0
                 self._last_spike_cycle = None
+                # F-E: clear the degraded-duration anchor on REAL
+                # recovery (not on subsequent spikes -- those leave
+                # the anchor in place so the metric reflects "we have
+                # been degrading since the FIRST unrecovered spike").
+                self._first_unrecovered_spike_cycle = None
 
     # ------------------------------------------------------------------
     # (v) Spike detection + handling.
@@ -255,6 +280,20 @@ class StalenessManager:
         # F3 C1: enter recovery -- the real-latency instrument arms.
         self._in_recovery = True
         self._recovery_confirm_counter = 0
+        # F-D round-2 fix (4.8): clear consistency_history so the
+        # post-spike recovery instrument cannot read a stale pre-spike
+        # low-deviation value and declare a false recovery (the C1
+        # falsifier with budget=0 only held against an empty initial
+        # history; an in-flight history could trip it). Recovery must
+        # be measured from genuinely post-spike consistency events.
+        self._consistency_history.clear()
+        # F-E round-2 fix (4.8): if no prior unrecovered spike, set
+        # the anchor. Subsequent spikes during recovery LEAVE the
+        # anchor in place so degraded_duration() reflects perpetual
+        # degradation since the first spike of the streak, not just
+        # since the latest spike.
+        if self._first_unrecovered_spike_cycle is None:
+            self._first_unrecovered_spike_cycle = self.cycle
         # Drop Q values; keep N and structure.
         for node in mcts.iter_nodes():
             node.Q = 0.0
@@ -427,12 +466,31 @@ class StalenessManager:
         return self._in_failover
 
     # ------------------------------------------------------------------
+    # F-E round-2 instrument: degraded-duration metric.
+    # ------------------------------------------------------------------
+    def degraded_duration(self) -> int:
+        """Cycles since the FIRST spike of the current unrecovered
+        streak (0 if not in degradation). Unlike the per-spike
+        recovery_latencies, this metric remains anchored across
+        subsequent spikes, so a spike-storm that keeps resetting the
+        per-spike latency cannot mask perpetual degradation -- the
+        meta-pattern 4.8 named in the round-2 audit.
+
+        Returns 0 when the system is not in a degraded streak (either
+        never spiked, or last spike fully recovered).
+        """
+        if self._first_unrecovered_spike_cycle is None:
+            return 0
+        return self.cycle - self._first_unrecovered_spike_cycle
+
+    # ------------------------------------------------------------------
     # Instrumentation snapshot.
     # ------------------------------------------------------------------
     def snapshot(self) -> dict:
         """Per-cycle log of the staleness state."""
         return {
             "cycle": self.cycle,
+            "theta_version": self.theta_version,
             "drift_median": self.drift_band.median(),
             "drift_mad": self.drift_band.mad(),
             "drift_latest": (
@@ -442,6 +500,7 @@ class StalenessManager:
             "spike_active": self.spike_cooldown > 0,
             "spike_cooldown": self.spike_cooldown,
             "in_failover": self._in_failover,
+            "in_recovery": self._in_recovery,
             "consistency_breaches": self._consistency_breaches,
             "consistency_latest": (
                 self._consistency_history[-1]
@@ -449,4 +508,5 @@ class StalenessManager:
                 else 0.0
             ),
             "spike_recovery_latencies": list(self._spike_recovery_latencies),
+            "degraded_duration": self.degraded_duration(),
         }

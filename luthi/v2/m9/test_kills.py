@@ -110,7 +110,36 @@ def test_value_divergence_fires_on_runaway():
     for _ in range(12):
         reg.observe_value(1.0)
     for _ in range(3):
-        reg.observe_value(1000.0)
+        reg.observe_value(1e6)  # well above default value_abs_ceiling=1e3
+    assert reg.states()["K-M9-3-value"] == KillState.FIRED
+
+
+def test_value_abs_ceiling_fires_on_sustained_high_constant():
+    """K-M9-3 round-2 extension (4.8): a value stuck at a high
+    constant recalibrates the trending band (median → constant,
+    MAD → 0) and would be invisible. The absolute |V| ceiling
+    catches it -- same meta-pattern as gamma clamp-proximity and
+    dark-room absolute floor.
+    """
+    reg = KillRegistry(
+        value_abs_ceiling=1000.0, value_ceiling_sustained=3,
+        # Loose band thresholds so the ceiling fires, not the band.
+        value_band_k=1000.0, value_sustained=1000,
+    )
+    for _ in range(3):
+        reg.observe_value(2000.0)  # |V| = 2000 > ceiling 1000
+    assert reg.states()["K-M9-3-value"] == KillState.FIRED
+
+
+def test_value_abs_ceiling_symmetric_on_negative():
+    """Negative V at the ceiling magnitude must also fire (|V|
+    catches both directions)."""
+    reg = KillRegistry(
+        value_abs_ceiling=1000.0, value_ceiling_sustained=3,
+        value_band_k=1000.0, value_sustained=1000,
+    )
+    for _ in range(3):
+        reg.observe_value(-2000.0)
     assert reg.states()["K-M9-3-value"] == KillState.FIRED
 
 
@@ -257,6 +286,8 @@ def main() -> int:
         test_entropy_fires_on_dominant_branch,
         test_consistency_fires_on_sustained_high_deviation,
         test_value_divergence_fires_on_runaway,
+        test_value_abs_ceiling_fires_on_sustained_high_constant,
+        test_value_abs_ceiling_symmetric_on_negative,
         test_gamma_divergence_fires_on_runaway,
         test_darkroom_fires_on_sustained_stasis,
         test_darkroom_internal_change_keeps_healthy_contemplation,
