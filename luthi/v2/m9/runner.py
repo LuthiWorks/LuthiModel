@@ -140,6 +140,17 @@ class M9Config:
     gamma_max: float = 100.0
     gamma_rho: float = 0.1
     gamma_scale: float = 1.0
+    # Gamma update warmup. During the first `gamma_warmup_cycles`
+    # train_steps, gamma stays at gamma_init and is NOT inferred from
+    # candidate EFE spread. Rationale: early-training candidate EFEs
+    # are dominated by encoder-init noise, not by real precision
+    # structure; inferring gamma against that noise drives it to
+    # extremes (sustained-run smoke test showed gamma collapsing to
+    # the lower clamp within 70 cycles on random-token data). With
+    # warmup, gamma waits for the encoder to stabilize before reading
+    # the landscape. The K-M9-4 kill therefore also stays healthy
+    # during warmup (it observes gamma=gamma_init, never at clamp).
+    gamma_warmup_cycles: int = 100
     # Preferences defaults.
     engagement_floor: float = 0.5
     engagement_target_magnitude: float = 0.5
@@ -498,7 +509,13 @@ class M9Trainer(JEPATrainer):
                 [c.incoming_g for c in children if c.incoming_g is not None],
                 dtype=torch.float32, device=s_root.device,
             )
-            if child_g.numel() >= 2:
+            # Warmup gate: don't infer gamma from candidate EFE spread
+            # while the encoder is still in noise-dominated init. See
+            # M9Config.gamma_warmup_cycles docstring for the rationale.
+            if (
+                child_g.numel() >= 2
+                and self.global_step >= self.m9_config.gamma_warmup_cycles
+            ):
                 self.gamma.update(child_g)
             # ---- Reward = -G_best (lowest G = best candidate) ----
             r_best = float(-child_g.min().item()) if child_g.numel() > 0 else 0.0
