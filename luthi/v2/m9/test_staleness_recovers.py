@@ -248,6 +248,50 @@ def test_theta_version_ticks_per_cycle():
         assert mgr.theta_version == i + 1
 
 
+def test_mcts_stamps_with_theta_version_when_set():
+    """F-D loop-integration: when the runner has set
+    mcts.current_theta_version, child node theta_stamps record that
+    value instead of sim_counter (the legacy fall-back).
+    """
+    from luthi.v2.m9.test_staleness import _build_mcts
+    _, mcts = _build_mcts()
+    mcts.current_theta_version = 42
+    mcts.plan_budget(budget=5)
+    for c in mcts.root.children:
+        assert c.theta_stamp == 42, (
+            f"node stamped with {c.theta_stamp}, expected 42 (theta_version)"
+        )
+    # And sim_counter independently still tracks simulations.
+    assert mcts.sim_counter == 5
+
+
+def test_staleness_clock_uses_theta_version_when_flag_set():
+    """F-D loop-integration: when the staleness config opts in,
+    stale_nodes / reevaluate read from `self.theta_version` instead
+    of `mcts.sim_counter`. The runner sets the flag so staleness
+    measures cycles, not simulations.
+    """
+    from luthi.v2.m9.test_staleness import _build_mcts
+    mgr = StalenessManager(StalenessConfig(staleness_uses_theta_version=True))
+    _, mcts = _build_mcts()
+    mcts.plan_budget(budget=5)
+    # Stamp nodes at theta_version=0 (the legacy stamping kicks in
+    # because we haven't set mcts.current_theta_version yet -- their
+    # theta_stamp will equal sim_counter from the legacy path).
+    for n in mcts.iter_nodes():
+        n.theta_stamp = 0
+    # Drive theta_version past the consistency window.
+    for _ in range(mgr.config.consistency_window + 5):
+        mgr.observe_drift(0.1)
+    # Stale-node detection should fire because theta_version >>
+    # node.theta_stamp -- regardless of mcts.sim_counter.
+    stale = mgr.stale_nodes(mcts)
+    assert len(stale) > 0, (
+        "stale_nodes should fire under theta_version clock once it has "
+        "advanced past consistency_window"
+    )
+
+
 def main() -> int:
     tests = [
         test_recovery_latency_is_zero_at_budget_zero,
@@ -257,6 +301,8 @@ def main() -> int:
         test_degraded_duration_persists_across_spike_storm,
         test_degraded_duration_clears_on_real_recovery,
         test_theta_version_ticks_per_cycle,
+        test_mcts_stamps_with_theta_version_when_set,
+        test_staleness_clock_uses_theta_version_when_flag_set,
     ]
     failed = []
     for t in tests:

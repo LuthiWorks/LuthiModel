@@ -115,8 +115,19 @@ class MCTS:
         self.root: MCTSNode | None = None
         self._context_latents: torch.Tensor | None = None
         self._target_positions: torch.Tensor | None = None
-        # Simulation counter -- monotonically increasing; staleness reads.
+        # Simulation counter -- monotonically increasing; legacy
+        # staleness reads. One tick per simulation (sub-cycle).
         self.sim_counter: int = 0
+        # F-D loop-integration: the cycle-units theta-version stamp
+        # source. When None (default), nodes are stamped with
+        # `sim_counter` for legacy callers (the existing MCTS tests
+        # exercise this path). When the runner wires the staleness
+        # machinery into the loop it sets this each plan_budget to
+        # `staleness_manager.theta_version` so node stamps record the
+        # cycle (one tick per weight update), which is the right
+        # unit for "is this cached Q from an older theta?" -- the
+        # F-D round-2 fix.
+        self.current_theta_version: int | None = None
 
     # ------------------------------------------------------------------
     # Lifecycle.
@@ -327,7 +338,7 @@ class MCTS:
             action_in=action,
             incoming_g=g,
             habit_log_prob=log_prob,
-            theta_stamp=self.sim_counter,
+            theta_stamp=self._stamp_value(),
         )
         node.children.append(child)
         return child
@@ -342,7 +353,7 @@ class MCTS:
         expected -G; so V(state) IS the value-of-being-here. Compose
         with the action's own cost outside this method, in _backup.
         """
-        node.theta_stamp = self.sim_counter
+        node.theta_stamp = self._stamp_value()
         if self.value_head is None:
             return 0.0
         with torch.no_grad():
@@ -370,6 +381,22 @@ class MCTS:
 
     def _count_nodes(self, node: MCTSNode) -> int:
         return 1 + sum(self._count_nodes(c) for c in node.children)
+
+    # ------------------------------------------------------------------
+    # Stamping source: theta_version when set by the runner (cycle-
+    # units), else sim_counter (legacy sim-units).
+    # ------------------------------------------------------------------
+    def _stamp_value(self) -> int:
+        """Current time-stamp for node evaluation.
+
+        Returns `current_theta_version` when the runner has set it
+        (loop-integrated path); falls back to `sim_counter` otherwise
+        (standalone MCTS tests and any caller that doesn't drive the
+        staleness machinery).
+        """
+        if self.current_theta_version is not None:
+            return self.current_theta_version
+        return self.sim_counter
 
     # ------------------------------------------------------------------
     # Hooks for the staleness module to read/write.

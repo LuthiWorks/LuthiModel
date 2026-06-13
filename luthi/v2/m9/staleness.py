@@ -133,6 +133,16 @@ class StalenessConfig:
     # if recovery doesn't arrive.
     recovery_consistency_threshold: float = 0.5
     recovery_confirm_cycles: int = 2
+    # F-D loop-integration: when True, stale-node identification and
+    # re-evaluation read time from `self.theta_version` (cycle-units,
+    # one tick per observe_drift). When False (default), they read
+    # from `mcts.sim_counter` (legacy sim-units; one tick per
+    # simulation). The runner sets this True so staleness measures
+    # what it's *supposed* to measure -- nodes whose Q was evaluated
+    # under an older theta -- instead of conflating sim-progress with
+    # theta-progress. Existing standalone MCTS-staleness tests use
+    # the legacy path; switching by flag preserves them.
+    staleness_uses_theta_version: bool = False
 
 
 class StalenessManager:
@@ -334,8 +344,19 @@ class StalenessManager:
     # ------------------------------------------------------------------
     # (ii) + (iii) Stale-node identification and re-evaluation.
     # ------------------------------------------------------------------
+    def _staleness_clock(self, mcts) -> int:
+        """The time-source for staleness computations.
+
+        F-D loop-integration: returns `self.theta_version` (cycle-units)
+        when the config flag is on, else falls back to `mcts.sim_counter`
+        (legacy sim-units). See `StalenessConfig.staleness_uses_theta_version`.
+        """
+        if self.config.staleness_uses_theta_version:
+            return self.theta_version
+        return mcts.sim_counter
+
     def stale_nodes(self, mcts, age_threshold: int | None = None) -> list:
-        """Nodes whose theta_stamp is older than (sim_counter - threshold).
+        """Nodes whose theta_stamp is older than (clock - threshold).
 
         Default threshold = consistency_window cycles -- after a window
         of sims with no re-eval, the node's cached value is suspect.
@@ -345,10 +366,11 @@ class StalenessManager:
             return []
         if age_threshold is None:
             age_threshold = self.config.consistency_window
-        cutoff = max(0, mcts.sim_counter - age_threshold)
+        clock = self._staleness_clock(mcts)
+        cutoff = max(0, clock - age_threshold)
         candidates = []
         for node in mcts.iter_nodes():
-            stale = max(0, mcts.sim_counter - node.theta_stamp)
+            stale = max(0, clock - node.theta_stamp)
             if node.theta_stamp <= cutoff and stale > 0:
                 priority = (
                     (max(node.N, 1) ** self.config.visit_pow)
@@ -376,6 +398,7 @@ class StalenessManager:
         """
         stale = self.stale_nodes(mcts)[:budget]
         deviations = []
+        clock = self._staleness_clock(mcts)
         for node in stale:
             cached = node.Q
             fresh = float(eval_fn(node))
@@ -388,13 +411,13 @@ class StalenessManager:
             # nodes re-eval selects first. The new alpha grows with
             # staleness so a stale cached Q snaps toward fresh; alpha
             # is clamped to [alpha_refresh_min, 1.0].
-            staleness = max(0, mcts.sim_counter - node.theta_stamp)
+            staleness = max(0, clock - node.theta_stamp)
             alpha = max(
                 self.config.alpha_refresh_min,
                 min(1.0, staleness / self.config.staleness_refresh_scale),
             )
             node.Q = (1.0 - alpha) * cached + alpha * fresh
-            node.theta_stamp = mcts.sim_counter
+            node.theta_stamp = clock
 
         # Push the median deviation into the consistency history. Using
         # median makes the signal robust to a single outlier re-eval.

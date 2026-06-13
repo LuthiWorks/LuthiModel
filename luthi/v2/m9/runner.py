@@ -293,6 +293,11 @@ class M9Trainer(JEPATrainer):
             StalenessConfig(
                 staleness_refresh_scale=self.m9_config.staleness_refresh_scale,
                 alpha_refresh_min=self.m9_config.staleness_alpha_refresh_min,
+                # F-D loop-integration: stale-node identification reads
+                # from `self.theta_version` (one tick per cycle) instead
+                # of `mcts.sim_counter` (one tick per simulation). The
+                # right unit for "Q is from an older theta."
+                staleness_uses_theta_version=True,
             )
         )
         self.mi_probe = MIProbe(
@@ -405,6 +410,13 @@ class M9Trainer(JEPATrainer):
         # forward at inference); at training we reset each step so
         # the visit distribution is rooted at THIS batch's state.
         self.mcts.reset(s_root, ctx_single, tgt_positions)
+        # F-D loop-integration: synchronize the MCTS stamping source
+        # with the staleness manager's theta_version so node Q values
+        # carry the cycle-units stamp (one tick per weight update),
+        # not the sim-units stamp (one tick per simulation). This is
+        # what makes "Q is from an older theta" mean what staleness
+        # actually wants to ask.
+        self.mcts.current_theta_version = self.staleness.theta_version
         self.mcts.plan_budget(
             budget=self.m9_config.mcts_budget_per_cycle,
             observation_kwargs=self._cycle_observation_kwargs(),
