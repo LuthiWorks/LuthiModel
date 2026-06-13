@@ -109,6 +109,14 @@ class M9Config:
     # weight ramps in over training as a_rest accumulates context-dependent
     # structure.
     rest_action_weight: float = 1.0
+    # Text LM loss weight (spec §1): the M9 path adds a real token-level
+    # signal (output_proj over predicted_target -> cross-entropy against
+    # ground-truth target tokens) so the text decoder isn't trained only
+    # on the cycle-consistency reencode path. output_proj is shared with
+    # M8 but JEPALoss doesn't use it, so the M9 LM signal is the only
+    # gradient source for output_proj. Text-only at step 1 -- audio and
+    # vision get equivalents in step 2.
+    text_lm_weight: float = 1.0
     # Tolerance for "best_action == a_rest" detection in the action log
     # (spec §6.iii). When the MCTS-chosen action is within this L2
     # distance of a_rest(s_t), the rest-vs-active flag is set per
@@ -344,7 +352,15 @@ class M9Trainer(JEPATrainer):
             + list(self.decoders.text.intensity_head.parameters()) \
             + list(self.decoders.text.reencode_head.parameters()) \
             + list(self.preferences.parameters()) \
-            + list(self.delta_s_module.parameters())
+            + list(self.delta_s_module.parameters()) \
+            + list(loss_module.online_encoder.output_proj.parameters())
+        # NB: output_proj is *also* in M8's optimizer (it's part of
+        # loss_module.parameters()) but JEPALoss doesn't exercise it,
+        # so M8 optimizer.step() is a no-op for output_proj. The M9
+        # text-LM loss is the only gradient source; m9_optimizer is
+        # the only thing that actually moves output_proj. After the
+        # M9 step, the stop-grad scrub wipes loss_module grads so
+        # the next M8 zero_grad starts clean.
         self.m9_optimizer = Adam(m9_params, lr=self.m9_config.head_lr)
 
         # ---- Step-1 training-story metrics ----
@@ -389,7 +405,7 @@ class M9Trainer(JEPATrainer):
         self.staleness.observe_drift(delta_theta_norm)
 
         # ---- Phase 2: M9 head update on detached latents ----
-        m9_losses = self._m9_head_step(modality, m8_result["raw"])
+        m9_losses = self._m9_head_step(modality, batch, m8_result["raw"])
         m8_result["m9"] = m9_losses
         m9_losses["delta_theta_norm"] = delta_theta_norm
         m9_losses["theta_version"] = self.staleness.theta_version
@@ -404,7 +420,12 @@ class M9Trainer(JEPATrainer):
 
         return m8_result
 
-    def _m9_head_step(self, modality: str, raw: dict) -> dict:
+    def _m9_head_step(
+        self,
+        modality: str,
+        batch: dict,
+        raw: dict,
+    ) -> dict:
         """Train V, habit, and decoders on **detached** latents using
         live MCTS planning as the visit-distill + reward source.
 
@@ -603,7 +624,26 @@ class M9Trainer(JEPATrainer):
         rest_selected = bool(rest_match and top_share > 0.5)
         rest_defaulted = bool(rest_match and not rest_selected)
 
-        total_m9 = v_loss + habit_loss + dec_loss + rest_loss
+        # ---- Text LM loss (spec §1) ----
+        # Decode predicted-target latents to vocab logits via output_proj
+        # and cross-entropy against the ground-truth target tokens. Text
+        # only at step 1; other modalities skip this term (their decoders
+        # train via cycle-consistency only until step 2 wires equivalents).
+        if modality == "text" and "text_tokens" in batch:
+            tgt_tokens = batch["text_tokens"][:, ctx_len:].to(s_t.device)
+            # predicted_target detached so encoder/predictor stop-grad
+            # holds; output_proj gets gradient from this loss path
+            # (output_proj is in m9_optimizer, see __init__ comment).
+            pred_latents = raw["predicted_target"].detach()
+            logits = self.loss_module.online_encoder.output_proj(pred_latents)
+            text_lm_loss = torch.nn.functional.cross_entropy(
+                logits.reshape(-1, logits.shape[-1]),
+                tgt_tokens.reshape(-1),
+            ) * self.m9_config.text_lm_weight
+        else:
+            text_lm_loss = torch.zeros((), device=s_t.device)
+
+        total_m9 = v_loss + habit_loss + dec_loss + rest_loss + text_lm_loss
         total_m9.backward()
         self.m9_optimizer.step()
 
@@ -662,6 +702,7 @@ class M9Trainer(JEPATrainer):
             "habit_loss": float(habit_loss.detach().item()),
             "decoder_loss": float(dec_loss.detach().item()),
             "rest_loss": float(rest_loss.detach().item()),
+            "text_lm_loss": float(text_lm_loss.detach().item()),
             "total": float(total_m9.detach().item()),
             "mcts_tree_size": self.mcts.tree_stats()["size"],
             "mcts_root_visits": self.mcts.tree_stats()["root_visits"],

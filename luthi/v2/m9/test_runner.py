@@ -186,6 +186,34 @@ def test_m9_phase_leaves_no_residual_grad_on_m8_params():
         trainer.action_log.close()
 
 
+def test_text_lm_loss_trains_output_proj():
+    """Spec §1: the M9 path emits a real text-LM signal so output_proj
+    sees gradient. The M8 JEPALoss does not exercise output_proj
+    (which is why it sits at init forever in pure-M8 training), so
+    the M9 LM cross-entropy is the only source. Output_proj weights
+    should move after a few steps.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        trainer = _build_trainer(Path(tmp))
+        op_init = (
+            trainer.loss_module.online_encoder.output_proj.weight.detach().clone()
+        )
+        for _ in range(5):
+            batch = trainer.data_loader.next_batch("text")
+            out = trainer.train_step("text", batch)
+            assert "text_lm_loss" in out["m9"]
+            assert out["m9"]["text_lm_loss"] > 0.0, (
+                "text LM loss should be > 0 on random untrained logits"
+            )
+        op_after = trainer.loss_module.online_encoder.output_proj.weight
+        moved = (op_after - op_init).abs().max().item()
+        assert moved > 1e-5, (
+            f"output_proj should have moved under the M9 text LM signal; "
+            f"max-abs delta = {moved}"
+        )
+        trainer.action_log.close()
+
+
 def test_m9_kills_observed_each_cycle_and_healthy_at_launch():
     """K-M9-2..5 + K-M9-7 are wired through the kill registry. At a
     fresh launch, all should be HEALTHY (or FLAGGED transiently) --
@@ -393,6 +421,7 @@ def main() -> int:
         test_constructs_with_all_m9_components,
         test_train_step_returns_m8_and_m9_sublosses,
         test_m9_phase_leaves_no_residual_grad_on_m8_params,
+        test_text_lm_loss_trains_output_proj,
         test_m9_kills_observed_each_cycle_and_healthy_at_launch,
         test_action_log_emits_one_record_per_train_step,
         test_delta_theta_norm_measured_and_drives_staleness,
