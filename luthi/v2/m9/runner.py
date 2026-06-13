@@ -109,6 +109,12 @@ class M9Config:
     # weight ramps in over training as a_rest accumulates context-dependent
     # structure.
     rest_action_weight: float = 1.0
+    # Tolerance for "best_action == a_rest" detection in the action log
+    # (spec §6.iii). When the MCTS-chosen action is within this L2
+    # distance of a_rest(s_t), the rest-vs-active flag is set per
+    # MCTS visit-distribution concentration. Small constant in action
+    # space; calibratable.
+    rest_match_tolerance: float = 0.5
     # MCTS planning budget per cycle (simulations to expand per train_step).
     mcts_budget_per_cycle: int = 8
     # MCTS progressive-widening params.
@@ -375,6 +381,8 @@ class M9Trainer(JEPATrainer):
         ]
         m8_result = super().train_step(modality, batch)
         delta_theta_norm = self._compute_delta_theta_norm(param_snapshot)
+        # Cache for the action-log writer in _m9_head_step.
+        self._last_delta_theta_norm = delta_theta_norm
         # observe_drift increments theta_version (cycle counter), pushes
         # into the drift band, and runs the F3 C1 event-driven recovery
         # detector. The runner is now the manager's per-cycle driver.
@@ -556,6 +564,45 @@ class M9Trainer(JEPATrainer):
         external_silent_frac = float(external_silent_mask.float().mean().item())
         internal_silent_frac = float(internal_silent_mask.float().mean().item())
 
+        # ---- MI probe (K-M9-6 baseline; step 1 observes only) ----
+        # Pair pooled context with first target-block position as the
+        # canonical (trunk, target). Tiny-batch runs return 0.0 (the
+        # estimator's n>=4 guard); production batches are large enough
+        # to produce a real signal. The probe writes into its own
+        # running band -- step 1 sets the band, step 2's K-M9-6 reads
+        # it as the guard-then-kill trigger.
+        target_latents = raw["target_latents"]
+        ctx_len = raw["ctx_len"]
+        trunk_pooled = raw["online_context_latents"].mean(dim=1)  # [B, D]
+        if target_latents.shape[1] > ctx_len:
+            target_first = target_latents[:, ctx_len, :]          # [B, D]
+        else:
+            target_first = target_latents.mean(dim=1)
+        mi_signal = self.mi_probe.observe(
+            trunk_pooled.detach(), target_first.detach()
+        )
+
+        # ---- Rest-selected vs rest-defaulted (spec §6.iii) ----
+        # Compare the MCTS-chosen best action against a_rest at the
+        # cycle's state. If they match and the visit distribution is
+        # concentrated (top_share > 0.5), rest was *selected* over
+        # alternatives. If they match but the planner had no clear
+        # winner, rest was *defaulted to*. Structural distinction the
+        # spec asks the action log to expose so we can tell "deciding
+        # to be silent" from "no intent."
+        best_action = self.mcts.best_action()
+        if best_action is not None:
+            a_rest_root = a_rest_t[0].detach()
+            rest_match = (
+                (best_action - a_rest_root).norm().item()
+                < self.m9_config.rest_match_tolerance
+            )
+        else:
+            rest_match = False
+        top_share = self.mcts.tree_stats().get("top_share", 0.0)
+        rest_selected = bool(rest_match and top_share > 0.5)
+        rest_defaulted = bool(rest_match and not rest_selected)
+
         total_m9 = v_loss + habit_loss + dec_loss + rest_loss
         total_m9.backward()
         self.m9_optimizer.step()
@@ -571,7 +618,7 @@ class M9Trainer(JEPATrainer):
             if p.grad is not None:
                 p.grad = None
 
-        return {
+        m9_out = {
             "v_loss": float(v_loss.detach().item()),
             "habit_loss": float(habit_loss.detach().item()),
             "decoder_loss": float(dec_loss.detach().item()),
@@ -579,13 +626,61 @@ class M9Trainer(JEPATrainer):
             "total": float(total_m9.detach().item()),
             "mcts_tree_size": self.mcts.tree_stats()["size"],
             "mcts_root_visits": self.mcts.tree_stats()["root_visits"],
+            "mcts_top_share": top_share,
             "r_best": r_best,
             "gamma": float(self.gamma.gamma.detach().item()),
             "external_silent_frac": external_silent_frac,
             "internal_silent_frac": internal_silent_frac,
             "k_m9_5_armed": self.activity_bands.k_m9_5_armed(),
             "rest_delta_s_mean": float(rest_delta_s.detach().mean().item()),
+            "mi_signal": mi_signal,
+            "rest_selected": rest_selected,
+            "rest_defaulted": rest_defaulted,
         }
+
+        # ---- ActionLog write (spec §11.ii) ----
+        # One JSONL record per cycle. Fields cover the decision context
+        # so 4.7 can step through at debug time and reconstruct what the
+        # entity decided and why. Tensors are converted to scalars/lists
+        # by the log's _to_jsonable helper.
+        with torch.no_grad():
+            v_s_mean = float(self.v_head(s_t).mean().item())
+        self.action_log.write({
+            "cycle": self.global_step,
+            "modality": modality,
+            "sim_counter": self.mcts.sim_counter,
+            "theta_version": self.staleness.theta_version,
+            "delta_theta_norm": float(getattr(self, "_last_delta_theta_norm", 0.0)),
+            "s_t_summary": {
+                "mean": float(s_t.mean().item()),
+                "norm": float(s_t.norm().item()),
+            },
+            "best_action_summary": (
+                {
+                    "norm": float(best_action.norm().item()),
+                    "dist_to_a_rest": (
+                        float((best_action - a_rest_t[0].detach()).norm().item())
+                    ),
+                }
+                if best_action is not None
+                else None
+            ),
+            "gamma": float(self.gamma.gamma.detach().item()),
+            "v_s": v_s_mean,
+            "r_best": r_best,
+            "tree_stats": self.mcts.tree_stats(),
+            "mi_probe": self.mi_probe.snapshot(),
+            "rest_selected": rest_selected,
+            "rest_defaulted": rest_defaulted,
+            "external_silent_frac": external_silent_frac,
+            "internal_silent_frac": internal_silent_frac,
+            "k_m9_5_armed": self.activity_bands.k_m9_5_armed(),
+            "staleness": self.staleness.snapshot(),
+            "activity_bands": self.activity_bands.snapshot(),
+            "delta_s_band": self.delta_s_band.snapshot(),
+        })
+
+        return m9_out
 
     def _compute_delta_theta_norm(
         self,

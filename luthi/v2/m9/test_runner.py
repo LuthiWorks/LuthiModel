@@ -186,6 +186,42 @@ def test_m9_phase_leaves_no_residual_grad_on_m8_params():
         trainer.action_log.close()
 
 
+def test_action_log_emits_one_record_per_train_step():
+    """Per spec §11.ii, each cycle writes a JSONL record. The record
+    includes the decision-context fields the spec asks for so debug-
+    time can reconstruct what the entity decided and why.
+    """
+    import json
+    with tempfile.TemporaryDirectory() as tmp:
+        run_dir = Path(tmp)
+        trainer = _build_trainer(run_dir)
+        for _ in range(3):
+            batch = trainer.data_loader.next_batch("text")
+            trainer.train_step("text", batch)
+        trainer.action_log.flush()
+        log_path = run_dir / trainer.m9_config.action_log_filename
+        records = [
+            json.loads(line)
+            for line in log_path.read_text().splitlines()
+            if line.strip()
+        ]
+        trainer.action_log.close()
+        assert len(records) == 3, f"expected 3 records, got {len(records)}"
+        required = (
+            "cycle", "theta_version", "delta_theta_norm",
+            "gamma", "v_s", "tree_stats", "mi_probe",
+            "rest_selected", "rest_defaulted",
+            "external_silent_frac", "internal_silent_frac",
+            "staleness", "activity_bands", "delta_s_band",
+        )
+        for r in records:
+            for k in required:
+                assert k in r, f"missing field {k!r} in action-log record"
+        # Cycles increment.
+        cycles = [r["cycle"] for r in records]
+        assert cycles == sorted(cycles)
+
+
 def test_delta_theta_norm_measured_and_drives_staleness():
     """The runner measures ‖Δθ‖ per cycle and pushes it into the
     staleness manager, advancing theta_version. MCTS picks up the
@@ -339,6 +375,7 @@ def main() -> int:
         test_constructs_with_all_m9_components,
         test_train_step_returns_m8_and_m9_sublosses,
         test_m9_phase_leaves_no_residual_grad_on_m8_params,
+        test_action_log_emits_one_record_per_train_step,
         test_delta_theta_norm_measured_and_drives_staleness,
         test_rest_action_loss_decreases_with_training,
         test_train_step_advances_step_counters,
