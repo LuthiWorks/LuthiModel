@@ -38,6 +38,7 @@ M9 kill wiring land in follow-up slices.
 from __future__ import annotations
 
 import logging
+import math
 import os
 import time
 from dataclasses import dataclass, field
@@ -359,12 +360,31 @@ class M9Trainer(JEPATrainer):
         sees the same shape as before, so the inherited framework
         continues to work unmodified.
         """
-        # ---- Phase 1: M8 core update ----
+        # ---- Phase 1: M8 core update (with ‖Δθ‖ measurement) ----
+        # Snapshot M8 params pre-update so we can compute the
+        # parameter-space delta the M8 step produces. This drives the
+        # staleness machinery's drift band -- the manager spike-tests
+        # `‖Δθ‖` against a running median+MAD to detect plasticity
+        # spikes (plan §4.v). Per-step clone is O(|params|) memory;
+        # acceptable at step-1 scale, revisit if we move to large
+        # models (gradient-norm proxy or subset sampling).
+        param_snapshot = [
+            p.detach().clone()
+            for p in self.loss_module.parameters()
+            if p.requires_grad
+        ]
         m8_result = super().train_step(modality, batch)
+        delta_theta_norm = self._compute_delta_theta_norm(param_snapshot)
+        # observe_drift increments theta_version (cycle counter), pushes
+        # into the drift band, and runs the F3 C1 event-driven recovery
+        # detector. The runner is now the manager's per-cycle driver.
+        self.staleness.observe_drift(delta_theta_norm)
 
         # ---- Phase 2: M9 head update on detached latents ----
         m9_losses = self._m9_head_step(modality, m8_result["raw"])
         m8_result["m9"] = m9_losses
+        m9_losses["delta_theta_norm"] = delta_theta_norm
+        m9_losses["theta_version"] = self.staleness.theta_version
 
         # ---- Polyak update of V_target ----
         # Done outside the gradient step; just an exponential moving
@@ -566,6 +586,24 @@ class M9Trainer(JEPATrainer):
             "k_m9_5_armed": self.activity_bands.k_m9_5_armed(),
             "rest_delta_s_mean": float(rest_delta_s.detach().mean().item()),
         }
+
+    def _compute_delta_theta_norm(
+        self,
+        param_snapshot: list,
+    ) -> float:
+        """L2 norm of `theta_after - theta_before` across all M8
+        trainable parameters. Drives the staleness manager's drift
+        band each cycle.
+
+        Returns float(0.0) for the degenerate empty-params case.
+        """
+        delta_sq = 0.0
+        current_params = [
+            p for p in self.loss_module.parameters() if p.requires_grad
+        ]
+        for before, after in zip(param_snapshot, current_params):
+            delta_sq += float((after.detach() - before).pow(2).sum().item())
+        return math.sqrt(delta_sq)
 
     def _target_positions_for(
         self,

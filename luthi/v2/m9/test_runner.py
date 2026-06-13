@@ -186,6 +186,34 @@ def test_m9_phase_leaves_no_residual_grad_on_m8_params():
         trainer.action_log.close()
 
 
+def test_delta_theta_norm_measured_and_drives_staleness():
+    """The runner measures ‖Δθ‖ per cycle and pushes it into the
+    staleness manager, advancing theta_version. MCTS picks up the
+    new theta_version each step.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        trainer = _build_trainer(Path(tmp))
+        assert trainer.staleness.theta_version == 0
+        for i in range(3):
+            batch = trainer.data_loader.next_batch("text")
+            out = trainer.train_step("text", batch)
+            # theta_version advanced by exactly one per train_step.
+            assert trainer.staleness.theta_version == i + 1, (
+                f"theta_version={trainer.staleness.theta_version}, expected {i + 1}"
+            )
+            # ‖Δθ‖ recorded and positive (the M8 optimizer updates params).
+            assert out["m9"]["delta_theta_norm"] > 0.0
+            assert out["m9"]["theta_version"] == i + 1
+            # MCTS picked up the new theta_version for stamping.
+            for c in trainer.mcts.root.children:
+                assert c.theta_stamp == i + 1, (
+                    f"child theta_stamp={c.theta_stamp}, expected {i + 1}"
+                )
+        # The drift band has 3 samples in it.
+        assert len(trainer.staleness.drift_band.values) == 3
+        trainer.action_log.close()
+
+
 def test_rest_action_loss_decreases_with_training():
     """RestActionNet is zero-init; after a few steps the rest_loss should
     drop (a_rest learns to produce smaller ‖predict_next - s_t‖ on the
@@ -311,6 +339,7 @@ def main() -> int:
         test_constructs_with_all_m9_components,
         test_train_step_returns_m8_and_m9_sublosses,
         test_m9_phase_leaves_no_residual_grad_on_m8_params,
+        test_delta_theta_norm_measured_and_drives_staleness,
         test_rest_action_loss_decreases_with_training,
         test_train_step_advances_step_counters,
         test_v_target_drifts_toward_v,
