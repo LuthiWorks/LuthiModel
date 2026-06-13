@@ -186,6 +186,24 @@ def test_m9_phase_leaves_no_residual_grad_on_m8_params():
         trainer.action_log.close()
 
 
+def test_m9_kills_observed_each_cycle_and_healthy_at_launch():
+    """K-M9-2..5 + K-M9-7 are wired through the kill registry. At a
+    fresh launch, all should be HEALTHY (or FLAGGED transiently) --
+    none should fire on the first step.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        trainer = _build_trainer(Path(tmp))
+        for _ in range(3):
+            batch = trainer.data_loader.next_batch("text")
+            out = trainer.train_step("text", batch)
+            kill_states = out["m9"]["kill_states"]
+            for name, state in kill_states.items():
+                assert state in ("healthy", "flagged"), (
+                    f"M9 kill {name} fired at fresh launch (state={state})"
+                )
+        trainer.action_log.close()
+
+
 def test_action_log_emits_one_record_per_train_step():
     """Per spec §11.ii, each cycle writes a JSONL record. The record
     includes the decision-context fields the spec asks for so debug-
@@ -375,6 +393,7 @@ def main() -> int:
         test_constructs_with_all_m9_components,
         test_train_step_returns_m8_and_m9_sublosses,
         test_m9_phase_leaves_no_residual_grad_on_m8_params,
+        test_m9_kills_observed_each_cycle_and_healthy_at_launch,
         test_action_log_emits_one_record_per_train_step,
         test_delta_theta_norm_measured_and_drives_staleness,
         test_rest_action_loss_decreases_with_training,

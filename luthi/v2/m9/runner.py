@@ -618,6 +618,45 @@ class M9Trainer(JEPATrainer):
             if p.grad is not None:
                 p.grad = None
 
+        # ---- M9 kill observations ----
+        # Each kill observe_* is called once per cycle with the right
+        # signal. The KillRegistry maintains its own running bands
+        # internally (same DriftBand machinery the spec calls "pilot-
+        # set"); the per-kill state machines (HEALTHY/FLAGGED/FIRED)
+        # advance per the §7 thresholds.
+        with torch.no_grad():
+            v_mean = float(v_pred.detach().mean().item())
+        gamma_value = float(self.gamma.gamma.detach().item())
+        # K-M9-2 MCTS entropy. visit_distribution may be empty if no
+        # children were expanded; observe_mcts_entropy handles that.
+        visit_dist = self.mcts.visit_distribution()
+        if visit_dist.numel() > 0:
+            self.m9_kills.observe_mcts_entropy(visit_dist)
+        # K-M9-3 V divergence (|V| ceiling backstops the bootstrap).
+        self.m9_kills.observe_value(v_mean)
+        # K-M9-4 gamma divergence (clamp-proximity + band).
+        self.m9_kills.observe_gamma(gamma_value)
+        # K-M9-5 dark-room / catatonia. Use the all-batch reduction:
+        # silent iff EVERY batch element is silent (conservative; a
+        # single-entity cycle has only one realized state, and we
+        # don't want partial-batch silence to drive the kill).
+        internal_silent_all = bool(internal_silent_mask.all().item())
+        external_silent_all = bool(external_silent_mask.all().item())
+        self.m9_kills.observe_darkroom_v2(
+            internal_silent=internal_silent_all,
+            external_silent=external_silent_all,
+            is_armed=self.activity_bands.k_m9_5_armed(),
+        )
+        # K-M9-7 staleness runaway. The failover state machine
+        # advances after sustained failover; at this slice failover
+        # itself is gated by the consistency-history breach check,
+        # which fires only once the staleness manager has accumulated
+        # enough drift-vs-cached deviations to trip.
+        self.staleness.update_failover_state()
+        self.m9_kills.observe_staleness(in_failover=self.staleness.in_failover())
+
+        kill_states = {k: v.value for k, v in self.m9_kills.states().items()}
+
         m9_out = {
             "v_loss": float(v_loss.detach().item()),
             "habit_loss": float(habit_loss.detach().item()),
@@ -628,7 +667,7 @@ class M9Trainer(JEPATrainer):
             "mcts_root_visits": self.mcts.tree_stats()["root_visits"],
             "mcts_top_share": top_share,
             "r_best": r_best,
-            "gamma": float(self.gamma.gamma.detach().item()),
+            "gamma": gamma_value,
             "external_silent_frac": external_silent_frac,
             "internal_silent_frac": internal_silent_frac,
             "k_m9_5_armed": self.activity_bands.k_m9_5_armed(),
@@ -636,6 +675,7 @@ class M9Trainer(JEPATrainer):
             "mi_signal": mi_signal,
             "rest_selected": rest_selected,
             "rest_defaulted": rest_defaulted,
+            "kill_states": kill_states,
         }
 
         # ---- ActionLog write (spec §11.ii) ----
@@ -678,6 +718,7 @@ class M9Trainer(JEPATrainer):
             "staleness": self.staleness.snapshot(),
             "activity_bands": self.activity_bands.snapshot(),
             "delta_s_band": self.delta_s_band.snapshot(),
+            "kill_states": kill_states,
         })
 
         return m9_out
