@@ -50,12 +50,13 @@ class ActivityBandConfig:
     # (do not fire safety kills against an uncalibrated band).
     min_warmup: int = 8
     # R1 round-2 interim (4.8 + Fable): absolute floor. Activity at
-    # or below this is silent REGARDLESS of band. This is the
-    # non-adapting reference the round-2 audits demanded for the
-    # K-M9-5 stasis signal -- the band alone recalibrates to a
-    # catatonic constant (probe_g). The loop-integration target is
-    # an `a_rest`-based reference (activity within epsilon of
-    # decode(a_rest)); this absolute floor is the interim backstop.
+    # or below this is silent REGARDLESS of band. The non-adapting
+    # backstop -- the band alone recalibrates to a catatonic constant
+    # (probe_g). The loop-integration target is the `a_rest`-based
+    # reference (activity within `rest_tolerance` of decode(a_rest));
+    # this absolute floor remains as a launch-time safety net since
+    # the RestActionNet output is near-zero (zero-init) and unhelpful
+    # before any training has occurred.
     absolute_silent_floor: float = 1e-3
     # Sigmoid scale for the continuous emission signal (R3 fix). A
     # candidate's emission strength is sigmoid((activity - floor)/scale),
@@ -63,6 +64,14 @@ class ActivityBandConfig:
     # collapsing to a binary text_active that fails when candidates
     # bunch on one side of a threshold (probe_e).
     emission_signal_scale: float = 0.1
+    # Tolerance for the `a_rest` reference in `is_silent`/`external_stasis`.
+    # When the loop passes `rest_activity_value` (= decoders.activity(
+    # decode(a_rest(s_t))) per modality), activity is "at rest" if
+    # `activity <= rest_activity + rest_tolerance`. Small constant
+    # because rest_activity is a learned per-state quantity already
+    # near the silence baseline; the tolerance just absorbs sampling
+    # noise in the population mean.
+    rest_tolerance: float = 1e-4
 
 
 class ActivityBands:
@@ -127,19 +136,41 @@ class ActivityBands:
         mad = max(band.mad(), 1e-8)
         return med - self.config.silence_k * mad
 
-    def is_silent(self, modality: str, activity_value: torch.Tensor) -> torch.Tensor:
+    def is_silent(
+        self,
+        modality: str,
+        activity_value: torch.Tensor,
+        rest_activity_value: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         """[B] bool -- True where this modality's activity is below
-        its band's silent threshold OR below the absolute floor.
+        its band's silent threshold OR below the absolute floor OR at
+        or below the per-state `a_rest` reference (when provided).
 
-        R1 round-2 fix: the band-only form recalibrates to a sustained
-        catatonic constant (probe_g). OR-ing with an absolute floor
-        catches the sustained-constant case the band cannot see.
-        Interim until a_rest-based reference is wired at loop
-        integration.
+        Three OR'd conditions, each catches a regime the others miss:
+
+        - **Band threshold** (median - silence_k * MAD): the running
+          band's view of "below typical." Strict but recalibrates to
+          sustained constants (probe_g).
+        - **Absolute floor** (round-2 R1 backstop): activity at or
+          below `absolute_silent_floor` is silent regardless of band
+          state. Catches launch-time catatonia and band recalibration
+          to constants.
+        - **a_rest reference** (loop-integration target per spec
+          §6.i): activity at or below the per-state rest reference
+          (within tolerance `rest_tolerance`) is silent. This is the
+          context-dependent silence reference; once RestActionNet has
+          trained it dominates the absolute floor (which becomes
+          meaningful only as a launch-time safety net).
         """
         thr = self.silent_threshold(modality)
         floor = self.config.absolute_silent_floor
-        return (activity_value < thr) | (activity_value <= floor)
+        below_band = activity_value < thr
+        below_floor = activity_value <= floor
+        if rest_activity_value is None:
+            return below_band | below_floor
+        tol = self.config.rest_tolerance
+        below_rest = activity_value <= (rest_activity_value + tol)
+        return below_band | below_floor | below_rest
 
     def emission_strength(
         self,
@@ -162,15 +193,36 @@ class ActivityBands:
         floor = self.config.absolute_silent_floor
         return torch.sigmoid((activity_value - floor) / scale)
 
-    def per_batch_silent(self, activity: dict) -> dict:
-        """{modality: [B] bool} -- per-batch silent mask per modality."""
-        return {
-            m: self.is_silent(m, activity[m])
-            for m in self.modalities
-            if m in activity
-        }
+    def per_batch_silent(
+        self,
+        activity: dict,
+        rest_activity: dict | None = None,
+    ) -> dict:
+        """{modality: [B] bool} -- per-batch silent mask per modality.
 
-    def external_stasis(self, activity: dict) -> torch.Tensor:
+        When `rest_activity` is provided (= `decoders.activity(
+        decode(a_rest(s_t)))` from the loop), each modality's silent
+        predicate also fires when activity is at or below the per-
+        modality rest reference (within `rest_tolerance`). See
+        `is_silent`.
+        """
+        out: dict = {}
+        for m in self.modalities:
+            if m not in activity:
+                continue
+            rest_m = (
+                rest_activity[m]
+                if rest_activity is not None and m in rest_activity
+                else None
+            )
+            out[m] = self.is_silent(m, activity[m], rest_activity_value=rest_m)
+        return out
+
+    def external_stasis(
+        self,
+        activity: dict,
+        rest_activity: dict | None = None,
+    ) -> torch.Tensor:
         """F4 dark-room input: [B] bool -- True where ALL modalities
         are silent for this batch element.
 
@@ -180,8 +232,14 @@ class ActivityBands:
         does not fire against an uncalibrated band, *but* see
         `armed_per_modality()` for the explicit armed-state log so
         operators can see the kill is currently disarmed.
+
+        When `rest_activity` is provided, per-modality silence also
+        fires when activity is at or below decode(a_rest) -- the
+        context-dependent silence reference per spec §6.i.
         """
-        masks = list(self.per_batch_silent(activity).values())
+        masks = list(
+            self.per_batch_silent(activity, rest_activity=rest_activity).values()
+        )
         if not masks:
             return torch.zeros(0, dtype=torch.bool)
         out = masks[0]

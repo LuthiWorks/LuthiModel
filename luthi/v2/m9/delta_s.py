@@ -115,18 +115,22 @@ class DeltaSBand:
         window: int = 32,
         silence_k: float = 1.5,
         min_warmup: int = 8,
-        # R1 round-2 interim (4.8 + Fable): absolute floor on
-        # ‖Δs_internal‖. ‖Δs‖ at or below this counts as internally
-        # still REGARDLESS of band. The band alone recalibrates to
-        # a sustained-constant internal stasis (probe_g, same as
-        # ActivityBands). Loop integration wires the a_rest reference;
-        # this absolute floor is the interim backstop.
+        # R1 round-2: absolute floor on ‖Δs_internal‖. ‖Δs‖ at or
+        # below this counts as internally still REGARDLESS of band.
+        # Launch-time safety net (RestActionNet is zero-init so
+        # rest_delta_s starts uninformative); once a_rest has trained,
+        # the rest reference in `is_silent_per_batch(rest_delta_s=...)`
+        # dominates and this floor becomes redundant.
         absolute_silent_floor: float = 1e-4,
+        # Tolerance for the per-state a_rest reference. ‖Δs_internal‖
+        # at or below `rest_delta_s + rest_tolerance` counts as still.
+        rest_tolerance: float = 1e-5,
     ):
         self.band = DriftBand(window=window)
         self.silence_k = silence_k
         self.min_warmup = min_warmup
         self.absolute_silent_floor = absolute_silent_floor
+        self.rest_tolerance = rest_tolerance
 
     def observe(self, value: float | torch.Tensor) -> None:
         """Push a population-level ‖Δs_internal‖ value into the band."""
@@ -169,21 +173,34 @@ class DeltaSBand:
     def is_silent_per_batch(
         self,
         delta_s_internal: torch.Tensor,
+        rest_delta_s: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """[B] bool: True where ‖Δs_internal‖ is below the silent
-        threshold (band) OR below the absolute floor. The K-M9-5
+        threshold (band) OR below the absolute floor OR at or below
+        the per-state a_rest reference (when provided). The K-M9-5
         internal-stasis input.
 
         R1 round-2 fix: OR with `absolute_silent_floor` so a sustained
         zero-Δs constant -- born-catatonia -- fires the kill even
         before the band warms or after the band has recalibrated to
         the constant.
+
+        Loop-integration extension (spec §6.i): when `rest_delta_s` is
+        provided (= ‖predict_next(s_t, a_rest(s_t)) - s_t‖_internal),
+        ‖Δs‖ within `rest_tolerance` of the per-state rest reference
+        also counts as still. Replaces the absolute floor as the
+        informative signal once a_rest has trained.
         """
         below_floor = delta_s_internal <= self.absolute_silent_floor
+        if rest_delta_s is not None:
+            below_rest = delta_s_internal <= (rest_delta_s + self.rest_tolerance)
+        else:
+            below_rest = torch.zeros_like(below_floor)
         if not self.is_warm():
-            # Before warmup: only the absolute floor can fire.
-            return below_floor
-        return (delta_s_internal < self.silent_threshold()) | below_floor
+            # Before warmup: only the absolute floor and the a_rest
+            # reference can fire (band threshold is +inf).
+            return below_floor | below_rest
+        return (delta_s_internal < self.silent_threshold()) | below_floor | below_rest
 
     def snapshot(self) -> dict:
         return {

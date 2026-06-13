@@ -123,7 +123,7 @@ def test_constructs_with_all_m9_components():
         trainer = _build_trainer(Path(tmp))
         # All component bag entries are present.
         for attr in (
-            "v_head", "v_target", "habit_net", "decoders",
+            "v_head", "v_target", "habit_net", "rest_action", "decoders",
             "preferences", "activity_bands", "delta_s_module",
             "delta_s_band", "efe", "gamma", "m9_kills",
             "staleness", "mi_probe", "action_log",
@@ -153,11 +153,60 @@ def test_train_step_returns_m8_and_m9_sublosses():
         assert "raw" in out
         # M9 phase added.
         assert "m9" in out
-        for k in ("v_loss", "habit_loss", "decoder_loss", "total"):
+        for k in (
+            "v_loss", "habit_loss", "decoder_loss", "rest_loss", "total",
+        ):
             assert k in out["m9"], f"missing M9 subloss: {k}"
         # All finite.
         for k, v in out["m9"].items():
+            if isinstance(v, bool):
+                continue
             assert v == v, f"NaN in m9.{k}"
+        trainer.action_log.close()
+
+
+def test_m9_phase_leaves_no_residual_grad_on_m8_params():
+    """Stop-grad discipline: the M9 backward routes through the M8
+    predictor for the rest-action path, but the M9 phase must scrub
+    those residual grads so the next M8 step starts clean.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        trainer = _build_trainer(Path(tmp))
+        batch = trainer.data_loader.next_batch("text")
+        trainer.train_step("text", batch)
+        leaked = [
+            (name, p.grad)
+            for name, p in trainer.loss_module.named_parameters()
+            if p.grad is not None
+        ]
+        assert not leaked, (
+            f"M8 params have residual grad after M9 phase: "
+            f"{[n for n, _ in leaked][:5]} (total {len(leaked)})"
+        )
+        trainer.action_log.close()
+
+
+def test_rest_action_loss_decreases_with_training():
+    """RestActionNet is zero-init; after a few steps the rest_loss should
+    drop (a_rest learns to produce smaller ‖predict_next - s_t‖ on the
+    cycle's states). Confirms the rest-action training signal is live.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        trainer = _build_trainer(Path(tmp), seed=13)
+        losses = []
+        for _ in range(8):
+            batch = trainer.data_loader.next_batch("text")
+            out = trainer.train_step("text", batch)
+            losses.append(out["m9"]["rest_loss"])
+        # Crude monotonicity is too strict for an 8-step sample with
+        # batchwise variance; require the second-half mean to be less
+        # than the first-half mean.
+        first_half = sum(losses[:4]) / 4
+        second_half = sum(losses[4:]) / 4
+        assert second_half < first_half, (
+            f"rest_loss did not decrease: first_half={first_half:.4f}, "
+            f"second_half={second_half:.4f}, all={losses}"
+        )
         trainer.action_log.close()
 
 
@@ -208,10 +257,12 @@ def test_checkpoint_roundtrip_preserves_m9_state():
         ckpt_path = sorted((run_dir / "checkpoints").glob("ckpt_*.pt"))[-1]
 
         # Capture state for comparison.
+        rest_first_weight = next(t1.rest_action.parameters()).detach().clone()
         before = {
             "v_head": [p.detach().clone() for p in t1.v_head.parameters()],
             "v_target": [p.detach().clone() for p in t1.v_target.parameters()],
             "habit_mean_weight": t1.habit_net.mean_head.weight.detach().clone(),
+            "rest_first_weight": rest_first_weight,
             "decoder_attention_gate_weight": t1.decoders.attention.gate_head.weight.detach().clone(),
             "decoder_memory_salience_weight": t1.decoders.memory.salience_head.weight.detach().clone(),
             "gamma": float(t1.gamma.gamma.detach().item()),
@@ -247,6 +298,11 @@ def test_checkpoint_roundtrip_preserves_m9_state():
             before["delta_s_internal_mask"],
             t2.delta_s_module.internal_mask,
         )
+        # RestActionNet state preserved across resume.
+        assert torch.equal(
+            before["rest_first_weight"],
+            next(t2.rest_action.parameters()),
+        ), "rest_action mismatch after resume"
         t2.action_log.close()
 
 
@@ -254,6 +310,8 @@ def main() -> int:
     tests = [
         test_constructs_with_all_m9_components,
         test_train_step_returns_m8_and_m9_sublosses,
+        test_m9_phase_leaves_no_residual_grad_on_m8_params,
+        test_rest_action_loss_decreases_with_training,
         test_train_step_advances_step_counters,
         test_v_target_drifts_toward_v,
         test_checkpoint_roundtrip_preserves_m9_state,

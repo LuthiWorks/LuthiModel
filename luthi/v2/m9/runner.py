@@ -70,6 +70,7 @@ from luthi.v2.m9.instrumentation import ActionLog, MIProbe
 from luthi.v2.m9.kills import KillRegistry
 from luthi.v2.m9.mcts import MCTS
 from luthi.v2.m9.preferences import Preferences
+from luthi.v2.m9.rest_action import RestActionNet
 from luthi.v2.m9.staleness import StalenessConfig, StalenessManager
 from luthi.v2.m9.value_head import ValueHead
 
@@ -102,6 +103,11 @@ class M9Config:
     habit_distill_temperature: float = 1.0
     # Decoder cycle-consistency loss weight.
     decoder_cycle_consistency_weight: float = 1.0
+    # Rest-action loss weight: minimize ‖predict_next(s_t, a_rest) - s_t‖_internal.
+    # The RestActionNet is zero-init so the early loss is uninformative;
+    # weight ramps in over training as a_rest accumulates context-dependent
+    # structure.
+    rest_action_weight: float = 1.0
     # MCTS planning budget per cycle (simulations to expand per train_step).
     mcts_budget_per_cycle: int = 8
     # MCTS progressive-widening params.
@@ -215,6 +221,15 @@ class M9Trainer(JEPATrainer):
         # Habit network -- Fountas-style amortized proposal.
         self.habit_net = HabitNet(d_model=d_model)
 
+        # Rest-action network -- spec §6.i `a_rest(s_t)`. Zero-init so
+        # early-cycle a_rest is near zero (a "do nothing" prior); the
+        # M9 head training minimizes ‖predict_next(s_t, a_rest) - s_t‖
+        # so it learns context-dependent minimal-self-change actions.
+        # Feeds the rest-reference plumbing in ActivityBands /
+        # DeltaSBand (which replaces the round-2 absolute-floor backstop
+        # once RestActionNet has trained).
+        self.rest_action = RestActionNet(d_model=d_model)
+
         # Decoders. Text decoder reuses the M8 `output_proj` head per
         # spec §1 (frozen / low-LR at launch).
         self.decoders = DecoderRegistry(
@@ -311,6 +326,7 @@ class M9Trainer(JEPATrainer):
         # interface, not the param ownership).
         m9_params = list(self.v_head.parameters()) \
             + list(self.habit_net.parameters()) \
+            + list(self.rest_action.parameters()) \
             + list(self.decoders.attention.parameters()) \
             + list(self.decoders.memory.parameters()) \
             + list(self.decoders.text.intensity_head.parameters()) \
@@ -458,19 +474,85 @@ class M9Trainer(JEPATrainer):
         ) / max(1, len(reencoded))
         dec_loss = dec_loss * self.m9_config.decoder_cycle_consistency_weight
 
-        total_m9 = v_loss + habit_loss + dec_loss
+        # ---- a_rest reference + rest-action loss ----
+        # Per spec §6.i: a_rest(s_t) = "predict minimal self-change".
+        # Train RestActionNet to minimize ‖predict_next(s_t, a_rest) - s_t‖
+        # along the internal-dim axis. Once trained, s_rest gives the
+        # per-state silence reference that the bands consume via
+        # is_silent(rest_activity_value=...) / is_silent_per_batch(
+        # rest_delta_s=...) -- the context-dependent stasis floor that
+        # replaces the round-2 absolute_silent_floor.
+        #
+        # Stop-grad: the rest forward goes through the M8 predictor.
+        # The predictor's params are in the M8 optimizer (not in
+        # m9_optimizer), so m9_optimizer.step() won't update them; any
+        # gradient that accumulates on loss_module params is wiped
+        # below (see `for p in self.loss_module.parameters(): p.grad =
+        # None`) so the M9 path provably cannot reshape M8.
+        a_rest_t = self.rest_action(s_t)                            # [B, D]
+        ctx_full = raw["online_context_latents"].detach()           # [B, ctx, D]
+        tgt_full = self._target_positions_for(raw["ctx_len"]).to(
+            s_t.device
+        ).expand(s_t.shape[0], -1)
+        s_rest = self.efe.predict_next(ctx_full, tgt_full, a_rest_t)  # [B, D]
+        rest_delta_s = self.delta_s_module.compute(s_t, s_rest)       # [B]
+        rest_loss = rest_delta_s.mean() * self.m9_config.rest_action_weight
+
+        # Detached references for the band observations + classifiers.
+        with torch.no_grad():
+            rest_activity = self.decoders.activity(s_rest.detach())
+            realized_activity = self.decoders.activity(s_hat_next)
+            realized_delta_s = self.delta_s_module.compute(s_t, s_hat_next)
+
+        # Push the realized cycle's signals into the per-modality and
+        # ‖Δs‖ bands. The bands' silence thresholds calibrate to the
+        # observed distribution; the rest_reference path gives the
+        # per-state silence floor.
+        self.activity_bands.observe(realized_activity)
+        self.delta_s_band.observe(realized_delta_s)
+
+        # Stasis checks read with the a_rest reference. Captured as
+        # snapshot scalars for the M9 diagnostics; the kill plumbing
+        # for K-M9-5 lands when the M9 kills land in the pilot-set
+        # framework (task #24).
+        external_silent_mask = self.activity_bands.external_stasis(
+            realized_activity, rest_activity=rest_activity,
+        )
+        internal_silent_mask = self.delta_s_band.is_silent_per_batch(
+            realized_delta_s, rest_delta_s=rest_delta_s,
+        )
+        external_silent_frac = float(external_silent_mask.float().mean().item())
+        internal_silent_frac = float(internal_silent_mask.float().mean().item())
+
+        total_m9 = v_loss + habit_loss + dec_loss + rest_loss
         total_m9.backward()
         self.m9_optimizer.step()
+
+        # ---- M9 stop-grad enforcement ----
+        # The rest forward routes through the M8 predictor's params.
+        # m9_optimizer doesn't own those params so it doesn't update
+        # them, but the backward leaves residual `.grad` on them. Wipe
+        # the M8 loss_module grads so the next M8 step starts clean
+        # and so this contract is explicit at the code level instead of
+        # relying on the next call to optimizer.zero_grad to scrub.
+        for p in self.loss_module.parameters():
+            if p.grad is not None:
+                p.grad = None
 
         return {
             "v_loss": float(v_loss.detach().item()),
             "habit_loss": float(habit_loss.detach().item()),
             "decoder_loss": float(dec_loss.detach().item()),
+            "rest_loss": float(rest_loss.detach().item()),
             "total": float(total_m9.detach().item()),
             "mcts_tree_size": self.mcts.tree_stats()["size"],
             "mcts_root_visits": self.mcts.tree_stats()["root_visits"],
             "r_best": r_best,
             "gamma": float(self.gamma.gamma.detach().item()),
+            "external_silent_frac": external_silent_frac,
+            "internal_silent_frac": internal_silent_frac,
+            "k_m9_5_armed": self.activity_bands.k_m9_5_armed(),
+            "rest_delta_s_mean": float(rest_delta_s.detach().mean().item()),
         }
 
     def _target_positions_for(
@@ -536,6 +618,7 @@ class M9Trainer(JEPATrainer):
         existing["m9_decoder_text_reencode_state_dict"] = self.decoders.text.reencode_head.state_dict()
         existing["m9_preferences_state_dict"] = self.preferences.state_dict()
         existing["m9_delta_s_state_dict"] = self.delta_s_module.state_dict()
+        existing["m9_rest_action_state_dict"] = self.rest_action.state_dict()
         existing["m9_optimizer_state_dict"] = self.m9_optimizer.state_dict()
         existing["m9_gamma"] = float(self.gamma.gamma.detach().item())
 
@@ -572,6 +655,8 @@ class M9Trainer(JEPATrainer):
             self.preferences.load_state_dict(state["m9_preferences_state_dict"])
         if "m9_delta_s_state_dict" in state:
             self.delta_s_module.load_state_dict(state["m9_delta_s_state_dict"])
+        if "m9_rest_action_state_dict" in state:
+            self.rest_action.load_state_dict(state["m9_rest_action_state_dict"])
         if "m9_optimizer_state_dict" in state:
             self.m9_optimizer.load_state_dict(state["m9_optimizer_state_dict"])
         if "m9_gamma" in state:
