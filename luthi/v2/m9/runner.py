@@ -68,6 +68,7 @@ from luthi.v2.m9.gamma import GammaInference
 from luthi.v2.m9.habit_net import HabitNet
 from luthi.v2.m9.instrumentation import ActionLog, MIProbe
 from luthi.v2.m9.kills import KillRegistry
+from luthi.v2.m9.mcts import MCTS
 from luthi.v2.m9.preferences import Preferences
 from luthi.v2.m9.staleness import StalenessConfig, StalenessManager
 from luthi.v2.m9.value_head import ValueHead
@@ -286,6 +287,22 @@ class M9Trainer(JEPATrainer):
             self.run_dir / self.m9_config.action_log_filename
         )
 
+        # Persistent MCTS. The tree is single-state per spec §3 at
+        # step 1 (one entity, one current state). reset() is called
+        # each train_step against the cycle's s_t; plan_budget runs
+        # mcts_budget_per_cycle simulations against that root. The
+        # tree is intentionally NOT persisted across resume (spec
+        # §5: cold-rebuild, self-heals via recency-decay).
+        self.mcts = MCTS(
+            habit_net=self.habit_net,
+            efe_evaluator=self.efe,
+            value_head=self.v_head,
+            widening_alpha=self.m9_config.mcts_widening_alpha,
+            widening_c=self.m9_config.mcts_widening_c,
+            c_puct=self.m9_config.mcts_c_puct,
+            max_depth=self.m9_config.mcts_max_depth,
+        )
+
         # ---- M9 optimizer ----
         # Separate Adam over the M9 heads. V_target is not trained
         # directly. Text decoder's wrapped `output_proj` is NOT included
@@ -339,55 +356,100 @@ class M9Trainer(JEPATrainer):
         return m8_result
 
     def _m9_head_step(self, modality: str, raw: dict) -> dict:
-        """Train V, habit, and decoders on **detached** latents.
+        """Train V, habit, and decoders on **detached** latents using
+        live MCTS planning as the visit-distill + reward source.
 
-        At this slice we wire the gradient paths and stop-grad
-        discipline; the planning-time MCTS visit targets and the
-        realized-action negative-EFE rewards land in follow-up
-        slices when the cycle loop drives the trainer. For now the
-        head training uses zero-reward / identity habit / cycle-
-        consistency-only signals so the integration plumbing is
-        exercised end-to-end without changing M8 behaviour.
+        Per spec §1 stop-grad discipline: encoder/predictor latents
+        are .detach()'d at every M9 head input; the M9 gradient
+        cannot flow back into the JEPA representation while the
+        head training is unverified.
         """
         # Pool the encoder context to a [B, D] state vector (mean over
         # context positions, mirroring the EFEEvaluator step-1
-        # convention). All tensors are DETACHED here -- the M9 head
-        # gradients must not flow back into the encoder or predictor.
+        # convention). DETACHED -- stop-grad discipline.
         s_t = raw["online_context_latents"].detach().mean(dim=1)  # [B, D]
-        # Predicted next-state from the M8 predictor's target-block
-        # output, mean-pooled. The realized action at step 1 is the
-        # zero action_token (M8 stub); MCTS-driven actions land next
-        # slice.
         s_hat_next = raw["predicted_target"].detach().mean(dim=1)  # [B, D]
+        # MCTS planning is single-state per spec §3 (one entity, one
+        # state); train on batch element 0 as the cycle's "current"
+        # state. Other batch elements still benefit from M8 core
+        # training; their M9 head signal is the cycle-consistency
+        # path which is per-element.
+        s_root = s_t[0].detach()                            # [D]
+        ctx_for_mcts = raw["online_context_latents"].detach()  # [B, ctx, D]
+        # MCTS reads a single context window; use batch[0]'s slice.
+        ctx_single = ctx_for_mcts[0:1]                       # [1, ctx, D]
+        tgt_positions = self._target_positions_for(
+            raw["ctx_len"]
+        ).to(s_root.device)
+
+        # ---- MCTS plan-budget ----
+        # Reset to current state and run the per-cycle budget. The
+        # tree persists across train_steps for the spec's amortized
+        # planning (advance_root would carry the chosen subtree
+        # forward at inference); at training we reset each step so
+        # the visit distribution is rooted at THIS batch's state.
+        self.mcts.reset(s_root, ctx_single, tgt_positions)
+        self.mcts.plan_budget(
+            budget=self.m9_config.mcts_budget_per_cycle,
+            observation_kwargs=self._cycle_observation_kwargs(),
+        )
 
         self.m9_optimizer.zero_grad(set_to_none=True)
 
-        # --- V TD: r_t + gamma * V_target(s_{t+1}) ---
-        # At step 1 the reward signal is the negative EFE of the
-        # cycle's realized action; until MCTS is wired we use the
-        # placeholder r_t = 0 so V trains toward a stable fixed point
-        # rather than chasing an unbounded signal. K-M9-3 absolute
-        # ceiling backstops divergence either way.
-        r_t = torch.zeros(s_t.shape[0], device=s_t.device)
+        # ---- Habit visit-distill (replaces placeholder) ----
+        # The MCTS root expanded K_actual children, each from a
+        # habit-net sample. Compute the visit-weighted log-prob of
+        # those actions under the *current* habit net (gradient
+        # flows through habit-net forward → log-prob → loss).
+        children = self.mcts.root.children
+        if children:
+            actions_k = torch.stack(
+                [c.action_in for c in children], dim=0
+            ).unsqueeze(0)                                  # [1, K, D]
+            visits_k = torch.tensor(
+                [c.N for c in children], dtype=torch.float32,
+                device=s_root.device,
+            )                                                # [K]
+            visit_target = visits_k / visits_k.sum().clamp(min=1.0)
+            log_p_habit = self.habit_net.log_prob(
+                s_root.unsqueeze(0), actions_k
+            )                                                # [1, K]
+            habit_loss = -(visit_target * log_p_habit[0]).sum()
+
+            # ---- gamma update: read the K candidate EFEs ----
+            child_g = torch.tensor(
+                [c.incoming_g for c in children if c.incoming_g is not None],
+                dtype=torch.float32, device=s_root.device,
+            )
+            if child_g.numel() >= 2:
+                self.gamma.update(child_g)
+            # ---- Reward = -G_best (lowest G = best candidate) ----
+            r_best = float(-child_g.min().item()) if child_g.numel() > 0 else 0.0
+        else:
+            # No children expanded (degenerate budget = 0 edge). Fall
+            # back to the original placeholder pair so training stays
+            # well-defined.
+            sample = self.habit_net.sample(
+                s_t, K=self.m9_config.habit_n_candidates
+            )
+            habit_loss = -sample["log_prob"].mean()
+            r_best = 0.0
+
+        # ---- V-TD: r_best + gamma * V_target(s_{t+1}) ----
+        # r_best is the realized-cycle reward (negative EFE of the
+        # MCTS-best action). Broadcast across the batch since at
+        # this step the same cycle reward applies; per-batch-element
+        # rewards arrive when batched MCTS lands later.
+        r_t = torch.full(
+            (s_t.shape[0],), r_best, device=s_t.device, dtype=s_t.dtype,
+        )
         with torch.no_grad():
             v_target_next = self.v_target(s_hat_next)
             td_target = r_t + self.m9_config.discount * v_target_next
         v_pred = self.v_head(s_t)
         v_loss = (v_pred - td_target).pow(2).mean()
 
-        # --- Habit distill: cross-entropy of habit prior over MCTS
-        # visit distribution. Until MCTS is wired, use a placeholder
-        # log_prob loss = - entropy(habit_dist) so the head gets
-        # gradient but does not chase a degenerate target. ---
-        sample = self.habit_net.sample(s_t, K=self.m9_config.habit_n_candidates)
-        # Use mean negative log-prob as a placeholder; real habit
-        # distillation uses MCTS visit-weighted MLE.
-        habit_loss = -sample["log_prob"].mean()
-
-        # --- Decoder cycle-consistency: ‖a_t - encode(decode(a_t))‖
-        # per modality. At step 1 we use s_hat_next as the candidate
-        # action (the realized action under action-space (c) before
-        # MCTS lands proper a_t selection). ---
+        # ---- Decoder cycle-consistency (per-element, unchanged) ----
         outs = self.decoders.decode_all(s_hat_next)
         reencoded = self.decoders.re_encode_all(outs)
         dec_loss = sum(
@@ -405,7 +467,41 @@ class M9Trainer(JEPATrainer):
             "habit_loss": float(habit_loss.detach().item()),
             "decoder_loss": float(dec_loss.detach().item()),
             "total": float(total_m9.detach().item()),
+            "mcts_tree_size": self.mcts.tree_stats()["size"],
+            "mcts_root_visits": self.mcts.tree_stats()["root_visits"],
+            "r_best": r_best,
+            "gamma": float(self.gamma.gamma.detach().item()),
         }
+
+    def _target_positions_for(
+        self,
+        ctx_len: int,
+    ) -> torch.Tensor:
+        """Build the predictor's target-position queries for the
+        MCTS-internal predict_next() call.
+
+        MCTS rollout is a one-step lookahead from the cycle's state,
+        so we query a single target position one step past the
+        context: position `ctx_len`. predict_next() mean-pools over
+        the target-position axis; a single-position query gives a
+        deterministic [B, D] next-state estimate without averaging
+        over a multi-step future. (The full-tgt-block convention
+        belongs to the M8 loss, where every target position has a
+        teacher signal; MCTS has no such teacher per-position.)
+        """
+        return torch.tensor([[ctx_len]], dtype=torch.long)
+
+    def _cycle_observation_kwargs(self) -> dict:
+        """Per-cycle observations for the EFE evaluator's per-candidate
+        path. At this slice we provide a minimal "alone" cycle context
+        (no counterpart present) so P3 contributes zero -- the real
+        loop-side context plumbing (counterpart_present from the
+        sensorium, time_since_emission from the action log) lands in
+        a follow-up slice. The keys are positional in the EFE
+        evaluator's API; the empty dict here means decoders + bands
+        still drive P1/P2/P4 but P3 stays at zero cost.
+        """
+        return {}
 
     # ------------------------------------------------------------------
     # Checkpoint + resume (extended schema).

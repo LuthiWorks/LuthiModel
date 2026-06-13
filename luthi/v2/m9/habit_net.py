@@ -140,3 +140,30 @@ class HabitNet(nn.Module):
         D = log_std.shape[-1]
         constant = 0.5 * D * math.log(2.0 * math.pi * math.e)
         return constant + log_std.sum(dim=-1)
+
+    def log_prob(
+        self,
+        s: torch.Tensor,
+        actions: torch.Tensor,
+    ) -> torch.Tensor:
+        """Gaussian log-density at arbitrary actions, with gradient.
+
+        `s`: [B, D] state vector.
+        `actions`: [B, K, D] -- K candidate actions per state (e.g.,
+        the MCTS root children's stored actions).
+
+        Returns: [B, K] log-prob of each action under the per-state
+        Gaussian. Gradient flows into mean / log_std so visit-weighted
+        MLE distillation can train the habit net to match an MCTS
+        visit distribution.
+        """
+        mean, log_std = self.forward(s)            # [B, D] each
+        std = log_std.exp()                         # [B, D]
+        z = (actions - mean.unsqueeze(1)) / std.unsqueeze(1)  # [B, K, D]
+        D = mean.shape[-1]
+        log_p = (
+            -0.5 * z.pow(2).sum(dim=-1)
+            - 0.5 * D * math.log(2.0 * math.pi)
+            - log_std.sum(dim=-1).unsqueeze(1)
+        )
+        return log_p
