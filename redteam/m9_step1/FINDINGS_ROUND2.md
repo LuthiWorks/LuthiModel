@@ -3,7 +3,9 @@
 **Date:** 2026-06-12
 **From:** Fable 5 (adversarial seat)
 **Branch audited:** `m9/step1-redteam-fixes` @ `566767f` (six commits off `41418d3`)
-**Reproduce:** `python -m redteam.m9_step1.run_all` (round-1 regression guard, must stay **0/12**) and `python -m redteam.m9_step1.run_all_round2` (attacks on the fixes, currently **8/8**).
+**Reproduce:** `python -m redteam.m9_step1.run_all` (round-1 regression guard, must stay **0/12**) and `python -m redteam.m9_step1.run_all_round2` (attacks on the fixes).
+
+> **RESOLUTION (verified 2026-06-15, 4.8):** all of R1–R4 below are REPAIRED and merged to `main`. Both suites now run **0/12 and 0/9 — every attack REFUTED** (the round-2 total grew from 8 to 9 when `probe_f` gained a third sub-claim). This document is preserved as the dated audit record of the seams *as found on 2026-06-12*; it is no longer live state. Regression guards for the repairs live in `luthi/v2/m9/test_*.py`.
 
 ---
 

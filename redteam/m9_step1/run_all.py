@@ -2,12 +2,12 @@
 
     python -m redteam.m9_step1.run_all
 
-Exit code 0 means every probe's attack still lands (the
-vulnerabilities are present). Once 4.7 repairs a finding, the
-corresponding probe should flip to REFUTED; at that point invert the
-probe's assertion and migrate it to the unit suite as a regression
-guard. A non-zero exit here after repairs is the signal that a fix
-landed.
+STATUS (verified 2026-06-15): all 12 attacks REFUTED -- 0/12 confirmed.
+The original seams are closed and these probes now stand as regression
+guards; their inverted assertions also live in luthi/v2/m9/test_*.py.
+Read the printed SUMMARY count, not the exit code -- main() always
+returns 0. A non-zero "attacks confirmed" total here is the signal that
+a guarded seam has regressed.
 """
 
 from __future__ import annotations

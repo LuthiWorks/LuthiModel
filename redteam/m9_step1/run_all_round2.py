@@ -1,10 +1,14 @@
-"""Round-2 red-team: attacks on the FIX branch (m9/step1-redteam-fixes).
+"""Round-2 red-team: attacks on the FIX branch (now merged to main).
 
 Round 1 (run_all.py) must stay 0/12 -- those are regression guards that
 the original seams remain closed. THIS suite attacks the fixes
-themselves: new seams created, fragility, silent fallbacks. Currently
-8/8 confirmed -- when a round-2 finding is repaired its probe flips to
-REFUTED, same convention as round 1.
+themselves: new seams created, fragility, silent fallbacks.
+
+STATUS (verified 2026-06-15): all 9 attacks REFUTED -- 0/9 confirmed
+(R1-R4 repairs landed; probe_f grew a 3rd sub-claim, so the total is 9,
+not the original 8). Same convention as round 1: a non-zero "attacks
+confirmed" total means a fix regressed. Read the printed count, not the
+exit code.
 
     python -m redteam.m9_step1.run_all_round2
 """
