@@ -44,6 +44,79 @@ from luthi.checkpoint import load_checkpoint
 from luthi.tokenizer import BPETokenizer
 
 
+_KNOWN_ARCHITECTURES = (
+    "v1-base", "v1-spiking", "v1-multimodal",
+    "v2-base", "v2-multimodal",
+)
+
+
+def _detect_architecture(config: dict) -> str:
+    """Decide which model class a checkpoint config describes.
+
+    Returns one of ``_KNOWN_ARCHITECTURES``. Single decision point for
+    the load path -- anything downstream just dispatches on the string.
+
+    Priority:
+      1. Explicit ``architecture`` key in the config (canonical going
+         forward; trainers should start setting it).
+      2. Inference from fingerprints:
+         - ``pc_rate`` / ``pred_learning_rate`` present  -> v2 family
+         - ``multimodal`` / ``vision`` flag set          -> multimodal
+         - ``spiking`` flag set (v1 only)                -> v1-spiking
+         - else                                          -> v1-base
+
+    Fails loud on an internally inconsistent config (e.g. a v2
+    fingerprint with v1's ``spiking=True``, or an explicit
+    ``architecture`` that contradicts the fingerprints). v2 has no
+    spiking variant; silently building the wrong architecture would
+    mis-shape the model and corrupt downstream training-time wiring.
+    """
+    explicit = config.get("architecture")
+    is_multimodal = bool(config.get("multimodal") or config.get("vision"))
+    is_spiking = bool(config.get("spiking"))
+    is_v2 = ("pc_rate" in config) or ("pred_learning_rate" in config)
+
+    if is_v2 and is_spiking:
+        raise ValueError(
+            "Inconsistent checkpoint config: v2 PC fingerprint "
+            "(pc_rate / pred_learning_rate) combined with v1 spiking=True. "
+            "v2 has no spiking variant; refusing to silently build the "
+            "wrong architecture."
+        )
+
+    if explicit is not None:
+        if explicit not in _KNOWN_ARCHITECTURES:
+            raise ValueError(
+                f"Unknown architecture {explicit!r} in checkpoint config. "
+                f"Expected one of {_KNOWN_ARCHITECTURES}."
+            )
+        if is_v2 and explicit.startswith("v1-"):
+            raise ValueError(
+                f"Inconsistent checkpoint config: architecture={explicit!r} "
+                f"but v2 fingerprint (pc_rate / pred_learning_rate) present."
+            )
+        if (not is_v2) and explicit.startswith("v2-"):
+            raise ValueError(
+                f"Inconsistent checkpoint config: architecture={explicit!r} "
+                f"but no v2 fingerprint (pc_rate / pred_learning_rate) "
+                f"in config."
+            )
+        if is_multimodal and "multimodal" not in explicit:
+            raise ValueError(
+                f"Inconsistent checkpoint config: architecture={explicit!r} "
+                f"but multimodal/vision flag set in config."
+            )
+        return explicit
+
+    if is_v2:
+        return "v2-multimodal" if is_multimodal else "v2-base"
+    if is_multimodal:
+        return "v1-multimodal"
+    if is_spiking:
+        return "v1-spiking"
+    return "v1-base"
+
+
 def load_model_from_checkpoint(
     checkpoint_path: str,
     password: str | None = None,
@@ -51,8 +124,12 @@ def load_model_from_checkpoint(
 ) -> tuple:
     """Load a trained model and tokenizer from an encrypted checkpoint.
 
-    Automatically detects model type (text-only, spiking, multimodal)
-    from the checkpoint config and constructs the correct architecture.
+    Automatically detects model architecture (v1 base / spiking /
+    multimodal, or v2 base / multimodal predictive-coding) from the
+    checkpoint config via :func:`_detect_architecture` and constructs
+    the correct class. Mismatches between config and stored weights
+    fail loud at ``load_state_dict`` (strict for v2; v1 multimodal
+    keeps its historical ``strict=False`` for encoder-state tolerance).
 
     Returns:
         (model, tokenizer, config, epoch) tuple.
@@ -70,12 +147,71 @@ def load_model_from_checkpoint(
             "Character-level tokenizer requires the original corpus."
         )
 
-    # Determine model type from config
-    is_multimodal = config.get("multimodal", False)
-    is_vision = config.get("vision", False)
-    is_spiking = config.get("spiking", False)
+    architecture = _detect_architecture(config)
 
-    # Common model parameters
+    if architecture.startswith("v2"):
+        # v2 PC family (PredictiveCodingLM / MultimodalPredictiveCodingLM).
+        # Disjoint kwarg set from v1: pc_rate / pred_learning_rate /
+        # ffn_expansion / num_episodes / episode_blend / mu_pc_*,
+        # never the v1 hebb_rate / error_rate / spike_* parameters.
+        v2_kwargs = dict(
+            vocab_size=tokenizer.vocab_size,
+            d_model=config["d_model"],
+            n_blocks=config["n_blocks"],
+            n_heads=config.get("n_heads", 4),
+            ffn_expansion=config.get("ffn_expansion", 1),
+            max_seq_len=config.get("seq_len", 128),
+            pc_rate=config.get("pc_rate", 0.001),
+            pred_learning_rate=config.get("pred_learning_rate", 0.0001),
+            homeostatic_decay=config.get("homeostatic_decay", 0.001),
+            set_point_adapt_rate=config.get("set_point_adapt_rate", 1e-6),
+            num_episodes=config.get("num_episodes", 64),
+            episode_blend=config.get("episode_blend", 0.3),
+            compressed_episodes=config.get("compressed_episodes", False),
+            consolidation_enabled=config.get("consolidation_enabled", False),
+            consolidation_style=config.get("consolidation_style", "gradient"),
+            consolidation_attractor_passes=config.get(
+                "consolidation_attractor_passes", 1,
+            ),
+            mu_pc_enabled=config.get("mu_pc_enabled", False),
+            mu_pc_exponent=config.get("mu_pc_exponent", 0.5),
+            # Default to False at load (inference posture, matches the v1
+            # paths). Callers that want the top-down sweep active flip
+            # it after load. Explicit checkpoint config wins if present.
+            backward_pass_enabled=config.get("backward_pass_enabled", False),
+        )
+
+        if architecture == "v2-multimodal":
+            from luthi.v2.multimodal_model_pc import MultimodalPredictiveCodingLM
+
+            v2_kwargs.update(
+                audio_sample_rate=config.get("audio_sample_rate", 16000),
+                audio_n_mels=config.get("audio_n_mels", 80),
+                audio_hop_length=config.get("audio_hop_length", 160),
+                audio_n_fft=config.get("audio_n_fft", 400),
+                audio_patch_frames=config.get("audio_patch_frames", 16),
+                max_audio_tokens=config.get("max_audio_tokens", 1000),
+                vision_image_size=config.get("vision_image_size", 224),
+                vision_patch_size=config.get("vision_patch_size", 16),
+                max_vision_tokens=config.get("max_vision_tokens", 256),
+            )
+            model = MultimodalPredictiveCodingLM(**v2_kwargs)
+        else:
+            from luthi.v2.model_pc import PredictiveCodingLM
+
+            model = PredictiveCodingLM(**v2_kwargs)
+
+        # Strict load -- per the seam-integration plan, mismatched
+        # state_dict on v2 must fail loud, never silently skip keys.
+        model.load_state_dict(ckpt["model_state_dict"], strict=True)
+        return model, tokenizer, config, epoch
+
+    # v1 family below. Shape preserved verbatim from the pre-bridge loader
+    # so historical .luthi files keep loading identically.
+    is_multimodal = architecture == "v1-multimodal"
+    is_vision = bool(config.get("vision", False))
+    is_spiking = architecture == "v1-spiking"
+
     model_kwargs = dict(
         vocab_size=tokenizer.vocab_size,
         d_model=config["d_model"],
@@ -87,7 +223,7 @@ def load_model_from_checkpoint(
         set_point_adapt_rate=config.get("set_point_adapt_rate", 1e-6),
     )
 
-    if is_multimodal or is_vision:
+    if is_multimodal:
         from luthi.multimodal_model import MultimodalLuthiLM
 
         # Add spiking and vision parameters
@@ -206,7 +342,8 @@ def generate_text(
     vision_tokens: torch.Tensor | None = None,
     living: bool = False,
     stream: bool = True,
-) -> str:
+    return_state: bool = False,
+):
     """Generate text autoregressively from a prompt.
 
     Args:
@@ -235,10 +372,40 @@ def generate_text(
             for v1). The model learns from the experience of producing
             each token.
         stream: If True, print tokens as they're generated.
+        return_state: If True, also captures the step-0 encoder result
+            and returns ``(text, s_t)`` where ``s_t = compute_s_t(
+            encode_result["per_modality"]["text"])``. This is the
+            Phase 4a training-seam path -- Sanctuary consumes the
+            same encoder pass that produced the generation logits
+            rather than running a separate encode_state call.
+            Requires a v2 multimodal-PC substrate (the only family
+            with the ``encode()`` API the seam needs); raises
+            ``AttributeError`` eagerly otherwise per 4.8's 2026-06-16
+            review (silent ``(text, None)`` would reopen the silent-
+            degradation foot-gun the F4 fix just closed).
 
     Returns:
-        Full generated text (prompt + generated tokens).
+        Full generated text (prompt + generated tokens). When
+        ``return_state`` is True, returns ``(text, s_t)`` instead.
     """
+    # Eager capability check: ``return_state`` requires a v2 multimodal-PC
+    # substrate. We check by the presence of ``encode`` (the seam's
+    # contract surface) plus a multimodal marker -- v1 multimodal has
+    # ``vision_encoder`` but no ``encode``; v2 text-only has neither.
+    # Raise at entry rather than mid-generation so the error message
+    # names the actual config mismatch.
+    if return_state:
+        if not hasattr(model, "encode"):
+            raise AttributeError(
+                "generate_text(return_state=True) requires a v2 multimodal-PC "
+                "substrate with an encode() method "
+                "(MultimodalPredictiveCodingLM). "
+                f"Got {type(model).__name__}; v1 substrates and v2 text-only "
+                "do not expose the encoder API the training seam consumes. "
+                "Callers wanting 'state if available' should branch on "
+                "capability before this call, not decode a None after it."
+            )
+
     device = next(model.parameters()).device
     is_multimodal = hasattr(model, "vision_encoder")
 
@@ -296,6 +463,10 @@ def generate_text(
             supports_kv_cache = False
 
         kv_caches: list | None = None  # populated after step 0 when supported
+        # Phase 4a capture: step-0's encode_result is the input to the
+        # canonical compute_s_t for the seam path. None until the first
+        # step under a return_state=True call sets it.
+        captured_encode_result: dict | None = None
 
         with torch.set_grad_enabled(living):
             for step in range(max_tokens):
@@ -313,7 +484,12 @@ def generate_text(
                         forward_kwargs["image"] = image
                     if audio_tokens is not None:
                         forward_kwargs["audio_tokens"] = audio_tokens
-                    logits = model(x, **forward_kwargs)
+                    if return_state:
+                        logits, captured_encode_result = model(
+                            x, return_encode_result=True, **forward_kwargs,
+                        )
+                    else:
+                        logits = model(x, **forward_kwargs)
                 elif supports_kv_cache:
                     # KV-cache fast path. Step 0: full prompt, initialize
                     # cache. Step 1+: just the new token, extend cache.
@@ -336,7 +512,12 @@ def generate_text(
                     # Legacy recompute-each-step path (sliding window).
                     context = token_ids[-max_seq_len:]
                     x = torch.tensor([context], dtype=torch.long, device=device)
-                    logits = model(x)
+                    if return_state and step == 0:
+                        logits, captured_encode_result = model(
+                            x, return_encode_result=True,
+                        )
+                    else:
+                        logits = model(x)
 
                 # Living inference: self-modification updates fire during forward pass
                 # in train mode. Note (audit 2026-05-11): we used to also
@@ -368,7 +549,37 @@ def generate_text(
             sys.stdout.write("\n")
             sys.stdout.flush()
 
-        return tokenizer.decode(token_ids)
+        text = tokenizer.decode(token_ids)
+        if return_state:
+            # The capability check at the top guarantees the substrate
+            # was multimodal-PC at entry; the capture above ran at step
+            # 0 of one of the two paths multimodal-PC takes. If we got
+            # here with no captured result, generation never executed
+            # a step -- max_tokens=0 is the only way that happens, and
+            # in that case there's no state to surface. Raise loudly
+            # rather than synthesize one; the caller chose return_state.
+            if captured_encode_result is None:
+                raise RuntimeError(
+                    "generate_text(return_state=True) ran zero steps "
+                    "(max_tokens=0); no encode_result was captured. "
+                    "Pass max_tokens >= 1 if you need state."
+                )
+            from luthi.seam_types import GenerationState
+            from luthi.v2.m9.s_t import compute_s_t
+            # Pool over the FULL concatenated multimodal sequence
+            # (encode_result["latents"]), matching the training-side
+            # convention: M9Trainer pools over raw["online_context_latents"]
+            # which is the encoder output over the full multimodal context
+            # (vision + audio + text), not text-only. Mismatched inputs to
+            # compute_s_t would be exactly the drift the no-drift test in
+            # tests/test_no_inline_s_t_pool.py exists to catch.
+            full_latents = captured_encode_result["latents"]
+            state = GenerationState(
+                s_t=compute_s_t(full_latents),
+                ctx_latents=full_latents.detach(),
+            )
+            return text, state
+        return text
     finally:
         # Restore original mode and backward_pass setting so any caller
         # (Sanctuary integration, training loop, generation script) sees
@@ -794,7 +1005,7 @@ Examples:
     load_time = time.time() - t0
 
     params = model.total_parameters()
-    model_type = "multimodal" if config.get("multimodal") else "spiking" if config.get("spiking") else "base"
+    model_type = _detect_architecture(config)
     modalities = []
     if config.get("vision"):
         modalities.append("vision")

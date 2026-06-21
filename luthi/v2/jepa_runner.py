@@ -378,13 +378,16 @@ def _light_collapse_metrics(
     return metrics
 
 
-def _substrate_health_metrics(model: MultimodalPredictiveCodingLM) -> dict:
-    """Per-step substrate-health aggregates (v0.5 §7.6 / kill-6 source).
+def _substrate_health_metrics(aliveness: list[dict]) -> dict:
+    """Per-step substrate-health aggregates (v0.5 §7.6 / kill-6 source +
+    EMIT_BATCH_1 §1 extras).
 
-    Calls ``model.aliveness_report()`` to get per-block PC layer state,
-    then aggregates to single scalars matching the M7 launch.log
-    conventions:
+    Takes the pre-computed per-block ``aliveness`` list (output of
+    ``model.aliveness_report()``) and aggregates to cross-block means.
+    Caller is responsible for the single ``aliveness_report()`` call so
+    the deep-cadence ``substrate_blocks`` array can reuse the same list.
 
+    Kill-6 / pilot-set anchors (existing):
     - ``pred_frob`` = mean of ``prediction_norm`` across blocks. M7
       baseline at 1024d climbed 4.02 -> 4.59 over the 47h run; healthy
       trajectory is monotonically increasing (substrate building
@@ -394,23 +397,30 @@ def _substrate_health_metrics(model: MultimodalPredictiveCodingLM) -> dict:
       baseline at 1024d descended 0.015 -> 0.003; healthy trajectory is
       decreasing (substrate learning to predict its own input).
       Kill-6: degraded = above baseline by the same fraction.
+
+    EMIT_BATCH_1 additions (free; already in ``aliveness()``):
+    - ``set_point_drift`` -- how far weights have moved from the
+      homeostatic set point. Climbs as the substrate learns; drops
+      under consolidation.
+    - ``update_ema_mean`` -- magnitude of recent PC self-modify updates.
+      The plasticity "is changing" signal, distinct from ``grad_norm``
+      (autograd-trained params).
+    - ``precision_mean`` -- PC layer's confidence weighting on its own
+      predictions. Climbs as the layer's predictions sharpen.
+
+    Field names are spec-locked: LuthiScope's UI auto-keys on these
+    exact strings (per EMIT_BATCH_1 §1 + METRICS_CONTRACT §1).
     """
-    aliveness = model.aliveness_report()
-    pred_norms = [
-        a["prediction_norm"] for a in aliveness if "prediction_norm" in a
-    ]
-    err_accs = [
-        a["error_acc_mean"] for a in aliveness if "error_acc_mean" in a
-    ]
+    def _mean(key: str) -> float:
+        vals = [a[key] for a in aliveness if key in a]
+        return float(sum(vals) / len(vals)) if vals else float("nan")
+
     return {
-        "pred_frob": (
-            float(sum(pred_norms) / len(pred_norms))
-            if pred_norms else float("nan")
-        ),
-        "err_acc": (
-            float(sum(err_accs) / len(err_accs))
-            if err_accs else float("nan")
-        ),
+        "pred_frob": _mean("prediction_norm"),
+        "err_acc": _mean("error_acc_mean"),
+        "set_point_drift": _mean("set_point_drift"),
+        "update_ema_mean": _mean("update_ema_mean"),
+        "precision_mean": _mean("precision_mean"),
     }
 
 
@@ -602,6 +612,14 @@ class JEPATrainer:
             m: {} for m in MODALITIES
         }
 
+        # EMIT_BATCH_1 §3: per-train_step gradient norm + non-finite
+        # flag, populated only on logging steps (will_log threaded in
+        # from run()). NaN sentinels until the first logging step --
+        # the diagnostics record carries them as-is, surfacing the
+        # "no signal yet" case explicitly.
+        self._last_grad_norm: float = float("nan")
+        self._last_nonfinite: bool = False
+
         # Archive run config (Gate 5).
         self._archive_run_config()
 
@@ -629,8 +647,23 @@ class JEPATrainer:
 
     # -- Train step --
 
-    def train_step(self, modality: str, batch: dict) -> dict:
+    def train_step(
+        self, modality: str, batch: dict, *, will_log: bool = False,
+    ) -> dict:
         """One per-modality training step.
+
+        Args:
+            modality: which modality is being trained this step.
+            batch: pre-fetched modality batch from the data loader.
+            will_log: if True, this step will fire a diagnostics
+                record afterwards. EMIT_BATCH_1 §3: ``grad_norm`` and
+                ``nonfinite`` are computed between ``backward()`` and
+                ``step()`` only when this is True, because grads exist
+                only inside ``train_step`` (so the compute has to live
+                here) but looping every trainable param + ``isfinite``
+                on every non-logging step is hot-path overhead. Caller
+                (``run()``) determines ``will_log`` from the
+                *post-increment* per-modality step count.
 
         Returns: dict with "loss" (float), "modality", and the loss module's
         raw result for downstream diagnostics.
@@ -648,6 +681,29 @@ class JEPATrainer:
 
         self.optimizer.zero_grad(set_to_none=True)
         loss.backward()
+
+        # EMIT_BATCH_1 §3: gradient norm + non-finite guard, gated to
+        # logging steps. Read-only over grads -- compute the norm,
+        # never mutate. Scope is optimizer.param_groups (the
+        # backprop-trained params: encoders, attention, embeddings,
+        # predictor, projection heads). Living-weight buffers are
+        # deliberately NOT folded in -- they update via the PC
+        # mechanism, not autograd; ``update_ema_mean`` (in substrate{})
+        # is the separate "how much is the substrate changing" signal.
+        if will_log:
+            total_sq = 0.0
+            nonfinite = not bool(torch.isfinite(loss).item())
+            for group in self.optimizer.param_groups:
+                for p in group["params"]:
+                    if p.grad is None:
+                        continue
+                    gr = p.grad.detach()
+                    if not bool(torch.isfinite(gr).all()):
+                        nonfinite = True
+                    total_sq += float(gr.norm().item()) ** 2
+            self._last_grad_norm = total_sq ** 0.5
+            self._last_nonfinite = nonfinite
+
         self.optimizer.step()
 
         # LeJEPA refactor 2026-06-09: no EMA target encoder to update.
@@ -703,6 +759,20 @@ class JEPATrainer:
             "l_sigreg": float(raw["l_sigreg"].item()),
             "tokens_consumed": dict(self.tokens_consumed),
             "elapsed_seconds": time.monotonic() - self.run_start_time,
+            # EMIT_BATCH_1 §3 + §4. Field names spec-locked: LuthiScope's
+            # GRADIENT NORM / LEARNING RATE panels auto-key on these.
+            # grad_norm / nonfinite are populated in train_step when
+            # will_log=True (which run() sets for any cadence that fires
+            # diagnostics); if a diagnostics call somehow reaches here
+            # without train_step having run with will_log=True, the
+            # NaN/False sentinels from __init__ are emitted as-is.
+            "grad_norm": self._last_grad_norm,
+            "nonfinite": self._last_nonfinite,
+            "lr": (
+                self.optimizer.param_groups[0]["lr"]
+                if self.optimizer.param_groups
+                else float("nan")
+            ),
         }
 
         # Compute light + substrate + deep metrics independently first,
@@ -716,6 +786,14 @@ class JEPATrainer:
         light_m: Optional[dict] = None
         substrate_m: Optional[dict] = None
         deep_m: Optional[dict] = None
+
+        # aliveness_report() is called once per firing and reused
+        # (EMIT_BATCH_1 §2 note): the light substrate{} means and the
+        # deep substrate_blocks per-block detail both derive from it.
+        # Only compute it if at least one of those will use it.
+        aliveness: Optional[list[dict]] = None
+        if light or deep:
+            aliveness = self.loss_module.online_encoder.aliveness_report()
 
         if light:
             light_m = _light_collapse_metrics(
@@ -734,9 +812,7 @@ class JEPATrainer:
             # Kill-6 source (v0.5 §7.6): substrate health from
             # aliveness_report. Computed every light firing so the same
             # per-modality cadence governs kill-6 as the collapse criteria.
-            substrate_m = _substrate_health_metrics(
-                self.loss_module.online_encoder,
-            )
+            substrate_m = _substrate_health_metrics(aliveness)
             record["substrate"] = substrate_m
             self.history.push(modality, substrate_m)
 
@@ -744,6 +820,22 @@ class JEPATrainer:
             deep_m = _deep_collapse_metrics(raw["online_context_latents"])
             record["deep"] = deep_m
             self.history.push(modality, deep_m)
+
+            # EMIT_BATCH_1 §2: per-block substrate detail (deep cadence
+            # only, to bound payload). LuthiScope renders this as a
+            # blocks-x-time heatmap so a single drifting block surfaces
+            # even when the cross-block mean looks healthy. Field names
+            # spec-locked.
+            record["substrate_blocks"] = [
+                {
+                    "set_point_drift": a.get("set_point_drift"),
+                    "update_ema_mean": a.get("update_ema_mean"),
+                    "precision_mean": a.get("precision_mean"),
+                    "prediction_norm": a.get("prediction_norm"),
+                    "error_acc_mean": a.get("error_acc_mean"),
+                }
+                for a in aliveness
+            ]
 
         # Pilot-set state advancement -- runs whenever at least one
         # metric block was computed this firing. Empty dicts for absent
@@ -1446,7 +1538,25 @@ class JEPATrainer:
                     # the loader is responsible for re-shuffling (v0.5 §3).
                     continue
 
-                step_out = self.train_step(modality, batch)
+                # EMIT_BATCH_1 §3: predict whether THIS train_step will
+                # fire diagnostics so train_step can decide to compute
+                # grad_norm + nonfinite. The post-train_step modality
+                # step (current + 1) is what the cadence check below
+                # consumes, so we compute the same predicate here on
+                # the would-be-post value. Mirrored exactly below so
+                # the actual log-firing condition uses the same answer.
+                m_step_after = self.modality_step[modality] + 1
+                light_due = (
+                    m_step_after
+                    % self.config.logging.light_interval_batches == 0
+                )
+                deep_due = (
+                    m_step_after
+                    % self.config.logging.deep_interval_batches == 0
+                )
+                will_log = light_due or deep_due
+
+                step_out = self.train_step(modality, batch, will_log=will_log)
                 # train_step has already advanced both self.global_step
                 # and self.modality_step[modality] -- do NOT increment
                 # again here (4.8 review 2026-06-06 item A).
@@ -1455,14 +1565,7 @@ class JEPATrainer:
                 # Logging fires on this modality's *own* step count, so
                 # rare modalities are instrumented on their own cadence
                 # rather than on the global step counter (item A).
-                m_step = self.modality_step[modality]
-                light_due = (
-                    m_step % self.config.logging.light_interval_batches == 0
-                )
-                deep_due = (
-                    m_step % self.config.logging.deep_interval_batches == 0
-                )
-                if light_due or deep_due:
+                if will_log:
                     record = self._compute_and_log_diagnostics(
                         step_out, light=light_due, deep=deep_due,
                     )

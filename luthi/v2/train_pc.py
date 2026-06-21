@@ -248,6 +248,7 @@ def _save_checkpoint_v2(
     path,
     epoch: int = 0,
     config: dict | None = None,
+    tokenizer=None,
 ) -> None:
     """Save a v2 checkpoint, encrypted if LUTHI_CHECKPOINT_KEY is set,
     plaintext .pt otherwise (with a warning).
@@ -257,12 +258,20 @@ def _save_checkpoint_v2(
     v2 should match the project's encryption invariant. Falling back to
     plaintext with a loud warning preserves the local-dev flow where the
     user hasn't set up the encryption key yet.
+
+    Adds ``tokenizer_state`` to the checkpoint dict (parity with v1's
+    train.py / train_multimodal.py) so ``load_model_from_checkpoint``
+    can rebuild the BPE tokenizer without a separate ``--load_tokenizer``
+    path. v2 checkpoints saved before this change must still pass their
+    tokenizer JSON in alongside.
     """
     from pathlib import Path as _Path
     path = _Path(path)
     try:
         from luthi.checkpoint import build_checkpoint, save_checkpoint
         ckpt = build_checkpoint(model, epoch=epoch, config=config or {})
+        if tokenizer is not None and hasattr(tokenizer, "get_state"):
+            ckpt["tokenizer_state"] = tokenizer.get_state()
         encrypted_path = save_checkpoint(ckpt, path)
         print(f"[checkpoint] encrypted save: {encrypted_path}")
     except ValueError as e:
@@ -531,7 +540,7 @@ def main():
                 # Save what we have and exit; caller picks up via marker.
                 _save_checkpoint_v2(
                     model, output_dir / "model_at_checkpoint_trigger",
-                    epoch=epoch, config=vars(args),
+                    epoch=epoch, config=vars(args), tokenizer=tokenizer,
                 )
                 return
             print("[checkpoint trigger] healthy; continuing")
@@ -539,7 +548,7 @@ def main():
     # --- Final save ---
     _save_checkpoint_v2(
         model, output_dir / "model_final",
-        epoch=args.epochs, config=vars(args),
+        epoch=args.epochs, config=vars(args), tokenizer=tokenizer,
     )
     (output_dir / "metrics.json").write_text(json.dumps({
         "train_losses": train_losses,

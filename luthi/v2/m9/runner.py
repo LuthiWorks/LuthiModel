@@ -43,11 +43,14 @@ import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import torch
 import torch.nn as nn
 from torch.optim import Adam, Optimizer
+
+from luthi.seam_types import ActionSelection, PlanSnapshot
+from luthi.v2.m9.s_t import compute_s_t
 
 from luthi.v2.jepa_loss import JEPALoss
 from luthi.v2.jepa_runner import (
@@ -381,6 +384,19 @@ class M9Trainer(JEPATrainer):
         self._last_action: Optional[torch.Tensor] = None
         self._last_reward: Optional[float] = None
 
+        # ---- External-actor seam (2026-06-15 integration plan, Phase 2) ----
+        # When the Sanctuary cycle drives this trainer via select_action /
+        # observe_transition, it stashes its per-cycle ctx (counterpart_present,
+        # time_since_emission, ...) here so _cycle_observation_kwargs can
+        # surface the keys to the EFE evaluator. None during corpus-only
+        # train_step() runs -> _cycle_observation_kwargs returns {} the way
+        # it did before this seam existed.
+        self._current_cycle_ctx: Optional[dict] = None
+        # One-shot warning gate for the F4-residual snapshot-threading
+        # regression check (4.8 round-2 review, 2026-06-15). See
+        # observe_transition for the firing condition.
+        self._observe_no_snapshot_warned: bool = False
+
     # ------------------------------------------------------------------
     # Two-phase train_step.
     # ------------------------------------------------------------------
@@ -445,11 +461,13 @@ class M9Trainer(JEPATrainer):
         cannot flow back into the JEPA representation while the
         head training is unverified.
         """
-        # Pool the encoder context to a [B, D] state vector (mean over
-        # context positions, mirroring the EFEEvaluator step-1
-        # convention). DETACHED -- stop-grad discipline.
-        s_t = raw["online_context_latents"].detach().mean(dim=1)  # [B, D]
-        s_hat_next = raw["predicted_target"].detach().mean(dim=1)  # [B, D]
+        # Pool the encoder context to a [B, D] state vector via the
+        # canonical helper (Phase 4a, 2026-06-16): same s_t definition
+        # the inference seam uses, so the V-head sees one distribution
+        # across training and Sanctuary-driven inference. Detach is
+        # inside compute_s_t -- stop-grad discipline preserved.
+        s_t = compute_s_t(raw["online_context_latents"])           # [B, D]
+        s_hat_next = compute_s_t(raw["predicted_target"])          # [B, D]
         # MCTS planning is single-state per spec §3 (one entity, one
         # state); train on batch element 0 as the cycle's "current"
         # state. Other batch elements still benefit from M8 core
@@ -819,15 +837,360 @@ class M9Trainer(JEPATrainer):
 
     def _cycle_observation_kwargs(self) -> dict:
         """Per-cycle observations for the EFE evaluator's per-candidate
-        path. At this slice we provide a minimal "alone" cycle context
-        (no counterpart present) so P3 contributes zero -- the real
-        loop-side context plumbing (counterpart_present from the
-        sensorium, time_since_emission from the action log) lands in
-        a follow-up slice. The keys are positional in the EFE
-        evaluator's API; the empty dict here means decoders + bands
-        still drive P1/P2/P4 but P3 stays at zero cost.
+        path.
+
+        Reads from ``self._current_cycle_ctx`` when the Sanctuary cycle
+        has installed one (via select_action / observe_transition);
+        returns {} when the trainer is running corpus-only train_step(),
+        preserving the inert P3 behavior the corpus path expects.
+
+        Scalar P3 wiring keys ``counterpart_present`` /
+        ``time_since_emission`` are promoted to ``[1]`` tensors here so
+        the EFE evaluator API receives the shape it documents (the keys
+        are tensor-positional). 2026-06-15 seam plan Phase 2.
         """
-        return {}
+        ctx = self._current_cycle_ctx
+        if not ctx:
+            return {}
+        out: dict = {}
+        if "counterpart_present" in ctx:
+            cp = ctx["counterpart_present"]
+            if not isinstance(cp, torch.Tensor):
+                cp = torch.tensor([float(cp)], dtype=torch.float32)
+            out["counterpart_present"] = cp
+        if "time_since_emission" in ctx:
+            ts = ctx["time_since_emission"]
+            if not isinstance(ts, torch.Tensor):
+                ts = torch.tensor([float(ts)], dtype=torch.float32)
+            out["time_since_emission"] = ts
+        return out
+
+    # ------------------------------------------------------------------
+    # External-actor seam: M9Actor + TransitionSink Protocol satisfaction.
+    # See 2026-06-15 sanctuary-training-seam-integration-plan.md Phase 2.
+    # ------------------------------------------------------------------
+    def select_action(
+        self,
+        s_t: torch.Tensor,
+        *,
+        context_latents: torch.Tensor,
+        target_positions: Optional[torch.Tensor] = None,
+        cycle_ctx: Optional[dict] = None,
+        budget: Optional[int] = None,
+    ) -> ActionSelection:
+        """Run the M9 act path (habit-net + plan-budget MCTS) for state s_t.
+
+        Satisfies :class:`luthi.sanctuary_interface.M9Actor`. The
+        Sanctuary cycle calls this once per cycle to obtain the action
+        the substrate selects; the returned :class:`ActionSelection`
+        carries the chosen action tensor, a readable summary, and the
+        per-component EFE decomposition for diagnostics.
+
+        Args:
+            s_t: ``[D]`` or ``[B, D]`` encoder state. MCTS is single-state
+                per spec ?3 -- batched s_t plans against ``s_t[0]``.
+            context_latents: Unpooled encoder output ``[B, T, D]`` (or
+                ``[T, D]``) for the EFE predictor's lookahead inside MCTS.
+                Sanctuary obtains this from ``encode_state(..., pool=False)``.
+            target_positions: Optional ``[1, num_targets]`` positions for the
+                predictor's target queries. Defaults to a single position one
+                step past the context (the M9 head-step convention).
+            cycle_ctx: Optional per-cycle observation dict (counterpart_present,
+                time_since_emission). Installed for the duration of the plan.
+            budget: Override the MCTS budget for this call; defaults to
+                ``m9_config.mcts_budget_per_cycle``.
+        """
+        device = s_t.device
+        s_root = s_t[0] if s_t.dim() == 2 else s_t
+        if context_latents.dim() == 2:
+            ctx_single = context_latents.unsqueeze(0)
+        else:
+            ctx_single = context_latents[0:1]
+        if target_positions is None:
+            ctx_len = ctx_single.shape[1]
+            target_positions = self._target_positions_for(ctx_len).to(device)
+
+        plan_budget = (
+            budget if budget is not None else self.m9_config.mcts_budget_per_cycle
+        )
+
+        # Install per-cycle ctx for both plan-time and breakdown-time
+        # observation kwarg derivation. Restored on exit so corpus-driven
+        # train_step() calls continue to see ``_current_cycle_ctx = None``.
+        prev_ctx = self._current_cycle_ctx
+        if cycle_ctx is not None:
+            self._current_cycle_ctx = cycle_ctx
+        try:
+            self.mcts.reset(s_root, ctx_single, target_positions)
+            self.mcts.current_theta_version = self.staleness.theta_version
+            self.mcts.plan_budget(
+                budget=plan_budget,
+                observation_kwargs=self._cycle_observation_kwargs(),
+            )
+
+            best_action = self.mcts.best_action()
+            tree_stats = self.mcts.tree_stats()
+
+            if best_action is None:
+                # Degenerate budget=0 (or expansion failure). Fall back to a
+                # habit-net sample so the cycle still gets a defined action;
+                # the EFE breakdown stays empty -- there is no scored child
+                # to decompose. The PlanSnapshot is built empty so an
+                # observe_transition that consumes it falls cleanly into
+                # the no-plan path.
+                with torch.no_grad():
+                    sample = self.habit_net.sample(
+                        s_root.unsqueeze(0), K=1,
+                    )
+                    best_action = sample["candidates"][0, 0].detach()
+                summary = "action(habit-fallback, top_share=0.000)"
+                empty_snapshot = PlanSnapshot(
+                    visit_distribution=torch.zeros(0),
+                    candidate_actions=torch.zeros(0),
+                    r_best=0.0,
+                )
+                return ActionSelection(
+                    action=best_action,
+                    readable_summary=summary,
+                    efe_breakdown={},
+                    plan_snapshot=empty_snapshot,
+                )
+
+            # Decompose the chosen action's EFE per-component. The MCTS
+            # children store only the scalar G; re-call compute_g on the
+            # best action to surface the c_eng / c_coh / c_con / c_truth
+            # breakdown the diagnostics callers want.
+            obs_kwargs = self._cycle_observation_kwargs()
+            with torch.no_grad():
+                g_out = self.efe.compute_g(
+                    s_t=s_root.unsqueeze(0),
+                    a_t=best_action.unsqueeze(0),
+                    context_latents=ctx_single,
+                    target_positions=target_positions,
+                    **obs_kwargs,
+                )
+
+            with torch.no_grad():
+                a_rest = self.rest_action(s_root.unsqueeze(0))[0].detach()
+            dist_to_rest = float((best_action - a_rest).norm().item())
+            top_share = float(tree_stats.get("top_share", 0.0))
+            summary = (
+                f"action(norm={best_action.norm().item():.3f}, "
+                f"dist_to_rest={dist_to_rest:.3f}, "
+                f"top_share={top_share:.3f})"
+            )
+            efe_breakdown = {
+                "total": float(g_out["G"].item()),
+                "engagement_cost": float(g_out["c_eng"].item()),
+                "coherence_cost": float(g_out["c_coh"].item()),
+                "connection_cost": float(g_out["c_con"].item()),
+                "truthfulness_cost": float(g_out["c_truth"].item()),
+            }
+
+            # F4 fix (4.8 review 2026-06-15): freeze the plan now, so
+            # the transition that consumes it is self-describing.
+            # observe_transition reads from this snapshot via
+            # ctx["plan_snapshot"], not from live self.mcts.root.
+            children = self.mcts.root.children
+            visit_dist = self.mcts.visit_distribution().detach()
+            candidate_actions = torch.stack(
+                [c.action_in for c in children], dim=0,
+            ).detach()
+            child_g_list = [
+                c.incoming_g for c in children
+                if c.incoming_g is not None
+            ]
+            r_best = float(-min(child_g_list)) if child_g_list else 0.0
+            plan_snapshot = PlanSnapshot(
+                visit_distribution=visit_dist,
+                candidate_actions=candidate_actions,
+                r_best=r_best,
+            )
+
+            return ActionSelection(
+                action=best_action,
+                readable_summary=summary,
+                efe_breakdown=efe_breakdown,
+                plan_snapshot=plan_snapshot,
+            )
+        finally:
+            self._current_cycle_ctx = prev_ctx
+
+    def observe_transition(
+        self,
+        s_t: torch.Tensor,
+        a_t: torch.Tensor,
+        s_next: torch.Tensor,
+        ctx: dict[str, Any],
+    ) -> dict[str, float]:
+        """Run an M9 head update against a realized ``(s_t, a_t, s_next)``.
+
+        Satisfies :class:`luthi.sanctuary_interface.TransitionSink`. The
+        Sanctuary cycle calls this once per realized cycle so V/habit
+        update on lived consequence rather than purely predicted EFE.
+
+        Scope at Phase 2: V-TD bootstrap on ``s_next`` plus habit-distill
+        from the most recent MCTS tree, both run on the separate M9
+        optimizer. The richer decoder cycle-consistency / text-LM / rest
+        terms continue to train through the corpus ``train_step()`` path;
+        wiring them onto external transitions requires ``ctx`` to carry
+        target_latents / text_tokens, which the seam plan flags as a
+        Phase 3 extension once Sanctuary actually supplies them.
+
+        Args:
+            s_t, a_t, s_next: ``[D]`` or ``[B, D]`` tensors -- the realized
+                transition. ``a_t`` is typically the ``ActionSelection.action``
+                returned by :meth:`select_action`; ``s_next`` is
+                ``encode_state`` applied to the post-action observation.
+            ctx: Per-cycle observation dict. Recognized keys include
+                ``counterpart_present``, ``time_since_emission`` (consumed
+                by the EFE evaluator's per-candidate path during the next
+                select_action call), plus arbitrary caller-supplied entries.
+
+        Returns:
+            Metrics dict: ``v_loss``, ``habit_loss``, ``r_best`` (the
+            **predicted** M9 reward = ``-min(child G)`` taken from the
+            previous select_action's MCTS tree -- planner estimate,
+            **not** the realized consequence of ``s_next``; realized-
+            reward grounding is Phase 4 work per the 2026-06-15
+            integration plan ?3), ``theta_version`` (M8 substrate
+            version, unchanged by this M9-only update).
+
+        Phase-3 grounding posture: ``s_next`` enters learning *only*
+        through ``v_target(s_next)`` in the TD bootstrap -- the value
+        head now sees realized next-states, but the immediate reward
+        signal it bootstraps against is still planner-estimated. Phase 4
+        substitutes a reward derived from ``s_next`` itself (e.g.
+        preference-cost evaluated on the realized transition).
+        """
+        # Reshape singletons to [B, D] for uniform downstream handling.
+        if s_t.dim() == 1:
+            s_t = s_t.unsqueeze(0)
+        if s_next.dim() == 1:
+            s_next = s_next.unsqueeze(0)
+        if a_t.dim() == 1:
+            a_t = a_t.unsqueeze(0)
+
+        s_t = s_t.detach()
+        s_next = s_next.detach()
+        a_t = a_t.detach()
+
+        prev_ctx = self._current_cycle_ctx
+        self._current_cycle_ctx = ctx
+        try:
+            self.m9_optimizer.zero_grad(set_to_none=True)
+
+            # F4 fix (4.8 review 2026-06-15): the planning state that
+            # produced this transition's a_t arrives via the snapshot in
+            # ctx, NOT via live self.mcts.root. The live tree is whatever
+            # the most recent select_action left -- which, the moment
+            # the async actor/learner split lands, is the *next* cycle's
+            # plan rather than the plan that this transition realizes.
+            # The transition is self-describing.
+            snapshot: PlanSnapshot | None = ctx.get("plan_snapshot")
+
+            # F4-residual (4.8 round-2 review 2026-06-15): warn once if
+            # the caller forgot to thread the snapshot but the trainer
+            # has a non-degenerate plan live. The no-snapshot path
+            # degrades silently to r=0 + random habit target; that's the
+            # intended degenerate behavior, but it's also the signature
+            # of a future threading regression. Cheap insurance: catch
+            # the regression at the first cycle it bites.
+            if (
+                snapshot is None
+                and not self._observe_no_snapshot_warned
+                and self.mcts.root is not None
+                and self.mcts.root.children
+            ):
+                logger.warning(
+                    "observe_transition called with no plan_snapshot in "
+                    "ctx, but the trainer has a non-degenerate MCTS plan "
+                    "(%d children). Falling back to r=0 + random habit "
+                    "target; this is likely a threading regression in the "
+                    "actor->sink path. Logged once per trainer.",
+                    len(self.mcts.root.children),
+                )
+                self._observe_no_snapshot_warned = True
+
+            # ---- M9 reward from the captured plan ----
+            # Still planner-estimated; realized-reward grounding is
+            # Phase 4 work per the integration plan ?3 (sequenced after
+            # F7b s_t-convention alignment per 4.8's 2026-06-15 callback).
+            r_best = snapshot.r_best if snapshot is not None else 0.0
+
+            r_t = torch.full(
+                (s_t.shape[0],), r_best,
+                device=s_t.device, dtype=s_t.dtype,
+            )
+
+            # ---- V-TD bootstrap on the realized s_next ----
+            with torch.no_grad():
+                v_target_next = self.v_target(s_next)
+                td_target = r_t + self.m9_config.discount * v_target_next
+            v_pred = self.v_head(s_t)
+            v_loss = (v_pred - td_target).pow(2).mean()
+
+            # ---- Habit visit-distill against the captured plan ----
+            if (
+                snapshot is not None
+                and snapshot.visit_distribution.numel() > 0
+            ):
+                actions_k = snapshot.candidate_actions.to(
+                    device=s_t.device, dtype=s_t.dtype,
+                ).unsqueeze(0)  # [1, K, D]
+                visit_target = snapshot.visit_distribution.to(
+                    device=s_t.device, dtype=s_t.dtype,
+                )
+                # log_prob expects [B, ...]; route via batch element 0
+                # because MCTS is single-state per spec ?3.
+                log_p_habit = self.habit_net.log_prob(
+                    s_t[0:1], actions_k,
+                )
+                habit_loss = -(visit_target * log_p_habit[0]).sum()
+            else:
+                # No plan supplied (caller didn't run select_action, or
+                # the plan was degenerate budget=0). Fall back to a
+                # sample-based negative log-likelihood so the path stays
+                # well-defined.
+                sample = self.habit_net.sample(
+                    s_t, K=self.m9_config.habit_n_candidates,
+                )
+                habit_loss = -sample["log_prob"].mean()
+
+            total_m9 = v_loss + habit_loss
+            total_m9.backward()
+            self.m9_optimizer.step()
+
+            # ---- Polyak update of V_target (same as corpus path) ----
+            with torch.no_grad():
+                tau = self.m9_config.v_target_polyak
+                for p, p_t in zip(
+                    self.v_head.parameters(),
+                    self.v_target.parameters(),
+                ):
+                    p_t.data.mul_(1.0 - tau).add_(p.data, alpha=tau)
+
+            # ---- Stop-grad scrub on M8 params ----
+            # Mirrors the corpus _m9_head_step's scrub so any backward()
+            # that touches loss_module params (e.g. the rest forward
+            # routes through the M8 predictor in the corpus path; this
+            # trimmed path doesn't, but the contract is preserved).
+            for p in self.loss_module.parameters():
+                if p.grad is not None:
+                    p.grad = None
+
+            return {
+                "v_loss": float(v_loss.item()),
+                "habit_loss": float(habit_loss.item()),
+                "r_best": r_best,
+                # M8 substrate version is unchanged by an M9-only update --
+                # observe_drift is deliberately NOT called here; that
+                # belongs to the corpus train_step() path where the M8
+                # forward actually shifts the predictor.
+                "theta_version": self.staleness.theta_version,
+            }
+        finally:
+            self._current_cycle_ctx = prev_ctx
 
     # ------------------------------------------------------------------
     # Checkpoint + resume (extended schema).

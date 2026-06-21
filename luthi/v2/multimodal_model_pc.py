@@ -320,7 +320,8 @@ class MultimodalPredictiveCodingLM(nn.Module):
         audio_tokens: torch.Tensor | None = None,
         image: torch.Tensor | None = None,
         vision_tokens: torch.Tensor | None = None,
-    ) -> torch.Tensor:
+        return_encode_result: bool = False,
+    ) -> "torch.Tensor | tuple[torch.Tensor, dict]":
         """LM-style forward returning text-position logits.
 
         Matches v1 MultimodalLuthiLM.forward shape for backward compatibility
@@ -331,9 +332,19 @@ class MultimodalPredictiveCodingLM(nn.Module):
             text_tokens: [batch, text_seq_len] integer token indices.
             audio_waveform / audio_tokens / image / vision_tokens: optional
                 modality inputs, same semantics as encode().
+            return_encode_result: When True, also returns the dict
+                ``encode()`` produced (``latents``, ``spans``,
+                ``per_modality``). The Phase 4a training-seam path
+                captures this so ``s_t`` comes from the same encoder
+                pass that produced the generation logits, killing the
+                double-plasticity probe F7a flagged. Default False --
+                existing call sites (generation step 0, next-token
+                training) are unchanged.
 
         Returns:
-            [batch, text_seq_len, vocab_size] logits for text positions.
+            ``logits`` (``[batch, text_seq_len, vocab_size]``) when
+            ``return_encode_result`` is False; ``(logits, encode_result)``
+            when True.
         """
         # LM API: causal masking preserved for parity with v1's
         # MultimodalLuthiLM.forward (and PredictiveCodingLM.forward),
@@ -354,6 +365,8 @@ class MultimodalPredictiveCodingLM(nn.Module):
             )
         h_text = self.final_norm(text_latents)
         logits = self.output_proj(h_text)
+        if return_encode_result:
+            return logits, result
         return logits
 
     def clear_forward_cache(self) -> None:
