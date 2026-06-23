@@ -21,6 +21,7 @@ to "didn't see the run," never the trainer to "died writing a status file."
 from __future__ import annotations
 
 import json
+import math
 import os
 import tempfile
 from pathlib import Path
@@ -47,9 +48,10 @@ def _pid_alive(pid) -> bool:
     ``os.kill`` with any non-CTRL signal calls ``TerminateProcess`` -- it would
     *kill* the very run we are checking -- so we query a handle instead.
     """
-    try:
-        pid = int(pid)
-    except (TypeError, ValueError):
+    # Strict int only. A float would truncate (3.7 -> pid 3, a real unrelated
+    # process); bool is an int subclass (True -> pid 1). A non-int in the
+    # registry means a malformed entry -> treat as not-alive so it gets pruned.
+    if isinstance(pid, bool) or not isinstance(pid, int):
         return False
     if pid <= 0:
         return False
@@ -60,6 +62,17 @@ def _pid_alive(pid) -> bool:
         PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
         STILL_ACTIVE = 259
         k = ctypes.windll.kernel32
+        # Declare signatures explicitly. On 64-bit Windows HANDLE is 64-bit, but
+        # ctypes' default restype is c_int (32-bit): without this, a high-bit
+        # handle would be truncated, and the truncated value passed to
+        # CloseHandle could close a *different* live handle in our own process.
+        # Pinning the types makes the handle round-trip exact.
+        k.OpenProcess.restype = wintypes.HANDLE
+        k.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        k.GetExitCodeProcess.restype = wintypes.BOOL
+        k.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+        k.CloseHandle.restype = wintypes.BOOL
+        k.CloseHandle.argtypes = [wintypes.HANDLE]
         handle = k.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
         if not handle:
             return False  # no such process (or access denied -> treat as gone)
@@ -77,7 +90,9 @@ def _pid_alive(pid) -> bool:
         except ProcessLookupError:
             return False
         except PermissionError:
-            return True  # exists, just not ours to signal
+            return True  # exists, just not ours to signal (POSIX-only; on
+            # Windows an access-denied OpenProcess returns False above -- moot
+            # for our per-user ~/.luthiscope, where every pid is ours)
         except OSError:
             return False
 
@@ -126,7 +141,12 @@ def _rewrite(mutate) -> None:
             with os.fdopen(fd, "w", encoding="utf-8") as fh:
                 json.dump(data, fh, indent=2)
             os.replace(tmp, path)
-        except OSError:
+        finally:
+            # On success os.replace consumed tmp (unlink then raises ENOENT,
+            # ignored). On any failure -- including a non-OSError like json.dump
+            # hitting a non-serializable value -- this removes the leftover so
+            # ~/.luthiscope never accumulates orphan .tmp files. The exception
+            # still propagates to register_run's outer guard (never-raise holds).
             try:
                 os.unlink(tmp)
             except OSError:
@@ -142,9 +162,15 @@ def _rewrite(mutate) -> None:
 def register_run(run_dir, started_at: float) -> None:
     """Announce this run. Best-effort; never raises. Call once at run start."""
     try:
+        # Guard non-finite: json writes NaN/Infinity as non-standard tokens.
+        # started_at is time.time() today (always finite), but don't propagate
+        # the same non-finite-float-in-JSON fragility F1 hit on the reader side.
+        st = float(started_at)
+        if not math.isfinite(st):
+            st = 0.0
         key = str(Path(run_dir).resolve())
         _rewrite(lambda d: d.__setitem__(
-            key, {"pid": os.getpid(), "started_at": float(started_at)}
+            key, {"pid": os.getpid(), "started_at": st}
         ))
     except Exception:  # pragma: no cover - the whole point is to never escape
         pass

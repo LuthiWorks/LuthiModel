@@ -123,3 +123,35 @@ def test_pid_alive_is_readonly_and_correct():
     assert rr._pid_alive(-1) is False
     assert rr._pid_alive(None) is False
     assert rr._pid_alive("nonsense") is False
+
+
+def test_pid_alive_rejects_non_int_pids():
+    # A float would truncate to a real unrelated pid; bool is an int subclass
+    # (True -> 1). Both must be rejected outright, not coerced.
+    assert rr._pid_alive(3.7) is False
+    assert rr._pid_alive(float(os.getpid())) is False  # even our own, as a float
+    assert rr._pid_alive(True) is False
+    assert rr._pid_alive(False) is False
+
+
+def test_non_finite_started_at_is_coerced_finite(registry, tmp_path):
+    run_dir = tmp_path / "r"
+    run_dir.mkdir()
+    rr.register_run(run_dir, started_at=float("nan"))
+    val = _read(registry)[str(run_dir.resolve())]["started_at"]
+    import math as _m
+    assert _m.isfinite(val)  # not NaN/Infinity -> standard JSON round-trips
+
+
+def test_no_tmp_leak_when_serialization_fails(registry, tmp_path, monkeypatch):
+    # Force the write to fail with a non-OSError mid-dump. register_run must
+    # still not raise, and must leave no orphan .tmp file behind.
+    def boom(*a, **k):
+        raise TypeError("non-serializable")
+
+    monkeypatch.setattr(rr.json, "dump", boom)
+    run_dir = tmp_path / "r"
+    run_dir.mkdir()
+    rr.register_run(run_dir, started_at=1.0)  # must not raise
+    leftovers = list(registry.parent.glob("*.tmp"))
+    assert leftovers == [], f"orphan temp files left behind: {leftovers}"
