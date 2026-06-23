@@ -38,6 +38,7 @@ import json
 import math
 import shutil
 import sys
+import time
 from pathlib import Path
 
 import torch
@@ -66,6 +67,7 @@ from luthi.v2.multimodal_data import (
     _read_filelist,
 )
 from luthi.v2.multimodal_model_pc import MultimodalPredictiveCodingLM
+from luthi.v2.run_registry import register_run, unregister_run
 
 
 # Defaults assume the standard repo layout + the disk paths Brian confirmed
@@ -334,8 +336,7 @@ def read_jsonl(path: Path) -> list[dict]:
     return out
 
 
-def main() -> int:
-    args = parse_args()
+def _run_smoke(args, started: float) -> int:
     torch.manual_seed(args.seed)
 
     if not args.tokenizer.exists():
@@ -354,6 +355,11 @@ def main() -> int:
     if args.run_dir.exists():
         shutil.rmtree(args.run_dir)
     args.run_dir.mkdir(parents=True)
+
+    # Announce this run to LuthiScope so the console finds it with no config and
+    # badges it live. Best-effort and isolated -- run_registry swallows every
+    # error, so this can never affect training. Removed again in main()'s finally.
+    register_run(args.run_dir, started_at=started)
 
     print("[smoke] Building multimodal loader ...")
     loader = build_loader(args)
@@ -517,6 +523,18 @@ def main() -> int:
     print(f"[smoke] All artifacts present and non-empty")
     print(f"[smoke] PASSED")
     return 0
+
+
+def main() -> int:
+    args = parse_args()
+    started = time.time()
+    try:
+        return _run_smoke(args, started)
+    finally:
+        # Always retract the announcement, whether the run passed, failed, or
+        # raised. If _run_smoke exited before the run dir was created (e.g. a
+        # missing-input early return), the key was never written and this no-ops.
+        unregister_run(args.run_dir)
 
 
 if __name__ == "__main__":
