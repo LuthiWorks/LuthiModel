@@ -99,6 +99,17 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--sparsity-steps", type=int, default=300)
     p.add_argument("--lr", type=float, default=1e-4)
     p.add_argument("--seed", type=int, default=42)
+    p.add_argument(
+        "--save-checkpoint", action="store_true", default=False,
+        help=(
+            "After the smoke passes, save the trained multimodal-PC model "
+            "to <run-dir>/model_final.luthi (encrypted via "
+            "LUTHI_CHECKPOINT_KEY; plaintext .pt fallback if unset, matching "
+            "train_pc.py). Default off so CI stays a pure wiring test. "
+            "Opt in for the Phase 4b seam-integration validation checkpoint "
+            "(2026-06-23 brief)."
+        ),
+    )
     return p.parse_args()
 
 
@@ -521,6 +532,55 @@ def _run_smoke(args, started: float) -> int:
             raise AssertionError(f"[smoke] missing/empty artifact: {p}")
 
     print(f"[smoke] All artifacts present and non-empty")
+
+    # Phase 4b prerequisite (2026-06-23, opt-in): save the trained
+    # multimodal-PC so the seam-integration validation path has a real
+    # checkpoint to load through the 0a bridge. Default off; this only
+    # fires under --save-checkpoint so CI's wiring-test runs aren't
+    # affected. Encrypted via LUTHI_CHECKPOINT_KEY with a plaintext .pt
+    # fallback (matches train_pc.py's _save_checkpoint_v2 pattern).
+    if args.save_checkpoint:
+        from luthi.checkpoint import build_checkpoint, save_checkpoint
+        ckpt_config = {
+            # v2 fingerprint (`pc_rate` triggers v2 detection in the 0a
+            # bridge's _detect_architecture) + multimodal flag together
+            # produce architecture="v2-multimodal".
+            "architecture": "v2-multimodal",
+            "multimodal": True,
+            "pc_rate": 0.001,
+            "pred_learning_rate": 0.0001,
+            # Construction-side params the bridge needs to rebuild the
+            # exact model shape. Mirror build_tiny_multimodal_model
+            # verbatim -- a drift here = silent shape mismatch on load.
+            "d_model": 64,
+            "n_blocks": 2,
+            "n_heads": 2,
+            "ffn_expansion": 1,
+            "seq_len": 128,
+            "max_audio_tokens": 256,
+            "max_vision_tokens": 256,
+        }
+        model = trainer.loss_module.online_encoder
+        save_path = args.run_dir / "model_final"
+        try:
+            ckpt = build_checkpoint(
+                model, epoch=1, config=ckpt_config,
+            )
+            ckpt["tokenizer_state"] = text_dataset._tokenizer.get_state()
+            written = save_checkpoint(ckpt, save_path)
+            print(f"[smoke] encrypted checkpoint: {written}")
+        except ValueError as e:
+            # _get_password raises ValueError when LUTHI_CHECKPOINT_KEY isn't
+            # set. Fall back to plaintext state_dict (won't load through the
+            # 0a bridge, but at least won't crash). Mirrors train_pc.py.
+            plain_path = save_path.with_suffix(".pt")
+            torch.save(model.state_dict(), plain_path)
+            print(
+                f"[smoke] WARNING: no LUTHI_CHECKPOINT_KEY; saved plaintext "
+                f"state_dict to {plain_path} (will NOT load through the 0a "
+                f"bridge). Set the env var and re-run for the .luthi. Reason: {e}"
+            )
+
     print(f"[smoke] PASSED")
     return 0
 

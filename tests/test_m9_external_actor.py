@@ -231,9 +231,15 @@ class TestObserveTransition:
                 "plan_snapshot": selection.plan_snapshot,
             },
         )
-        for k in ("v_loss", "habit_loss", "r_best", "theta_version"):
+        # Phase 4b (2026-06-23): r_best -> r_realized + r_planned split.
+        # r_realized is the new canonical reward (negated EFE on the
+        # realized transition); r_planned retains the snapshot's
+        # planner estimate for the "did planner agree with consequence?"
+        # diagnostic.
+        for k in ("v_loss", "habit_loss", "r_realized", "r_planned", "theta_version"):
             assert k in metrics, f"missing metric {k!r}"
         assert metrics["v_loss"] == metrics["v_loss"]  # not NaN
+        assert metrics["r_realized"] == metrics["r_realized"]  # not NaN
 
     def test_updates_v_head_weights(self, trainer):
         s_t, a_t, s_next = self._make_transition(trainer)
@@ -329,7 +335,13 @@ class TestF4PlanSnapshot:
         assert snap.candidate_actions.shape[-1] == D
         assert isinstance(snap.r_best, float)
 
-    def test_observe_with_snapshot_uses_snapshot_r_best(self, trainer):
+    def test_observe_with_snapshot_threads_planned_through(self, trainer):
+        """Post Phase 4b (2026-06-23): the snapshot still flows through
+        ctx, and its r_best is surfaced as r_planned in the return dict
+        for the planned-vs-realized diagnostic. The V-TD bootstrap no
+        longer USES it (r_realized comes from compute_g_realized) -- but
+        the snapshot threading is still verified here so the F4 fix's
+        contract stays locked."""
         s_t, ctx_latents = self._make_state_and_context(trainer)
         selection = trainer.select_action(
             s_t, context_latents=ctx_latents,
@@ -345,12 +357,19 @@ class TestF4PlanSnapshot:
             a_t, s_next,
             ctx={"plan_snapshot": selection.plan_snapshot},
         )
-        # r_best in returned metrics matches the snapshot's r_best.
-        assert metrics["r_best"] == pytest.approx(
+        # r_planned in returned metrics matches the snapshot's r_best.
+        assert metrics["r_planned"] == pytest.approx(
             selection.plan_snapshot.r_best
         )
 
-    def test_observe_without_snapshot_degrades_to_zero_reward(self, trainer):
+    def test_observe_without_snapshot_still_produces_realized_reward(
+        self, trainer,
+    ):
+        """Phase 4b: the realized reward comes from (s_t, a_t, s_next),
+        not from the snapshot. So even without a snapshot the V-TD
+        bootstrap still gets a real reward signal -- not zero. r_planned
+        is NaN because no planner estimate exists to surface."""
+        import math
         s_t, _ = self._make_state_and_context(trainer)
         a_t = torch.randn(D)
         s_next = encode_state(
@@ -358,9 +377,14 @@ class TestF4PlanSnapshot:
             text_tokens=torch.randint(0, VOCAB, (1, SEQ)), pool=True,
         )
 
-        # No plan_snapshot in ctx -> degenerate no-plan path.
+        # No plan_snapshot in ctx -> r_planned is NaN (sentinel for
+        # "no planner estimate available"); r_realized still computed
+        # from the transition the caller provided.
         metrics = trainer.observe_transition(s_t, a_t, s_next, ctx={})
-        assert metrics["r_best"] == 0.0
+        assert math.isnan(metrics["r_planned"])
+        # r_realized is finite (compute_g_realized always produces a
+        # value for any non-degenerate (s_t, a_t, s_next)).
+        assert math.isfinite(metrics["r_realized"])
         # habit_loss is still defined via the sample fallback.
         assert "habit_loss" in metrics
 
@@ -394,8 +418,12 @@ class TestF4PlanSnapshot:
         )
 
         # The transition is self-describing: observe reads from A's
-        # snapshot, not from the live (B-shaped) tree.
-        assert metrics["r_best"] == pytest.approx(r_best_a)
+        # snapshot, not from the live (B-shaped) tree. Post Phase 4b
+        # the assertion is on r_planned (the snapshot's r_best
+        # surfaced for diagnostics); r_realized derives from the
+        # realized (s_t, a_t, s_next), independent of which snapshot
+        # threaded through ctx.
+        assert metrics["r_planned"] == pytest.approx(r_best_a)
         # Sanity: if B and A differ (the usual case), the wrong-plan
         # mistake would have been observable. The test is meaningful
         # whenever r_best_a != r_best_b; if they happen to coincide,
@@ -442,8 +470,10 @@ class TestF4PlanSnapshot:
 
     def test_degenerate_plan_snapshot_falls_back_cleanly(self, trainer):
         """Budget=0 select_action returns a habit-fallback ActionSelection
-        whose plan_snapshot is empty (no children). observe_transition
-        treats it like the no-snapshot case (r_best=0 + habit sample)."""
+        whose plan_snapshot is empty (no children). habit-distill uses
+        the sample fallback; r_planned reflects the empty snapshot's
+        r_best=0.0; r_realized is still computed from (s_t, a_t, s_next)
+        regardless."""
         s_t, ctx_latents = self._make_state_and_context(trainer)
         selection = trainer.select_action(
             s_t, context_latents=ctx_latents, budget=0,
@@ -460,7 +490,175 @@ class TestF4PlanSnapshot:
             selection.action, s_next,
             ctx={"plan_snapshot": selection.plan_snapshot},
         )
-        assert metrics["r_best"] == 0.0
+        # Empty snapshot's r_best is 0.0; r_planned surfaces it.
+        assert metrics["r_planned"] == 0.0
+        # r_realized is independent of the snapshot's degeneracy.
+        import math
+        assert math.isfinite(metrics["r_realized"])
+
+
+# ---------------------------------------------------------------------------
+# Phase 4b — realized-reward grounding (2026-06-23, 4.8 brief §3)
+# ---------------------------------------------------------------------------
+
+
+class TestPhase4bRealizedReward:
+    """The keystone of the seam-integration arc: the V-TD bootstrap is now
+    grounded in lived consequence, not in the planner's prediction.
+
+    Done-When per 4.8's brief: (a) reward responds to the realized
+    outcome -- different s_next -> different reward; (b) no stop-grad
+    leak into M8 params. (b) is already covered by
+    test_no_residual_grad_on_m8_params; this class adds (a) plus a
+    few invariants the new path needs to preserve.
+    """
+
+    def _make_s_t_and_a_t(self, trainer):
+        encoder = trainer.loss_module.online_encoder
+        text = torch.randint(0, VOCAB, (1, SEQ))
+        s_t = encode_state(encoder, text_tokens=text, pool=True)
+        a_t = torch.randn(1, D)
+        return s_t, a_t
+
+    def test_different_s_next_yields_different_realized_reward(self, trainer):
+        """The Done-When: r_realized must vary with s_next. If it were
+        still tied to the planner's r_best (independent of s_next), this
+        would not hold."""
+        s_t, a_t = self._make_s_t_and_a_t(trainer)
+        # Two structurally different s_next values -- guaranteed to flow
+        # to different decoder/preference outputs.
+        s_next_a = torch.zeros(1, D)
+        s_next_b = torch.full((1, D), 0.5)
+
+        metrics_a = trainer.observe_transition(s_t, a_t, s_next_a, ctx={})
+        metrics_b = trainer.observe_transition(s_t, a_t, s_next_b, ctx={})
+
+        assert metrics_a["r_realized"] != metrics_b["r_realized"], (
+            "r_realized identical for two different s_next; the reward "
+            "must be a function of the realized next state, not a "
+            "constant. Phase 4b grounding is not actually wired."
+        )
+
+    def test_realized_reward_independent_of_snapshot(self, trainer):
+        """r_realized comes from compute_g_realized(s_t, a_t, s_next),
+        not from snapshot.r_best. Two different snapshots with the same
+        transition must produce the same r_realized."""
+        s_t, ctx_latents = (lambda: (
+            (lambda r: r.mean(dim=1))(encode_state(
+                trainer.loss_module.online_encoder,
+                text_tokens=torch.randint(0, VOCAB, (1, SEQ)), pool=False,
+            )),
+            encode_state(
+                trainer.loss_module.online_encoder,
+                text_tokens=torch.randint(0, VOCAB, (1, SEQ)), pool=False,
+            ),
+        ))()
+        a_t = torch.randn(1, D)
+        s_next = encode_state(
+            trainer.loss_module.online_encoder,
+            text_tokens=torch.randint(0, VOCAB, (1, SEQ)), pool=True,
+        )
+
+        # Two separate plans on different states -> different r_best.
+        sel_a = trainer.select_action(s_t, context_latents=ctx_latents)
+        sel_b = trainer.select_action(
+            torch.randn_like(s_t), context_latents=ctx_latents,
+        )
+
+        m_a = trainer.observe_transition(
+            s_t, a_t, s_next,
+            ctx={"plan_snapshot": sel_a.plan_snapshot},
+        )
+        m_b = trainer.observe_transition(
+            s_t, a_t, s_next,
+            ctx={"plan_snapshot": sel_b.plan_snapshot},
+        )
+
+        # Same transition, different snapshots -> same r_realized.
+        assert m_a["r_realized"] == pytest.approx(m_b["r_realized"]), (
+            "r_realized varied across snapshots for the same realized "
+            "transition; the reward must depend on (s_t, a_t, s_next) "
+            "only, not on the planner's estimate."
+        )
+        # But r_planned differs (it IS the snapshot's r_best).
+        # (Skipped explicit assert: the underlying random plans may
+        # produce the same scalar r_best by chance; the structural
+        # claim is the r_realized invariance above.)
+
+    def test_compute_g_realized_leaves_no_grad_on_efe_modules(self, trainer):
+        """Phase 4b grounding requires compute_g_realized to run under
+        torch.no_grad() -- otherwise decoders / preferences / delta_s_module
+        would receive M9 gradients from the reward path, doubling up on
+        the training those modules already get via the corpus path's
+        _m9_head_step losses. This test asserts no leak after
+        observe_transition: the EFE-side modules have no .grad set."""
+        s_t, a_t = self._make_s_t_and_a_t(trainer)
+        s_next = torch.randn(1, D)
+        trainer.observe_transition(s_t, a_t, s_next, ctx={})
+
+        leaked: list[str] = []
+        for mod_name, mod in (
+            ("decoders.attention", trainer.decoders.attention),
+            ("decoders.memory", trainer.decoders.memory),
+            ("decoders.text.intensity_head", trainer.decoders.text.intensity_head),
+            ("decoders.text.reencode_head", trainer.decoders.text.reencode_head),
+            ("preferences", trainer.preferences),
+            ("delta_s_module", trainer.delta_s_module),
+        ):
+            for pname, p in mod.named_parameters():
+                if p.grad is None:
+                    continue
+                # The corpus _m9_head_step DOES train these; if the test
+                # trainer ran one of those, the grad would be from that,
+                # not from observe_transition. But this test trainer
+                # only calls observe_transition, so any grad here is a
+                # leak from compute_g_realized. v_head + habit_net are
+                # legitimately trained by observe_transition's V-TD +
+                # habit-distill, so they're not in this scan.
+                if float(p.grad.abs().sum().item()) > 0.0:
+                    leaked.append(f"{mod_name}.{pname}")
+
+        assert not leaked, (
+            f"compute_g_realized leaked gradients into EFE-side modules "
+            f"that should train only through corpus path: {leaked[:5]} "
+            f"(total {len(leaked)}). compute_g_realized must run under "
+            f"torch.no_grad()."
+        )
+
+    def test_k_m9_3_observes_seam_path_v(self, trainer):
+        """K-M9-3 backstops V divergence. Before Phase 4b the kill only
+        saw the corpus _m9_head_step's V; the seam path's V was
+        invisible. Now observe_transition feeds V to m9_kills.observe_value
+        so divergence on this path is caught too."""
+        s_t, a_t = self._make_s_t_and_a_t(trainer)
+        s_next = torch.randn(1, D)
+
+        # Record observe_value calls -- more robust than spelunking the
+        # TrendingBand's internal buffer (its attribute name is an
+        # implementation detail and would couple this test to it).
+        calls: list[float] = []
+        original = trainer.m9_kills.observe_value
+
+        def _recorder(v):
+            calls.append(float(v))
+            return original(v)
+
+        trainer.m9_kills.observe_value = _recorder
+        try:
+            trainer.observe_transition(s_t, a_t, s_next, ctx={})
+        finally:
+            trainer.m9_kills.observe_value = original
+
+        assert len(calls) == 1, (
+            f"K-M9-3 observe_value called {len(calls)} times during "
+            f"observe_transition; expected exactly 1. Without this call, "
+            f"the seam-path V is invisible to the divergence kill."
+        )
+        # And the recorded value is finite (not NaN/inf).
+        import math
+        assert math.isfinite(calls[0]), (
+            f"observe_value received non-finite V={calls[0]}"
+        )
 
 
 # ---------------------------------------------------------------------------

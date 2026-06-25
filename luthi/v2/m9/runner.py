@@ -852,16 +852,30 @@ class M9Trainer(JEPATrainer):
         ctx = self._current_cycle_ctx
         if not ctx:
             return {}
+        # Pin promoted tensors to the encoder's device so the downstream
+        # EFE compute (preferences/decoders/delta_s, which all live on the
+        # encoder's device) doesn't mix devices. Pre-2026-06-23 this was
+        # CPU-only; the seam-integration harness running on DirectML
+        # surfaced the latent bug.
+        device = next(self.loss_module.online_encoder.parameters()).device
         out: dict = {}
         if "counterpart_present" in ctx:
             cp = ctx["counterpart_present"]
             if not isinstance(cp, torch.Tensor):
-                cp = torch.tensor([float(cp)], dtype=torch.float32)
+                cp = torch.tensor(
+                    [float(cp)], dtype=torch.float32, device=device,
+                )
+            else:
+                cp = cp.to(device)
             out["counterpart_present"] = cp
         if "time_since_emission" in ctx:
             ts = ctx["time_since_emission"]
             if not isinstance(ts, torch.Tensor):
-                ts = torch.tensor([float(ts)], dtype=torch.float32)
+                ts = torch.tensor(
+                    [float(ts)], dtype=torch.float32, device=device,
+                )
+            else:
+                ts = ts.to(device)
             out["time_since_emission"] = ts
         return out
 
@@ -1048,20 +1062,37 @@ class M9Trainer(JEPATrainer):
                 select_action call), plus arbitrary caller-supplied entries.
 
         Returns:
-            Metrics dict: ``v_loss``, ``habit_loss``, ``r_best`` (the
-            **predicted** M9 reward = ``-min(child G)`` taken from the
-            previous select_action's MCTS tree -- planner estimate,
-            **not** the realized consequence of ``s_next``; realized-
-            reward grounding is Phase 4 work per the 2026-06-15
-            integration plan ?3), ``theta_version`` (M8 substrate
-            version, unchanged by this M9-only update).
+            Metrics dict: ``v_loss``, ``habit_loss``, ``r_realized``
+            (the realized M9 reward = ``-G`` where ``G`` is the
+            preference cost evaluated on the realized transition via
+            :meth:`EFEEvaluator.compute_g_realized`), ``theta_version``
+            (M8 substrate version, unchanged by this M9-only update).
 
-        Phase-3 grounding posture: ``s_next`` enters learning *only*
-        through ``v_target(s_next)`` in the TD bootstrap -- the value
-        head now sees realized next-states, but the immediate reward
-        signal it bootstraps against is still planner-estimated. Phase 4
-        substitutes a reward derived from ``s_next`` itself (e.g.
-        preference-cost evaluated on the realized transition).
+        Phase-4b grounding posture (2026-06-23): both halves of V-TD
+        now reflect lived experience. The immediate reward is the
+        negative preference cost of the *realized* transition (no
+        longer the planner's predicted EFE); the bootstrap is
+        ``v_target(s_next)`` on the realized next state (unchanged
+        since Phase 3). The keystone of the seam-integration arc --
+        the value head trains on consequence, not on prediction.
+
+        Stop-grad invariants preserved: ``compute_g_realized`` runs
+        under ``torch.no_grad()`` so decoders / preferences receive no
+        gradient from this path (they train through the corpus path's
+        own losses); the existing scrub on ``loss_module.parameters()``
+        catches any residual on M8 params. ``s_t``/``a_t``/``s_next``
+        are detached at the top.
+
+        K-M9-3 observe: ``v_pred.mean()`` is pushed to
+        ``self.m9_kills.observe_value`` so the value-divergence kill
+        sees the seam path's V (previously only the corpus path
+        observed). The trending-band component auto-adapts to the new
+        reward scale via its rolling-median / MAD anchor; the absolute
+        ``value_abs_ceiling`` (default 1e3) is loose enough for the
+        bounded realized-EFE rewards (per-step ``|r|`` ~ O(1), V
+        converges to ``~|r|/(1-discount) ~ 100``, comfortably under).
+        Re-tune the band parameters in ``KillRegistry`` if production
+        magnitudes prove different.
         """
         # Reshape singletons to [B, D] for uniform downstream handling.
         if s_t.dim() == 1:
@@ -1112,16 +1143,34 @@ class M9Trainer(JEPATrainer):
                 )
                 self._observe_no_snapshot_warned = True
 
-            # ---- M9 reward from the captured plan ----
-            # Still planner-estimated; realized-reward grounding is
-            # Phase 4 work per the integration plan ?3 (sequenced after
-            # F7b s_t-convention alignment per 4.8's 2026-06-15 callback).
-            r_best = snapshot.r_best if snapshot is not None else 0.0
-
-            r_t = torch.full(
-                (s_t.shape[0],), r_best,
-                device=s_t.device, dtype=s_t.dtype,
-            )
+            # ---- M9 reward: realized preference cost on (s_t, a_t, s_next) ----
+            # Phase 4b grounding (2026-06-23 brief §3): the reward is
+            # now derived from the realized s_next via the EFE
+            # evaluator's per-candidate machinery, run on the realized
+            # transition instead of the predicted one. r = -G (G is a
+            # cost; lower-cost transitions are more rewarding). The
+            # snapshot's planner-r_best is no longer the bootstrap
+            # signal -- it stays in the snapshot for diagnostics, but
+            # the V-head trains on consequence.
+            #
+            # Under no_grad: this produces a scalar reward, not a
+            # gradient path into decoders/preferences (which train via
+            # the corpus _m9_head_step's own losses). The stop-grad
+            # discipline F4 established is preserved.
+            obs_kwargs = self._cycle_observation_kwargs()
+            with torch.no_grad():
+                g_realized = self.efe.compute_g_realized(
+                    s_t=s_t, a_t=a_t, s_next=s_next,
+                    counterpart_present=obs_kwargs.get("counterpart_present"),
+                    time_since_emission=obs_kwargs.get("time_since_emission"),
+                )
+            # G is [B]; reward is per-batch scalar.
+            r_t = -g_realized["G"].to(device=s_t.device, dtype=s_t.dtype)
+            if r_t.shape != (s_t.shape[0],):
+                # Degenerate broadcast case: reward returned as scalar [1]
+                # against a [B>1] s_t. Broadcast to match. In normal Sanctuary
+                # operation B=1 so this is rare.
+                r_t = r_t.expand(s_t.shape[0])
 
             # ---- V-TD bootstrap on the realized s_next ----
             with torch.no_grad():
@@ -1179,10 +1228,35 @@ class M9Trainer(JEPATrainer):
                 if p.grad is not None:
                     p.grad = None
 
+            # ---- K-M9-3 value-divergence observe ----
+            # The corpus path's _m9_head_step pushes V to
+            # m9_kills.observe_value; without this call the seam path's
+            # V updates would be invisible to the divergence kill -- a
+            # silent gap, since Phase 4b makes the V-head train from
+            # lived experience exactly here. The trending band
+            # auto-adapts to the new reward scale; the absolute |V|
+            # ceiling backstops a stuck-high V the band would otherwise
+            # recalibrate into invisibility.
+            with torch.no_grad():
+                v_pred_mean = float(v_pred.detach().mean().item())
+            self.m9_kills.observe_value(v_pred_mean)
+
+            # Snapshot's planner-r_best is retained for diagnostics --
+            # callers comparing realized vs planned reward find both.
+            r_planned = (
+                snapshot.r_best if snapshot is not None else float("nan")
+            )
+
             return {
                 "v_loss": float(v_loss.item()),
                 "habit_loss": float(habit_loss.item()),
-                "r_best": r_best,
+                # Phase 4b: r_realized is the canonical reward signal
+                # (negated EFE on the realized transition). r_planned
+                # carries the snapshot's planner estimate for the
+                # "did planner agree with consequence?" diagnostic --
+                # NaN when no snapshot was threaded.
+                "r_realized": float(r_t.mean().item()),
+                "r_planned": r_planned,
                 # M8 substrate version is unchanged by an M9-only update --
                 # observe_drift is deliberately NOT called here; that
                 # belongs to the corpus train_step() path where the M8

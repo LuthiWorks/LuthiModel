@@ -265,6 +265,132 @@ class EFEEvaluator(nn.Module):
         return out
 
     # ------------------------------------------------------------------
+    # Phase 4b realized-transition path (2026-06-23).
+    # ------------------------------------------------------------------
+    @torch.no_grad()
+    def compute_g_realized(
+        self,
+        s_t: torch.Tensor,
+        a_t: torch.Tensor,
+        s_next: torch.Tensor,
+        counterpart_present: torch.Tensor | None = None,
+        time_since_emission: torch.Tensor | None = None,
+    ) -> dict:
+        """Preference cost evaluated on the *realized* transition.
+
+        Phase 4b grounding (2026-06-23, 4.8 brief §3): mirrors the math
+        of ``compute_g_per_candidate`` but takes the realized ``s_next``
+        directly instead of running ``predict_next``. The point is to
+        produce a reward signal grounded in lived consequence rather
+        than in the planner's predicted desirability -- the keystone of
+        the seam-integration arc.
+
+        Intended to be called under ``torch.no_grad()`` from
+        ``M9Trainer.observe_transition``: the returned ``G`` is a
+        scalar input to the V-TD bootstrap (``r = -G``), not a tensor
+        that backprops into decoders / preferences. Those params train
+        through the corpus path's losses, not through this reward
+        signal -- mirrors the stop-grad discipline ``compute_g_per_candidate``
+        already follows when called from MCTS.
+
+        Same return shape as the F1 per-candidate path so downstream
+        callers can introspect the per-component breakdown identically.
+        Excludes the predictor (no ``s_hat_next`` to expose) and the
+        decoder activity dict (the realized-path consumer only needs
+        the cost decomposition for the reward).
+
+        Args:
+            s_t: ``[B, D]`` realized starting state.
+            a_t: ``[B, D]`` action that produced the transition.
+            s_next: ``[B, D]`` realized next state (NOT the planner's
+                prediction).
+            counterpart_present, time_since_emission: per-cycle context
+                for the P3 connection cost; defaults to inert (P3 = 0)
+                when unspecified, matching ``compute_g_per_candidate``'s
+                degenerate behavior.
+
+        Returns:
+            ``{"G", "c_eng", "c_coh", "c_con", "c_truth", "delta_s_internal"}``
+            -- all detached scalars / per-batch tensors.
+        """
+        if not self.has_per_candidate_path():
+            raise RuntimeError(
+                "compute_g_realized requires decoders, activity_bands, "
+                "delta_s_module, and delta_s_band wired into EFEEvaluator -- "
+                "the same prerequisites compute_g_per_candidate has. The "
+                "trainer wires all four in __init__; only legacy tests "
+                "without those modules hit this path."
+            )
+
+        # P1 engagement on the realized transition.
+        delta_s_real = self.delta_s_module.compute(s_t, s_next)
+        engagement_target = self.delta_s_band.engagement_target()
+
+        # Decoder activity + cycle-consistency on s_next (P2 / P3 supports).
+        activity_real = self.decoders.activity(s_next)
+        outs_real = self.decoders.decode_all(s_next)
+        reencoded_real = self.decoders.re_encode_all(outs_real)
+        # P4 truthfulness on the realized action.
+        outs_a = self.decoders.decode_all(a_t)
+        reencoded_a = self.decoders.re_encode_all(outs_a)
+
+        if counterpart_present is not None and time_since_emission is not None:
+            emission_strength = self.activity_bands.text_emission_strength(
+                activity_real
+            )
+        else:
+            emission_strength = None
+
+        prag = self.preferences.pragmatic_cost(
+            s_t=s_t,
+            s_hat_next=s_next,  # parameter named for the predicted case;
+                                # semantic role here is "the next state we
+                                # are scoring," which the realized s_next
+                                # fills cleanly.
+            decoder_reencodes=reencoded_real,
+            counterpart_present=None,        # legacy P3 off; use v2 path below
+            time_since_emission=None,
+            a_t=None,                         # legacy P4 off; v2 below
+            a_reencoded=None,
+            delta_s_internal=delta_s_real,
+            engagement_target=engagement_target,
+        )
+
+        c_eng = prag["c_eng"]
+        c_coh = prag["c_coh"]
+        if emission_strength is not None:
+            c_con = self.preferences.connection_cost_per_candidate_continuous(
+                counterpart_present=counterpart_present,
+                time_since_emission=time_since_emission,
+                emission_strength=emission_strength,
+            )
+        else:
+            c_con = torch.zeros_like(c_eng)
+        c_truth = self.preferences.truthfulness_cost_per_modality(
+            a_t, reencoded_a,
+        )
+
+        w_eng = self.preferences.w_engagement()
+        w_coh = self.preferences.coherence_weight
+        w_con = self.preferences.connection_weight
+        w_truth = self.preferences.truthfulness_weight
+        g = (
+            w_eng * c_eng
+            + w_coh * c_coh
+            + w_con * c_con
+            + w_truth * c_truth
+        )
+
+        return {
+            "G": g.detach(),
+            "c_eng": c_eng.detach(),
+            "c_coh": c_coh.detach(),
+            "c_con": c_con.detach(),
+            "c_truth": c_truth.detach(),
+            "delta_s_internal": delta_s_real.detach(),
+        }
+
+    # ------------------------------------------------------------------
     # Legacy single-call API (shared observations across candidates).
     # ------------------------------------------------------------------
     def compute_g(
