@@ -42,14 +42,28 @@ class GenerationState:
     - ``s_t``: ``[B, D]`` pooled state vector. Always computed via
       :func:`luthi.v2.m9.s_t.compute_s_t` -- single source of truth for
       the s_t definition across training and inference.
-    - ``ctx_latents``: ``[B, T, D]`` post-trunk encoder output for the
-      text modality, the input that produced ``s_t``. Passed to
+    - ``ctx_latents``: ``[B, T, D]`` post-trunk encoder output over the
+      *full concatenated multimodal sequence* (vision + audio + text, not
+      text-only) -- the same latents ``s_t`` is pooled from. Passed to
       ``M9Trainer.select_action`` as ``context_latents`` for the MCTS
       predictor's lookahead.
+    - ``context_obs``: the *raw* step-0 forward inputs that produced
+      ``ctx_latents`` -- ``{"text_tokens": x, ...sensory kwargs}`` keyed
+      to match ``encode_state`` / ``model.encode``. Item #6 (2026-06-27)
+      threads this through the transition so the learner can *re-encode*
+      the context with autograd on (frozen plasticity) and push a
+      gradient into the encoder from lived prediction error -- detached
+      ``ctx_latents`` alone would only train the predictor. Captured at
+      the source rather than reconstructed from the prompt because the
+      step-0 forward truncates to ``token_ids[-max_seq_len:]``; a
+      re-tokenize of the prompt string would not reproduce ``s_t``.
+      ``None`` for captures predating #6 or for synthetic states -- the
+      sink degrades to a head-only update (no lived JEPA step).
     """
 
     s_t: torch.Tensor
     ctx_latents: torch.Tensor
+    context_obs: dict[str, Any] | None = None
 
 
 @dataclass
@@ -159,6 +173,15 @@ class TransitionSink(Protocol):
       interleaves any call between act-time and observe-time. When
       absent, the sink degrades to a no-plan reward (``r=0``) + habit
       sample fallback for the visit-distill target.
+    - ``context_obs`` (dict | absent): the raw step-0 forward inputs
+      (``{"text_tokens": ..., ...sensory}``, keyed for ``model.encode``)
+      that produced this transition's *starting* state. Item #6: the sink
+      re-encodes these under frozen plasticity to drive a lived JEPA
+      gradient into the encoder + predictor, using the ``s_next`` argument
+      (the realized pooled next state) as the prediction target. Absent ->
+      the sink runs the M9-head update only and skips the lived
+      world-model step (the corpus path and pre-#6 callers degrade
+      cleanly).
     """
 
     def observe_transition(

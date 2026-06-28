@@ -467,6 +467,14 @@ def generate_text(
         # canonical compute_s_t for the seam path. None until the first
         # step under a return_state=True call sets it.
         captured_encode_result: dict | None = None
+        # Item #6 capture (2026-06-27): the *raw* step-0 forward inputs that
+        # produced captured_encode_result, so the learner can re-encode them
+        # under frozen plasticity for the lived JEPA gradient. Captured here
+        # (not reconstructed from the prompt) because `x` is the truncated
+        # token_ids[-max_seq_len:] window; a prompt re-tokenize would not
+        # reproduce s_t. Set wherever captured_encode_result is set, and
+        # only there, so context_obs exists iff ctx_latents does.
+        captured_context_obs: dict | None = None
 
         with torch.set_grad_enabled(living):
             for step in range(max_tokens):
@@ -488,6 +496,15 @@ def generate_text(
                         logits, captured_encode_result = model(
                             x, return_encode_result=True, **forward_kwargs,
                         )
+                        # Clone the token window: `x` is re-bound each step
+                        # and context_obs outlives the cycle (it crosses the
+                        # async learner queue later), so keep an owned copy.
+                        # forward_kwargs holds the externally-supplied,
+                        # already-detached sensory tensors -- pass through.
+                        captured_context_obs = {
+                            "text_tokens": x.detach().clone(),
+                            **forward_kwargs,
+                        }
                     else:
                         logits = model(x, **forward_kwargs)
                 elif supports_kv_cache:
@@ -516,6 +533,11 @@ def generate_text(
                         logits, captured_encode_result = model(
                             x, return_encode_result=True,
                         )
+                        # Text-only step-0 capture (no sensory kwargs on
+                        # this path). Clone per the note above.
+                        captured_context_obs = {
+                            "text_tokens": x.detach().clone(),
+                        }
                     else:
                         logits = model(x)
 
@@ -577,6 +599,7 @@ def generate_text(
             state = GenerationState(
                 s_t=compute_s_t(full_latents),
                 ctx_latents=full_latents.detach(),
+                context_obs=captured_context_obs,
             )
             return text, state
         return text

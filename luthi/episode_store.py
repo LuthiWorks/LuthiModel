@@ -42,6 +42,15 @@ class EpisodeStore(nn.Module):
         self.salience_threshold = salience_threshold
         self.recall_similarity_threshold = recall_similarity_threshold
 
+        # Item #6 (2026-06-28): set by freeze_plasticity() during the lived
+        # JEPA re-encode. When True, forward() still recalls + blends (that
+        # contribution is part of the representation the lived gradient
+        # must reproduce) but SKIPS store(), so the learner's re-encode
+        # does not write a second episode for a context perception already
+        # stored -- and, under the async learner (§4), does not race the
+        # actor's perception-time writes to these buffers.
+        self._plasticity_frozen: bool = False
+
         # Random projection for context compression (fixed)
         proj = torch.randn(d_model, context_dim) / (d_model**0.5)
         self.register_buffer("context_proj", proj)
@@ -149,9 +158,14 @@ class EpisodeStore(nn.Module):
             # Recall
             recalled = self.recall(context)
 
-            # Store the current output (mean-pooled) as a new episode
-            output_pooled = x_output.detach().mean(dim=(0, 1))  # [d_model]
-            self.store(context, output_pooled, salience)
+            # Store the current output (mean-pooled) as a new episode.
+            # Skipped under frozen plasticity (Item #6): the lived
+            # re-encode must not write a second episode for a context
+            # perception already stored, and under the async learner (§4)
+            # must not race the actor's perception-time buffer writes.
+            if not self._plasticity_frozen:
+                output_pooled = x_output.detach().mean(dim=(0, 1))  # [d_model]
+                self.store(context, output_pooled, salience)
 
         # Blend recalled output with current output
         if recalled is not None:

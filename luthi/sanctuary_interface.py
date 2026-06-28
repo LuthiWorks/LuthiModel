@@ -471,6 +471,7 @@ def observe_transition(
     *,
     counterpart_present: bool = False,
     time_since_emission: float = 0.0,
+    context_obs: dict[str, Any] | None = None,
     **extra_ctx: Any,
 ) -> dict[str, float]:
     """Hand a realized ``(s_t, a_t, s_next)`` transition to the learner.
@@ -498,6 +499,14 @@ def observe_transition(
             populates it (seam plan Phase 2).
         time_since_emission: Seconds since the last emitted action.
             Same P3 wiring.
+        context_obs: Item #6 lived-JEPA channel -- the raw step-0 forward
+            inputs (``{"text_tokens": ..., ...sensory}``, keyed for
+            ``model.encode``) that produced ``s_t``. When supplied, the
+            sink re-encodes them under frozen plasticity to push a lived
+            gradient into the encoder + predictor, using the ``s_next``
+            argument (the realized pooled next state) as the prediction
+            target. ``None`` -> the sink runs the M9-head update only and
+            skips the lived world-model step (back-compat).
         **extra_ctx: Additional context keys; folded into the ``ctx``
             dict the sink receives.
 
@@ -509,6 +518,12 @@ def observe_transition(
         "counterpart_present": counterpart_present,
         "time_since_emission": time_since_emission,
     }
+    # Only inject context_obs when present, so the corpus path and pre-#6
+    # callers leave a clean ctx that takes the sink's back-compat
+    # (head-only) branch. The lived target is the s_next positional itself
+    # (already the realized pooled next state), so no separate channel.
+    if context_obs is not None:
+        ctx["context_obs"] = context_obs
     ctx.update(extra_ctx)
     return sink.observe_transition(s_t, a_t, s_next, ctx)
 

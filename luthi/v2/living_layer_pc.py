@@ -295,6 +295,17 @@ class PredictiveCodingLayer(nn.Module):
         # Non-persistent — recomputed every forward pass, not checkpointed.
         self._last_pred_error: torch.Tensor | None = None
 
+        # Item #6 (2026-06-28): when set (via the freeze_plasticity()
+        # context manager during the lived JEPA re-encode), forward()
+        # produces grad-capable output WITHOUT self-modifying -- no
+        # pc_self_modify, no episode store write, no living-buffer
+        # mutation. The gradient still flows to self.weight so the lived
+        # loss can train the encoder, but perception's one-time self-mod
+        # is not duplicated by the learner's re-encode. Set by a
+        # module-tree sweep, not threaded through forward args, so it
+        # reaches every living layer in the trunk uniformly.
+        self._plasticity_frozen: bool = False
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
@@ -389,6 +400,42 @@ class PredictiveCodingLayer(nn.Module):
             x_flat = x
         else:
             raise ValueError(f"Expected 2D or 3D input, got {x.dim()}D")
+
+        # Item #6 frozen-plasticity path (checked first, before the
+        # gradient-checkpoint machinery): a grad-capable forward that does
+        # NOT self-modify. The lived JEPA re-encode runs the trunk under
+        # freeze_plasticity() so lived prediction error can train the
+        # encoder. NB self.weight is a BUFFER, not a Parameter -- the
+        # living FFN trains itself via pc_self_modify, never by backprop
+        # (DO-NOT-REINVENT). So the lived gradient does not land on
+        # self.weight; it flows THROUGH this frozen weight (a constant on
+        # this path) to the encoder's upstream backprop Parameters
+        # (attention, embeddings, layernorms) -- exactly as the corpus
+        # JEPA forward already does. Episode recall is kept (under
+        # no_grad) so the re-encoded latents retain the same memory-blended
+        # structure perception saw; the recalled delta is detached.
+        # pc_self_modify AND the episode write are skipped, so no living
+        # buffer is mutated (the rank-1 invariants and
+        # test_frozen_plasticity_reencode rely on this). No weight clone is
+        # needed: nothing mutates self.weight in place on this path.
+        #
+        # Scale caveat: this path assumes the re-encode forward is NOT
+        # gradient-checkpointed -- checkpoint replay happens in backward,
+        # after freeze_plasticity() has exited, so a checkpointed frozen
+        # forward would recompute on the normal (self-modifying) path. The
+        # smoke encoder does not checkpoint; revisit before enabling
+        # gradient checkpointing on the lived re-encode at GPU scale.
+        if self._plasticity_frozen:
+            with torch.no_grad():
+                context = self._compute_context(x_flat)
+                episode_delta = self._recall_episode(context)
+            weight_eff = self.weight
+            if episode_delta is not None:
+                weight_eff = weight_eff + episode_delta
+            output = x_flat @ weight_eff.T
+            if len(input_shape) == 3:
+                output = output.reshape(batch, seq_len, self.out_features)
+            return output
 
         # Skip PC self-modification during gradient-checkpoint recomputation.
         # Mirrors v1's LivingLayerV6 guard — without this, enabling gradient
