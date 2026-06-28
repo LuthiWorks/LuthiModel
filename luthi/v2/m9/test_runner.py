@@ -141,6 +141,123 @@ def test_constructs_with_all_m9_components():
 
 # ---------- Two-phase train_step ----------
 
+# ---------- §5 device plumbing ----------
+
+def test_device_defaults_to_encoder_device():
+    """No `device=` arg -> M9 submodules resolve to the encoder's device."""
+    with tempfile.TemporaryDirectory() as tmp:
+        trainer = _build_trainer(Path(tmp))
+        encoder_device = next(
+            trainer.loss_module.online_encoder.parameters()
+        ).device
+        assert trainer.device == encoder_device
+        trainer.action_log.close()
+
+
+def test_device_places_m9_submodules():
+    """Every parameter-owning M9 submodule lands on the resolved device."""
+    with tempfile.TemporaryDirectory() as tmp:
+        trainer = _build_trainer(Path(tmp), seed=3)
+        # Default resolves to the encoder device (CPU in this smoke); assert
+        # the swept submodules all share it -- no submodule left behind.
+        for module in (
+            trainer.v_head, trainer.v_target, trainer.habit_net,
+            trainer.rest_action, trainer.decoders, trainer.preferences,
+            trainer.delta_s_module,
+        ):
+            for p in module.parameters():
+                assert p.device == trainer.device
+        trainer.action_log.close()
+
+
+def test_device_type_mismatch_with_encoder_fails_loud():
+    """An explicit `device` whose type differs from the encoder's builds an
+    incoherent split-device model; the constructor must reject it up front
+    rather than fault later inside a forward. Checkable on a CPU-only box
+    because the guard compares device *types* and fires before any actual
+    .to(cuda) move is attempted.
+    """
+    import pytest
+
+    with tempfile.TemporaryDirectory() as tmp:
+        model = MultimodalPredictiveCodingLM(
+            vocab_size=VOCAB, d_model=D, n_blocks=2, n_heads=2,
+            ffn_expansion=1, max_seq_len=SEQ,
+            max_audio_tokens=SEQ, max_vision_tokens=SEQ,
+            backward_pass_enabled=False,
+        )  # CPU encoder
+        loss_module = JEPALoss(online_encoder=model)
+        sampler_cfg = SamplerConfig(
+            corpus_sizes_tokens={"text": 1000}, alpha=0.7,
+        )
+        with pytest.raises(ValueError, match="single-device"):
+            M9Trainer(
+                loss_module=loss_module,
+                optimizer=optim.AdamW(
+                    [p for p in loss_module.parameters() if p.requires_grad],
+                    lr=1e-3,
+                ),
+                sampler=ModalitySampler(sampler_cfg),
+                data_loader=_TextLoader(VOCAB, B, SEQ, seed=5),
+                config=RunnerConfig(
+                    sampler=sampler_cfg,
+                    checkpoint=CheckpointConfig(
+                        interval_seconds=10**9, rolling_slots=3,
+                    ),
+                    logging=LoggingConfig(
+                        light_interval_batches=10**9,
+                        deep_interval_batches=10**9,
+                    ),
+                    kill_criteria=KillCriteriaConfig(warmup_batches=10**9),
+                    epoch=EpochConfig(
+                        max_epochs=1, max_batches_per_epoch=10**9,
+                    ),
+                ),
+                run_dir=Path(tmp),
+                m9_config=M9Config(),
+                device="cuda",  # type mismatch vs CPU encoder
+            )
+
+
+def test_m9_optimizer_references_live_params_not_orphans():
+    """The core §5 guarantee: building the optimizer AFTER the device
+    sweep makes it reference the live (on-device) Parameter objects, not
+    orphaned pre-move copies. This is what the deleted seam-harness
+    workaround had to rebuild the optimizer to fix; with the sweep moved
+    inside __init__ before optimizer construction, the rebuild is gone
+    and the references must already be live. Verified by object identity
+    so it holds on CPU (where the move is a no-op) and on a real device
+    alike.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        trainer = _build_trainer(Path(tmp))
+        # Param objects the m9_optimizer is supposed to own, read off the
+        # live submodules post-construction.
+        live_ids = set()
+        for module in (
+            trainer.v_head, trainer.habit_net, trainer.rest_action,
+            trainer.decoders.attention, trainer.decoders.memory,
+            trainer.decoders.text.intensity_head,
+            trainer.decoders.text.reencode_head,
+            trainer.preferences, trainer.delta_s_module,
+        ):
+            live_ids.update(id(p) for p in module.parameters())
+        live_ids.update(
+            id(p)
+            for p in trainer.loss_module.online_encoder.output_proj.parameters()
+        )
+        opt_params = [
+            p for g in trainer.m9_optimizer.param_groups for p in g["params"]
+        ]
+        assert opt_params, "m9_optimizer has no params"
+        for p in opt_params:
+            assert id(p) in live_ids, (
+                "m9_optimizer references a Parameter that is not a live "
+                "submodule param -- the device sweep orphaned the optimizer"
+            )
+        trainer.action_log.close()
+
+
 def test_train_step_returns_m8_and_m9_sublosses():
     with tempfile.TemporaryDirectory() as tmp:
         trainer = _build_trainer(Path(tmp))

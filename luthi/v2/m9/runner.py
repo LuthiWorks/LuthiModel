@@ -225,6 +225,7 @@ class M9Trainer(JEPATrainer):
         config: RunnerConfig,
         run_dir: Path,
         m9_config: Optional[M9Config] = None,
+        device: Optional[torch.device | str] = None,
     ):
         super().__init__(
             loss_module=loss_module,
@@ -237,6 +238,39 @@ class M9Trainer(JEPATrainer):
         self.m9_config = m9_config or M9Config()
         d_model = loss_module.online_encoder.d_model
         vocab_size = loss_module.online_encoder.vocab_size
+
+        # §5 device plumbing: resolve the device the M9 submodules must live
+        # on. Default to the encoder's device so every forward that mixes an
+        # M9 head with an encoder latent (V-head(s_t), habit_net.log_prob,
+        # decoders on s_next) stays single-device. Construct all submodules
+        # below, sweep them onto this device, THEN build the optimizers so
+        # they capture on-device parameter refs -- this replaces the post-hoc
+        # .to(device) + optimizer-rebuild workaround the seam harness carried
+        # (validate_seam_integration.py), which orphaned the optimizer's CPU
+        # param references when the modules were moved after construction.
+        encoder_device = next(
+            loss_module.online_encoder.parameters()
+        ).device
+        if device is not None:
+            self.device = torch.device(device)
+            # The JEPA path must be single-device: the M9 heads run on
+            # encoder latents (V-head(s_t), decoders on s_next, text-LM
+            # through the encoder-owned output_proj). The sweep below moves
+            # the M9 heads but NOT the encoder/output_proj (those are
+            # loss_module's), so an explicit `device` whose *type* differs
+            # from the encoder's would silently build a split-device model
+            # that only faults later, deep in a forward. Fail loud here.
+            # Compare `.type` (cpu/cuda/privateuseone), not full identity,
+            # so `cuda` vs `cuda:0` doesn't spuriously trip a valid caller.
+            if self.device.type != encoder_device.type:
+                raise ValueError(
+                    f"M9Trainer device={self.device} conflicts with the "
+                    f"encoder's device={encoder_device}; the JEPA path is "
+                    f"single-device. Move the encoder/loss_module to the "
+                    f"same device type before constructing the trainer."
+                )
+        else:
+            self.device = encoder_device
 
         # ---- M9 module bag ----
         # Value head + Polyak target copy (V_target is not gradient-
@@ -351,6 +385,27 @@ class M9Trainer(JEPATrainer):
             c_puct=self.m9_config.mcts_c_puct,
             max_depth=self.m9_config.mcts_max_depth,
         )
+
+        # §5 device sweep: move every parameter-owning M9 submodule onto
+        # the resolved device BEFORE the optimizers are built below. `.to`
+        # moves parameters in place (Parameter identity preserved), so the
+        # references held by `efe` / `mcts` (which were constructed above
+        # against these same module objects) see the moved tensors too.
+        # Modules without parameters (staleness, kills, gamma's inference
+        # state, activity/Δs bands, action log) need no move. `decoders` is
+        # an nn.Module registry, so moving it whole covers attention/memory/
+        # text and the text decoder's wrapped `output_proj` (already on the
+        # encoder's device -> a no-op, identity preserved either way).
+        for _m9_module in (
+            self.v_head,
+            self.v_target,
+            self.habit_net,
+            self.rest_action,
+            self.decoders,
+            self.preferences,
+            self.delta_s_module,
+        ):
+            _m9_module.to(self.device)
 
         # ---- M9 optimizer ----
         # Separate Adam over the M9 heads. V_target is not trained
