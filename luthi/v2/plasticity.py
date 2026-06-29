@@ -4,8 +4,18 @@ The lived world-model gradient (Item #6) needs a forward pass through the
 encoder trunk that produces grad-capable output WITHOUT self-modifying the
 living substrate. Perception already self-modified once -- online, during the
 cycle's generation forward -- so the learner's offline re-encode must not do
-it a second time ("no double-plasticity"), and under the async actor/learner
-split (Plan §4) must not race the actor's writes to the same living buffers.
+it a second time ("no double-plasticity").
+
+Scope -- what this DOES and does NOT close (Window A audit, 2026-06-28):
+freeze_plasticity stops the learner's re-encode from WRITING living state
+(no pc_self_modify, no episode store). It does NOT make the re-encode's READS
+of living state consistent: the frozen forward reads ``self.weight`` directly
+and recalls the episode buffers, and under Plan §4's async actor/learner split
+the actor's perception forward WRITES those same buffers in place
+concurrently -- a torn read the freeze cannot prevent. Closing that read-race
+is §4's job (a detached snapshot of the living buffers taken under the actor's
+write-lock, re-encoded outside the lock), NOT this context manager's. Do not
+read the freeze as a concurrency guarantee.
 
 ``freeze_plasticity(root)`` sweeps the whole module tree under ``root`` and
 flips the ``_plasticity_frozen`` flag on every living-state writer it finds --

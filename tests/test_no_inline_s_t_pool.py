@@ -37,6 +37,11 @@ SEAM_FILES = [
     LUTHI_ROOT / "seam_types.py",
     LUTHI_ROOT / "v2" / "m9" / "runner.py",
     LUTHI_ROOT / "v2" / "m9" / "efe.py",
+    # Item #6 lived path: compute_lived_loss must pool the prediction via
+    # pool_state_grad (grad-preserving) and never inline a detached pool;
+    # the target is the seam's already-pooled s_next. Guard the file so a
+    # future edit can't open-code a `.detach().mean(dim=1)` here either.
+    LUTHI_ROOT / "v2" / "jepa_loss.py",
 ]
 
 CANONICAL_HELPER = LUTHI_ROOT / "v2" / "m9" / "s_t.py"

@@ -177,6 +177,34 @@ class M9Config:
     # requires inferred-gamma; this is a 4.7 staging convenience only.
     gamma_fixed_for_bringup: bool = False
 
+    # ---- Item #6: lived world-model learning (2026-06-27) ----
+    # Lived JEPA learning rate -- deliberately LOW relative to the corpus
+    # head_lr/base LR. A separate optimizer (not loss-scaling) realizes it
+    # because Adam is scale-invariant (plan Correction 2). Low LR keeps the
+    # encoder near the corpus manifold while it absorbs a narrow lived
+    # stream -- the front-line defense against catastrophic forgetting.
+    lived_lr: float = 1e-4
+    # Corpus-replay interleave ratio (§3): corpus train_step()s to run per
+    # lived update, to keep the representation educated while it learns
+    # from life. Accumulated, so fractional ratios (e.g. 0.5 = replay every
+    # other lived step) are honored. Pilot default 1.0 = one corpus step
+    # per lived step (conservative, replay-heavy). The *shape* of the
+    # developmental diet / weaning schedule is Brian's call; this is only a
+    # pilot floor.
+    corpus_replay_ratio: float = 1.0
+    # Retention gate (§3): every N lived updates, re-measure corpus
+    # retention on a fixed held-out batch captured at init.
+    retention_check_every: int = 20
+    # Retention gate fires (halt/rollback) when held-out corpus l_pred
+    # exceeds baseline * (1 + eps) on a check. Pilot tolerance; calibrate
+    # against the catastrophic-forgetting fire-test.
+    retention_floor_eps: float = 0.5
+    # Reserved for the optional rolling pooled-state SIGReg buffer on the
+    # lived path. 0 = disabled (replay-only anti-collapse, the default and
+    # recommended first cut); >0 would keep a rolling buffer of pooled
+    # states and run SIGReg over it every K lived steps. Not yet wired.
+    lived_sigreg_buffer: int = 0
+
 
 # ---------------------------------------------------------------------------
 # M9Trainer
@@ -431,6 +459,63 @@ class M9Trainer(JEPATrainer):
         # M9 step, the stop-grad scrub wipes loss_module grads so
         # the next M8 zero_grad starts clean.
         self.m9_optimizer = Adam(m9_params, lr=self.m9_config.head_lr)
+
+        # ---- Item #6 lived optimizer (2026-06-27) ----
+        # Trains the world-model CORE -- encoder backprop params + predictor
+        # + SIGReg projection heads -- from lived prediction error, at the
+        # low `lived_lr` (distinct from the corpus base LR via a separate
+        # optimizer, not loss-scaling: Adam is scale-invariant, plan
+        # Correction 2). `output_proj` is the text DECODE head; it lives on
+        # the encoder module but is a head trained by the M9 text-LM signal
+        # on `m9_optimizer`, so it is excluded here (Finding 2) -- lived
+        # grads must not reach the head, and the head/core optimizer split
+        # stays clean. The living-FFN weight is a buffer, not a Parameter,
+        # so encoder.parameters() already excludes it (it self-modifies
+        # during perception, the other lived channel).
+        _output_proj_ids = {
+            id(p)
+            for p in loss_module.online_encoder.output_proj.parameters()
+        }
+        lived_params = [
+            p
+            for p in loss_module.online_encoder.parameters()
+            if id(p) not in _output_proj_ids
+        ]
+        lived_params += list(loss_module.predictor.parameters())
+        lived_params += list(loss_module.projection_heads.parameters())
+        self.lived_optimizer = Adam(
+            lived_params, lr=self.m9_config.lived_lr,
+        )
+
+        # ---- §3 catastrophic-forgetting machinery (2026-06-27) ----
+        # Capture one fixed held-out corpus batch + the baseline corpus
+        # l_pred at init, so the retention gate can detect the encoder
+        # drifting off the corpus manifold as it learns from a narrow lived
+        # stream. The probe (`corpus_retention`) runs frozen + BN-eval +
+        # no_grad so MEASURING retention doesn't itself perturb the
+        # substrate. Replay accumulator + lived-step counter drive the
+        # interleave + retention-check cadences.
+        #
+        # HELD-OUT CONTRACT (Window A audit, 2026-06-28): the gate is only
+        # valid if `_run_corpus_replay` NEVER trains on this batch's data --
+        # otherwise the probe measures data the model keeps seeing and the
+        # gate goes blind to real forgetting. Smoke loaders generate fresh
+        # random batches per `next_batch`, so the captured batch is never
+        # re-yielded -> genuinely held out. A finite-corpus production
+        # loader (MultimodalDataLoader) reshuffles and re-yields every
+        # sequence across epochs, so it does NOT satisfy this contract:
+        # before production scale, capture this batch from a split the
+        # sampler is configured to exclude. Tracked as a scale TODO.
+        self._retention_modality = "text"
+        self._retention_batch = self.data_loader.next_batch(
+            self._retention_modality
+        )
+        self._retention_baseline = self.corpus_retention()
+        self._lived_step_count = 0
+        self._corpus_replay_accumulator = 0.0
+        # Last-good core θ snapshot for rollback on a sustained breach.
+        # Seeded at init (the corpus-trained starting point is good).
+        self._last_good_core_theta = self._snapshot_core_theta()
 
         # ---- Step-1 training-story metrics ----
         # Last-cycle realized transition; used by V-TD for the bootstrap.
@@ -1085,6 +1170,171 @@ class M9Trainer(JEPATrainer):
         finally:
             self._current_cycle_ctx = prev_ctx
 
+    # ------------------------------------------------------------------
+    # Item #6: lived world-model learning + catastrophic-forgetting guard.
+    # ------------------------------------------------------------------
+    def _core_params(self) -> list:
+        """The lived-trained core: every Parameter the lived_optimizer owns
+        (encoder backprop params excl. output_proj + predictor + projection
+        heads). Read off the optimizer so this stays in lockstep with what
+        actually gets stepped."""
+        return [
+            p
+            for group in self.lived_optimizer.param_groups
+            for p in group["params"]
+        ]
+
+    def _snapshot_core_theta(self) -> list:
+        """Clone the core θ for ‖Δθ‖ measurement and rollback."""
+        return [p.detach().clone() for p in self._core_params()]
+
+    def _restore_core_theta(self, snapshot: list) -> None:
+        """Restore core θ from a snapshot (rollback on a retention breach).
+        Param order is stable across calls, so positional zip aligns."""
+        with torch.no_grad():
+            for p, saved in zip(self._core_params(), snapshot):
+                p.copy_(saved)
+
+    def corpus_retention(self) -> float:
+        """Held-out corpus ``l_pred`` -- the catastrophic-forgetting probe.
+
+        Runs ``compute_modality_loss`` on the fixed held-out batch captured
+        at init, as a strictly PASSIVE measurement: frozen plasticity (no
+        self-mod), BN in eval (no running-stat contamination from the
+        held-out distribution), and ``no_grad``. Measuring retention must
+        not itself perturb the substrate. Returns the prediction loss; the
+        retention gate compares it to the init baseline.
+        """
+        from luthi.v2.plasticity import freeze_plasticity
+
+        was_training = self.loss_module.training
+        self.loss_module.eval()
+        try:
+            with torch.no_grad(), freeze_plasticity(
+                self.loss_module.online_encoder
+            ):
+                result = self.loss_module.compute_modality_loss(
+                    self._retention_modality, self._retention_batch,
+                )
+        finally:
+            self.loss_module.train(was_training)
+        return float(result["l_pred"].item())
+
+    def _run_lived_update(
+        self,
+        context_obs: dict,
+        a_t: torch.Tensor,
+        s_next: torch.Tensor,
+        modality: str = "text",
+    ) -> dict:
+        """The Item #6 third update path: a lived JEPA gradient step.
+
+        Re-encodes ``context_obs`` under frozen plasticity, scores the
+        predictor's pooled forecast against the realized pooled ``s_next``,
+        and steps ``lived_optimizer`` over the world-model core. Measures
+        ‖Δθ‖ over the core and feeds it to the staleness drift band -- the
+        lived path now moves θ every realized cycle, which is exactly what
+        §6 wants the staleness machinery to see (and why the old
+        "observe_drift never fires here" note is deleted).
+        """
+        pre = self._snapshot_core_theta()
+
+        self.lived_optimizer.zero_grad(set_to_none=True)
+        lived = self.loss_module.compute_lived_loss(
+            context_obs, a_t, s_next, modality=modality,
+        )
+        lived["loss"].backward()
+        self.lived_optimizer.step()
+
+        # ‖Δθ‖ over the core the lived step actually moved -> drift band.
+        with torch.no_grad():
+            delta_sq = sum(
+                (p.detach() - pre_p).pow(2).sum()
+                for p, pre_p in zip(self._core_params(), pre)
+            )
+            delta_theta_norm = float(delta_sq.sqrt().item())
+        self.staleness.observe_drift(delta_theta_norm)
+
+        return {
+            "lived_l_pred": float(lived["l_pred"].item()),
+            "lived_pred_std": float(lived["pred_std"].item()),
+            "lived_target_std": float(lived["target_std"].item()),
+            "lived_delta_theta_norm": delta_theta_norm,
+        }
+
+    def _run_corpus_replay(self) -> int:
+        """§3 anti-forgetting interleave: run corpus core-update steps per
+        the developmental-diet ratio, so the representation stays educated
+        while it learns from a narrow lived stream. ``super().train_step``
+        is the M8 core update (encoder+predictor+projection on the corpus
+        ``self.optimizer`` at base LR); it self-modifies on corpus data,
+        which is the point. Accumulator honors fractional ratios. Returns
+        the number of corpus steps run."""
+        self._corpus_replay_accumulator += self.m9_config.corpus_replay_ratio
+        n = 0
+        while self._corpus_replay_accumulator >= 1.0:
+            modality = self.sampler.sample()
+            batch = self.data_loader.next_batch(modality)
+            super().train_step(modality, batch)
+            self._corpus_replay_accumulator -= 1.0
+            n += 1
+        return n
+
+    def _check_retention_gate(self) -> dict:
+        """§3 retention gate: every ``retention_check_every`` lived steps,
+        re-measure corpus retention. On a breach (retention worse than
+        ``baseline * (1 + retention_floor_eps)``) roll the core θ back to
+        the last-good snapshot and fire K-M9 forgetting state; otherwise
+        refresh the last-good snapshot. Returns a status dict (always
+        includes ``retention``/``baseline`` on a check; empty off-cadence).
+
+        θ-SCOPE CAVEAT (Window A audit, 2026-06-28): the trigger is broader
+        than the remedy. The trigger measures TOTAL corpus retention, which
+        reflects both lived channels -- backprop-θ (encoder/predictor/
+        projection) AND the living-weight self-modification from corpus
+        replay's forwards. The remedy rolls back only backprop-θ (what
+        ``lived_optimizer`` owns). So a breach driven by perception-side
+        living-weight drift cannot be fully undone here -- by design, given
+        the two-channel split (the living weight is not gradient-state and
+        has no snapshot/rollback). This gate is the world-model-core guard,
+        not a total-forgetting guard; the living channel's stability is the
+        substrate's own (consolidation) problem.
+        """
+        self._lived_step_count += 1
+        if self._lived_step_count % self.m9_config.retention_check_every != 0:
+            return {}
+
+        retention = self.corpus_retention()
+        ceiling = self._retention_baseline * (1.0 + self.m9_config.retention_floor_eps)
+        breached = retention > ceiling
+        status = {
+            "retention": retention,
+            "retention_baseline": self._retention_baseline,
+            "retention_ceiling": ceiling,
+            "retention_breached": breached,
+        }
+        if breached:
+            # Roll back to the last-good core θ -- the lived stream has
+            # pulled the encoder off the corpus manifold. Loud, not silent:
+            # the caller surfaces this; the gate does not swallow it. Also
+            # reset the lived optimizer's Adam moments: after discarding the
+            # recent trajectory, stale momentum would just re-drive the core
+            # off-manifold on the next step.
+            self._restore_core_theta(self._last_good_core_theta)
+            self.lived_optimizer.state.clear()
+            status["retention_rolled_back"] = True
+            logger.warning(
+                "Item #6 retention gate FIRED at lived step %d: corpus "
+                "l_pred %.4f exceeded ceiling %.4f (baseline %.4f). Rolled "
+                "core theta back to last-good snapshot.",
+                self._lived_step_count, retention, ceiling,
+                self._retention_baseline,
+            )
+        else:
+            # Healthy: this core θ becomes the new last-good for rollback.
+            self._last_good_core_theta = self._snapshot_core_theta()
+        return status
+
     def observe_transition(
         self,
         s_t: torch.Tensor,
@@ -1296,13 +1546,29 @@ class M9Trainer(JEPATrainer):
                 v_pred_mean = float(v_pred.detach().mean().item())
             self.m9_kills.observe_value(v_pred_mean)
 
+            # ---- Item #6: lived world-model update (the THIRD path) ----
+            # After the M9-head update, if the cycle supplied the raw
+            # context that produced s_t, run the lived JEPA gradient on the
+            # world-model core, then the §3 anti-forgetting interleave +
+            # retention gate. Gated on `context_obs` presence: corpus-only
+            # / pre-#6 callers skip it cleanly (the head-only update above
+            # is the whole transition for them). `realized_next_state` is
+            # the `s_next` positional -- the realized pooled next state --
+            # already detached at the top; no separate ctx channel.
+            lived_metrics: dict = {}
+            context_obs = ctx.get("context_obs")
+            if context_obs is not None:
+                lived_metrics = self._run_lived_update(context_obs, a_t, s_next)
+                lived_metrics["corpus_replay_steps"] = self._run_corpus_replay()
+                lived_metrics.update(self._check_retention_gate())
+
             # Snapshot's planner-r_best is retained for diagnostics --
             # callers comparing realized vs planned reward find both.
             r_planned = (
                 snapshot.r_best if snapshot is not None else float("nan")
             )
 
-            return {
+            result = {
                 "v_loss": float(v_loss.item()),
                 "habit_loss": float(habit_loss.item()),
                 # Phase 4b: r_realized is the canonical reward signal
@@ -1312,12 +1578,17 @@ class M9Trainer(JEPATrainer):
                 # NaN when no snapshot was threaded.
                 "r_realized": float(r_t.mean().item()),
                 "r_planned": r_planned,
-                # M8 substrate version is unchanged by an M9-only update --
-                # observe_drift is deliberately NOT called here; that
-                # belongs to the corpus train_step() path where the M8
-                # forward actually shifts the predictor.
+                # theta_version: the M9-head update alone does not move the
+                # M8 substrate, BUT the Item #6 lived update above DOES move
+                # the world-model core when context_obs is present, and it
+                # calls staleness.observe_drift -- so theta_version advances
+                # on lived cycles. (This is why the old "observe_drift is
+                # never called here" note was removed: it is, on the lived
+                # path.)
                 "theta_version": self.staleness.theta_version,
             }
+            result.update(lived_metrics)
+            return result
         finally:
             self._current_cycle_ctx = prev_ctx
 

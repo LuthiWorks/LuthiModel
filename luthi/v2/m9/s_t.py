@@ -31,7 +31,45 @@ from __future__ import annotations
 
 import torch
 
-__all__ = ["compute_s_t"]
+__all__ = ["compute_s_t", "pool_state_grad"]
+
+
+def pool_state_grad(latents: torch.Tensor) -> torch.Tensor:
+    """Pool ``[B, T, D]`` latents into a ``[B, D]`` state, KEEPING gradient.
+
+    Identical pool rule to :func:`compute_s_t` (mean over the time
+    dimension) but WITHOUT the ``detach()`` -- so the gradient flows back
+    through the pooled state. This is the lived-JEPA prediction pooler
+    (Item #6): the predictor's forecast must stay grad-connected so lived
+    prediction error can train the encoder + predictor. Its detached twin
+    ``compute_s_t`` is for the *target* and the M9 head, where the
+    stop-grad discipline is required.
+
+    Co-located here on purpose: keeping both poolers in one file means a
+    future change to the pool rule (median, attention-weighted, ...)
+    updates the grad and stop-grad paths together instead of letting them
+    drift. ``compute_s_t`` is conceptually ``pool_state_grad(...).detach()``
+    -- it is kept as a separate explicit line only so the
+    ``test_no_inline_s_t_pool`` AST guard can pin the one canonical
+    ``.detach().mean(dim=1)`` site.
+
+    Args:
+        latents: ``[B, T, D]`` post-trunk latents (e.g. the predictor's
+            forecast over the continuation positions).
+
+    Returns:
+        ``[B, D]`` grad-connected state vector.
+
+    Raises:
+        ValueError: if ``latents`` isn't ``[B, T, D]``.
+    """
+    if latents.dim() != 3:
+        raise ValueError(
+            f"pool_state_grad expects [B, T, D] latents; got shape "
+            f"{tuple(latents.shape)}. Add the batch dim explicitly at the "
+            f"call site rather than passing a 2D tensor."
+        )
+    return latents.mean(dim=1)
 
 
 def compute_s_t(latents: torch.Tensor) -> torch.Tensor:  # noqa: ANN -- explicit

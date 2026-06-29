@@ -45,10 +45,12 @@ class EpisodeStore(nn.Module):
         # Item #6 (2026-06-28): set by freeze_plasticity() during the lived
         # JEPA re-encode. When True, forward() still recalls + blends (that
         # contribution is part of the representation the lived gradient
-        # must reproduce) but SKIPS store(), so the learner's re-encode
-        # does not write a second episode for a context perception already
-        # stored -- and, under the async learner (§4), does not race the
-        # actor's perception-time writes to these buffers.
+        # must reproduce) but SKIPS store(), so the learner's re-encode does
+        # not WRITE a second episode for a context perception already
+        # stored. NB this closes the double-WRITE only: recall() still READS
+        # these buffers, and under the async learner (Plan §4) the actor's
+        # perception-time store() writes them concurrently -- that read-race
+        # is closed by §4's snapshot-under-lock, not by this flag.
         self._plasticity_frozen: bool = False
 
         # Random projection for context compression (fixed)

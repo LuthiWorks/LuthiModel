@@ -359,3 +359,134 @@ class JEPALoss(nn.Module):
             "predicted_target": predicted_target.detach(),
             "ctx_len": ctx_len,
         }
+
+    def compute_lived_loss(
+        self,
+        context_obs: dict,
+        a_t: torch.Tensor,
+        realized_next_state: torch.Tensor,
+        *,
+        modality: str = "text",
+    ) -> dict:
+        """Lived JEPA loss for one realized Sanctuary transition (Item #6).
+
+        Re-encodes the raw context under frozen plasticity (autograd ON,
+        PC self-modification OFF) and scores the predictor's pooled
+        next-state forecast against the realized pooled next state. The
+        gradient trains the encoder's backprop params + predictor; the
+        living-weight buffers are untouched -- they self-modify during
+        perception, a separate channel (the two-channel design Brian
+        confirmed 2026-06-28).
+
+        Pooled-state-transition form (Brian's ``(a1')`` call, 2026-06-28):
+        predict over the continuation region, pool it grad-connected via
+        :func:`~luthi.v2.m9.s_t.pool_state_grad`, and compare to the
+        full-multimodal pooled ``s_next``. NB the prediction pooler is
+        ``pool_state_grad``, NOT ``compute_s_t`` -- the latter detaches,
+        which would zero the lived gradient; the target keeps the detached
+        ``compute_s_t`` form (it arrives already pooled as the seam's
+        ``s_next``).
+
+        SIGReg is intentionally omitted here (per-cycle B=1 makes it
+        degenerate); anti-collapse is carried by the corpus-replay
+        interleave in the runner. ``pred_std`` / ``target_std`` are
+        returned so a low error via a *collapsed* target can't masquerade
+        as learning.
+
+        Args:
+            context_obs: raw step-0 inputs that produced the transition's
+                STARTING state -- ``{"text_tokens": ..., ...sensory}``,
+                keyed for ``encode``.
+            a_t: ``[D]`` or ``[B, D]`` realized action.
+            realized_next_state: ``[B, D]`` realized pooled next state
+                (the seam's ``s_next``); used detached as the target.
+            modality: which per-modality context feeds the predictor
+                (``"text"`` by default, matching the corpus path).
+
+        Returns:
+            dict: ``loss`` (grad-connected), ``l_pred`` (detached),
+            ``pred_std`` / ``target_std`` (collapse monitors).
+        """
+        from luthi.v2.m9.s_t import pool_state_grad
+        from luthi.v2.plasticity import freeze_plasticity
+
+        # Fail loud on a malformed context: an empty dict would otherwise
+        # crash cryptically at encode(**{}). The lived path is opt-in -- if
+        # a caller committed to it, the context must be encodable.
+        if not context_obs:
+            raise ValueError(
+                "compute_lived_loss requires a non-empty context_obs "
+                "(the raw inputs to re-encode); got "
+                f"{context_obs!r}."
+            )
+
+        # Gradient-checkpoint guard (Window A audit, 2026-06-28). If the
+        # encoder gradient-checkpoints, the frozen re-encode is unsafe: the
+        # checkpoint replay runs in backward(), AFTER freeze_plasticity has
+        # exited, so the recomputed forward would either fire pc_self_modify
+        # (double-plasticity, if the wrap omits luthi_context_fn) or read a
+        # _fwd_weight_snapshot the frozen original never set (corrupt
+        # gradient). The smoke encoder (MultimodalPredictiveCodingLM) has no
+        # such flag, so this is dormant today -- a hard stop against turning
+        # it on under the lived path at GPU scale without revisiting.
+        if getattr(self.online_encoder, "gradient_checkpointing", False):
+            raise RuntimeError(
+                "Lived JEPA re-encode is incompatible with gradient "
+                "checkpointing on the encoder: checkpoint replay runs in "
+                "backward(), after freeze_plasticity() has exited, so the "
+                "frozen-plasticity guarantee does not hold on the recompute "
+                "pass. Disable encoder gradient checkpointing for the lived "
+                "path (or add snapshot-based recompute support first)."
+            )
+
+        # Re-encode the raw context: autograd ON, plasticity OFF. Gradient
+        # reaches the encoder's backprop params through the frozen living
+        # layers; no living buffer is mutated (perception already
+        # self-modified once during the cycle's generation forward).
+        #
+        # Buffer-mutation-free-trunk contract (Window A audit, 2026-06-28):
+        # freeze_plasticity is TYPE-scoped (PredictiveCodingLayer +
+        # EpisodeStore) and this re-encode runs the trunk in train() mode.
+        # That is safe ONLY because the trunk's norm is LayerNorm (no
+        # running stats). A future BatchNorm/InstanceNorm *inside the trunk*
+        # would have its running stats silently pulled toward the narrow
+        # lived (B=1) distribution on this forward -- a mutation outside both
+        # the optimizer and the retention rollback. If such a norm is ever
+        # added to the trunk, either widen freeze_plasticity to cover it or
+        # run this re-encode with those norms in eval. (The SIGReg
+        # projection-head BN is NOT in the trunk and not exercised here.)
+        with freeze_plasticity(self.online_encoder):
+            re_result = self.online_encoder.encode(**context_obs, causal=False)
+        ctx_latents = re_result["per_modality"][modality]  # [B, T_ctx, D]
+        batch, t_ctx, _ = ctx_latents.shape
+
+        # Continuation-style target position (plan Correction 3): the step
+        # immediately after the context. NEVER arange(0, ...) -- that would
+        # ask the predictor to re-describe the context, not forecast.
+        target_positions = (
+            torch.arange(t_ctx, t_ctx + 1, device=ctx_latents.device)
+            .unsqueeze(0)
+            .expand(batch, -1)
+        )  # [B, 1]
+
+        predicted = self.predictor(ctx_latents, target_positions, a_t)  # [B,1,D]
+        pred_pooled = pool_state_grad(predicted)  # [B, D], grad-connected
+
+        target = realized_next_state.detach()
+        if target.dim() == 1:
+            target = target.unsqueeze(0)
+        if pred_pooled.shape != target.shape:
+            raise ValueError(
+                f"lived loss shape mismatch: pred {tuple(pred_pooled.shape)} "
+                f"vs realized_next_state {tuple(target.shape)} -- expected "
+                f"[B, D] for both."
+            )
+
+        l_pred = (pred_pooled - target).pow(2).mean()
+
+        return {
+            "loss": l_pred,
+            "l_pred": l_pred.detach(),
+            "pred_std": pred_pooled.detach().std(),
+            "target_std": target.std(),
+        }
