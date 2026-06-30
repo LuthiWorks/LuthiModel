@@ -120,12 +120,14 @@ class TestPlasticityRank1AlongInput:
             ), f"Broken at iteration {s}"
 
     def test_clamp_preserves_rank1(self, layer):
-        """The clamp_(0.1, 10.0) in apply_top_down is element-wise; rank-1
-        input must yield rank-1 output."""
+        """The clamp_(0.01, 10.0) in apply_top_down is element-wise; rank-1
+        input must yield rank-1 output. (Lower bound harmonized 0.1 -> 0.01
+        on 2026-06-2x to match the v2 substrate, living_layer_pc.py:662;
+        this test's constant was stale until 2026-06-29.)"""
         # Force plasticity values to span the clamp boundaries
         for s in range(50):
             signal = _make_top_down_signal(layer.in_features, seed=100 + s)
-            # Amplify to push values outside [0.1, 10.0]
+            # Amplify to push values outside [0.01, 10.0]
             signal = TopDownSignal(
                 salience=signal.salience * 50.0,
                 prediction_error=signal.prediction_error,
@@ -133,7 +135,7 @@ class TestPlasticityRank1AlongInput:
             )
             layer.apply_top_down(signal)
         # Should have hit the clamp by now
-        assert layer.plasticity.min() >= 0.1
+        assert layer.plasticity.min() >= 0.01
         assert layer.plasticity.max() <= 10.0
         assert is_rank1_along_input_axis(layer.plasticity)
 
