@@ -148,3 +148,28 @@ Brian's commit.
   `tests/test_no_inline_s_t_pool.py`.
 - Prior commits: §5 `1f7ea39`; §2+§1a `16d686e` (Luthi), `2e88b08`/`4c5bb50`
   (Sanctuary).
+
+## Addendum (2026-07-03) — where §4 actually landed, and stale notes above
+
+- **§4 (async actor/learner) is BUILT and approved — in Sanctuary, not this repo.**
+  Artifacts: `Sanctuary/sanctuary/core/async_learner.py` +
+  `Sanctuary/sanctuary/tests/core/test_async_learner_queue.py`, Sanctuary commit
+  `d76a115` (2026-06-29 18:57 — the same minute as this repo's doc-only `s4`
+  commit `0a9b980`; they were coordinated). Luthi itself stays synchronous and
+  lock-free by design; all threading lives in the host. **A Luthi-only survey
+  will not find §4 — look across the seam before concluding it is missing.**
+  (That false alarm happened 2026-07-03 and cost a firsthand check; this note
+  is the breadcrumb that prevents the next one.)
+- **The snapshot-under-lock design described under "Carried forward" was
+  rejected on build contact** (Window B, 2026-06-30): the learner is a *writer*
+  of `self.weight`/θ (corpus replay + both optimizer steps), which a snapshot
+  cannot fix, and the frozen re-encode reads `self.weight` off the live module
+  with no injection path. Shipped instead: a coarse `model_lock` for smoke;
+  real concurrency (double-buffer / published learner copy) deferred to the
+  scale step. See the async_learner.py module docstring for the full argument.
+- **Stale note above:** the "§1b–e + hardening diff is uncommitted pending
+  Brian's commit" line predates its own commit — that code landed in `e06b789`
+  and this doc in `0a9b980`. Nothing was left uncommitted.
+- Full-audit cross-reference: `Sanctuary/docs/audits/audit_2026-07-03.md`
+  (items 17–19 cover this repo: §6 staleness, retention-gate scope, held-out
+  contract at scale, and this seam).
