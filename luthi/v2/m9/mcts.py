@@ -144,12 +144,25 @@ class MCTS:
         """
         if root_state.dim() == 2:
             root_state = root_state.squeeze(0)
-        self.root = MCTSNode(state=root_state.detach())
+        self.sim_counter = 0
+        # Stamp the fresh root with the current clock (sim_counter is
+        # zeroed first so the legacy path stamps 0). The dataclass
+        # default (0) is wrong the moment the runner drives theta-version
+        # stamping: a fresh root stamped 0 against theta_version=N looks
+        # maximally stale and burns re-eval budget on a node that was
+        # created this very cycle.
+        self.root = MCTSNode(state=root_state.detach(), theta_stamp=self._stamp_value())
         self._context_latents = context_latents
         self._target_positions = target_positions
-        self.sim_counter = 0
 
-    def advance_root(self, chosen_child_index: int) -> None:
+    def advance_root(
+        self,
+        chosen_child_index: int,
+        *,
+        context_latents: torch.Tensor,
+        target_positions: torch.Tensor,
+        root_state: torch.Tensor | None = None,
+    ) -> None:
         """After acting on a child's action, slide the tree forward.
 
         Drops siblings; the chosen child becomes the new root. The
@@ -157,6 +170,22 @@ class MCTS:
         amortizing prior planning work). This is the persistence the
         spec asks for across cycles when the entity actually commits
         to an action.
+
+        Context refresh is REQUIRED (audit 2026-07-03 item 17). The
+        cached `_context_latents` / `_target_positions` are what every
+        subsequent `_expand` hands the predictor; they were previously
+        set only in `reset()`, so a persistent tree simulated every
+        post-advance cycle against the PREVIOUS cycle's encoder context.
+        Callers must pass the new cycle's context here -- there is
+        deliberately no advance-without-refresh path.
+
+        `root_state`, when given, replaces the new root's state with the
+        realized encode of the post-action observation. The child's
+        stored state is the old-theta predictor estimate `s_hat`;
+        re-grounding the root keeps the tree planning from where the
+        entity actually is. Deeper nodes keep their predicted states --
+        the staleness re-eval pass (plan §4.iii) is what refreshes
+        those, recomputing each edge from its (now re-grounded) parent.
         """
         if self.root is None or not self.root.children:
             raise RuntimeError(
@@ -168,7 +197,25 @@ class MCTS:
         new_root.parent = None
         new_root.action_in = None
         new_root.incoming_g = None
+        if root_state is not None:
+            if root_state.dim() == 2:
+                root_state = root_state.squeeze(0)
+            new_root.state = root_state.detach()
         self.root = new_root
+        self._context_latents = context_latents
+        self._target_positions = target_positions
+
+    @property
+    def context_latents(self) -> torch.Tensor | None:
+        """The cached per-cycle encoder context simulations predict
+        against. Read-only view for the staleness re-eval pass."""
+        return self._context_latents
+
+    @property
+    def target_positions(self) -> torch.Tensor | None:
+        """The cached predictor target-position queries. Read-only view
+        for the staleness re-eval pass."""
+        return self._target_positions
 
     # ------------------------------------------------------------------
     # Public planning API.

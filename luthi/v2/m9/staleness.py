@@ -443,7 +443,28 @@ class StalenessManager:
         Held snapshot is a deep copy of the predictor's state_dict,
         wrapped in a frozen clone so failover can route rollouts
         through stable weights while the live encoder keeps perceiving.
+
+        Never refreshes while the machinery is in failover or in
+        spike-recovery (§6 wiring fix, 2026-07-04): those are exactly
+        the states in which rollouts are being routed through -- or
+        values rebuilt from -- the held snapshot because the LIVE
+        predictor is not trusted. Refreshing on cadence there would
+        silently replace the stable fallback with a copy of the very
+        model being failed away from, and the "recovery" the
+        consistency signal then measures would be agreement with the
+        drifting model, not stability. The one exception is bootstrap:
+        when NO snapshot exists yet (first pass raced a spike), a
+        frozen copy of the post-spike predictor still beats routing
+        through a model that keeps moving -- cached Q was dropped and
+        rebuilds consistently against whichever head is held. So the
+        None case always snapshots; only cadence refreshes respect the
+        guard. The cadence counter keeps ticking; the refresh happens
+        on the first healthy cycle after recovery.
         """
+        if self.held_predictor is not None and (
+            self._in_failover or self._in_recovery
+        ):
+            return
         if (
             self.held_predictor is None
             or self._cycles_since_held_refresh >= self.config.held_head_refresh_every

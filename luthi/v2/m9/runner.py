@@ -41,6 +41,7 @@ import logging
 import math
 import os
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
@@ -204,6 +205,18 @@ class M9Config:
     # recommended first cut); >0 would keep a rolling buffer of pooled
     # states and run SIGReg over it every K lived steps. Not yet wired.
     lived_sigreg_buffer: int = 0
+
+    # ---- Item #6 §6: staleness-live / persistent MCTS tree (2026-07-04) ----
+    # Opt-in per the async_mode="off" precedent: False preserves the
+    # reset-per-cycle act path byte-for-byte. When True, select_action
+    # keeps the tree across cycles (advance_root to the acted child,
+    # re-grounded on the realized encode + fresh context) and runs the
+    # plan-§4 staleness pass each cycle: recency-decay, one-shot spike
+    # handling, held-head snapshot/failover routing, and a cached-value
+    # re-eval slice carved out of the plan budget. This is what makes
+    # the amortized ~3-10-cycle planning step of plan §3 real -- and
+    # safe under a θ that moves between cycles (the lived learner).
+    mcts_persistent_tree: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -414,6 +427,18 @@ class M9Trainer(JEPATrainer):
             max_depth=self.m9_config.mcts_max_depth,
         )
 
+        # §6 staleness-live state (persistent-tree mode). The acted-child
+        # index recorded at the end of each select_action (which child's
+        # action the actor is about to take, so the next cycle can
+        # advance_root to it); the θ-tick at which the last drift spike
+        # was handled (one-shot gate -- spike() reads the latest band
+        # value, which does not change between θ updates, so an ungated
+        # handler would re-wipe Q every act cycle until the next update);
+        # and the last staleness pass's stats for instrumentation.
+        self._last_best_child_idx: int | None = None
+        self._spike_handled_at_theta: int = -1
+        self.last_staleness_pass: dict = {}
+
         # §5 device sweep: move every parameter-owning M9 submodule onto
         # the resolved device BEFORE the optimizers are built below. `.to`
         # moves parameters in place (Parameter identity preserved), so the
@@ -622,19 +647,21 @@ class M9Trainer(JEPATrainer):
         ).to(s_root.device)
 
         # ---- MCTS plan-budget ----
-        # Reset to current state and run the per-cycle budget. The
-        # tree persists across train_steps for the spec's amortized
-        # planning (advance_root would carry the chosen subtree
-        # forward at inference); at training we reset each step so
-        # the visit distribution is rooted at THIS batch's state.
-        self.mcts.reset(s_root, ctx_single, tgt_positions)
+        # Reset to current state and run the per-cycle budget. At
+        # training we reset each step so the visit distribution is
+        # rooted at THIS batch's state (a persistent tree is
+        # meaningless across independently-sampled corpus batches).
+        # The cross-cycle persistent tree lives on the act path:
+        # select_action under mcts_persistent_tree=True (§6).
         # F-D loop-integration: synchronize the MCTS stamping source
         # with the staleness manager's theta_version so node Q values
         # carry the cycle-units stamp (one tick per weight update),
         # not the sim-units stamp (one tick per simulation). This is
         # what makes "Q is from an older theta" mean what staleness
-        # actually wants to ask.
+        # actually wants to ask. Set BEFORE reset() so the fresh root
+        # is stamped with the current θ-version, not the dataclass 0.
         self.mcts.current_theta_version = self.staleness.theta_version
+        self.mcts.reset(s_root, ctx_single, tgt_positions)
         self.mcts.plan_budget(
             budget=self.m9_config.mcts_budget_per_cycle,
             observation_kwargs=self._cycle_observation_kwargs(),
@@ -1075,12 +1102,33 @@ class M9Trainer(JEPATrainer):
         if cycle_ctx is not None:
             self._current_cycle_ctx = cycle_ctx
         try:
-            self.mcts.reset(s_root, ctx_single, target_positions)
+            # ---- §6 tree lifecycle: advance (persistent) or reset ----
+            # Stamp source synchronized BEFORE the tree is (re)built so
+            # a fresh root carries the current θ-version, not the
+            # dataclass default 0 (which would read as maximally stale).
             self.mcts.current_theta_version = self.staleness.theta_version
-            self.mcts.plan_budget(
-                budget=plan_budget,
-                observation_kwargs=self._cycle_observation_kwargs(),
-            )
+            advanced = False
+            if self.m9_config.mcts_persistent_tree:
+                advanced = self._try_advance_tree(
+                    s_root, ctx_single, target_positions
+                )
+            if not advanced:
+                self.mcts.reset(s_root, ctx_single, target_positions)
+
+            # ---- §6 per-cycle staleness pass (persistent mode only) ----
+            # Runs decay / spike handling / held-head refresh / re-eval
+            # and the failover state machine; returns the expansion
+            # budget left after the re-eval slice (plan §4.iii carves
+            # re-eval out of the same plan-budget phase).
+            expansion_budget = plan_budget
+            if self.m9_config.mcts_persistent_tree:
+                expansion_budget = self._staleness_pass(plan_budget)
+
+            with self._held_head_routing():
+                self.mcts.plan_budget(
+                    budget=expansion_budget,
+                    observation_kwargs=self._cycle_observation_kwargs(),
+                )
 
             best_action = self.mcts.best_action()
             tree_stats = self.mcts.tree_stats()
@@ -1097,6 +1145,9 @@ class M9Trainer(JEPATrainer):
                         s_root.unsqueeze(0), K=1,
                     )
                     best_action = sample["candidates"][0, 0].detach()
+                # §6: the fallback action came from no tree child, so
+                # there is nothing to advance to next cycle.
+                self._last_best_child_idx = None
                 summary = "action(habit-fallback, top_share=0.000)"
                 empty_snapshot = PlanSnapshot(
                     visit_distribution=torch.zeros(0),
@@ -1115,13 +1166,25 @@ class M9Trainer(JEPATrainer):
             # best action to surface the c_eng / c_coh / c_con / c_truth
             # breakdown the diagnostics callers want.
             obs_kwargs = self._cycle_observation_kwargs()
-            with torch.no_grad():
+            with torch.no_grad(), self._held_head_routing():
                 g_out = self.efe.compute_g(
                     s_t=s_root.unsqueeze(0),
                     a_t=best_action.unsqueeze(0),
                     context_latents=ctx_single,
                     target_positions=target_positions,
                     **obs_kwargs,
+                )
+
+            # §6: remember which child the actor is about to act on so
+            # the next select_action can advance_root to it. best_action
+            # is the most-visited child (mcts.best_action); record its
+            # index under the same tie-breaking (max is stable: first
+            # max wins in both).
+            if self.m9_config.mcts_persistent_tree:
+                root_children = self.mcts.root.children
+                self._last_best_child_idx = max(
+                    range(len(root_children)),
+                    key=lambda i: root_children[i].N,
                 )
 
             with torch.no_grad():
@@ -1169,6 +1232,204 @@ class M9Trainer(JEPATrainer):
             )
         finally:
             self._current_cycle_ctx = prev_ctx
+
+    # ------------------------------------------------------------------
+    # Item #6 §6: staleness-live -- persistent-tree lifecycle, the
+    # per-cycle staleness pass, and held-head failover routing.
+    # ------------------------------------------------------------------
+    def _try_advance_tree(
+        self,
+        s_root: torch.Tensor,
+        ctx_single: torch.Tensor,
+        target_positions: torch.Tensor,
+    ) -> bool:
+        """Advance the persistent tree to the child acted on last cycle.
+
+        Returns True when the tree slid forward (context refreshed,
+        root re-grounded on the realized encode `s_root`); False when
+        there is nothing sound to advance to -- no recorded child, no
+        tree, or a stale index -- in which case the caller resets.
+        The recorded index is consumed either way: an advance target
+        is only ever valid for the immediately-next cycle.
+
+        Honest caveat, recorded here because the reviewer will ask:
+        the recorded child is the action select_action RETURNED, not
+        necessarily the action Sanctuary EXECUTED. If the host ever
+        overrides the selected action, the carried subtree is priored
+        on the wrong branch for one cycle -- the re-grounded root state
+        plus the staleness re-eval pass are what bound that error, and
+        the visit prior decays under recency-decay. If host-side
+        overrides become a real path, thread the executed action back
+        instead of trusting this index.
+        """
+        idx = self._last_best_child_idx
+        self._last_best_child_idx = None
+        if idx is None or self.mcts.root is None or not self.mcts.root.children:
+            return False
+        if not (0 <= idx < len(self.mcts.root.children)):
+            return False
+        self.mcts.advance_root(
+            idx,
+            context_latents=ctx_single,
+            target_positions=target_positions,
+            root_state=s_root,
+        )
+        return True
+
+    def _staleness_pass(self, plan_budget: int) -> int:
+        """The plan-§4 per-cycle staleness pass over the persistent tree.
+
+        Order follows the StalenessManager contract: recency-decay ->
+        spike detection/handling -> held-head snapshot refresh ->
+        cached-value re-evaluation -> failover state machine -> K-M9-7
+        observation. Returns the expansion budget remaining after the
+        re-eval slice (§4.iii: re-eval is carved out of the same
+        plan-budget phase, and the slice grows when drift is elevated
+        -- "do not expand against a model you can't trust").
+
+        The spike gate is one-shot per θ-tick: spike() reads the LATEST
+        drift-band value, which does not change between θ updates, so
+        an ungated handler would re-fire (and re-wipe cached Q) on
+        every act cycle until the next update. Under the wake/sleep
+        cadence (θ moves per NREM consolidation step, PLAN.md §6
+        co-design note) this gate is what makes a post-consolidation
+        spike a single handled event instead of a standing state --
+        the band itself only ever sees real update deltas, because
+        observe_drift is called by the θ-moving paths (train_step /
+        _run_lived_update), never by wake cycles.
+        """
+        sm = self.staleness
+        sm.decay(self.mcts)
+
+        if sm.spike() and self._spike_handled_at_theta != sm.theta_version:
+            sm.handle_spike(self.mcts)
+            self._spike_handled_at_theta = sm.theta_version
+            logger.warning(
+                "Item #6 S6 staleness: drift spike handled at theta_version=%d "
+                "(latest=%.4g, median=%.4g, mad=%.4g); cached Q dropped, "
+                "failover engaged.",
+                sm.theta_version,
+                sm.drift_band.values[-1] if sm.drift_band.values else 0.0,
+                sm.drift_band.median(),
+                sm.drift_band.mad(),
+            )
+
+        # Snapshot the LIVE predictor on cadence. Must run before any
+        # routing swap so the held copy is never a copy of itself.
+        sm.maybe_refresh_held_head(self.loss_module.predictor)
+
+        # Re-eval slice of the plan budget. Base fraction from config;
+        # shifted toward re-eval when drift is elevated, reusing the
+        # same drift ratio r that modulates recency-decay
+        # (effective_decay = base / (1 + r)  =>  r = base/eff - 1).
+        frac = sm.config.reeval_budget_fraction
+        eff = sm.effective_decay()
+        r = max(0.0, sm.config.base_recency_decay / max(eff, 1e-8) - 1.0)
+        frac_eff = min(0.5, frac * (1.0 + r))
+        reeval_budget = 0
+        if plan_budget > 1:
+            reeval_budget = min(
+                plan_budget - 1, math.ceil(plan_budget * frac_eff)
+            )
+
+        stats = {"reevaluated": 0, "max_deviation": 0.0, "median_deviation": 0.0}
+        if reeval_budget > 0:
+            # Re-eval runs under the routing state as of pass entry:
+            # during failover, values are rebuilt from the held head
+            # (plan §4.v.d) and the shrinking re-eval-vs-cached
+            # deviation is exactly the recovery signal the manager's
+            # event-driven detector consumes.
+            with self._held_head_routing():
+                stats = sm.reevaluate(
+                    self.mcts,
+                    eval_fn=self._reeval_node_value,
+                    budget=reeval_budget,
+                )
+
+        sm.update_failover_state()
+        self.m9_kills.observe_staleness(in_failover=sm.in_failover())
+        # K-M9-2 consistency axis: feed the re-eval-vs-cached signal the
+        # kill was built to consume (dormant until this pass existed --
+        # audit 2026-07-03 item 17). Only when a re-eval actually ran: a
+        # no-stale-nodes cycle is no evidence in either direction, and
+        # feeding a synthetic 0.0 would spuriously reset the sustained
+        # counter.
+        if stats["reevaluated"] > 0:
+            self.m9_kills.observe_mcts_consistency(stats["median_deviation"])
+
+        self.last_staleness_pass = {
+            "reevaluated": stats["reevaluated"],
+            "reeval_budget": reeval_budget,
+            "median_deviation": stats["median_deviation"],
+            "max_deviation": stats["max_deviation"],
+            "in_failover": sm.in_failover(),
+            "theta_version": sm.theta_version,
+            "effective_decay": eff,
+            "degraded_duration": sm.degraded_duration(),
+        }
+
+        # Unused re-eval budget (fewer stale nodes than the slice)
+        # returns to expansion; the phase's total simulation cost stays
+        # bounded by plan_budget either way. The slice cap of
+        # plan_budget - 1 above guarantees >= 1 expansion sim whenever
+        # the caller asked for any; a caller-requested budget of 0
+        # stays 0 (the documented degenerate path).
+        return max(0, plan_budget - stats["reevaluated"])
+
+    def _reeval_node_value(self, node) -> float:
+        """Fresh value estimate for one node under the CURRENT routing
+        predictor -- the eval_fn the StalenessManager re-eval consumes.
+
+        One predictor forward per node (plan §4.iii cost model): for a
+        child node, recompute the edge from its parent's (possibly
+        re-grounded) state -- refreshing the node's predicted state and
+        cached incoming_g in place -- and return `-G + V(s_hat)`,
+        matching the leaf-value composition _backup propagates. For the
+        root (no incoming edge) the fresh value is just V(state).
+        """
+        if node.action_in is None or node.parent is None:
+            if self.v_head is None:
+                return 0.0
+            with torch.no_grad():
+                return float(self.v_head(node.state.unsqueeze(0)).item())
+        with torch.no_grad():
+            out = self.efe.compute_g(
+                s_t=node.parent.state.unsqueeze(0),
+                a_t=node.action_in.unsqueeze(0),
+                context_latents=self.mcts.context_latents,
+                target_positions=self.mcts.target_positions,
+                **self._cycle_observation_kwargs(),
+            )
+            node.state = out["s_hat_next"][0].detach()
+            node.incoming_g = float(out["G"][0].item())
+            v = float(self.v_head(node.state.unsqueeze(0)).item())
+        return -node.incoming_g + v
+
+    @contextmanager
+    def _held_head_routing(self):
+        """Route EFE rollouts through the held predictor snapshot while
+        the staleness state machine reports failover (plan §4.iv). The
+        evaluator holds the predictor as a shared reference, so routing
+        is a reference swap, restored on exit; a no-op when live (the
+        default, and always the case with mcts_persistent_tree=False,
+        since the failover machinery is only driven by the §6 pass).
+        The live encoder keeps perceiving throughout -- only planning
+        rollouts are re-routed.
+        """
+        sm = self.staleness
+        if (
+            self.m9_config.mcts_persistent_tree
+            and sm.in_failover()
+            and sm.held_predictor is not None
+        ):
+            live = self.efe.predictor
+            self.efe.predictor = sm.held_predictor
+            try:
+                yield
+            finally:
+                self.efe.predictor = live
+        else:
+            yield
 
     # ------------------------------------------------------------------
     # Item #6: lived world-model learning + catastrophic-forgetting guard.

@@ -140,23 +140,68 @@ def test_advance_root_preserves_chosen_subtree():
     chosen_subtree_size = mcts._count_nodes(chosen)
     chosen_state = chosen.state.clone()
 
-    mcts.advance_root(chosen_idx)
+    # Context refresh is required on advance (audit 2026-07-03 item 17).
+    new_ctx, new_tp = _context_and_positions()
+    mcts.advance_root(
+        chosen_idx, context_latents=new_ctx, target_positions=new_tp
+    )
     assert mcts.root.parent is None
     assert mcts.root.action_in is None
     assert mcts.root.incoming_g is None
+    # Without root_state, the predicted child state is kept.
     assert torch.equal(mcts.root.state, chosen_state)
     assert mcts._count_nodes(mcts.root) == chosen_subtree_size
+    # The cached predictor context now belongs to the new cycle.
+    assert mcts.context_latents is new_ctx
+    assert mcts.target_positions is new_tp
 
 
 def test_advance_root_errors_without_children():
     predictor, prefs, efe, habit, v = _build()
     mcts = MCTS(habit, efe, v)
     mcts.reset(torch.zeros(D), *_context_and_positions())
+    ctx, tp = _context_and_positions()
     try:
-        mcts.advance_root(0)
+        mcts.advance_root(0, context_latents=ctx, target_positions=tp)
         assert False, "should have raised"
     except RuntimeError:
         pass
+
+
+def test_advance_root_regrounds_root_state():
+    """§6: root_state re-grounds the new root on the realized encode
+    instead of the old-theta predicted s_hat."""
+    predictor, prefs, efe, habit, v = _build()
+    mcts = MCTS(habit, efe, v, max_depth=2)
+    mcts.reset(torch.zeros(D), *_context_and_positions())
+    mcts.plan_budget(budget=30)
+    assert mcts.root.children
+    chosen_idx = 0
+    predicted_state = mcts.root.children[chosen_idx].state.clone()
+
+    realized = torch.full((D,), 3.14)
+    new_ctx, new_tp = _context_and_positions()
+    mcts.advance_root(
+        chosen_idx,
+        context_latents=new_ctx,
+        target_positions=new_tp,
+        root_state=realized,
+    )
+    assert torch.equal(mcts.root.state, realized)
+    assert not torch.equal(mcts.root.state, predicted_state) or torch.equal(
+        predicted_state, realized
+    )
+
+
+def test_reset_stamps_root_with_theta_version():
+    """A fresh root is stamped with the current clock, not the
+    dataclass default 0 -- otherwise every reset-created root looks
+    maximally stale to the re-eval pass under theta-version stamping."""
+    predictor, prefs, efe, habit, v = _build()
+    mcts = MCTS(habit, efe, v)
+    mcts.current_theta_version = 17
+    mcts.reset(torch.zeros(D), *_context_and_positions())
+    assert mcts.root.theta_stamp == 17
 
 
 def test_visit_distribution_sums_to_one():
@@ -246,6 +291,8 @@ def main() -> int:
         test_best_action_picks_most_visited,
         test_advance_root_preserves_chosen_subtree,
         test_advance_root_errors_without_children,
+        test_advance_root_regrounds_root_state,
+        test_reset_stamps_root_with_theta_version,
         test_visit_distribution_sums_to_one,
         test_theta_stamp_recorded,
         test_functional_value_head_guides_search,
