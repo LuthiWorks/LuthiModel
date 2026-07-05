@@ -227,6 +227,13 @@ def build_checkpoint(
         "model_state_dict": model.state_dict(),
     }
 
+    # Living-layer lived state that is not a tensor (consolidation
+    # history/baseline, spiking delay cursor). Sibling key, not part of
+    # model_state_dict, so old checkpoints keep loading strict=True and
+    # readers restore it presence-gated (continuity patch 2026-07-05).
+    from luthi.living_extra_state import collect_living_extra_state
+    checkpoint["living_extra_state"] = collect_living_extra_state(model)
+
     if optimizer is not None:
         checkpoint["optimizer_state_dict"] = optimizer.state_dict()
 

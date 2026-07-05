@@ -60,6 +60,10 @@ import torch
 import torch.nn.functional as F
 from torch.optim import Optimizer
 
+from luthi.living_extra_state import (
+    apply_living_extra_state as _apply_living_extra_state,
+    collect_living_extra_state as _collect_living_extra_state,
+)
 from luthi.v2.jepa_loss import JEPALoss, MODALITIES
 from luthi.v2.multimodal_model_pc import MultimodalPredictiveCodingLM
 
@@ -1319,6 +1323,13 @@ class JEPATrainer:
             },
             "smoothed_loss_buf": list(self._smoothed_loss_buf),
             "online_state_dict": self.loss_module.online_encoder.state_dict(),
+            # Non-tensor lived state of the living layers (consolidation
+            # history/baseline, sparse-warmup + fire counters). Sibling
+            # key per the house migration idiom; restored presence-gated
+            # in resume() (continuity patch 2026-07-05).
+            "living_extra_state": _collect_living_extra_state(
+                self.loss_module.online_encoder
+            ),
             "predictor_state_dict": self.loss_module.predictor.state_dict(),
             # LeJEPA refactor 2026-06-09: per-modality projection heads
             # (Linear -> BN) are part of the loss module's state.
@@ -1441,6 +1452,14 @@ class JEPATrainer:
             )
 
         self.loss_module.online_encoder.load_state_dict(state["online_state_dict"])
+        # Lived state of the living layers; absent on older checkpoints
+        # = degraded resume (consolidation re-warms), warned inside
+        # apply (continuity patch 2026-07-05).
+        _apply_living_extra_state(
+            self.loss_module.online_encoder,
+            state.get("living_extra_state"),
+            source=f"trainer checkpoint {ckpt_path}",
+        )
         self.loss_module.predictor.load_state_dict(state["predictor_state_dict"])
         # LeJEPA refactor 2026-06-09: projection heads added; older
         # checkpoints (pre-refactor) won't have them.

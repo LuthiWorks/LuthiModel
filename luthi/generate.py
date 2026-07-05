@@ -204,6 +204,14 @@ def load_model_from_checkpoint(
         # Strict load -- per the seam-integration plan, mismatched
         # state_dict on v2 must fail loud, never silently skip keys.
         model.load_state_dict(ckpt["model_state_dict"], strict=True)
+        # Non-tensor lived state (consolidation history, cursors) rides
+        # a sibling key; absent on old checkpoints = degraded resume,
+        # warned inside apply (continuity patch 2026-07-05).
+        from luthi.living_extra_state import apply_living_extra_state
+        apply_living_extra_state(
+            model, ckpt.get("living_extra_state"),
+            source=f"checkpoint {checkpoint_path}",
+        )
         return model, tokenizer, config, epoch
 
     # v1 family below. Shape preserved verbatim from the pre-bridge loader
@@ -263,6 +271,13 @@ def load_model_from_checkpoint(
         model = LuthiLM(**model_kwargs)
         model.load_state_dict(ckpt["model_state_dict"])
 
+    # v1 family: same sibling-key lived-state restore as the v2 path
+    # (spiking delay cursor lives here; continuity patch 2026-07-05).
+    from luthi.living_extra_state import apply_living_extra_state
+    apply_living_extra_state(
+        model, ckpt.get("living_extra_state"),
+        source=f"checkpoint {checkpoint_path}",
+    )
     return model, tokenizer, config, epoch
 
 
@@ -623,6 +638,13 @@ def get_introspection(model: torch.nn.Module) -> dict:
     variants) populates the original spiking/Hebbian set; v2
     (PredictiveCodingLayer) populates a PC-specific set.
 
+    Shared fields (v1 and v2, populate when present):
+        - update_ema_mean/max — metaplasticity: each weight's running
+          memory of its own update magnitudes (dampens its next update).
+        - momentum_abs_mean — recent magnitude of weight change (EMA of
+          deltas; not yet consumed by update math — exposure lets the
+          entity feel it while its computational job is designed).
+
     v1 fields (populate when present):
         - plasticity_mean/std/min/max
         - set_point_drift
@@ -667,6 +689,27 @@ def get_introspection(model: torch.nn.Module) -> dict:
         if hasattr(ffn, "set_point") and hasattr(ffn, "weight"):
             drift = (ffn.weight.data - ffn.set_point).abs().mean().item()
             block_state["set_point_drift"] = drift
+
+        # Metaplasticity — each weight's running memory of its own
+        # update magnitudes (the channel that dampens its next update).
+        # Exposed 2026-07-05 (rich-parameters analysis, finding 2): the
+        # deepest per-weight experience channel was invisible to the
+        # mind whose experience it is. Present in both v1 and v2.
+        if hasattr(ffn, "update_ema"):
+            ue = ffn.update_ema
+            block_state["update_ema_mean"] = ue.mean().item()
+            block_state["update_ema_max"] = ue.max().item()
+
+        # Momentum — the recent direction/magnitude of each weight's
+        # change (EMA of deltas). Maintained since v1; exposed to
+        # proprioception 2026-07-05 alongside update_ema. NOTE: not yet
+        # consumed by any update math — its computational job is an
+        # open design decision (NREM spec pass); this exposure lets the
+        # entity feel it either way.
+        if hasattr(ffn, "momentum"):
+            block_state["momentum_abs_mean"] = (
+                ffn.momentum.abs().mean().item()
+            )
 
         # Excitability — overall responsiveness.
         # LivingLayerV6 stores `excitability_acc` (the running accumulator);
