@@ -45,6 +45,7 @@ from luthi.v2.jepa_runner import (
     RunnerConfig,
     SamplerConfig,
 )
+from luthi.v2.m9.kills import KillState
 from luthi.v2.m9.runner import M9Config, M9Trainer
 from luthi.v2.m9.staleness import StalenessConfig, StalenessManager
 from luthi.v2.multimodal_model_pc import MultimodalPredictiveCodingLM
@@ -402,6 +403,110 @@ def test_held_head_not_refreshed_from_live_mid_failover():
     )
 
 
+# ---------- Finding fixes (2026-07-04 audit) ----------
+
+class _FakeNode:
+    """Minimal node for a direct StalenessManager.reevaluate test."""
+
+    def __init__(self, Q: float, stamp: int):
+        self.Q = Q
+        self.theta_stamp = stamp
+        self.N = 5
+        self.action_in = None
+        self.parent = None
+
+
+class _FakeMCTS:
+    def __init__(self, nodes):
+        self._nodes = nodes
+        self.root = nodes[0] if nodes else None
+        self.sim_counter = 0
+
+    def iter_nodes(self):
+        return iter(self._nodes)
+
+
+def test_km9_7_not_fed_on_wake_cycles():
+    """Finding 1 regression (2026-07-04): K-M9-7 accrues on the θ-update
+    clock ONLY. A spike-induced failover riding through a frozen-θ wake
+    stretch must not advance the staleness-runaway counter. The original
+    per-wake-cycle feed fired the kill in ~8 wake cycles (~0.8s @10Hz)
+    while recovery (spike_cooldown, a θ-clock event) sat frozen -- a false
+    halt of a healthy mind on a benign consolidation spike.
+    """
+    with _trainer(M9Config(mcts_persistent_tree=True)) as trainer:
+        sm = trainer.staleness
+        calls = []
+        orig = trainer.m9_kills.observe_staleness
+
+        def spy(*a, **k):
+            calls.append((a, k))
+            return orig(*a, **k)
+
+        trainer.m9_kills.observe_staleness = spy
+
+        # Pin failover the way a post-consolidation spike would: a held
+        # snapshot present, and spike_cooldown holding recovery off (only
+        # observe_drift -- the θ clock -- decrements it, and we call none).
+        sm.held_predictor = copy.deepcopy(trainer.efe.predictor)
+        sm._in_failover = True
+        sm.spike_cooldown = sm.config.recovery_cycles
+
+        n = trainer.m9_kills.staleness_failover_sustained + 4
+        for i in range(n):
+            s, ctx = _state_and_context(seed=100 + i)
+            trainer.select_action(s, context_latents=ctx)
+
+        assert calls == [], (
+            "K-M9-7 must not be fed from the wake/planning clock; "
+            "observe_staleness belongs to the θ-update paths only"
+        )
+        assert sm.in_failover(), (
+            "failover must stay latched through a frozen-θ wake stretch "
+            "(recovery is a θ-clock event; no observe_drift was called)"
+        )
+        assert (
+            trainer.m9_kills.states()["K-M9-7-staleness"] == KillState.HEALTHY
+        ), (
+            "no wake-clock feed -> the runaway counter never advances -> "
+            "no false halt on a healthy mind"
+        )
+
+
+def test_consistency_deviation_is_scale_invariant():
+    """Finding 2 (2026-07-04): the re-eval-vs-cached deviation is a
+    FRACTION of value magnitude. A proportionally-small change on a
+    large-magnitude node (100 -> 103) reads ~0.03, not 3.0, so it no
+    longer trips the relative failover (0.5) / kill (0.75) thresholds --
+    while a genuine large disagreement (sign flip) still reads near-max.
+    """
+    cfg = StalenessConfig(staleness_uses_theta_version=True)
+    sm = StalenessManager(cfg)
+    sm.theta_version = 100  # age the clock so the node is selectable
+    small_change = sm.reevaluate(
+        _FakeMCTS([_FakeNode(Q=100.0, stamp=0)]),
+        eval_fn=lambda n: 103.0,
+        budget=1,
+    )
+    assert small_change["reevaluated"] == 1
+    assert small_change["median_deviation"] < 0.1, (
+        "proportionally-small change on a large value must read as a small "
+        f"fraction, got {small_change['median_deviation']}"
+    )
+
+    sm2 = StalenessManager(cfg)
+    sm2.theta_version = 100
+    sign_flip = sm2.reevaluate(
+        _FakeMCTS([_FakeNode(Q=100.0, stamp=0)]),
+        eval_fn=lambda n: -100.0,
+        budget=1,
+    )
+    assert sign_flip["median_deviation"] > 0.9, (
+        "a fresh value that flips sign vs cached must still read as a "
+        f"near-max relative deviation, got {sign_flip['median_deviation']}"
+    )
+
+
 def main() -> int:
     tests = [
         test_persistent_tree_advances_across_cycles,
@@ -413,6 +518,8 @@ def main() -> int:
         test_held_head_routing_swaps_and_restores,
         test_held_head_routing_noop_in_legacy_mode,
         test_held_head_not_refreshed_from_live_mid_failover,
+        test_km9_7_not_fed_on_wake_cycles,
+        test_consistency_deviation_is_scale_invariant,
     ]
     failed = []
     for t in tests:

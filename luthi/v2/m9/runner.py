@@ -1347,14 +1347,30 @@ class M9Trainer(JEPATrainer):
                 )
 
         sm.update_failover_state()
-        self.m9_kills.observe_staleness(in_failover=sm.in_failover())
+        # Item #6 §6 FIX (Finding 1, 2026-07-04): K-M9-7 is NOT fed here.
+        # observe_staleness lives on the θ-update clock (_m9_head_step after
+        # the consolidation step; _run_lived_update after the lived step),
+        # never on the wake/planning clock. Staleness is a property of θ
+        # MOVING; during a frozen-θ wake stretch nothing gets staler, so a
+        # transient post-consolidation failover riding through wake must not
+        # accrue the runaway counter. The original per-wake-cycle feed let a
+        # single benign consolidation spike latch failover and fire K-M9-7
+        # in ~8 wake cycles (~0.8s @10Hz) with no recovery path, because
+        # spike_cooldown only decrements on observe_drift (the θ clock).
+        # Accrual and recovery now share the θ clock. See the θ-clock feeds.
+        #
         # K-M9-2 consistency axis: feed the re-eval-vs-cached signal the
         # kill was built to consume (dormant until this pass existed --
-        # audit 2026-07-03 item 17). Only when a re-eval actually ran: a
-        # no-stale-nodes cycle is no evidence in either direction, and
-        # feeding a synthetic 0.0 would spuriously reset the sustained
-        # counter.
-        if stats["reevaluated"] > 0:
+        # audit 2026-07-03 item 17). Fed only when a re-eval actually ran
+        # AND we are not in failover: a no-stale-nodes cycle is no evidence
+        # in either direction (a synthetic 0.0 would spuriously reset the
+        # sustained counter), and DURING failover the cached Q is being
+        # deliberately rebuilt from the held head (post-spike wipe + routing
+        # swap), so the re-eval-vs-cached deviation is expected rebuild
+        # dynamics, not tree-inconsistency pathology (Finding 2, 2026-07-04).
+        # K-M9-7 (θ-clock) is the backstop for failover that actually
+        # persists across weight updates.
+        if stats["reevaluated"] > 0 and not sm.in_failover():
             self.m9_kills.observe_mcts_consistency(stats["median_deviation"])
 
         self.last_staleness_pass = {
@@ -1429,6 +1445,25 @@ class M9Trainer(JEPATrainer):
             finally:
                 self.efe.predictor = live
         else:
+            # Finding 3 (2026-07-04): in_failover with no held snapshot means
+            # the bootstrap invariant (maybe_refresh_held_head runs before any
+            # routing use inside _staleness_pass) was violated -- rollouts are
+            # about to run through the very live predictor failover exists to
+            # avoid, while the state still reports in_failover. Unreachable by
+            # construction today; log LOUD rather than route silently so a
+            # future refactor that breaks the ordering surfaces as a warning
+            # instead of silently degrading protection.
+            if (
+                self.m9_config.mcts_persistent_tree
+                and sm.in_failover()
+                and sm.held_predictor is None
+            ):
+                logger.warning(
+                    "Item #6 S6: _held_head_routing entered in failover with "
+                    "no held snapshot -- routing through the LIVE predictor "
+                    "(protection degraded). This should be unreachable; verify "
+                    "maybe_refresh_held_head precedes routing in _staleness_pass."
+                )
             yield
 
     # ------------------------------------------------------------------
@@ -1515,6 +1550,17 @@ class M9Trainer(JEPATrainer):
             )
             delta_theta_norm = float(delta_sq.sqrt().item())
         self.staleness.observe_drift(delta_theta_norm)
+        # Item #6 §6 FIX (Finding 1, 2026-07-04): feed K-M9-7 on the θ-update
+        # clock. The lived step just moved θ, so this is a genuine
+        # staleness-accrual event -- mirrors the consolidation feed in
+        # _m9_head_step. Together these two are the ONLY K-M9-7 feeds; the
+        # per-wake-cycle feed was removed from _staleness_pass so the runaway
+        # counter and its recovery valve (spike_cooldown, also on this clock)
+        # advance together. In legacy mode (no failover machinery) this is a
+        # harmless always-healthy observation.
+        self.m9_kills.observe_staleness(
+            in_failover=self.staleness.in_failover()
+        )
 
         return {
             "lived_l_pred": float(lived["l_pred"].item()),

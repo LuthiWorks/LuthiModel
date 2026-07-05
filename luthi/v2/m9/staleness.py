@@ -107,7 +107,13 @@ class StalenessConfig:
     consistency_window: int = 16
     # Sustained breach: failover_threshold = median_consistency >=
     # failover_consistency_threshold for `failover_breach_cycles` in a row.
-    failover_consistency_threshold: float = 1.0
+    # Finding 2 (2026-07-04): now a RELATIVE fraction (the deviation is
+    # scale-normalized in reevaluate). ~0.5 = sustained ~50%+ disagreement
+    # between cached and fresh trips failover. *** PROVISIONAL / TUNE ME:
+    # the natural re-eval-vs-MC-backed-Q disagreement in a TRAINED model
+    # sets the real floor; this value needs a tuning pass against real
+    # Luthi checkpoints, not static reading. ***
+    failover_consistency_threshold: float = 0.5
     failover_breach_cycles: int = 4
     # Held-head snapshot refresh cadence (K cycles, plan §4.iv).
     held_head_refresh_every: int = 32
@@ -116,6 +122,11 @@ class StalenessConfig:
     # Re-eval priority weighting: priority = visits ** visit_pow * staleness ** stale_pow
     visit_pow: float = 1.0
     stale_pow: float = 1.0
+    # Finding 2 (2026-07-04): denominator floor for the scale-invariant
+    # consistency deviation (dev = |fresh-cached| / max(|fresh|,|cached|,
+    # floor)). Keeps two near-zero node values from producing a spuriously
+    # huge ratio. ~O(1) since node values are ~O(100).
+    consistency_scale_floor: float = 1.0
     # F3 C2 fix: staleness-driven refresh alpha. Separates MC value
     # averaging (alpha = 1/(1+N), preserved for new-rollout updates)
     # from staleness correction (alpha grows with staleness, decoupled
@@ -131,7 +142,11 @@ class StalenessConfig:
     # countdown is now diagnostic-only; the recovery_cycles param
     # still bounds how long the manager waits before signaling failure
     # if recovery doesn't arrive.
-    recovery_consistency_threshold: float = 0.5
+    # Finding 2 (2026-07-04): now a RELATIVE fraction. ~0.15 = recovery is
+    # declared once cached agrees with fresh to within ~15%. *** PROVISIONAL
+    # / TUNE ME (see failover_consistency_threshold). Keep the ladder
+    # recovery < failover < kills.consistency_max. ***
+    recovery_consistency_threshold: float = 0.15
     recovery_confirm_cycles: int = 2
     # F-D loop-integration: when True, stale-node identification and
     # re-evaluation read time from `self.theta_version` (cycle-units,
@@ -402,7 +417,22 @@ class StalenessManager:
         for node in stale:
             cached = node.Q
             fresh = float(eval_fn(node))
-            dev = abs(fresh - cached)
+            # Finding 2 (2026-07-04): scale-invariant deviation. Node values
+            # are -G + V(s_hat) with V converging to ~|r|/(1-discount) ~
+            # O(100) (see the value-scale note in runner._m9_head_step), so an
+            # ABSOLUTE deviation threshold represented a ~1-2% relative
+            # disagreement -- far too tight, and it made normal staleness
+            # correction on large-magnitude values read as pathology, tripping
+            # both the failover trigger and the K-M9-2-consistency kill. The
+            # deviation is now a FRACTION of the value magnitude, bounded in
+            # [0, ~2]; consistency_scale_floor keeps two near-zero values from
+            # inflating the ratio. All three consumers of this signal
+            # (failover_consistency_threshold, recovery_consistency_threshold,
+            # kills.consistency_max) are therefore now relative fractions.
+            scale = max(
+                abs(fresh), abs(cached), self.config.consistency_scale_floor
+            )
+            dev = abs(fresh - cached) / scale
             deviations.append(dev)
             # F3 C2 fix: staleness-driven refresh alpha, decoupled from
             # visit count. Legacy alpha = 1/(1+N) was correct for MC

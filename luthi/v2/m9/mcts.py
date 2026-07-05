@@ -186,6 +186,20 @@ class MCTS:
         entity actually is. Deeper nodes keep their predicted states --
         the staleness re-eval pass (plan §4.iii) is what refreshes
         those, recomputing each edge from its (now re-grounded) parent.
+
+        Accepted-by-design limitation (Finding 4, 2026-07-04 audit): the
+        re-eval pass orders candidates by ``visits ** visit_pow *
+        staleness ** stale_pow``, NOT by tree depth, and only refreshes up
+        to its budget. So within a single cycle a deep child can be
+        re-evaluated from a parent that has not itself been refreshed yet,
+        and low-budget cycles leave most children on states predicted from
+        the OLD root. This degrades planning FIDELITY, not safety (values
+        route through the same stop-grad'd predictor either way), and it is
+        bounded: recency-decay shrinks the visit counts of unrefreshed
+        stale nodes each cycle, so `best_action` (most-visited) drifts off
+        them. If planning quality at depth proves insufficient at scale,
+        the fix is to prioritize the re-eval frontier root-to-leaf; not
+        worth the added complexity at smoke.
         """
         if self.root is None or not self.root.children:
             raise RuntimeError(

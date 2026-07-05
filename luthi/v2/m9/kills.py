@@ -130,7 +130,15 @@ class KillRegistry:
         # fire on normal early planning. Pilot-set; the loop
         # configures based on per-cycle MCTS expansion budget.
         entropy_min_children: int = 3,
-        consistency_max: float = 2.0,
+        # Finding 2 (2026-07-04): consistency deviation is now scale-invariant
+        # (a fraction in [0, ~2], normalized in StalenessManager.reevaluate),
+        # so this is a RELATIVE threshold: ~0.75 = kill on sustained ~75%+
+        # re-eval-vs-cached disagreement. Was 2.0 ABSOLUTE, which on O(100)
+        # node values was a ~2% relative trip -- it fired on normal staleness
+        # correction. *** PROVISIONAL / TUNE ME against real checkpoints; keep
+        # above failover_consistency_threshold so the soft response (failover)
+        # precedes the hard one (halt). ***
+        consistency_max: float = 0.75,
         consistency_sustained: int = 5,
         value_band_k: float = 6.0,
         value_sustained: int = 4,
