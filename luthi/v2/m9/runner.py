@@ -217,6 +217,12 @@ class M9Config:
     # the amortized ~3-10-cycle planning step of plan §3 real -- and
     # safe under a θ that moves between cycles (the lived learner).
     mcts_persistent_tree: bool = False
+    # Living-drift eye cadence (momentum-functions brief §4, 2026-07-05):
+    # every Nth staleness pass reads mean |momentum| across the encoder's
+    # living layers into the manager's measurement-only living band. The
+    # read is a full-matrix reduction per living layer — cheap at smoke,
+    # memory-bandwidth-heavy at production scale, hence cadence-gated.
+    living_drift_every: int = 8
 
 
 # ---------------------------------------------------------------------------
@@ -438,6 +444,9 @@ class M9Trainer(JEPATrainer):
         self._last_best_child_idx: int | None = None
         self._spike_handled_at_theta: int = -1
         self.last_staleness_pass: dict = {}
+        # Living-drift eye cadence counter (brief §4). Starts at the
+        # cadence so the FIRST pass takes a reading (baseline early).
+        self._living_drift_counter: int = self.m9_config.living_drift_every
 
         # §5 device sweep: move every parameter-owning M9 submodule onto
         # the resolved device BEFORE the optimizers are built below. `.to`
@@ -1301,6 +1310,28 @@ class M9Trainer(JEPATrainer):
         sm = self.staleness
         sm.decay(self.mcts)
 
+        # Living-channel drift eye (momentum-functions brief §4,
+        # 2026-07-05): on cadence, read mean |momentum| across the
+        # encoder's living layers into the MEASUREMENT-ONLY living band.
+        # The backprop drift band above is blind to living-weight
+        # self-modification; this closes the observability gap. Logged
+        # on spike; drives no decay/failover/kill behavior until the
+        # F1/F2 threshold-tuning pass decides how it joins.
+        self._living_drift_counter += 1
+        if self._living_drift_counter >= self.m9_config.living_drift_every:
+            self._living_drift_counter = 0
+            living_drift = self._living_drift_signal()
+            if living_drift is not None:
+                sm.observe_living_drift(living_drift)
+                if sm.living_spike():
+                    logger.info(
+                        "Living-channel drift spike (measurement-only): "
+                        "latest=%.4g median=%.4g mad=%.4g",
+                        sm.living_band.values[-1],
+                        sm.living_band.median(),
+                        sm.living_band.mad(),
+                    )
+
         if sm.spike() and self._spike_handled_at_theta != sm.theta_version:
             sm.handle_spike(self.mcts)
             self._spike_handled_at_theta = sm.theta_version
@@ -1382,6 +1413,10 @@ class M9Trainer(JEPATrainer):
             "theta_version": sm.theta_version,
             "effective_decay": eff,
             "degraded_duration": sm.degraded_duration(),
+            "living_drift_latest": (
+                sm.living_band.values[-1] if sm.living_band.values else 0.0
+            ),
+            "living_spike": sm.living_spike(),
         }
 
         # Unused re-eval budget (fewer stale nodes than the slice)
@@ -1391,6 +1426,27 @@ class M9Trainer(JEPATrainer):
         # the caller asked for any; a caller-requested budget of 0
         # stays 0 (the documented degenerate path).
         return max(0, plan_budget - stats["reevaluated"])
+
+    def _living_drift_signal(self) -> Optional[float]:
+        """Mean |momentum| across the encoder's living layers — the
+        living channel's recent-change gauge (momentum is already
+        maintained per weight by pc_self_modify; this is a read, not
+        new state). Returns None when the encoder exposes no living
+        momentum (e.g. dead baselines), so the caller simply skips
+        the observation rather than feeding zeros into the band.
+        """
+        blocks = getattr(self.loss_module.online_encoder, "blocks", None)
+        if blocks is None:
+            return None
+        vals: list[float] = []
+        with torch.no_grad():
+            for block in blocks:
+                ffn = getattr(block, "living_ffn", None)
+                if ffn is not None and hasattr(ffn, "momentum"):
+                    vals.append(ffn.momentum.abs().mean().item())
+        if not vals:
+            return None
+        return sum(vals) / len(vals)
 
     def _reeval_node_value(self, node) -> float:
         """Fresh value estimate for one node under the CURRENT routing

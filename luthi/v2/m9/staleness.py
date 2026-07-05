@@ -186,6 +186,18 @@ class StalenessManager:
     def __init__(self, config: StalenessConfig | None = None):
         self.config = config or StalenessConfig()
         self.drift_band = DriftBand(window=self.config.drift_window)
+        # Living-channel drift band (momentum-functions brief §4,
+        # 2026-07-05). The band above sees only backprop-theta movement;
+        # the living weights drift with every perception, invisibly to
+        # it. This band receives per-layer momentum magnitude — an
+        # already-paid-for gauge of recent living change. MEASUREMENT
+        # ONLY at this slice: snapshot-visible and queryable via
+        # living_spike(), but it feeds no decay/failover/kill behavior
+        # until the F1/F2 threshold-tuning pass decides how it joins
+        # (those thresholds are TUNE-ME and must not gain a second
+        # moving target mid-tune). Living spikes are plan §4.v's
+        # original "high-surprise plasticity-spike" case.
+        self.living_band = DriftBand(window=self.config.drift_window)
         self.cycle = 0
         # Held predictor snapshot (frozen). Refreshed every K cycles.
         self.held_predictor: nn.Module | None = None
@@ -275,6 +287,27 @@ class StalenessManager:
                 # the anchor in place so the metric reflects "we have
                 # been degrading since the FIRST unrecovered spike").
                 self._first_unrecovered_spike_cycle = None
+
+    # ------------------------------------------------------------------
+    # Living-channel drift observation (measurement-only slice).
+    # ------------------------------------------------------------------
+    def observe_living_drift(self, living_drift: float) -> None:
+        """Push a living-channel drift reading (mean |momentum| across
+        living layers) into the living band. Does NOT tick theta_version
+        or cycle — the living channel is a separate clock from the
+        gradient learner's, and at this slice it drives no behavior."""
+        self.living_band.push(float(living_drift))
+
+    def living_spike(self) -> bool:
+        """True if the latest living-drift reading is past the running
+        band (same median+MAD rule as spike()). Query/log only until
+        the threshold-tuning pass wires consumption."""
+        if not self.living_band.is_warm() or not self.living_band.values:
+            return False
+        med = self.living_band.median()
+        mad = self.living_band.mad()
+        threshold = med + self.config.spike_k * max(mad, 1e-8)
+        return self.living_band.values[-1] > threshold
 
     # ------------------------------------------------------------------
     # (v) Spike detection + handling.
@@ -583,4 +616,10 @@ class StalenessManager:
             ),
             "spike_recovery_latencies": list(self._spike_recovery_latencies),
             "degraded_duration": self.degraded_duration(),
+            "living_drift_latest": (
+                self.living_band.values[-1] if self.living_band.values else 0.0
+            ),
+            "living_drift_median": self.living_band.median(),
+            "living_drift_mad": self.living_band.mad(),
+            "living_spike": self.living_spike(),
         }

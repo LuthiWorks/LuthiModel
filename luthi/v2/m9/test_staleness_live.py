@@ -507,6 +507,58 @@ def test_consistency_deviation_is_scale_invariant():
     )
 
 
+# ---------- Living-drift eye (momentum-functions brief §4, 2026-07-05) ----------
+
+def test_living_drift_band_is_measurement_only():
+    """The living band records and detects, but drives NOTHING: no
+    theta tick, no cycle tick, no failover, no main-band pollution."""
+    sm = StalenessManager(StalenessConfig())
+    theta_before = sm.theta_version
+    cycle_before = sm.cycle
+
+    for _ in range(8):
+        sm.observe_living_drift(1.0)
+    sm.observe_living_drift(100.0)
+
+    assert sm.living_spike(), "outlier must register on the living band"
+    assert sm.theta_version == theta_before, (
+        "living channel is a separate clock; it must not tick theta"
+    )
+    assert sm.cycle == cycle_before
+    assert len(sm.drift_band.values) == 0, "main drift band must stay untouched"
+    assert not sm.in_failover(), "measurement-only: no failover"
+    snap = sm.snapshot()
+    for key in ("living_drift_latest", "living_drift_median",
+                "living_drift_mad", "living_spike"):
+        assert key in snap, f"snapshot missing {key}"
+    assert snap["living_drift_latest"] == 100.0
+    assert snap["living_spike"] is True
+
+
+def test_living_drift_eye_reads_momentum_on_cadence():
+    """The persistent act path feeds mean |momentum| into the living
+    band on cadence — the watchdog gains eyes on the living channel."""
+    with _trainer(
+        M9Config(mcts_persistent_tree=True, living_drift_every=1)
+    ) as trainer:
+        # A corpus step runs encoder forwards -> pc_self_modify moves
+        # momentum off its zero init, so the eye has something to see.
+        batch = trainer.data_loader.next_batch("text")
+        trainer.train_step("text", batch)
+
+        s1, ctx1 = _state_and_context(seed=1)
+        trainer.select_action(s1, context_latents=ctx1)
+
+        assert len(trainer.staleness.living_band.values) >= 1, (
+            "living band must receive an observation on cadence"
+        )
+        assert "living_drift_latest" in trainer.last_staleness_pass
+        assert trainer.last_staleness_pass["living_drift_latest"] > 0.0, (
+            "after a real training forward, living momentum is nonzero; "
+            "a 0.0 reading means the eye is not actually reading the layers"
+        )
+
+
 def main() -> int:
     tests = [
         test_persistent_tree_advances_across_cycles,
@@ -520,6 +572,8 @@ def main() -> int:
         test_held_head_not_refreshed_from_live_mid_failover,
         test_km9_7_not_fed_on_wake_cycles,
         test_consistency_deviation_is_scale_invariant,
+        test_living_drift_band_is_measurement_only,
+        test_living_drift_eye_reads_momentum_on_cadence,
     ]
     failed = []
     for t in tests:
