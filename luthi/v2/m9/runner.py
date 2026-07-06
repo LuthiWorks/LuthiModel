@@ -226,6 +226,34 @@ class M9Config:
 
 
 # ---------------------------------------------------------------------------
+# Living-drift eye: per-layer recent-change reading
+# ---------------------------------------------------------------------------
+
+
+def _living_drift_reading(ffn) -> Optional[float]:
+    """One living layer's recent-change gauge for the living-drift band.
+
+    Prefers the *truthful applied change* (`_last_applied_change`, recorded by
+    the layer only when the inverted-U gain is on) over pre-gain momentum, so
+    the eye sees the real "becoming" the gain produces -- up to 3x wider than
+    the intended change at cap=3.0 (spec §4/§8 step 5). Falls back to mean
+    |momentum| (already maintained per weight by pc_self_modify) when no
+    applied change has been recorded -- i.e. in production, where the gain is
+    off and applied == intended, the eye reads exactly what it always did, so
+    the F1/F2 tuning pass keeps a single unmoved target. Returns None when the
+    layer exposes neither (e.g. a dead baseline), so the caller skips it.
+    """
+    if ffn is None:
+        return None
+    applied = getattr(ffn, "_last_applied_change", None)
+    if applied is not None:
+        return float(applied)
+    if hasattr(ffn, "momentum"):
+        return ffn.momentum.abs().mean().item()
+    return None
+
+
+# ---------------------------------------------------------------------------
 # M9Trainer
 # ---------------------------------------------------------------------------
 
@@ -1428,12 +1456,12 @@ class M9Trainer(JEPATrainer):
         return max(0, plan_budget - stats["reevaluated"])
 
     def _living_drift_signal(self) -> Optional[float]:
-        """Mean |momentum| across the encoder's living layers — the
-        living channel's recent-change gauge (momentum is already
-        maintained per weight by pc_self_modify; this is a read, not
-        new state). Returns None when the encoder exposes no living
-        momentum (e.g. dead baselines), so the caller simply skips
-        the observation rather than feeding zeros into the band.
+        """Mean living-drift reading across the encoder's living layers — the
+        living channel's recent-change gauge. Per layer this is the truthful
+        applied change when the inverted-U gain is on, else mean |momentum|
+        (see `_living_drift_reading`). Returns None when the encoder exposes
+        no living layer with a reading (e.g. dead baselines), so the caller
+        skips the observation rather than feeding zeros into the band.
         """
         blocks = getattr(self.loss_module.online_encoder, "blocks", None)
         if blocks is None:
@@ -1442,8 +1470,9 @@ class M9Trainer(JEPATrainer):
         with torch.no_grad():
             for block in blocks:
                 ffn = getattr(block, "living_ffn", None)
-                if ffn is not None and hasattr(ffn, "momentum"):
-                    vals.append(ffn.momentum.abs().mean().item())
+                reading = _living_drift_reading(ffn)
+                if reading is not None:
+                    vals.append(reading)
         if not vals:
             return None
         return sum(vals) / len(vals)

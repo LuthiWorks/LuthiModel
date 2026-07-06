@@ -86,6 +86,24 @@ def collect_living_extra_state(model: nn.Module) -> dict[str, dict[str, Any]]:
         if hasattr(module, "_delay_pos"):
             entry["delay_pos"] = int(module._delay_pos)
 
+        # Inverted-U gain slow traces + NREM day-accumulator (spec §5/§8
+        # step 5). Discovered INTROSPECTIVELY by type, not by a hardcoded name
+        # list: any SlowEMA / ReadResetAccumulator attribute on the module is
+        # captured, so wiring a new slow trace and forgetting to persist it is
+        # impossible -- exactly the "forgetting the wiring is a test failure"
+        # contract from spec §6 regime (i). A restore mid-hard-growth must not
+        # reset the resolution-progress signal or the day-accumulator, or the
+        # entity re-sensitizes / forgets the day on every waking (the
+        # silent-amnesia class bae295d closed).
+        from luthi.v2.slow_trace import SlowEMA, ReadResetAccumulator
+        slow_traces = {
+            name: obj.state_dict()
+            for name, obj in vars(module).items()
+            if isinstance(obj, (SlowEMA, ReadResetAccumulator))
+        }
+        if slow_traces:
+            entry["slow_traces"] = slow_traces
+
         if entry:
             out[path] = entry
     return out
@@ -161,3 +179,21 @@ def apply_living_extra_state(
 
         if "delay_pos" in entry and hasattr(module, "_delay_pos"):
             module._delay_pos = int(entry["delay_pos"])
+
+        # Restore slow traces / accumulators by name onto the same-typed attr.
+        # Presence-gated: a trace in the checkpoint with no matching attribute
+        # (architecture drift, or the gain wasn't instantiated) logs and skips
+        # rather than resurrecting stale state onto the wrong object.
+        slow_traces = entry.get("slow_traces")
+        if slow_traces:
+            from luthi.v2.slow_trace import SlowEMA, ReadResetAccumulator
+            for name, sd in slow_traces.items():
+                obj = getattr(module, name, None)
+                if isinstance(obj, (SlowEMA, ReadResetAccumulator)):
+                    obj.load_state_dict(sd)
+                else:
+                    logger.warning(
+                        "%s %s for %r carries slow-trace %r but the module "
+                        "has no such trace; skipped.",
+                        source, KEY, path, name,
+                    )

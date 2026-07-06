@@ -145,10 +145,16 @@ def _pc_self_modify_python(
     learning_gain_progress: float = 0.0,
     learning_gain_rise: float = 2.0,
     learning_gain_cap: float = 3.0,
-) -> tuple[float, torch.Tensor]:
+    return_applied_change: bool = False,
+) -> tuple[float, torch.Tensor] | tuple[float, torch.Tensor, float]:
     """Pure Python implementation. Identical math to the C++ extension.
 
-    All buffers modified in-place. Returns (salience, pred_error).
+    All buffers modified in-place. Returns (salience, pred_error), or
+    (salience, pred_error, applied_change) when ``return_applied_change`` is
+    set -- ``applied_change`` = mean|delta_w * adaptive_factor * gain|, the
+    per-layer reduction of the ACTUAL applied weight change (spec §4/§8 step 5).
+    Unlike ``momentum`` / ``update_ema`` (which stay pre-gain by measured
+    decision), this is the truthful "becoming" the observation-only sinks want.
 
     `sparse_gate` (optional, [out_features]): per-output mask in {0, 1}
     or [0, 1]. When provided, multiplies delta_w by `gate.unsqueeze(1)`
@@ -214,9 +220,15 @@ def _pc_self_modify_python(
             momentum, update_ema, learning_gain_progress,
             rise=learning_gain_rise, cap=learning_gain_cap,
         )
-        weight.add_(delta_w * adaptive_factor * _gain)
+        applied = delta_w * adaptive_factor * _gain
     else:
-        weight.add_(delta_w * adaptive_factor)
+        applied = delta_w * adaptive_factor
+    weight.add_(applied)
+    # Applied-change reduction for the observation-only sinks (spec §8 step 5).
+    # Computed only on request so gain-off callers pay no extra host sync and
+    # stay byte-identical to legacy. ``applied`` is the exact tensor added to
+    # the weight above -- one source of truth, no recomputation.
+    applied_change = applied.abs().mean().item() if return_applied_change else None
     momentum.mul_(momentum_decay).add_(
         delta_w, alpha=1.0 - momentum_decay
     )
@@ -283,6 +295,8 @@ def _pc_self_modify_python(
         per_output_contrib, alpha=1.0 - update_ema_decay
     )
 
+    if return_applied_change:
+        return error_acc.mean().item(), pred_error.detach().clone(), applied_change
     return error_acc.mean().item(), pred_error.detach().clone()
 
 
@@ -316,7 +330,8 @@ def pc_self_modify(
     learning_gain_progress: float = 0.0,
     learning_gain_rise: float = 2.0,
     learning_gain_cap: float = 3.0,
-) -> tuple[float, torch.Tensor]:
+    return_applied_change: bool = False,
+) -> tuple[float, torch.Tensor] | tuple[float, torch.Tensor, float]:
     """One PC self-modification step.
 
     Dispatches to the C++ extension when it's loaded; otherwise routes to
@@ -327,12 +342,22 @@ def pc_self_modify(
       - pred_error tensor [in_features], the per-input prediction error
         for this step. Caller (the layer's forward) stores this on
         `_last_pred_error` for the inter-block top-down sweep.
+      - applied_change float (ONLY when `return_applied_change=True`):
+        mean|delta_w * adaptive_factor * gain|, the truthful applied-change
+        reduction for the observation-only sinks (spec §8 step 5).
+
+    `return_applied_change=True` forces the Python path (the C++ extension
+    cannot surface `delta_w`). In practice it is only requested together with
+    `learning_gain_enabled=True`, which already forces Python, so this costs
+    nothing extra: the applied-change signal diverges from pre-gain momentum
+    only when the gain is on.
     """
     # The C++ extension does not implement the inverted-U learning gain yet
-    # (C++ parity is the next build step). When the gain is enabled, route to
-    # the Python path so the opt-in gain is honored; the ~50x-slower path is
-    # acceptable for the pilot (gain is off by default in production).
-    if _use_cpp and not learning_gain_enabled:
+    # (C++ parity is the next build step) and cannot return the applied-change
+    # reduction. When either is requested, route to the Python path; the
+    # ~50x-slower path is acceptable for the pilot (both are off by default in
+    # production).
+    if _use_cpp and not learning_gain_enabled and not return_applied_change:
         salience_tensor, pred_error = _cpp_ops.pc_self_modify(
             weight, prediction, set_point, momentum, update_ema,
             precision, error_acc, plasticity, x_flat, output,
@@ -354,4 +379,5 @@ def pc_self_modify(
         learning_gain_progress=learning_gain_progress,
         learning_gain_rise=learning_gain_rise,
         learning_gain_cap=learning_gain_cap,
+        return_applied_change=return_applied_change,
     )

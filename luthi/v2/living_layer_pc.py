@@ -564,6 +564,7 @@ class PredictiveCodingLayer(nn.Module):
                 gain_progress = 0.0
 
             T = self.inference_steps_per_forward
+            applied_this_forward = 0.0
             for inner_step in range(T):
                 # Recompute output for inner_step > 0 since the weight
                 # has changed since the last iteration. For the first
@@ -586,7 +587,7 @@ class PredictiveCodingLayer(nn.Module):
                         dtype=self.weight.dtype
                     )
 
-                salience, pred_error = pc_self_modify(
+                result = pc_self_modify(
                     self.weight, self.prediction, self.set_point,
                     self.momentum, self.update_ema, self.precision,
                     self.error_acc, self.plasticity,
@@ -602,16 +603,26 @@ class PredictiveCodingLayer(nn.Module):
                     learning_gain_progress=gain_progress,
                     learning_gain_rise=self.learning_gain_rise,
                     learning_gain_cap=self.learning_gain_cap,
+                    return_applied_change=self.learning_gain_enabled,
                 )
+                if self.learning_gain_enabled:
+                    salience, pred_error, applied = result
+                    applied_this_forward += applied
+                else:
+                    salience, pred_error = result
 
-            # Feed the resolution traces once per forward with the final inner
-            # step's prediction-error magnitude, so the next forward's gain
-            # sees this forward's outcome. Only when the gain is enabled -- the
-            # traces are gain machinery and stay untouched (regime f) otherwise.
+            # Gain path only: feed the resolution traces once per forward with
+            # the final inner step's prediction-error magnitude (so the next
+            # forward's gain sees this forward's outcome), and record the
+            # applied-change signal to the observation-only sinks -- the NREM
+            # day-integral and the eye's last-reading (spec §4/§8 step 5). Off
+            # the gain path these stay untouched (regime f).
             if self.learning_gain_enabled:
                 err_scalar = pred_error.abs().mean().item()
                 self._err_short.update(err_scalar)
                 self._err_long.update(err_scalar)
+                self._last_applied_change = applied_this_forward
+                self._applied_change_accum.add(applied_this_forward)
 
             # Recompute final output after the last inner step so the
             # returned activation reflects the post-self-mod weight state.
