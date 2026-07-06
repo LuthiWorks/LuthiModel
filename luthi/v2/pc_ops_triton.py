@@ -139,9 +139,16 @@ if _has_triton:
           d. delta_w = outer(output_mean, weighted_error) * plasticity * pc_rate
              if has_sparse_gate: delta_w = delta_w * sparse_gate[:, None]
           e. adaptive_factor = (2 / (1 + |delta_w|/(update_ema+1e-8))).clamp(max=1)
-          f. weight += delta_w * adaptive_factor
+          f. gain = 1.0 (legacy) OR the opt-in inverted-U learning gain when
+             learning_gain_enabled: coherence = |momentum|/(update_ema+1e-8);
+             fall = clamp(1-progress, min=0); gain = clamp(1 + rise*coherence*
+             fall, 1.0, cap). See luthi.v2.pc_ops.learning_gain / pc_ops.cpp.
+             weight += delta_w * adaptive_factor * gain   # gain APPLIED only
              momentum = momentum_decay*momentum + (1-momentum_decay)*delta_w
              update_ema = update_ema_decay*update_ema + (1-update_ema_decay)*|delta_w|
+             # histories stay PRE-gain (spec §4) so adaptive_factor is
+             # bit-identical gain-on vs off. Applied-change reduction
+             # mean|delta_w*adaptive_factor*gain| feeds the sinks (spec §8 s5).
           g. weight += homeostatic_decay * (set_point - weight)
           h. set_point += set_point_adapt_rate * (weight - set_point)
           i. prediction += pred_learning_rate * outer(output_mean, clamp(pred_error, -1, 1))

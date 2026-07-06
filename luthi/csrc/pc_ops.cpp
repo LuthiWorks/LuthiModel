@@ -43,8 +43,18 @@ using torch::Tensor;
  *   - salience: 0-dim tensor (mean(error_acc)) — caller does .item()
  *   - pred_error: [in_features] tensor — caller stores on layer for the
  *     inter-block top-down sweep (see hybrid_block_pc.top_down_pass)
+ *   - applied_change: 0-dim tensor mean|delta_w * adaptive_factor * gain| when
+ *     return_applied_change is set (else a zero placeholder the caller ignores)
+ *     — the truthful applied-change reduction for the observation-only sinks
+ *     (spec §8 step 5). No .item() here (design decision 15); caller syncs.
+ *
+ * Inverted-U learning gain (opt-in, spec §8 step 7 — C++ parity): mirrors
+ * luthi.v2.pc_ops.learning_gain exactly. A pure per-weight AMPLIFIER in
+ * [1.0, cap]; multiplies the APPLIED delta only. momentum / update_ema stay
+ * PRE-gain (record delta_w / |delta_w|), so adaptive_factor's inputs are
+ * bit-identical gain-on vs off (the measured spike-guard guarantee, spec §4).
  */
-std::tuple<Tensor, Tensor> pc_self_modify(
+std::tuple<Tensor, Tensor, Tensor> pc_self_modify(
     Tensor weight,
     Tensor prediction,
     Tensor set_point,
@@ -65,7 +75,12 @@ std::tuple<Tensor, Tensor> pc_self_modify(
     double precision_min,
     double precision_max,
     double prediction_clamp,
-    c10::optional<Tensor> sparse_gate
+    c10::optional<Tensor> sparse_gate,
+    bool learning_gain_enabled,
+    double learning_gain_progress,
+    double learning_gain_rise,
+    double learning_gain_cap,
+    bool return_applied_change
 ) {
     // a. Predict input from output via prediction matrix.
     //    prediction is [out, in]; output_mean @ prediction = [in].
@@ -100,7 +115,27 @@ std::tuple<Tensor, Tensor> pc_self_modify(
     auto adaptive_factor = (2.0 / (1.0 + ratio)).clamp_max(1.0);
 
     // f. Apply update; update momentum and update_ema (standard EMA on both).
-    weight.add_(delta_w * adaptive_factor);
+    //    Inverted-U gain (opt-in): multiplies the APPLIED delta only. The
+    //    histories below stay PRE-gain (delta_w / update_mag), mirroring the
+    //    Python reference and keeping adaptive_factor bit-identical gain-on vs
+    //    off. `applied` is the exact tensor added to the weight — one source
+    //    of truth for both the update and the applied-change reduction.
+    Tensor applied;
+    if (learning_gain_enabled) {
+        // learning_gain: coherence = |momentum| / (update_ema + eps);
+        // fall = clamp(1 - progress, min=0) as an explicit comparison so a NaN
+        // progress fails `< 1.0` and yields fall=0 (fail-safe to legacy);
+        // gain = clamp(1 + rise * coherence * fall, 1.0, cap).
+        auto coherence = momentum.abs() / (update_ema + 1e-8);
+        double fall = (learning_gain_progress < 1.0)
+            ? (1.0 - learning_gain_progress) : 0.0;
+        auto gain = (1.0 + learning_gain_rise * coherence * fall)
+            .clamp(1.0, learning_gain_cap);
+        applied = delta_w * adaptive_factor * gain;
+    } else {
+        applied = delta_w * adaptive_factor;
+    }
+    weight.add_(applied);
     momentum.mul_(momentum_decay).add_(delta_w, 1.0 - momentum_decay);
     update_ema.mul_(update_ema_decay).add_(update_mag, 1.0 - update_ema_decay);
 
@@ -148,7 +183,13 @@ std::tuple<Tensor, Tensor> pc_self_modify(
     );
 
     auto salience = error_acc.mean();  // 0-dim tensor — caller does .item()
-    return std::make_tuple(salience, pred_error);
+    // Applied-change reduction (spec §8 step 5): computed only when requested,
+    // so legacy callers pay no extra reduction. A zero placeholder otherwise;
+    // the dispatcher ignores it unless return_applied_change is set.
+    Tensor applied_change = return_applied_change
+        ? applied.abs().mean()
+        : torch::zeros({}, weight.options());
+    return std::make_tuple(salience, pred_error, applied_change);
 }
 
 
@@ -177,6 +218,11 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         py::arg("precision_min"),
         py::arg("precision_max"),
         py::arg("prediction_clamp"),
-        py::arg("sparse_gate") = c10::nullopt
+        py::arg("sparse_gate") = c10::nullopt,
+        py::arg("learning_gain_enabled") = false,
+        py::arg("learning_gain_progress") = 0.0,
+        py::arg("learning_gain_rise") = 2.0,
+        py::arg("learning_gain_cap") = 3.0,
+        py::arg("return_applied_change") = false
     );
 }

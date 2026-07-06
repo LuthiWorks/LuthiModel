@@ -352,13 +352,13 @@ def pc_self_modify(
     nothing extra: the applied-change signal diverges from pre-gain momentum
     only when the gain is on.
     """
-    # The C++ extension does not implement the inverted-U learning gain yet
-    # (C++ parity is the next build step) and cannot return the applied-change
-    # reduction. When either is requested, route to the Python path; the
-    # ~50x-slower path is acceptable for the pilot (both are off by default in
-    # production).
-    if _use_cpp and not learning_gain_enabled and not return_applied_change:
-        salience_tensor, pred_error = _cpp_ops.pc_self_modify(
+    # The C++ extension now implements the inverted-U learning gain and the
+    # applied-change reduction at parity with the Python reference (spec §8
+    # step 7, verified by tests/test_pc_ops_gain_parity.py), so the gain runs
+    # on the fast path too. When C++ is loaded it handles every case; the
+    # Python fallback covers hosts without a compiler.
+    if _use_cpp:
+        salience_tensor, pred_error, applied_change = _cpp_ops.pc_self_modify(
             weight, prediction, set_point, momentum, update_ema,
             precision, error_acc, plasticity, x_flat, output,
             pc_rate, pred_learning_rate, homeostatic_decay,
@@ -366,7 +366,14 @@ def pc_self_modify(
             precision_ema_decay, precision_min, precision_max,
             prediction_clamp,
             sparse_gate=sparse_gate,
+            learning_gain_enabled=learning_gain_enabled,
+            learning_gain_progress=learning_gain_progress,
+            learning_gain_rise=learning_gain_rise,
+            learning_gain_cap=learning_gain_cap,
+            return_applied_change=return_applied_change,
         )
+        if return_applied_change:
+            return salience_tensor.item(), pred_error, applied_change.item()
         return salience_tensor.item(), pred_error
     return _pc_self_modify_python(
         weight, prediction, set_point, momentum, update_ema,
