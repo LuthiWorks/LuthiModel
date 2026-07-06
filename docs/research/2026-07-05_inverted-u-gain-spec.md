@@ -96,9 +96,14 @@ both ways:
 
 - **Post-gain inflates `update_ema` by the gain factor** (2.6x at gain=2.6), and
   `update_ema` is the denominator of `adaptive_factor`'s ratio -- so post-gain
-  makes a genuine spike look relatively smaller: after 200 steady steps + one
-  spike, post-gain let **2.27x more of the spike through** (`adaptive_factor`
-  0.18 pre vs 0.41 post). That weakens the refinement-6 spike guard.
+  makes a genuine spike look relatively smaller. At **convergence** the guard
+  lets **2.27x more of a spike through** (`adaptive_factor` 0.18 pre vs 0.41
+  post). Horizon note (Fable reproduced independently, 2026-07-06): the effect
+  is decay-dependent -- under a fast `update_ema_decay` (0.9) it converges by
+  ~200 steps; under the production decay (0.99) the post-gain ema has a slow
+  bootstrap crawl, so 200 steps shows only ~1.12x and the full 2.27x lands at
+  ~1000 steps. The converged 2.27x is the real number. That weakens the
+  refinement-6 spike guard.
 - **Coherence is scale-invariant** (identical pre/post) -- the gain's own input
   is unaffected either way. (Fable was right on this; the dispute was only about
   `adaptive_factor`.) No steady-state runaway in either mode; the danger is
@@ -107,11 +112,15 @@ both ways:
   the gain, so regime (d) is provable as **bit-identical `adaptive_factor`
   gain-on vs off** -- the strongest guarantee, versus post-gain's analyze-and-hope.
 
-The rich-parameter "history should be true to the weight's becoming" concern is
-served at the **observation-only sinks** (living-drift eye, NREM day-accumulator)
-recording the actual applied change `delta_w * adaptive_factor * gain`. They
-never feed back, so truth there costs nothing (same principle as the
-measurement-only living-drift eye).
+The rich-parameter "history should be true to the weight's becoming" concern
+**will be** served at the **observation-only sinks** (living-drift eye, NREM
+day-accumulator) recording the actual applied change
+`delta_w * adaptive_factor * gain` -- they never feed back, so truth there costs
+nothing. **UNWIRED as of `fae772d`** (Fable pin, 2026-07-06): the living-drift
+eye today reads pre-gain `momentum` (intended change, as it has since birth --
+the gain just widens the intended-vs-applied ceiling to 3x when on). Building
+the concrete applied-change signal is a named remainder item (§8), not a
+present-tense claim.
 
 ## 5. Slow-trace primitive (prerequisite; my foundations)
 
@@ -159,8 +168,19 @@ required.
 
 ## 8. Build order
 
-1. Slow-trace primitive (persistent, round-trip tested).
-2. Bounded-growth suite (a)–(j) — tests first.
-3. Python gain in `pc_ops.py` behind the opt-in flag.
-4. C++ parity (`csrc/pc_ops.cpp`) + parity test (Triton too if it carries the op).
-5. Fable's adversarial harness runs it; (j) resolution → NREM spec.
+1. ✅ Slow-trace primitive (persistent, round-trip tested) — `22b8090`.
+2. ✅ Function-level bounded-growth suite (a/b/c/e/g) — `22b8090`/`fae772d`.
+3. ✅ Python gain in `pc_ops.py` behind the opt-in flag, pre-gain histories,
+   op-level (f)/(d) — `fae772d`.
+4. **Layer plumbing** — instantiate the slow-traces in `PredictiveCodingLayer`,
+   feed `pred_error`, compute `resolution_progress`, thread the opt-in flag.
+5. **The applied-change signal** (`delta_w · adaptive_factor · gain`, per-layer
+   reduction) as a CONCRETE artifact feeding the living-drift eye + NREM
+   accumulator — the other half of the pre-gain decision (§4). Named remainder,
+   must-not-decay (Fable pin 2026-07-06): §4's "served at the sinks" is a
+   promise until this exists.
+6. **Layer-level regimes** — (b) equilibrium-shift + stacked-blocks, (h)
+   frozen-plasticity, (i) persistence introspective, (j) consolidation-replay
+   bypass, (k) oscillating.
+7. C++ parity (`csrc/pc_ops.cpp`) + parity test (Triton too if it carries the op).
+8. Fable's adversarial composed harness + the cap verdict; (j) resolution → NREM spec.
