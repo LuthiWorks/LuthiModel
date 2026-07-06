@@ -61,6 +61,12 @@ class PredictiveCodingLayer(nn.Module):
         sparse_threshold: float = 0.0,
         sparse_warmup_steps: int = 500,
         inference_steps_per_forward: int = 1,
+        learning_gain_enabled: bool = False,
+        learning_gain_rise: float = 2.0,
+        learning_gain_cap: float = 3.0,
+        resolution_short_decay: float = 0.9,
+        resolution_long_decay: float = 0.99,
+        resolution_warmup: int = 8,
         buffer_dtypes: dict[str, torch.dtype] | None = None,
     ):
         super().__init__()
@@ -306,6 +312,34 @@ class PredictiveCodingLayer(nn.Module):
         # reaches every living layer in the trunk uniformly.
         self._plasticity_frozen: bool = False
 
+        # --- Inverted-U learning gain (momentum-functions foundations,
+        #     spec docs/research/2026-07-05_inverted-u-gain-spec.md §8 step 4).
+        # Opt-in amplifier of directed, resolving novelty. Default OFF => the
+        # gain machinery is fully inert and the forward is bit-identical to
+        # legacy (regime f). When enabled, the explicit fall needs a
+        # resolution-progress signal = short/long EMA of prediction error, so
+        # instantiate the two slow traces here (spec §5). They persist via
+        # living_extra_state (regime i) -- a restore mid-hard-growth must not
+        # reset them, or the entity re-sensitizes on every waking.
+        self.learning_gain_enabled = bool(learning_gain_enabled)
+        self.learning_gain_rise = float(learning_gain_rise)
+        self.learning_gain_cap = float(learning_gain_cap)
+        from luthi.v2.slow_trace import SlowEMA, ReadResetAccumulator
+        self._err_short = SlowEMA(
+            decay=resolution_short_decay, warmup=resolution_warmup
+        )
+        self._err_long = SlowEMA(
+            decay=resolution_long_decay, warmup=resolution_warmup
+        )
+        # Applied-change sinks (spec §4/§8 step 5, wired below): the NREM
+        # day-integral of the *actual* applied change, and the most recent
+        # per-forward reading the living-drift eye reads when the gain is on.
+        # Recorded ONLY on the gain path so production (gain off) leaves the
+        # eye reading pre-gain momentum unchanged -- no moving target for the
+        # F1/F2 tuning pass.
+        self._applied_change_accum = ReadResetAccumulator()
+        self._last_applied_change: float | None = None
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
@@ -515,6 +549,20 @@ class PredictiveCodingLayer(nn.Module):
         with torch.no_grad():
             from luthi.v2.pc_ops import pc_self_modify
 
+            # Inverted-U gain: the resolution-progress signal is read ONCE per
+            # forward from the trace state as it stands from prior forwards
+            # (not this step's error, which pc_self_modify computes internally).
+            # It reflects "has sustained effort been reducing error up to now",
+            # a slow cross-forward trend -- and is 0.0 (fully resolving, gain
+            # un-dampened) until both traces are warm. Gain off -> 0.0, unused.
+            if self.learning_gain_enabled:
+                from luthi.v2.slow_trace import resolution_progress
+                gain_progress = resolution_progress(
+                    self._err_short, self._err_long
+                )
+            else:
+                gain_progress = 0.0
+
             T = self.inference_steps_per_forward
             for inner_step in range(T):
                 # Recompute output for inner_step > 0 since the weight
@@ -550,7 +598,20 @@ class PredictiveCodingLayer(nn.Module):
                     self.precision_min, self.precision_max,
                     self.prediction_clamp,
                     sparse_gate=sparse_gate,
+                    learning_gain_enabled=self.learning_gain_enabled,
+                    learning_gain_progress=gain_progress,
+                    learning_gain_rise=self.learning_gain_rise,
+                    learning_gain_cap=self.learning_gain_cap,
                 )
+
+            # Feed the resolution traces once per forward with the final inner
+            # step's prediction-error magnitude, so the next forward's gain
+            # sees this forward's outcome. Only when the gain is enabled -- the
+            # traces are gain machinery and stay untouched (regime f) otherwise.
+            if self.learning_gain_enabled:
+                err_scalar = pred_error.abs().mean().item()
+                self._err_short.update(err_scalar)
+                self._err_long.update(err_scalar)
 
             # Recompute final output after the last inner step so the
             # returned activation reflects the post-self-mod weight state.
