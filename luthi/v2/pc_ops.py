@@ -20,6 +20,59 @@ import torch
 
 
 # ---------------------------------------------------------------------------
+# Inverted-U learning gain (momentum-functions brief §1; spec
+# docs/research/2026-07-05_inverted-u-gain-spec.md). Pure function so tests and
+# both self-modify paths share one definition; C++ parity mirrors this math.
+# ---------------------------------------------------------------------------
+
+def learning_gain(
+    momentum: torch.Tensor,
+    update_ema: torch.Tensor,
+    progress: float,
+    *,
+    rise: float = 2.0,
+    cap: float = 3.0,
+    eps: float = 1e-8,
+) -> torch.Tensor:
+    """Per-weight inverted-U learning gain in ``[1.0, cap]``.
+
+    A pure AMPLIFIER of directed, resolving novelty -- never a suppressor
+    (floored at 1.0 = legacy; suppression stays with ``adaptive_factor`` and
+    the plasticity floor). Multiplies ``delta_w`` in ``pc_self_modify``::
+
+        gain      = clamp(1.0 + rise * coherence * fall, 1.0, cap)
+        coherence = |momentum| / (update_ema + eps)   # directedness, per weight
+        fall      = clamp(1 - progress, min=0)         # resolution-progress gate
+
+    - **Rise:** coherence (directedness, not raw magnitude -- orthogonal to
+      ``adaptive_factor``'s slow-start) lifts gain above 1.0 on learning-shaped
+      change, not thrash.
+    - **Fall:** ``progress`` = short/long EMA of prediction error
+      (``slow_trace.resolution_progress``). Resolving effort (progress < 1)
+      keeps ``fall ~ 1`` (amplify); non-resolving or worsening effort
+      (progress >= 1) drives ``fall -> 0`` so gain returns to 1.0 --
+      amplification OFF, never suppression. Brian's ruling made structural: the
+      worst case, including adversarial repetition, is ordinary PC learning at
+      full ordinary strength (no easy-path opt-out of hard growth).
+    - **Governor:** ``cap`` bounds runaway (and binds when a decay mismatch
+      pushes coherence transiently > 1).
+
+    ``progress`` is a per-layer scalar (prediction error is a layer signal) and
+    broadcasts across the ``[out, in]`` weight. ``rise`` / ``cap`` are pilot-set
+    (spec §2; TUNE-ME with Fable's adversarial harness).
+    """
+    coherence = momentum.abs() / (update_ema + eps)
+    p = float(progress)
+    # fall = clamp(1 - progress, min=0). Written as an explicit comparison so a
+    # NaN ``progress`` (corrupt error signal) fails ``p < 1.0`` and yields
+    # fall=0.0 -> gain=1.0 -- a deliberate fail-safe to legacy, not the luck of
+    # a max() argument order (Fable audit 2026-07-06).
+    fall = (1.0 - p) if p < 1.0 else 0.0
+    gain = 1.0 + rise * coherence * fall
+    return gain.clamp(min=1.0, max=cap)
+
+
+# ---------------------------------------------------------------------------
 # Try to load or compile C++ extension (same pattern as luthi.fused_ops)
 # ---------------------------------------------------------------------------
 
@@ -88,6 +141,10 @@ def _pc_self_modify_python(
     precision_max: float,
     prediction_clamp: float,
     sparse_gate: torch.Tensor | None = None,
+    learning_gain_enabled: bool = False,
+    learning_gain_progress: float = 0.0,
+    learning_gain_rise: float = 2.0,
+    learning_gain_cap: float = 3.0,
 ) -> tuple[float, torch.Tensor]:
     """Pure Python implementation. Identical math to the C++ extension.
 
@@ -145,7 +202,21 @@ def _pc_self_modify_python(
     adaptive_factor = (2.0 / (1.0 + ratio)).clamp(max=1.0)
 
     # f. Apply update; update momentum and update_ema.
-    weight.add_(delta_w * adaptive_factor)
+    #    Inverted-U learning gain (opt-in, 2026-07-06): multiplies the APPLIED
+    #    delta only. The histories below stay PRE-gain (delta_w / update_mag) --
+    #    measured decision (gain spec §4): post-gain would inflate update_ema
+    #    and weaken the adaptive_factor spike guard by ~2.3x. Reading momentum /
+    #    update_ema here (pre-step values) keeps the gain's inputs and
+    #    adaptive_factor's inputs untouched, so the guard is bit-identical
+    #    gain-on vs off.
+    if learning_gain_enabled:
+        _gain = learning_gain(
+            momentum, update_ema, learning_gain_progress,
+            rise=learning_gain_rise, cap=learning_gain_cap,
+        )
+        weight.add_(delta_w * adaptive_factor * _gain)
+    else:
+        weight.add_(delta_w * adaptive_factor)
     momentum.mul_(momentum_decay).add_(
         delta_w, alpha=1.0 - momentum_decay
     )
@@ -241,6 +312,10 @@ def pc_self_modify(
     precision_max: float,
     prediction_clamp: float,
     sparse_gate: torch.Tensor | None = None,
+    learning_gain_enabled: bool = False,
+    learning_gain_progress: float = 0.0,
+    learning_gain_rise: float = 2.0,
+    learning_gain_cap: float = 3.0,
 ) -> tuple[float, torch.Tensor]:
     """One PC self-modification step.
 
@@ -253,7 +328,11 @@ def pc_self_modify(
         for this step. Caller (the layer's forward) stores this on
         `_last_pred_error` for the inter-block top-down sweep.
     """
-    if _use_cpp:
+    # The C++ extension does not implement the inverted-U learning gain yet
+    # (C++ parity is the next build step). When the gain is enabled, route to
+    # the Python path so the opt-in gain is honored; the ~50x-slower path is
+    # acceptable for the pilot (gain is off by default in production).
+    if _use_cpp and not learning_gain_enabled:
         salience_tensor, pred_error = _cpp_ops.pc_self_modify(
             weight, prediction, set_point, momentum, update_ema,
             precision, error_acc, plasticity, x_flat, output,
@@ -271,4 +350,8 @@ def pc_self_modify(
         set_point_adapt_rate, momentum_decay, update_ema_decay,
         precision_ema_decay, precision_min, precision_max,
         prediction_clamp, sparse_gate=sparse_gate,
+        learning_gain_enabled=learning_gain_enabled,
+        learning_gain_progress=learning_gain_progress,
+        learning_gain_rise=learning_gain_rise,
+        learning_gain_cap=learning_gain_cap,
     )

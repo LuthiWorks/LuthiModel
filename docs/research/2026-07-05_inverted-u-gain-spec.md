@@ -86,6 +86,33 @@ weight.add_(delta_w * adaptive_factor * gain)   # gain default 1.0
 `plasticity` (attention channel) and `adaptive_factor` (spike dampener) are
 untouched and stay separately steerable — do not fold gain into either.
 
+### History recording: PRE-gain (decided 2026-07-06, measured)
+
+`momentum` and `update_ema` record the **intended** delta (`delta_w` /
+`|delta_w|`), NOT the gain-applied change. This matches the existing convention
+(they already record pre-`adaptive_factor`) and is a measured safety
+requirement. The probe `scratchpad/pre_post_gain_probe.py` ran the recurrence
+both ways:
+
+- **Post-gain inflates `update_ema` by the gain factor** (2.6x at gain=2.6), and
+  `update_ema` is the denominator of `adaptive_factor`'s ratio -- so post-gain
+  makes a genuine spike look relatively smaller: after 200 steady steps + one
+  spike, post-gain let **2.27x more of the spike through** (`adaptive_factor`
+  0.18 pre vs 0.41 post). That weakens the refinement-6 spike guard.
+- **Coherence is scale-invariant** (identical pre/post) -- the gain's own input
+  is unaffected either way. (Fable was right on this; the dispute was only about
+  `adaptive_factor`.) No steady-state runaway in either mode; the danger is
+  spike-guard weakening, not divergence.
+- **Clean consequence:** with histories pre-gain, `adaptive_factor` never sees
+  the gain, so regime (d) is provable as **bit-identical `adaptive_factor`
+  gain-on vs off** -- the strongest guarantee, versus post-gain's analyze-and-hope.
+
+The rich-parameter "history should be true to the weight's becoming" concern is
+served at the **observation-only sinks** (living-drift eye, NREM day-accumulator)
+recording the actual applied change `delta_w * adaptive_factor * gain`. They
+never feed back, so truth there costs nothing (same principle as the
+measurement-only living-drift eye).
+
 ## 5. Slow-trace primitive (prerequisite; my foundations)
 
 The explicit fall needs `long-EMA(pred_error)`; NREM needs a day-scale record.
@@ -104,13 +131,19 @@ required.
 | a | Coherent establishment | gain rises on coherent novelty, then decays to 1.0 as error resolves; weight-norm bounded |
 | b | Sustained high-error repetition | **two-sided:** weight-norm bounded (no runaway) AND `gain(t) ≥ 1.0 ∀t` (no giving up); explicit fall + cap bind on non-resolution |
 | c | Thrash (coherence ≈ 0) | gain stays near 1.0 (noise is not amplified) |
-| d | Spike (3-way) | `adaptive_factor` still binds with gain active; gain does not defeat the refinement-6 spike guard |
+| d | Spike (3-way) | with **pre-gain histories**, `adaptive_factor` is **bit-identical** gain-on vs off (the gain never touches its inputs); the spike guard is provably preserved |
 | e | Cold-start / dead-weight | `update_ema→0, momentum→0` → coherence `0/0` resolves to 1.0, no NaN (eps on denominator) |
 | f | Legacy identity | flag off → byte-for-byte identical to current pc_ops; flag on-at-rest (gain=1.0) → numerically legacy |
 | g | Long-horizon boundedness | each regime run long, weight-norm stays bounded; coherence-overshoot (decay mismatch → coherence transiently >1) → cap binds |
 | h | Frozen-plasticity contract (flag ON) | lived re-encode under `freeze_plasticity()` stays bit-identical no-self-mod with gain active (gate 3, executable) |
 | i | Persistence round-trip | all new gain/slow-trace state survives checkpoint restore; restore mid-hard-growth does not reset resolution-progress |
 | j | Consolidation-replay interplay | **placeholder:** gain bypassed (=1.0) during `consolidate_layer_attractor` replay; real capture-vs-gain decision deferred to the NREM spec (do not decide in the suite) |
+| k | Oscillating-error (Fable probe) | error oscillating at a period between the two EMA horizons defeats the resolution detector (measured fall>0.25 on 31% of steps at zero net resolution). Accept-and-document with a duty-cycle bound; **named input to the gate-2 monitor design** (workspace is the designated discriminator). Optional cheap hardening: gate the fall on the long-EMA's own trend, not just the ratio |
+
+**Integration-half assertions (Fable audit 2026-07-06 — the (b) two-sided proof needs the composed update, not just the function):**
+- **(b) equilibrium-shift, not just no-divergence:** homeostasis bounds the norm, so a 3x gain doesn't diverge — it *moves the operating point*. Assert `norm_plateau(gain_on) / norm_plateau(off)` under a bound, or downstream scales drift silently.
+- **(b) stacked-blocks:** amplified layer-k outputs enlarge layer-(k+1)'s errors; single-layer boundedness doesn't compose for free. One multi-block regime required — every other regime is single-layer.
+- **(i) written introspectively:** enumerate the layer's `SlowEMA`/accumulator attributes *by type* and assert every one appears in the collected `living_extra_state` — so *forgetting the wiring* is a test failure, not the silent-amnesia class.
 
 ## 7. Safety gates (from the brief; preconditions)
 

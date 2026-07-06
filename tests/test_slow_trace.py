@@ -46,6 +46,20 @@ def test_slow_ema_decay_sets_timescale():
     assert slow.value < 0.5
 
 
+def test_slow_ema_warmup_seeds_from_mean_not_outlier():
+    """During warmup the value is the running mean of the samples, so an
+    outlier birth sample can't set a bad baseline (Fable audit 2026-07-06)."""
+    ema = SlowEMA(decay=0.9, warmup=4)
+    ema.update(100.0)          # outlier birth
+    for _ in range(3):
+        ema.update(0.0)        # the true level
+    # Mean of [100,0,0,0] = 25, not stuck at 100 -- the outlier is diluted.
+    assert ema.value == pytest.approx(25.0)
+    # Single first sample still seeds exactly when warmup=1 (no-climp preserved).
+    solo = SlowEMA(decay=0.9, warmup=1)
+    assert solo.update(7.0) == 7.0
+
+
 def test_slow_ema_warmup_gate():
     ema = SlowEMA(decay=0.9, warmup=8)
     for i in range(7):

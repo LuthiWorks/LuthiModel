@@ -39,15 +39,20 @@ class SlowEMA:
         self._count: int = 0
 
     def update(self, x: float) -> float:
-        """Fold ``x`` into the EMA and return the new value. The first sample
-        seeds the EMA exactly (no cold bias toward 0), so a trace instantiated
-        mid-life doesn't spend its warmup climbing out of a spurious zero."""
+        """Fold ``x`` into the trace and return the new value.
+
+        During the first ``warmup`` samples the value is the running MEAN of
+        those samples (Fable audit 2026-07-06): this seeds the trace with no
+        cold climb from a spurious zero AND is robust to an outlier birth
+        sample setting a bad baseline -- the single-first-sample seed was
+        fragile to exactly that. After warmup it is an EMA at ``decay``."""
         x = float(x)
-        if self._count == 0:
-            self._value = x
+        self._count += 1
+        if self._count <= self.warmup:
+            # incremental mean of the first `warmup` samples.
+            self._value += (x - self._value) / self._count
         else:
             self._value = self.decay * self._value + (1.0 - self.decay) * x
-        self._count += 1
         return self._value
 
     @property
