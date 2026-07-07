@@ -156,7 +156,7 @@ def test_h_frozen_plasticity_no_self_mod_with_gain_on():
         short=layer._err_short.value,
         long=layer._err_long.value,
         acc=layer._applied_change_accum.total,
-        last=layer._last_applied_change,
+        applied_ema=layer._applied_ema.value,
     )
 
     with freeze_plasticity(layer):
@@ -170,7 +170,7 @@ def test_h_frozen_plasticity_no_self_mod_with_gain_on():
     assert layer._err_short.value == snap["short"]
     assert layer._err_long.value == snap["long"]
     assert layer._applied_change_accum.total == snap["acc"]
-    assert layer._last_applied_change == snap["last"]
+    assert layer._applied_ema.value == snap["applied_ema"]
     # Two frozen forwards on identical input are bit-identical (no self-mod
     # between them) and grad-capable.
     assert torch.equal(out1, out2)
@@ -258,12 +258,14 @@ def test_k_oscillating_error_stays_bounded_under_cap():
     the workspace monitor (gate 2) is the designated discriminator."""
     on = _layer(gain=True, seed=9)
     torch.manual_seed(106)
-    # Oscillate input magnitude with a ~24-step period: between short (~10) and
-    # long (~100) horizons, so short and long EMAs stay roughly in phase and
-    # the ratio never signals sustained non-resolution.
+    # Oscillate input magnitude with a ~300-step period: between the shipped
+    # short (~100) and long (~1000) EMA horizons (decays 0.99/0.999), so the
+    # short/long ratio never settles into a sustained non-resolution signal and
+    # the explicit fall is defeated -- the worst case for the resolution
+    # detector. The safety claim under test is that the CAP still bounds it.
     import math
-    for t in range(600):
-        scale = 1.0 + 0.9 * math.sin(2 * math.pi * t / 24.0)
+    for t in range(1200):
+        scale = 1.0 + 0.9 * math.sin(2 * math.pi * t / 300.0)
         on(torch.randn(4, 16) * scale)
 
     assert torch.isfinite(on.weight).all()

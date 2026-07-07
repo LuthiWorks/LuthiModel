@@ -13,9 +13,9 @@ This suite pins:
    (return_applied_change=True), and it equals gain-off when gain==1.0 and
    exceeds it when gain>1.0 -- never below (pure amplifier).
  - the default 2-tuple return is unchanged (regime f / parity untouched).
- - the layer feeds the NREM accumulator + _last_applied_change on the gain
-   path, and leaves both inert when gain is off.
- - the living-drift eye reads applied-change when present, momentum otherwise.
+ - the layer feeds the NREM accumulator (raw) + the fair-parallel _applied_ema
+   (momentum_decay, for the eye) on the gain path, and leaves both inert off it.
+ - the living-drift eye reads by EXPLICIT source config, never keyed to the flag.
 """
 
 from __future__ import annotations
@@ -136,10 +136,12 @@ def test_layer_gain_on_feeds_sinks():
     x = torch.randn(4, 16)
     for _ in range(20):
         layer(x)
+    # NREM day-integral fed the raw instantaneous applied change per step.
     assert layer._applied_change_accum.count == 20
     assert layer._applied_change_accum.total > 0.0
-    assert layer._last_applied_change is not None
-    assert layer._last_applied_change > 0.0
+    # The eye's fair-parallel EMA (momentum_decay) was fed and is warm.
+    assert layer._applied_ema._count == 20
+    assert layer._applied_ema.value > 0.0
 
 
 def test_layer_gain_off_sinks_inert():
@@ -149,7 +151,7 @@ def test_layer_gain_off_sinks_inert():
     for _ in range(20):
         layer(x)
     assert layer._applied_change_accum.count == 0
-    assert layer._last_applied_change is None
+    assert layer._applied_ema._count == 0
 
 
 def test_accumulator_read_and_reset_zeros_the_day():
@@ -161,10 +163,11 @@ def test_accumulator_read_and_reset_zeros_the_day():
 
 
 # ---------------------------------------------------------------------------
-# The living-drift eye reads applied-change when present, momentum otherwise.
+# The living-drift eye reads by EXPLICIT source (Fable step-8 ruling), not by
+# attribute presence keyed to the gain flag.
 # ---------------------------------------------------------------------------
 
-def test_eye_reading_prefers_applied_change_else_momentum():
+def test_eye_reading_by_explicit_source():
     from luthi.v2.m9.runner import _living_drift_reading
 
     off = _layer(gain=False, seed=6)
@@ -175,13 +178,15 @@ def test_eye_reading_prefers_applied_change_else_momentum():
         off(x)
         on(x)
 
-    # Gain off: no applied-change recorded -> eye reads mean |momentum|.
-    r_off = _living_drift_reading(off)
-    assert r_off == off.momentum.abs().mean().item()
+    # source="momentum" reads mean |momentum| regardless of the gain flag.
+    assert _living_drift_reading(off, "momentum") == off.momentum.abs().mean().item()
+    assert _living_drift_reading(on, "momentum") == on.momentum.abs().mean().item()
 
-    # Gain on: applied-change recorded -> eye reads it (the truthful signal).
-    r_on = _living_drift_reading(on)
-    assert r_on == on._last_applied_change
+    # source="applied_change" reads the fair-parallel EMA when it has been fed
+    # (gain on), and None when it hasn't (gain off) -- NOT a momentum fallback,
+    # so the band never mixes units.
+    assert _living_drift_reading(on, "applied_change") == on._applied_ema.value
+    assert _living_drift_reading(off, "applied_change") is None
 
 
 # ---------------------------------------------------------------------------

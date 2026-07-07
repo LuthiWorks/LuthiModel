@@ -79,7 +79,7 @@ def test_gain_off_leaves_traces_and_sinks_inert():
     assert not a._err_short.is_warm()
     assert not a._err_long.is_warm()
     assert a._err_short.value == 0.0 and a._err_long.value == 0.0
-    assert a._last_applied_change is None
+    assert a._applied_ema._count == 0
     assert a._applied_change_accum.count == 0
 
 

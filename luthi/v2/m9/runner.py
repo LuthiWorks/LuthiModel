@@ -218,11 +218,24 @@ class M9Config:
     # safe under a θ that moves between cycles (the lived learner).
     mcts_persistent_tree: bool = False
     # Living-drift eye cadence (momentum-functions brief §4, 2026-07-05):
-    # every Nth staleness pass reads mean |momentum| across the encoder's
-    # living layers into the manager's measurement-only living band. The
-    # read is a full-matrix reduction per living layer — cheap at smoke,
+    # every Nth staleness pass reads a per-layer recent-change gauge across the
+    # encoder's living layers into the manager's measurement-only living band.
+    # The read is a full-matrix reduction per living layer — cheap at smoke,
     # memory-bandwidth-heavy at production scale, hence cadence-gated.
     living_drift_every: int = 8
+    # Living-drift eye SOURCE (Fable step-8 ruling, 2026-07-06). EXPLICIT
+    # config, deliberately DECOUPLED from learning_gain_enabled:
+    #   "momentum"       -- mean |momentum| (pre-gain intended change; the
+    #                       default, and what the eye has always read).
+    #   "applied_change" -- the per-layer EMA of the actual applied change
+    #                       (delta_w·af·gain), commensurate with momentum
+    #                       because it is smoothed at the same decay.
+    # The two are different QUANTITIES, not scalings, so the source must never
+    # switch silently mid-band: changing it re-warms the living band (fresh
+    # DriftBand) — never splice two units into one median/MAD history. Keying
+    # the source to a flag (the original design) is the rejected approach: it
+    # both confounds the cap A/B and breaks under thrash.
+    living_drift_source: str = "momentum"
 
 
 # ---------------------------------------------------------------------------
@@ -230,24 +243,32 @@ class M9Config:
 # ---------------------------------------------------------------------------
 
 
-def _living_drift_reading(ffn) -> Optional[float]:
-    """One living layer's recent-change gauge for the living-drift band.
+def _living_drift_reading(ffn, source: str) -> Optional[float]:
+    """One living layer's recent-change gauge for the living-drift band, under
+    an EXPLICIT source (Fable step-8 ruling, 2026-07-06) -- never keyed to the
+    gain flag.
 
-    Prefers the *truthful applied change* (`_last_applied_change`, recorded by
-    the layer only when the inverted-U gain is on) over pre-gain momentum, so
-    the eye sees the real "becoming" the gain produces -- up to 3x wider than
-    the intended change at cap=3.0 (spec §4/§8 step 5). Falls back to mean
-    |momentum| (already maintained per weight by pc_self_modify) when no
-    applied change has been recorded -- i.e. in production, where the gain is
-    off and applied == intended, the eye reads exactly what it always did, so
-    the F1/F2 tuning pass keeps a single unmoved target. Returns None when the
-    layer exposes neither (e.g. a dead baseline), so the caller skips it.
+      source="momentum"       -> mean |momentum| (pre-gain intended change).
+      source="applied_change" -> the per-layer EMA of the actual applied change
+                                  (`_applied_ema`), smoothed at momentum's decay
+                                  so it is commensurate with the momentum source.
+
+    Returns None when the layer has no reading in the requested unit -- a dead
+    baseline (no momentum), or "applied_change" before any gain-shaped update
+    has been applied (the EMA is unfed) -- so the caller skips it rather than
+    feeding a spurious zero into the band. Returning None here is NOT the old
+    presence-keyed fallback: the source is fixed by config; None just means
+    "no datum in this unit yet," and the band simply waits.
     """
     if ffn is None:
         return None
-    applied = getattr(ffn, "_last_applied_change", None)
-    if applied is not None:
-        return float(applied)
+    if source == "applied_change":
+        ema = getattr(ffn, "_applied_ema", None)
+        # Unfed EMA (_count == 0) => no applied gain observed yet; skip.
+        if ema is not None and ema._count > 0:
+            return float(ema.value)
+        return None
+    # Default / "momentum".
     if hasattr(ffn, "momentum"):
         return ffn.momentum.abs().mean().item()
     return None
@@ -1348,6 +1369,10 @@ class M9Trainer(JEPATrainer):
         self._living_drift_counter += 1
         if self._living_drift_counter >= self.m9_config.living_drift_every:
             self._living_drift_counter = 0
+            # Re-warm the band if the configured source changed (fresh
+            # DriftBand -- never splice two units into one history). Idempotent
+            # when unchanged; source is normally a construction-time config.
+            sm.set_living_drift_source(self.m9_config.living_drift_source)
             living_drift = self._living_drift_signal()
             if living_drift is not None:
                 sm.observe_living_drift(living_drift)
@@ -1466,11 +1491,12 @@ class M9Trainer(JEPATrainer):
         blocks = getattr(self.loss_module.online_encoder, "blocks", None)
         if blocks is None:
             return None
+        source = self.m9_config.living_drift_source
         vals: list[float] = []
         with torch.no_grad():
             for block in blocks:
                 ffn = getattr(block, "living_ffn", None)
-                reading = _living_drift_reading(ffn)
+                reading = _living_drift_reading(ffn, source)
                 if reading is not None:
                     vals.append(reading)
         if not vals:

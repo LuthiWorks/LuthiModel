@@ -64,8 +64,8 @@ class PredictiveCodingLayer(nn.Module):
         learning_gain_enabled: bool = False,
         learning_gain_rise: float = 2.0,
         learning_gain_cap: float = 3.0,
-        resolution_short_decay: float = 0.9,
-        resolution_long_decay: float = 0.99,
+        resolution_short_decay: float = 0.99,
+        resolution_long_decay: float = 0.999,
         resolution_warmup: int = 8,
         buffer_dtypes: dict[str, torch.dtype] | None = None,
     ):
@@ -331,14 +331,22 @@ class PredictiveCodingLayer(nn.Module):
         self._err_long = SlowEMA(
             decay=resolution_long_decay, warmup=resolution_warmup
         )
-        # Applied-change sinks (spec §4/§8 step 5, wired below): the NREM
-        # day-integral of the *actual* applied change, and the most recent
-        # per-forward reading the living-drift eye reads when the gain is on.
-        # Recorded ONLY on the gain path so production (gain off) leaves the
-        # eye reading pre-gain momentum unchanged -- no moving target for the
-        # F1/F2 tuning pass.
+        # Applied-change sinks (spec §4/§8 step 5; Fable step-8 ruling
+        # 2026-07-06). Two DISTINCT consumers, deliberately different quantities:
+        #  * NREM day-integral -- the RAW instantaneous applied change summed
+        #    each step; NREM wants the integral of truth, not a smoothed one.
+        #  * living-drift eye -- a per-layer EMA of the applied change at the
+        #    SAME decay as `momentum`, so the eye's "applied_change" source is
+        #    commensurate with its "momentum" source (both ~equally smoothed)
+        #    rather than an instantaneous magnitude that would read as a spike
+        #    against a momentum-built band. The eye's source is an explicit
+        #    M9Config knob (living_drift_source), NOT keyed to the gain flag --
+        #    so there is no stale-reading-forever edge and no flag-coupled unit
+        #    discontinuity. Fed only on the gain path (there is no applied gain
+        #    to observe otherwise); a fair-parallel refinement to a per-weight
+        #    applied-momentum buffer is deferred to the tuning pass.
         self._applied_change_accum = ReadResetAccumulator()
-        self._last_applied_change: float | None = None
+        self._applied_ema = SlowEMA(decay=self.momentum_decay, warmup=1)
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -564,7 +572,6 @@ class PredictiveCodingLayer(nn.Module):
                 gain_progress = 0.0
 
             T = self.inference_steps_per_forward
-            applied_this_forward = 0.0
             for inner_step in range(T):
                 # Recompute output for inner_step > 0 since the weight
                 # has changed since the last iteration. For the first
@@ -607,22 +614,25 @@ class PredictiveCodingLayer(nn.Module):
                 )
                 if self.learning_gain_enabled:
                     salience, pred_error, applied = result
-                    applied_this_forward += applied
+                    # Feed the applied-change sinks per inner step (each inner
+                    # step is a real weight change): the raw value to the NREM
+                    # day-integral, and the per-layer EMA (momentum_decay) the
+                    # eye reads. Per-step cadence matches momentum's own
+                    # per-inner-step update, keeping the two eye sources
+                    # commensurate under iPC T>1.
+                    self._applied_change_accum.add(applied)
+                    self._applied_ema.update(applied)
                 else:
                     salience, pred_error = result
 
             # Gain path only: feed the resolution traces once per forward with
-            # the final inner step's prediction-error magnitude (so the next
-            # forward's gain sees this forward's outcome), and record the
-            # applied-change signal to the observation-only sinks -- the NREM
-            # day-integral and the eye's last-reading (spec §4/§8 step 5). Off
-            # the gain path these stay untouched (regime f).
+            # the final inner step's prediction-error magnitude, so the next
+            # forward's gain sees this forward's outcome. Off the gain path
+            # these stay untouched (regime f).
             if self.learning_gain_enabled:
                 err_scalar = pred_error.abs().mean().item()
                 self._err_short.update(err_scalar)
                 self._err_long.update(err_scalar)
-                self._last_applied_change = applied_this_forward
-                self._applied_change_accum.add(applied_this_forward)
 
             # Recompute final output after the last inner step so the
             # returned activation reflects the post-self-mod weight state.

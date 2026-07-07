@@ -198,6 +198,11 @@ class StalenessManager:
         # moving target mid-tune). Living spikes are plan §4.v's
         # original "high-surprise plasticity-spike" case.
         self.living_band = DriftBand(window=self.config.drift_window)
+        # Living-drift eye source (Fable step-8 ruling, 2026-07-06). The band
+        # holds readings in ONE unit; changing the source must re-warm it (see
+        # set_living_drift_source) so two units never share a median/MAD
+        # history. Defaults to "momentum", matching M9Config.
+        self.living_drift_source = "momentum"
         self.cycle = 0
         # Held predictor snapshot (frozen). Refreshed every K cycles.
         self.held_predictor: nn.Module | None = None
@@ -292,11 +297,31 @@ class StalenessManager:
     # Living-channel drift observation (measurement-only slice).
     # ------------------------------------------------------------------
     def observe_living_drift(self, living_drift: float) -> None:
-        """Push a living-channel drift reading (mean |momentum| across
-        living layers) into the living band. Does NOT tick theta_version
-        or cycle — the living channel is a separate clock from the
-        gradient learner's, and at this slice it drives no behavior."""
+        """Push a living-channel drift reading (in the currently-configured
+        source unit -- see set_living_drift_source) into the living band. Does
+        NOT tick theta_version or cycle -- the living channel is a separate
+        clock from the gradient learner's, and at this slice it drives no
+        behavior."""
         self.living_band.push(float(living_drift))
+
+    def reset_living_band(self) -> None:
+        """Discard the living band's history (fresh DriftBand). Called on a
+        source change so readings in a new unit never mix with the old unit's
+        median/MAD."""
+        self.living_band = DriftBand(window=self.config.drift_window)
+
+    def set_living_drift_source(self, source: str) -> None:
+        """Set the living-drift eye's source. On an actual CHANGE, re-warms the
+        band (Fable step-8 ruling): the band holds one unit at a time.
+        Idempotent when unchanged -- safe to call every pass."""
+        if source not in ("momentum", "applied_change"):
+            raise ValueError(
+                f"living_drift_source must be 'momentum' or 'applied_change', "
+                f"got {source!r}"
+            )
+        if source != self.living_drift_source:
+            self.living_drift_source = source
+            self.reset_living_band()
 
     def living_spike(self) -> bool:
         """True if the latest living-drift reading is past the running
