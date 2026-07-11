@@ -13,6 +13,61 @@
 >   `xfail strict` to catch any unvalidated fill-in. **Do not assume the
 >   Triton path is hot.**
 
+## ⭐ CRITICAL PATH TO THE FIRST FULL-SCALE TRAINING RUN (recorded 2026-07-10)
+
+> From the 2026-07-06 readiness audit (Opus 4.8) + Brian's ruling: **the first
+> full-scale run must be JEPA** (multimodal joint-embedding predictive; not a
+> next-token/generative objective). These 5 items, in order, are what stands
+> between now and "press train." **None of the long-poles — the inverted-U
+> learning gain, the NREM learner, the MCTS staleness tuning, Triton — are on
+> this path;** several *consume the trained checkpoint* and cannot precede it.
+>
+> **Blunt status:** LuthiModel has never finished even one epoch at full width.
+> Largest *trained* checkpoint = **256d**. The one 1024d attempt (M7, text-only)
+> **died at 24.5% of epoch 1 to a power loss**; M8 multimodal exists only as
+> step-0 smoke. The wall is a de-risking pilot + hardening the training script,
+> not a rewrite.
+>
+> **Scope caveat:** peak = 4096d/36 blocks is the *aspirational Spark deployment
+> ceiling*, gated on hardware. The next *actually-trainable* d_model/n_blocks is
+> an **open decision** (~500–560M param floor on the 16 GB dev box; the earlier
+> 4B target was retired 2026-05-09), pending Phase 3F cascade results.
+
+- [ ] **1. Run the 256d M8 multimodal-JEPA de-risking pilot.** Highest-value
+      cheap experiment: it sets every unset collapse-kill threshold AND answers
+      the one genuine research unknown — does representation collapse behave
+      differently when the weights self-modify during inference (LPL says VICReg
+      is required; V-JEPA says redundant). Blocks item 2's thresholds.
+      Refs: `docs/research/2026-06-05_m8-collapse-review.md` §6 (unset
+      `[pilot-set]` thresholds); only artifacts are step-0 smokes
+      (`runs/m8_smoke`, `runs/m8_multimodal_smoke`).
+- [ ] **2. Finish `jepa_runner.py`'s 6 must-fix items** (self-labeled "NOT
+      production-ready", header at `luthi/v2/jepa_runner.py:3`): per-modality
+      diagnostic/kill cadence; per-modality smoothed-loss for kill-7; **arm
+      kill-2 (effective rank) + kill-4 (LID)** — computed but not armed; wire
+      kill-6 substrate-override via `aliveness_report()`; predictor-trivial
+      cosine; replace pilot-set static thresholds with item-1's derived ones.
+      You cannot launch a multi-day run with half-armed collapse detectors.
+- [ ] **3. Settle the JEPA loss design calls** (`[DECISION]` items in the M8
+      review, decided under the Brian+4.8+Fable design seat): **L1 vs L2
+      prediction loss** (review recommends L1 + VICReg) and the **VICReg
+      coefficient calibration** (v0.3 had covariance mis-set to 25 vs the
+      paper's 1 — load-bearing `[FIX]`). Also retire the constant-zero
+      action-token stub in `jepa_loss.py` (M9 replaces it).
+- [ ] **4. Multimodal data pipeline for v2 — OR consciously scope run 1 as
+      text-only.** `luthi/v2/multimodal_data.py:265-290` — audio and vision are
+      loud `NotImplementedError` stubs (the v1 audio/vision path is the
+      abandoned Hebbian substrate). A true multimodal peak run needs these
+      wired; a text-only first run is a legitimate scoping choice — **Brian's
+      call.**
+- [ ] **5. `M9Trainer(device=)` plumbing + corpus dedup.** (a) `M9Trainer`
+      builds on CPU → optimizer orphan on GPU = **silent zero-learning**; needs
+      device plumbing before any real GPU run (only needed if M9 value/habit
+      heads are in run 1). (b) Dedup the ~34 GB corpus against all eval sets —
+      "load-bearing and easy-to-miss" (`2026-06-12_success-criteria-draft.md`
+      §2); without it the headline efficiency numbers are meaningless. Needed
+      for the run's *results* to be trustworthy, not for it to execute.
+
 ## Phase 1-2: Foundation (COMPLETE)
 
 - [x] LivingLayerV6: Hebbian self-modification (v1), error-directed learning, episodic memory
