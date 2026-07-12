@@ -1,27 +1,41 @@
 """JEPA runner for M8 multimodal training.
 
-**STATUS: Gate-1 WIP runnable skeleton, NOT production-ready.** Must-fix
-items before the baseline production run (per 4.8 review 2026-06-06):
+**STATUS (verified against the code 2026-07-12, Fable 5): five of the
+six 2026-06-06 must-fix items landed 2026-06-06..06-08.** The original
+header's must-fix list outlived the fixes by a month and was quoted
+verbatim into the 2026-07-10 critical-path To-Do -- kept below with
+per-item ground truth so that can't happen twice.
 
-1. **Per-modality cadence for diagnostics + kill criteria.** Light/deep
-   diagnostics currently fire on the global step counter, so rare
-   modalities (audio at alpha=0.7 is ~0.9% of steps) get instrumented
-   ~once per 11K steps -- kill-1/3/5 windows would evaluate ~once per
-   40K steps for audio and could miss a real collapse. Fix: per-modality
-   step counters; instrument every N steps of that modality.
-2. **Kill-7 cadence + scale.** _smoothed_loss_buf is appended every 100
-   global steps (not every step) and mixes per-modality losses of
-   different scales -- the descent test is currently a noisy text-only
-   proxy. Fix: per-modality smoothed-loss tracking, appended every step.
-3. **Activate kill-2 (effective rank) and kill-4 (LID) once thresholds
-   are pilot-set from M8's warmup window.** Currently computed but not
-   armed.
-4. **Wire kill-6 (substrate override on pred_frob/err_acc) via
-   MultimodalPredictiveCodingLM.aliveness_report()**; not called yet.
-5. **Predictor-trivial cosine in light metrics** -- cheap if loss returns
-   predicted_target.detach().
-6. **Pilot-set threshold derivation** from warmup window (currently
-   static config fallbacks).
+1. **Per-modality cadence for diagnostics + kill criteria** -- DONE
+   (deaf1ec, 2026-06-06). Per-modality step counters drive diagnostics,
+   kill-history pushes, and per-modality kill warmup.
+2. **Kill-7 cadence + scale** -- RESOLVED BY DECISION (deaf1ec).
+   _smoothed_loss_buf now appends every step in train_step; the
+   mixed-modality scale was ruled intentional (criterion 7 is total-
+   objective trainability; per-modality collapse is criteria 1-5's
+   job). OPEN design call flagged 2026-07-12: kill-7 as written fires
+   on ANY 5000-step plateau, including healthy convergence -- see
+   docs/reviews/2026-07-12_jepa-runner-verification-fable.md.
+3. **Kill-2 (effective rank)** -- ARMED (89eefbe, 2026-06-08) on the
+   trending running-best machinery. **Kill-4 (LID)** -- STILL OPEN,
+   and NOT merely unarmed: LID is not computed at all (deliberately
+   deferred in _deep_collapse_metrics; rank measures carry the
+   dimensional-collapse signal meanwhile).
+4. **Kill-6 substrate override via aliveness_report()** -- DONE
+   (47187f4, 2026-06-08).
+5. **Predictor-trivial cosine in light metrics** -- DONE (189001c,
+   2026-06-07).
+6. **Pilot-set threshold derivation** -- DONE (72526cb, 2026-06-08;
+   stationary median-of-first-N + trending running-best). Static
+   config values remain only as pre-baseline fallbacks. The 256d
+   de-risking pilot still validates the derived thresholds before a
+   production run.
+
+Open before the baseline production run: kill-4/LID (deferred), the
+256d pilot's threshold validation, and two design calls flagged in the
+2026-07-12 verification review (kill-7 plateau semantics; the epoch-1
+abort gate documents "waits for confirmation" but defaults to continue
+without waiting).
 
 Implemented (Gate-1 sufficient):
 - Temperature-weighted modality sampling (alpha as config; M8 baseline 0.7).
@@ -1364,14 +1378,20 @@ class JEPATrainer:
             os.fsync(f.fileno())
         os.replace(tmp_path, slot_path)
 
-        # Enforce rolling cap.
+        # Enforce rolling cap. excess must be guarded positive: a
+        # negative slice (fewer checkpoints than slots) deletes from
+        # the FRONT of the list -- the pre-2026-07-12 bug that held the
+        # directory to a single slot and silently defeated the
+        # fallback-to-older-slots durability design (v0.5 §4 / B6).
+        # Regression-pinned in tests/test_jepa_runner_checkpoint_rotation.py.
         existing = sorted(ckpt_dir.glob("ckpt_*.pt"))
         excess = len(existing) - self.config.checkpoint.rolling_slots
-        for old in existing[:excess]:
-            try:
-                old.unlink()
-            except OSError:
-                logger.warning("Failed to remove old checkpoint %s", old)
+        if excess > 0:
+            for old in existing[:excess]:
+                try:
+                    old.unlink()
+                except OSError:
+                    logger.warning("Failed to remove old checkpoint %s", old)
 
         logger.info(
             "Checkpoint written: %s (reason=%s, step=%d)",
