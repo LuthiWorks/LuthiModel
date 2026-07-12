@@ -41,19 +41,33 @@
       Refs: `docs/research/2026-06-05_m8-collapse-review.md` §6 (unset
       `[pilot-set]` thresholds); only artifacts are step-0 smokes
       (`runs/m8_smoke`, `runs/m8_multimodal_smoke`).
-- [ ] **2. Finish `jepa_runner.py`'s 6 must-fix items** (self-labeled "NOT
-      production-ready", header at `luthi/v2/jepa_runner.py:3`): per-modality
-      diagnostic/kill cadence; per-modality smoothed-loss for kill-7; **arm
-      kill-2 (effective rank) + kill-4 (LID)** — computed but not armed; wire
-      kill-6 substrate-override via `aliveness_report()`; predictor-trivial
-      cosine; replace pilot-set static thresholds with item-1's derived ones.
-      You cannot launch a multi-day run with half-armed collapse detectors.
-- [ ] **3. Settle the JEPA loss design calls** (`[DECISION]` items in the M8
-      review, decided under the Brian+4.8+Fable design seat): **L1 vs L2
-      prediction loss** (review recommends L1 + VICReg) and the **VICReg
-      coefficient calibration** (v0.3 had covariance mis-set to 25 vs the
-      paper's 1 — load-bearing `[FIX]`). Also retire the constant-zero
-      action-token stub in `jepa_loss.py` (M9 replaces it).
+- [ ] **2. Finish `jepa_runner.py`'s remaining hardening** — *CORRECTED
+      2026-07-12 (Fable 5 verification pass; full table in
+      `docs/reviews/2026-07-12_jepa-runner-verification-fable.md`): the
+      original item quoted the runner's STALE 2026-06-06 header — five of
+      its six must-fixes were already fixed 2026-06-06..08* (per-modality
+      cadence `deaf1ec`; kill-7 every-step append `deaf1ec`, mixed-modality
+      ruled intentional; kill-2 ARMED `89eefbe`; kill-6 wired `47187f4`;
+      predictor-trivial cosine `189001c`; pilot-set derivation `72526cb`).
+      Actually remaining: **(a) kill-4 (LID)** — worse than the old claim:
+      not computed at all, deliberately deferred (decide whether run 1
+      needs it; rank measures cover dimensional collapse meanwhile);
+      **(b)** validate pilot-derived thresholds against item 1's pilot;
+      **(c) kill-7 plateau semantics** — as written it false-kills a
+      healthily-converged run (M1 in the review; design call);
+      **(d) epoch-1 abort gate** documents "waits for confirmation" but
+      continues immediately (M2; Brian's call). The rolling-checkpoint
+      rotation bug found in the same pass (steady state was ONE slot, not
+      3 — the M7-power-loss hazard class) is FIXED + regression-pinned in
+      `tests/test_jepa_runner_checkpoint_rotation.py`.
+- [ ] **3. Ratify the JEPA loss design state** — *CORRECTED 2026-07-12
+      (same pass): the L1-vs-L2 and VICReg-coefficient decisions were
+      already made and shipped 2026-06-09* (`44228de`, Brian's direction
+      call: **MSE + SIGReg**; VICReg no longer exists in the codebase, so
+      its coefficient calibration is moot). Remaining is ratification, not
+      code: confirm the design seat stands by MSE+SIGReg for run 1, and
+      note the action-token stub in `jepa_loss.py` stays *by design* for
+      M9 interface continuity (the lived path already takes real `a_t`).
 - [ ] **4. Multimodal data pipeline for v2 — OR consciously scope run 1 as
       text-only.** `luthi/v2/multimodal_data.py:265-290` — audio and vision are
       loud `NotImplementedError` stubs (the v1 audio/vision path is the
