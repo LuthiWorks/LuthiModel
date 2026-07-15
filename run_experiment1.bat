@@ -1,17 +1,17 @@
 @echo off
-REM Experiment 1: matched-capacity control sweep (falsification-critical)
-REM Protocol: docs/research/living-weights-experiments.md section 2
-REM Pre-registration: docs/research/2026-07-15_falsification-preregistration.md
-REM 5 seeds per condition (Brian, 2026-07-15). Resumable: completed runs skipped.
-REM
-REM   run_experiment1.bat 1        -> stage 1: v2@256 x5 + dead@256 x5   (~44h)
-REM   run_experiment1.bat 2        -> stage 2: dead@192 x5 + dead@384 x5 (~37h)
-REM   run_experiment1.bat 3        -> stage 3: dead@512 x5               (~35h)
-REM   run_experiment1.bat 1 --dry-run   -> print the plan without running
-REM   run_experiment1.bat --aggregate   -> summarize completed runs
-REM
-REM Estimates from the M5 256d rerun (~5.5h/v2 run, ~3.3h/dead run).
-REM Mind the game windows: Sunday 2-6 PM, biweekly Friday night.
+REM ============================================================================
+REM RETIRED 2026-07-15 (Brian's JEPA ruling) -- LM-objective sweep, historical.
+REM The falsification program moved to the (Le)JEPA objective; KF1/KF2 bind to
+REM the two-arm JEPA pilot (living vs dead_ffn encoder), which merges with the
+REM M8 256d de-risking pilot (critical-path item 1). See:
+REM   docs/research/living-weights-experiments.md   (JEPA edition)
+REM   docs/research/2026-07-15_falsification-preregistration.md (amendment)
+REM This script remains only for a deliberate LM-arena historical replication.
+REM ============================================================================
+echo WARNING: RETIRED LM-objective sweep. Results do NOT bind the
+echo pre-registered criteria (rebound to the JEPA pilot 2026-07-15).
+echo Press Ctrl+C to abort, or continue only for historical replication.
+pause
 
 if "%1"=="--aggregate" (
     python scripts\experiment1_driver.py --aggregate

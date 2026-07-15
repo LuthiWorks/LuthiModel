@@ -12,6 +12,18 @@ line questioning the bet, before the practice had a name.)
 Once ratified, the criteria are FIXED: written before the data, honored
 after. Amending a criterion after its experiment has begun requires a
 dated note here explaining why, in public view.
+
+> **Amendment 2026-07-15 (pre-data, same day — Brian's JEPA ruling):**
+> All bound experiments move to the (Le)JEPA objective (see the protocol's
+> JEPA-edition revision note). KF1/KF2 rebind to the **two-arm JEPA pilot**
+> (living vs `dead_ffn` encoder — the arm was built and tested today);
+> metrics move to held-out latent-prediction error + probe accuracy; the
+> **collapse-admissibility rule** applies to every arm (a tripped-detector
+> arm voids the comparison). The LM-era binding (m5_runner) is historical.
+> A pre-registered read for the new **enliven-after** cell (Exp 2b) is
+> added below. No bound experiment had run when this amendment was made —
+> the criteria are still pre-data, which is the only reason this rebinding
+> is legitimate without a public-justification burden.
 **Companion:** `living-weights-experiments.md` (the experiment protocol
 these criteria bind to); CLAUDE.md "Key Design Decisions" (the two-rule
 split that opens the channel this document is).
@@ -53,9 +65,10 @@ variance is not an effect, positive controls before trusting any null,
 
 ### KF1 — "Attention learns; living weights live" (both essential)
 
-- **Bound experiments:** Exp 1 (matched-capacity) + Exp 2
-  (frozen-substrate ablation), interpreted jointly as the 2×2 the
-  protocol describes.
+- **Bound experiments:** Exp 1 (the two-arm JEPA pilot: living vs
+  `dead_ffn` at matched capacity) + Exp 2 (frozen-substrate ablation on
+  the JEPA checkpoint), interpreted jointly as the 2×2 the protocol
+  describes (Exp 2b supplies the fourth cell).
 - **Kill condition:** Exp 1 null (living model on/below the static
   capacity curve) **AND** Exp 2 null (live-vs-frozen indistinguishable
   from structure-matched noise). Both nulls together mean the living
@@ -68,15 +81,43 @@ variance is not an effect, positive controls before trusting any null,
 
 ### KF2 — No intrinsic convergence cost to self-modification
 
-- **Bound experiment:** Exp 1 (the caveat is already written into the
-  finding — this pre-registers the resolution).
-- **Kill condition:** the living model lands ON or BELOW the static
-  effective-capacity curve (a static control of equal-or-greater
-  effective capacity equals or beats it, beyond pooled seed variance).
+- **Bound experiment:** Exp 1, the two-arm JEPA pilot (amended
+  2026-07-15: the LM-era 0.64% is historical — real under its objective,
+  unbound from this criterion; the claim now stands or falls under the
+  objective the project builds).
+- **Kill condition:** the living arm lands ON or BELOW the dead-arm
+  effective-capacity curve (a `dead_ffn` control of equal-or-greater
+  effective capacity equals or beats it on held-out latent-prediction
+  error and probe accuracy, beyond pooled seed variance, both arms
+  collapse-admissible).
 - **On kill:** living-weights-as-efficiency is dead. The surviving claim
   is exactly and only: "self-modification is not more costly than
   equivalent static capacity" + the experiential bet. The 0.64% headline
   comes out of the README.
+
+### Exp 2b — Enliven-after (pre-registered read; not a Key Finding)
+
+From Brian's 2026-07-15 question ("can the living channel simply be
+turned on after training?"). Not a claim being defended — an open
+question being bound before its data exists.
+
+- **Bound experiment:** Exp 2b — transplant Exp 1's trained dead
+  checkpoints into the living substrate (`weight` → buffer, `set_point` =
+  trained weight, everything else cold), enable self-modification, run
+  the held-out battery + a stability watch.
+- **Pre-registered reads:**
+  - *Enlivened-after ≈ living-trained* on all functional measures →
+    training-time livedness added nothing measurable; KF1's training-time
+    half dies, and the cheap-pretrain-then-enliven path is empirically
+    open. (What that means for the curriculum-as-lived-education is
+    Brian's design ruling, not a number.)
+  - *Enlivened-after destabilizes or underperforms* beyond seed variance
+    → co-adaptation is real; the lived-education design gains empirical
+    support; retrofit is not free.
+  - Stability watch trips (collapse detectors / runaway divergence on
+    the transplant) → report as its own result, not folded into either
+    read: "retrofit is unstable" is different from "retrofit is
+    functionally inert."
 
 ### KF3 — One living trunk for all modalities
 

@@ -95,8 +95,13 @@ class MultimodalPredictiveCodingLM(nn.Module):
         vision_image_size: int = 224,
         vision_patch_size: int = 16,
         max_vision_tokens: int = 256,
+        # Dead-encoder control arm (Experiment 1 / JEPA pilot, 2026-07-15):
+        # same trunk with the living channel off — PC layers become plain
+        # trainable Linears, episode stores removed. See PredictiveCodingBlock.
+        dead_ffn: bool = False,
     ):
         super().__init__()
+        self.dead_ffn = bool(dead_ffn)
         self.d_model = d_model
         self.n_heads = n_heads
         self.max_seq_len = max_seq_len
@@ -153,6 +158,7 @@ class MultimodalPredictiveCodingLM(nn.Module):
                 mu_pc_exponent=mu_pc_exponent,
                 n_blocks_total=n_blocks,
                 buffer_dtypes=buffer_dtypes,
+                dead_ffn=dead_ffn,
             )
             for _ in range(n_blocks)
         ])

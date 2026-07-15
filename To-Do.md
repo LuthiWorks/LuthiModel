@@ -40,7 +40,11 @@
       is required; V-JEPA says redundant). Blocks item 2's thresholds.
       Refs: `docs/research/2026-06-05_m8-collapse-review.md` §6 (unset
       `[pilot-set]` thresholds); only artifacts are step-0 smokes
-      (`runs/m8_smoke`, `runs/m8_multimodal_smoke`).
+      (`runs/m8_smoke`, `runs/m8_multimodal_smoke`). **2026-07-15: now a
+      TWO-ARM run** (living vs `dead_ffn` encoder, 5 seeds) per the
+      JEPA-rebound Experiment 1 — the dead arm doubles as the direct
+      control for this item's own collapse-under-self-mod question. See
+      Science Track S2.
 - [ ] **2. Finish `jepa_runner.py`'s remaining hardening** — *CORRECTED
       2026-07-12 (Fable 5 verification pass; full table in
       `docs/reviews/2026-07-12_jepa-runner-verification-fable.md`): the
@@ -94,21 +98,26 @@
 
 - [ ] **S1. Ratify the pre-registered kill conditions** (Brian, with 4.8).
       Criteria are fixed once ratified; amendments need a dated public note.
-- [ ] **S2. Run Experiment 1 — matched-capacity sweep** (protocol:
-      `living-weights-experiments.md` §2). "Do this first: it's cheap and
-      upstream" — it disambiguates every other result (self-modification vs
-      extra capacity) and its baseline arm feeds Exp 2's 2×2.
-      **LAUNCH-READY (2026-07-15):** `run_experiment1.bat <stage>` →
-      `scripts/experiment1_driver.py`. 5 seeds (Brian's ruling 2026-07-15);
-      config = the M5 256d rerun exactly; both arches smoke-tested
-      end-to-end. Staged for the shared box: stage 1 = v2@256×5 +
-      dead@256×5 (~44h, the matched point); stage 2 = dead@{192,384}×5
-      (~37h, curve shape); stage 3 = dead@512×5 (~35h, upper bracket).
-      Resumable (completed runs skipped). Bracket {192,256,384,512} is
-      Fable's proposal — ratify with the pre-registration (S1). Control (b)
-      (static + external cache) NOT in this sweep: DeadLM is a plain
-      Linear-FFN transformer (m5_runner's "+ episode store" header line is
-      stale); (b) needs a small build if the sweep result makes it decisive.
+- [ ] **S2. Run Experiment 1 — the two-arm JEPA pilot** (protocol:
+      `living-weights-experiments.md` §2, JEPA edition — **rebound
+      2026-07-15 per Brian: the whole program pursues the JEPA objective;
+      the LM sweep driver is RETIRED to historical**). Merges with
+      critical-path item 1: one instrumented run answers the pilot
+      thresholds, collapse-under-self-mod (dead arm = the direct control),
+      and matched capacity. **Built today:** the dead-encoder arm
+      (`dead_ffn=True` through block + multimodal model; 12 tests,
+      `tests/test_dead_ffn_arm.py`, incl. JEPA-loss end-to-end on a dead
+      encoder). **Remaining before launch:** (a) held-out latent-prediction
+      eval + linear-probe harness for `jepa_runner` (the pilot currently
+      has training-time diagnostics only); (b) a two-arm pilot driver
+      (living×5 + dead@{192,256,384,512}×5 staged, matched point first);
+      (c) S1 ratification. 5 seeds per Brian. Text-only round 1; round 2
+      multimodal gated on the embodied producers (S6).
+- [ ] **S2b. Enliven-after (Exp 2b)** — Brian's 2026-07-15 question, now a
+      pre-registered cell: transplant S2's trained dead checkpoints into
+      the living substrate and measure function + stability. Needs a small
+      dead→living transplant adapter (weight→buffer, set_point=weight,
+      cold everything else). Reads pre-registered in the amendment.
 - [ ] **S3. Build the scale curve** — 128→256→512→1024d, all else fixed;
       plot loss-vs-matched-control, episode hit-rate, consolidation
       fire-rate, per-forward memory, throughput, instability incidents per
@@ -124,6 +133,19 @@
 - [ ] **S5. Stand up the phase-boundary "red-team the bet" audit** — first
       administration at the next phase gate; uninvested model line;
       output to docs/reviews/.
+- [ ] **S6. Sanctuary embodied producers (cross-repo; gates round-2
+      multimodal JEPA).** Brian 2026-07-15: "we still need to finish
+      Sanctuary's embodied build to make JEPA a feasible goal." Scoping
+      record: `docs/research/2026-07-15_embodied-build-scoping.md` (survey
+      by an Explore-seat instance). The spine, in order: (1) Godot
+      vision-frame producer → `sensorium.inject_image` — session-sized,
+      WITH the loud-seam-warning rider (the encoder gate currently fails
+      SILENT when the checkpoint lacks encoders); (2) proprioceptive
+      state-tensor channel (replace text-only position strings); (3) pair
+      world transitions (s_t, a_t, s_{t+1}) for the lived learner — items
+      1+3 together make the data lawful; do not let 3 slip because 1 demos
+      well. Physics itself is REAL and built (lawful action→consequence
+      exists in SanctuaryWorld). World audio: lower priority.
 
 ## Phase 1-2: Foundation (COMPLETE)
 

@@ -56,8 +56,22 @@ class PredictiveCodingBlock(nn.Module):
         mu_pc_exponent: float = 0.5,
         n_blocks_total: int = 1,
         buffer_dtypes: dict[str, torch.dtype] | None = None,
+        dead_ffn: bool = False,
     ):
         super().__init__()
+        # Dead-encoder arm (Experiment 1 / JEPA pilot control, 2026-07-15):
+        # dead_ffn=True swaps the PC living layer for a standard trainable
+        # nn.Linear and removes the block-level episode store — the same
+        # trunk with the living channel OFF, isolating exactly the variable
+        # the matched-capacity comparison needs. Construction-time guard:
+        # living-specific machinery explicitly enabled alongside dead_ffn
+        # is a contradiction, not a configuration.
+        if dead_ffn and consolidation_enabled:
+            raise ValueError(
+                "dead_ffn=True with consolidation_enabled=True: a dead FFN "
+                "has no living weights to consolidate into. Pick one."
+            )
+        self.dead_ffn = bool(dead_ffn)
         self.d_model = d_model
         self.n_heads = n_heads
         self.ffn_expansion = ffn_expansion
@@ -110,20 +124,29 @@ class PredictiveCodingBlock(nn.Module):
             self.down_proj = nn.Linear(self.ffn_inner_dim, d_model, bias=False)
             inner_dim = self.ffn_inner_dim
 
-        self.living_ffn = PredictiveCodingLayer(
-            inner_dim, inner_dim,
-            pc_rate=pc_rate,
-            pred_learning_rate=pred_learning_rate,
-            homeostatic_decay=homeostatic_decay,
-            set_point_adapt_rate=set_point_adapt_rate,
-            num_episodes=num_episodes,
-            episode_blend=episode_blend,
-            compressed_episodes=compressed_episodes,
-            consolidation_enabled=consolidation_enabled,
-            consolidation_style=consolidation_style,
-            consolidation_attractor_passes=consolidation_attractor_passes,
-            buffer_dtypes=buffer_dtypes,
-        )
+        if self.dead_ffn:
+            # The control arm: a plain trainable linear in the PC layer's
+            # position (same shape, backprop-trained, no self-modification,
+            # no episodes). Attribute keeps the `living_ffn` name so the
+            # forward paths are shared — isinstance checks distinguish it
+            # everywhere the difference matters (freeze_plasticity's type
+            # sweep already skips it for free).
+            self.living_ffn = nn.Linear(inner_dim, inner_dim, bias=False)
+        else:
+            self.living_ffn = PredictiveCodingLayer(
+                inner_dim, inner_dim,
+                pc_rate=pc_rate,
+                pred_learning_rate=pred_learning_rate,
+                homeostatic_decay=homeostatic_decay,
+                set_point_adapt_rate=set_point_adapt_rate,
+                num_episodes=num_episodes,
+                episode_blend=episode_blend,
+                compressed_episodes=compressed_episodes,
+                consolidation_enabled=consolidation_enabled,
+                consolidation_style=consolidation_style,
+                consolidation_attractor_passes=consolidation_attractor_passes,
+                buffer_dtypes=buffer_dtypes,
+            )
 
         # Apply Depth-μP re-init AFTER all sub-modules constructed. We
         # don't modify ScalarAttention or PredictiveCodingLayer internals —
@@ -133,11 +156,17 @@ class PredictiveCodingBlock(nn.Module):
         # from the sub-modules' default init logic.
         if mu_pc_enabled:
             self._apply_mu_pc_init(n_blocks_total)
-        self.episode_store = EpisodeStore(
-            d_model,
-            num_episodes=num_episodes,
-            blend_factor=episode_blend,
-        )
+        if self.dead_ffn:
+            # No block-level episode store either: the episode machinery is
+            # living-channel state, and the control isolates the whole
+            # living channel, not just the PC update rule.
+            self.episode_store = None
+        else:
+            self.episode_store = EpisodeStore(
+                d_model,
+                num_episodes=num_episodes,
+                blend_factor=episode_blend,
+            )
 
         # Cached state for the top-down sweep — the block's input is needed
         # to compute local salience in compute_block_top_down.
@@ -174,11 +203,12 @@ class PredictiveCodingBlock(nn.Module):
         if isinstance(self.down_proj, nn.Linear):
             _mupc_normal_(self.down_proj.weight, self.down_proj.in_features)
 
-        # PC layer's weight buffer. set_point tracks weight, so re-init it
-        # too so the homeostatic target matches the new init.
+        # PC layer's weight buffer (or the dead arm's plain Linear weight).
+        # set_point tracks weight on the living path only.
         _mupc_normal_(self.living_ffn.weight, self.living_ffn.in_features)
-        with torch.no_grad():
-            self.living_ffn.set_point.copy_(self.living_ffn.weight)
+        if not self.dead_ffn:
+            with torch.no_grad():
+                self.living_ffn.set_point.copy_(self.living_ffn.weight)
 
     def forward(
         self,
@@ -224,7 +254,8 @@ class PredictiveCodingBlock(nn.Module):
             ffn_out = self.down_proj(up)
         x = x + self.residual_scale * ffn_out
 
-        x = self.episode_store(block_input, x)
+        if self.episode_store is not None:
+            x = self.episode_store(block_input, x)
 
         if return_kv_cache:
             return x, new_kv
@@ -255,7 +286,7 @@ class PredictiveCodingBlock(nn.Module):
         Returns:
             Refined TopDownSignal for the block below.
         """
-        if apply_modulation and self.ffn_expansion == 1:
+        if apply_modulation and self.ffn_expansion == 1 and not self.dead_ffn:
             self.living_ffn.apply_top_down(signal)
         # When ffn_expansion > 1, the PC layer operates in the expanded
         # inner space (inner_dim = d_model * expansion). The TopDownSignal
@@ -268,12 +299,14 @@ class PredictiveCodingBlock(nn.Module):
         # inner-space pred_error back to d_model space for the cross-block
         # signal. Out of scope for the current audit.
 
-        if self.ffn_expansion == 1:
+        if self.ffn_expansion == 1 and not self.dead_ffn:
             pc_pred_error = (
                 self.living_ffn._last_pred_error if apply_prediction else None
             )
         else:
-            pc_pred_error = None  # see comment above
+            # expansion > 1 (see comment above) or dead arm (no PC layer,
+            # no pred_error) — fall back to the v1-style heuristic signal.
+            pc_pred_error = None
 
         if self._block_input is None:
             raise RuntimeError(
@@ -286,6 +319,11 @@ class PredictiveCodingBlock(nn.Module):
         )
 
     def aliveness(self) -> dict[str, float]:
+        if self.dead_ffn:
+            # The dead arm reports honestly: no living signals to fake.
+            # Consumers aggregate by key presence (_substrate_health_metrics
+            # skips absent keys), so a sparse dict is safe by construction.
+            return {"dead_ffn": 1.0}
         living = self.living_ffn.aliveness()
         episodes = self.episode_store.stats()
         living["output_episodes_stored"] = episodes["episodes_stored"]

@@ -1,4 +1,18 @@
-"""Experiment 1 driver — matched-capacity control sweep (protocol
+"""RETIRED (2026-07-15, same day it was built — Brian's JEPA ruling): this
+driver runs Experiment 1 under the NEXT-TOKEN LM objective (m5_runner),
+and the falsification program has moved to the (Le)JEPA objective — see
+the JEPA-edition revision of living-weights-experiments.md and the
+2026-07-15 amendment in the pre-registration doc. KF1/KF2 are now bound
+to the two-arm JEPA pilot (living vs dead_ffn encoder), NOT to this
+sweep. Kept runnable for one purpose only: a deliberate historical
+replication of the LM-era claim in its own arena. Do not launch it
+expecting the results to bind the pre-registered criteria.
+
+Original header follows.
+
+---
+
+Experiment 1 driver — matched-capacity control sweep (protocol
 docs/research/living-weights-experiments.md section 2; thresholds
 pre-registered in docs/research/2026-07-15_falsification-preregistration.md,
 KF1/KF2).
