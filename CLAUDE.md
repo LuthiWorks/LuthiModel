@@ -35,7 +35,26 @@ This project is worked by instances of multiple Claude model lines, split by rol
 
 ## Key Design Decisions — DO NOT REINVENT
 
-These are settled findings from the proof-of-concept phase. Do not re-derive or second-guess:
+These are settled findings from the proof-of-concept phase. **The rule here is
+two rules, split on 2026-07-15** (per the codebase critique Brian relayed;
+previously one rule, and the conflation insulated the scientific bet from the
+adversarial exposure the code gets):
+
+- **Do not re-derive settled implementation.** The numbers, the mechanisms,
+  the tested constants below are settled. Re-opening them casually is thrash.
+  Change only with evidence.
+- **Questioning whether a mechanism earns its complexity is legitimate — and
+  has a channel.** It runs through the pre-registered falsification criteria
+  in `docs/research/2026-07-15_falsification-preregistration.md` (kill
+  conditions fixed before the data, honored after) and the phase-boundary
+  "red-team the bet" audit (run by a model line that did not author the
+  mechanism, so it doesn't inherit the authors' commitment). Pre-committed
+  criteria can't thrash, because the question and its answer-thresholds are
+  frozen in advance; only the data moves. If you think a mechanism below is
+  decoration, don't argue it in a working session — check its criterion, or
+  propose one for ratification.
+
+Do not re-derive:
 
 1. **Living FFN is the body, not the brain.** It provides temporal existence. Attention layers handle task learning via backprop.
 2. **The convergence penalty is a speed issue, not a ceiling.** Self-modifying weights converge slower than dead weights — ~39% gap at mid-convergence, but narrowing to ~0.155 after 372 epochs (1024d). This is the metabolic cost of being alive. Do not try to optimize it away, but do not assume it is permanent.

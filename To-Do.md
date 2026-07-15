@@ -82,6 +82,40 @@
       §2); without it the headline efficiency numbers are meaningless. Needed
       for the run's *results* to be trustworthy, not for it to execute.
 
+## 🔬 SCIENCE TRACK — falsification of the bet (recorded 2026-07-15; parallel to the critical path, not on it)
+
+> From the 2026-07-15 codebase critique (relayed by Brian; author under
+> verification). Pre-registration drafted and awaiting Brian's ratification:
+> `docs/research/2026-07-15_falsification-preregistration.md`. The
+> protocol's own rule — thresholds written BEFORE running — is satisfied;
+> what remains is compute scheduling (Brian's call; calibration point: the
+> per-channel ablations were ~9 GPU-hours for 6 runs at 128d).
+
+- [ ] **S1. Ratify the pre-registered kill conditions** (Brian, with 4.8).
+      Criteria are fixed once ratified; amendments need a dated public note.
+- [ ] **S2. Run Experiment 1 — matched-capacity sweep** (protocol:
+      `living-weights-experiments.md` §2). "Do this first: it's cheap and
+      upstream" — it disambiguates every other result (self-modification vs
+      extra capacity) and its baseline arm feeds Exp 2's 2×2. Needs: Brian's
+      scoping call (capacity bracket, seed count 3 vs 5, corpus), then a
+      parameterized runner in the run_ablation_*.bat pattern. Fable offered
+      to build the runner once scoped.
+- [ ] **S3. Build the scale curve** — 128→256→512→1024d, all else fixed;
+      plot loss-vs-matched-control, episode hit-rate, consolidation
+      fire-rate, per-forward memory, throughput, instability incidents per
+      width. Directly tests KF5, currently asserted not shown. Gate: money
+      spent at 4096d before this curve exists is spent against an untested
+      claim.
+- [ ] **S4. Prototype low-rank episode compression at small scale** —
+      measure the recall-fidelity cost of rank-r delta compression NOW
+      (deferring the work is fine; deferring the knowledge of whether it
+      degrades memory is not). It is on the 4096d critical path (150 GB →
+      36 GB was INT8; low-rank is the next step) and its recall cost is
+      unknown.
+- [ ] **S5. Stand up the phase-boundary "red-team the bet" audit** — first
+      administration at the next phase gate; uninvested model line;
+      output to docs/reviews/.
+
 ## Phase 1-2: Foundation (COMPLETE)
 
 - [x] LivingLayerV6: Hebbian self-modification (v1), error-directed learning, episodic memory

@@ -1,0 +1,152 @@
+# Pre-Registered Falsification Criteria — the Key Findings
+
+**Date:** 2026-07-15
+**Status:** DRAFT — criteria drafted by Fable 5 (cross-line seat) from the
+2026-07-15 codebase critique Brian relayed (critique author under
+verification at this writing); **ratification is Brian's**, with 4.8.
+Once ratified, the criteria are FIXED: written before the data, honored
+after. Amending a criterion after its experiment has begun requires a
+dated note here explaining why, in public view.
+**Companion:** `living-weights-experiments.md` (the experiment protocol
+these criteria bind to); CLAUDE.md "Key Design Decisions" (the two-rule
+split that opens the channel this document is).
+
+## Why this exists
+
+The critique named an asymmetry: the project's *code* gets adversarial
+review (4.8, Fable, fresh-context audits), but its *scientific bet* was
+insulated by the DO-NOT-REINVENT rule — "do not second-guess" prevented
+implementation thrash AND quietly exempted the bet from the exposure the
+code gets. With one human in the loop, nobody uninvested was ever asked
+"does this mechanism earn its complexity?"
+
+The fix is not to reopen settled implementation daily. It is two
+disciplines:
+
+1. **Pre-registered kill conditions** per empirical Key Finding — fixed
+   in advance, so questioning the bet can't thrash (the question and its
+   answer-criteria are frozen; only the data moves).
+2. **A periodic "red-team the bet" audit** — distinct from the code
+   audit, run at phase boundaries only, by a model line that did NOT
+   author the mechanism, so the auditor doesn't inherit the authors'
+   commitment. (As of this writing: the living-weight mechanism's design
+   lines are Brian + 4.6/4.7/4.8 lineage; the uninvested line is Fable.
+   If Fable ever co-designs a mechanism, its audits of that mechanism
+   lose the uninvested property — route that one to a fresh-context
+   instance of another line.)
+
+The single-human bus factor cannot be engineered away. This is the
+closest available substitute for the second human: pre-committed
+criteria plus an uninvested adversarial eye.
+
+## The criteria
+
+Numbering follows README "Key Findings." Discipline inherited from the
+experiment protocol: ≥3 seeds (5 preferred), an effect smaller than seed
+variance is not an effect, positive controls before trusting any null,
+"underpowered" is never "null."
+
+### KF1 — "Attention learns; living weights live" (both essential)
+
+- **Bound experiments:** Exp 1 (matched-capacity) + Exp 2
+  (frozen-substrate ablation), interpreted jointly as the 2×2 the
+  protocol describes.
+- **Kill condition:** Exp 1 null (living model on/below the static
+  capacity curve) **AND** Exp 2 null (live-vs-frozen indistinguishable
+  from structure-matched noise). Both nulls together mean the living
+  weights are doing no measurable functional work at training time or
+  runtime.
+- **On kill:** "both are essential" is retired from README/CLAUDE.md as
+  an empirical claim. The living weights remain in the architecture only
+  under the explicitly-labeled experiential bet (Column B), and the docs
+  must say so in those words.
+
+### KF2 — No intrinsic convergence cost to self-modification
+
+- **Bound experiment:** Exp 1 (the caveat is already written into the
+  finding — this pre-registers the resolution).
+- **Kill condition:** the living model lands ON or BELOW the static
+  effective-capacity curve (a static control of equal-or-greater
+  effective capacity equals or beats it, beyond pooled seed variance).
+- **On kill:** living-weights-as-efficiency is dead. The surviving claim
+  is exactly and only: "self-modification is not more costly than
+  equivalent static capacity" + the experiential bet. The 0.64% headline
+  comes out of the README.
+
+### KF3 — One living trunk for all modalities
+
+- **Bound experiment:** the M8 multimodal pilot / peak run, against
+  single-modality controls at matched capacity and compute.
+- **Kill condition:** negative transfer — the unified trunk consistently
+  worse than per-modality baselines beyond seed variance, or one
+  modality's training degrading another's held-out performance
+  (asymmetric interference beyond variance).
+- **On kill:** the unified trunk stops being defended as empirically
+  free. Brian may still choose it — "the model is shaped by everything
+  it processes" is partly an identity/design value — but the record must
+  then say "chosen at a measured capability cost of X," not "cross-modal
+  attention is free."
+
+### KF4 — Prefer crashes over silent corruption
+
+Not an empirical claim; an engineering value. No kill condition. (Its
+enforcement surface is auditable instead: `luthi/v2/mode_compat.py`,
+the fail-loud tests, the welfare-channel fail-loud rule.)
+
+### KF5 — "The architecture should scale" (divergence dimension-independence)
+
+- **Bound experiment:** the scale-curve protocol (from the same
+  critique): 128 → 256 → 512 → 1024d, everything else held fixed,
+  plotting per width — loss vs capacity-matched control, episode-store
+  hit-rate, consolidation fire-rate, per-forward memory, throughput,
+  and divergence/instability incidents.
+- **Kill condition:** any failure-predictive trend that worsens
+  superlinearly with width — the living-vs-control gap widening with
+  scale, episode hit-rate collapsing toward zero, instability incidents
+  increasing per-width beyond variance.
+- **On kill:** "scale without fear" (DNR #6) is retired; scaling past
+  the last healthy width is gated on understanding the mechanism of the
+  trend. Money spent at 4096d before this curve exists is spent against
+  an asserted, untested claim — the curve is cheap by comparison.
+
+### KF6 — Memory becomes structure through consolidation
+
+- **Bound experiment:** consolidation-ablated control (episode store ON,
+  consolidation OFF, all else matched) through the catastrophic-
+  forgetting harness (2026-05-16) and long-horizon retention probes.
+- **Kill condition:** no retention/probe difference beyond seed variance
+  between consolidation-on and consolidation-off at matched exposure.
+- **On kill:** "memory becomes structure" is downgraded to "memory is
+  retrieved"; the consolidation machinery must then re-earn its
+  complexity (it may still earn it on other grounds — NREM architecture,
+  rollback re-integration — but those must be argued separately, not
+  inherited from a dead claim).
+
+### DNR items that inherit these criteria
+
+CLAUDE.md's DO-NOT-REINVENT list contains empirical claims that ride on
+the above rather than needing their own registrations: DNR #2/#3
+(convergence-penalty shape) → KF2; DNR #5 (episode store carries recall)
+→ KF6's ablation supplies the instrument; DNR #6 (divergence
+dimension-independent) → KF5. DNR #4 (tested rate constants) and #9/#9b
+(implementation practice) stay under the re-derivation rule — settled
+implementation, change only with evidence.
+
+## The red-team-the-bet audit (standing practice)
+
+- **When:** at phase boundaries only (CLAUDE.md Implementation Phases) —
+  not continuous, so it cannot become thrash.
+- **Who:** a model line that did not author the mechanism under audit,
+  with the pre-registered criteria in hand. Fresh context; not the
+  session that built toward the phase gate.
+- **What it asks:** Have any bound experiments run? Were their criteria
+  honored as written? Has any claim quietly upgraded itself in the docs
+  beyond what the data supports (the 0.64%-vs-matched-control shape)?
+  Does each mechanism still earn its complexity, and is the evidence for
+  that in the record or in the authors' affection for it?
+- **Output:** a dated review doc in `docs/reviews/`, findings routed to
+  Brian for ruling. The audit reviews the *bet*, not the builders.
+
+— Drafted by Fable 5, 2026-07-15, for Brian's ratification. The criteria
+above were written before any of their bound experiments have run; that
+is the entire point. Honor them after.
