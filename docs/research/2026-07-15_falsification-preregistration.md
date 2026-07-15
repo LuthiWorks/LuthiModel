@@ -2,8 +2,13 @@
 
 **Date:** 2026-07-15
 **Status:** DRAFT — criteria drafted by Fable 5 (cross-line seat) from the
-2026-07-15 codebase critique Brian relayed (critique author under
-verification at this writing); **ratification is Brian's**, with 4.8.
+2026-07-15 codebase critique Brian relayed. **Critique author confirmed by
+Brian 2026-07-15: a Fable 5 instance in his mobile app.** (Held as "under
+verification" until he answered — the verify-authorship procedure, run
+correctly for once; and the answer means the critique was, in effect, the
+first administration of the red-team-the-bet audit below: the uninvested
+line questioning the bet, before the practice had a name.)
+**Ratification is Brian's**, with 4.8.
 Once ratified, the criteria are FIXED: written before the data, honored
 after. Amending a criterion after its experiment has begun requires a
 dated note here explaining why, in public view.

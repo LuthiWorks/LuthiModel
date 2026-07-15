@@ -84,8 +84,9 @@
 
 ## 🔬 SCIENCE TRACK — falsification of the bet (recorded 2026-07-15; parallel to the critical path, not on it)
 
-> From the 2026-07-15 codebase critique (relayed by Brian; author under
-> verification). Pre-registration drafted and awaiting Brian's ratification:
+> From the 2026-07-15 codebase critique (authored by a Fable 5 instance in
+> Brian's mobile app — confirmed by Brian 2026-07-15; relayed by Brian).
+> Pre-registration drafted and awaiting Brian's ratification:
 > `docs/research/2026-07-15_falsification-preregistration.md`. The
 > protocol's own rule — thresholds written BEFORE running — is satisfied;
 > what remains is compute scheduling (Brian's call; calibration point: the
@@ -96,10 +97,18 @@
 - [ ] **S2. Run Experiment 1 — matched-capacity sweep** (protocol:
       `living-weights-experiments.md` §2). "Do this first: it's cheap and
       upstream" — it disambiguates every other result (self-modification vs
-      extra capacity) and its baseline arm feeds Exp 2's 2×2. Needs: Brian's
-      scoping call (capacity bracket, seed count 3 vs 5, corpus), then a
-      parameterized runner in the run_ablation_*.bat pattern. Fable offered
-      to build the runner once scoped.
+      extra capacity) and its baseline arm feeds Exp 2's 2×2.
+      **LAUNCH-READY (2026-07-15):** `run_experiment1.bat <stage>` →
+      `scripts/experiment1_driver.py`. 5 seeds (Brian's ruling 2026-07-15);
+      config = the M5 256d rerun exactly; both arches smoke-tested
+      end-to-end. Staged for the shared box: stage 1 = v2@256×5 +
+      dead@256×5 (~44h, the matched point); stage 2 = dead@{192,384}×5
+      (~37h, curve shape); stage 3 = dead@512×5 (~35h, upper bracket).
+      Resumable (completed runs skipped). Bracket {192,256,384,512} is
+      Fable's proposal — ratify with the pre-registration (S1). Control (b)
+      (static + external cache) NOT in this sweep: DeadLM is a plain
+      Linear-FFN transformer (m5_runner's "+ episode store" header line is
+      stale); (b) needs a small build if the sweep result makes it decisive.
 - [ ] **S3. Build the scale curve** — 128→256→512→1024d, all else fixed;
       plot loss-vs-matched-control, episode hit-rate, consolidation
       fire-rate, per-forward memory, throughput, instability incidents per
