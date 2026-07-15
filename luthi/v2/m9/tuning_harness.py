@@ -65,8 +65,11 @@ class StalenessRegimeStats:
         reeval = int(staleness_pass.get("reevaluated", 0))
         self.reevaluated_per_cycle.append(reeval)
         dev = staleness_pass.get("median_deviation", None)
-        # median_deviation is None on cycles with no re-eval sample; keep only
-        # real samples so the tuning distribution isn't polluted with sentinels.
+        # The producer emits median_deviation=0.0 (not None) on cycles where
+        # the re-eval slice ran empty (_staleness_pass's default stats dict),
+        # so the reeval > 0 guard is what actually keeps sentinel zeros out of
+        # the tuning distribution; the None check covers a pass that never ran
+        # (fresh trainer's empty dict). (Fable review 2026-07-15.)
         if dev is not None and reeval > 0:
             self.deviation_samples.append(float(dev))
         if staleness_pass.get("in_failover", False):
@@ -173,6 +176,18 @@ def run_aged_node_regime(
 
     ``age_ticks`` defaults to ``consistency_window + 1`` (just past the staleness
     cutoff). Requires ``mcts_persistent_tree=True``. Returns the stats.
+
+    **Treat the trainer as expended after this regime** (Fable review
+    2026-07-15): every ``observe_drift(0.0)`` tick also pushes a synthetic
+    zero into the θ drift band, so after ``cycles * age_ticks`` ticks the
+    band's median/MAD are flooded toward zero. Within the regime that is
+    self-consistently benign (no real update ever enters the band, so
+    nothing can read as a spike), but if the SAME trainer is afterwards
+    driven with real training steps, the first genuine ``||Δθ||`` reading
+    lands on a zeroed band and registers as a spurious drift spike —
+    cache wipe + failover on a healthy model. Build a fresh trainer for
+    any post-regime work; do not run the natural regime after the aged
+    regime on one trainer.
     """
     cfg = trainer.m9_config
     if not cfg.mcts_persistent_tree:
