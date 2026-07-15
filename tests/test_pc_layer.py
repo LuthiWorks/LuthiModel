@@ -304,7 +304,7 @@ def test_ipc_grad_checkpoint_fails_loud():
     original_is_recomputing = gc_mod.is_recomputing
     gc_mod.is_recomputing = lambda: True
     try:
-        with pytest.raises(RuntimeError, match="iPC.*incompatible.*gradient"):
+        with pytest.raises(RuntimeError, match="Incompatible modes.*iPC"):
             layer(x)
     finally:
         gc_mod.is_recomputing = original_is_recomputing

@@ -430,14 +430,10 @@ class JEPALoss(nn.Module):
         # such flag, so this is dormant today -- a hard stop against turning
         # it on under the lived path at GPU scale without revisiting.
         if getattr(self.online_encoder, "gradient_checkpointing", False):
-            raise RuntimeError(
-                "Lived JEPA re-encode is incompatible with gradient "
-                "checkpointing on the encoder: checkpoint replay runs in "
-                "backward(), after freeze_plasticity() has exited, so the "
-                "frozen-plasticity guarantee does not hold on the recompute "
-                "pass. Disable encoder gradient checkpointing for the lived "
-                "path (or add snapshot-based recompute support first)."
-            )
+            # Declared in the mode-compatibility matrix (mode_compat.py)
+            # so the failure surface is auditable in one place.
+            from luthi.v2.mode_compat import raise_incompatible
+            raise_incompatible("lived_reencode_x_grad_checkpoint")
 
         # Re-encode the raw context: autograd ON, plasticity OFF. Gradient
         # reaches the encoder's backprop params through the frozen living

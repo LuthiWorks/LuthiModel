@@ -489,22 +489,30 @@ class PredictiveCodingLayer(nn.Module):
         from luthi.grad_checkpoint import is_recomputing
         recomputing = is_recomputing()
 
-        # iPC: gradient checkpointing isn't compatible with T>1 because
-        # the weight evolves within the forward and the cached snapshot
-        # can't reproduce the trajectory. Fail loud rather than silently
-        # produce wrong gradients.
+        # Forbidden mode combinations route through the declared matrix
+        # (luthi/v2/mode_compat.py) so the whole failure surface is
+        # auditable in one place. Fail loud rather than silently produce
+        # wrong gradients.
         if recomputing and self.inference_steps_per_forward > 1:
-            raise RuntimeError(
-                "iPC (inference_steps_per_forward > 1) is incompatible "
-                "with gradient checkpointing: the weight evolves within "
-                "the forward, so the recompute path cannot reproduce the "
-                "original trajectory. Disable one or the other."
+            from luthi.v2.mode_compat import raise_incompatible
+            raise_incompatible(
+                "ipc_x_grad_checkpoint",
+                extra=f"inference_steps_per_forward={self.inference_steps_per_forward}",
             )
 
         if recomputing:
-            weight_snapshot = self._fwd_weight_snapshot
-            episode_delta = self._fwd_episode_delta
+            weight_snapshot = getattr(self, "_fwd_weight_snapshot", None)
+            episode_delta = getattr(self, "_fwd_episode_delta", None)
             context = None
+            if weight_snapshot is None:
+                # No snapshot from an original forward: either the original
+                # ran under freeze_plasticity (frozen path caches nothing)
+                # or clear_forward_cache() ran before backward(). Silently
+                # continuing would reuse stale state or crash cryptically;
+                # a stale snapshot from an EARLIER step would mean quietly
+                # wrong gradients. (Fable mode-matrix review 2026-07-15.)
+                from luthi.v2.mode_compat import raise_incompatible
+                raise_incompatible("recompute_without_original")
         else:
             with torch.no_grad():
                 context = self._compute_context(x_flat)
@@ -544,7 +552,14 @@ class PredictiveCodingLayer(nn.Module):
         # persisting beyond the bad batch even after the trainer skips its
         # optimizer step. One host sync per layer per batch — small relative
         # to the PC update math.
-        if not torch.isfinite(output).all():
+        # NB the detach() is load-bearing (Fable mode-matrix sweep,
+        # 2026-07-15): isfinite on the grad-connected output makes autograd
+        # pack the whole matmul output into saved tensors -- pure memory
+        # waste on the plain path, and a saved-tensor COUNT mismatch under
+        # non-reentrant gradient checkpointing (the recompute path skips
+        # this guard), which made every checkpointed v2 forward fail at
+        # backward with CheckpointError.
+        if not torch.isfinite(output.detach()).all():
             # Cache a safe zero pred_error so the inter-block top-down sweep
             # sees a valid (if no-op) signal when self-mod was skipped.
             self._last_pred_error = torch.zeros(
@@ -634,16 +649,16 @@ class PredictiveCodingLayer(nn.Module):
                 self._err_short.update(err_scalar)
                 self._err_long.update(err_scalar)
 
-            # Recompute final output after the last inner step so the
-            # returned activation reflects the post-self-mod weight state.
-            # When T=1, this matches the classical PC behavior — the
-            # returned output is computed from the snapshotted weight
-            # (before the single self-mod), preserving backward() semantics.
-            # When T>1, the inner loop's last output is what we want.
-            # (For T=1 we keep `output` from the initial matmul above —
-            # see the `if inner_step > 0` branch, which means the T=1
-            # case never recomputes and is bit-identical to the prior
-            # implementation.)
+            # Final-output semantics: T=1 keeps `output` from the initial
+            # (grad-capable) matmul — bit-identical to the classical PC
+            # behavior, backward flows through the pre-self-mod snapshot.
+            # T>1's final output is recomputed grad-capably AFTER this
+            # no_grad block (see below): the inner loop's rebinds happen
+            # under no_grad, so returning the loop's last `output` would
+            # return a tensor with NO gradient path — in a residual block
+            # the FFN branch would silently vanish from backward while
+            # the model kept training on the residual path alone (Fable
+            # mode-matrix sweep, 2026-07-15).
 
             self._sparse_step_count += 1
             self._last_pred_error = pred_error
@@ -686,6 +701,20 @@ class PredictiveCodingLayer(nn.Module):
                             n_replay_passes=self.consolidation_attractor_passes,
                         )
                     self._consolidation_fire_count += 1
+
+        # iPC (T>1) grad-path repair (Fable mode-matrix sweep, 2026-07-15):
+        # the inner loop's `output` rebinds happened under no_grad, so the
+        # loop's final activation carries no gradient path. Recompute it
+        # grad-capably here against the POST-self-mod weight — that is the
+        # function the layer actually delivered downstream, so dx must flow
+        # through it (an initial-snapshot gradient would mismatch the
+        # returned activation). The clone mirrors the T=1 snapshot
+        # rationale: the next forward's pc_self_modify mutates self.weight
+        # in place, which would break autograd version tracking on the
+        # saved tensor. (iPC × gradient checkpointing stays forbidden —
+        # this path never runs on a recompute replay.)
+        if self.inference_steps_per_forward > 1:
+            output = x_flat @ self.weight.clone().T
 
         if len(input_shape) == 3:
             output = output.reshape(batch, seq_len, self.out_features)
