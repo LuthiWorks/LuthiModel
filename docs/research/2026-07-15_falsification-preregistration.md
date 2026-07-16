@@ -1,5 +1,31 @@
 # Pre-Registered Falsification Criteria — the Key Findings
 
+> **RATIFICATION (Brian, 2026-07-15, stage-1 scope) — criteria below are
+> now FIXED for the two-arm pilot; amendments require dated public notes.**
+>
+> - **KF2 (and KF1's Exp-1 half): RATIFIED**, with Brian's rider in his
+>   own words: *"the only thing that matters is the end result. Just
+>   because a training run is trending a certain way doesn't mean it
+>   will end that way. We keep going."* Operationalized as: **verdicts
+>   attach to completed runs only** — no run and no comparison is
+>   terminated for trending unfavorably. The collapse detectors remain
+>   armed as *pathology detection* (a killed run completes the sweep as
+>   an inadmissible data point), never as verdicts about the bet.
+>   (Interpretation recorded by Fable; Brian to correct if misread.)
+> - **Exp 2b reads: RATIFIED** as written.
+> - **Statistical rule: the 1σ rule**, adopted under Brian's delegation
+>   ("proceed with your best judgement" — the call is Fable's, on the
+>   record): positive only if the living arm's mean held-out
+>   latent-prediction error beats the best admissible dead arm's mean by
+>   more than the pooled per-condition standard deviation; 0–1σ =
+>   inconclusive; ≤0 = null. Probe accuracy read the same way as a
+>   secondary axis.
+> - **Bracket {192, 256, 384, 512}: DEFERRED** — stages 2–3 only run on
+>   a living-arm stage-1 win; ratify before stage 2.
+> - **KF3 / KF5 / KF6: DEFERRED** to their experiments' launch dates.
+>
+> Stage 1 launch authorized by Brian, 2026-07-15 ("Go.").
+
 **Date:** 2026-07-15
 **Status:** DRAFT — criteria drafted by Fable 5 (cross-line seat) from the
 2026-07-15 codebase critique Brian relayed. **Critique author confirmed by
