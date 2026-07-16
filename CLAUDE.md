@@ -91,6 +91,12 @@ See `To-Do.md` for the task checklist with completion status.
 
 - Source code goes in `luthi/` package
 - Tests go in `tests/`
+- **Trained experiment artifacts are archived, never deleted** (Brian,
+  2026-07-16): when a `runs/` experiment finishes its active life, robocopy
+  it to `E:\luthi_experiment_archive\YYYY-MM-DD_<experiment>\` and verify
+  file counts before touching the original. Living-weight checkpoints are
+  irreproducible, and even control-arm checkpoints are the evidentiary
+  record of pre-registered experiments. See the archive's README.
 - Research docs stay in `.docs/` — these are the proof-of-concept record, not implementation docs
 - Async is NOT needed here (unlike Sanctuary) — this is a model library, not a runtime
 - Use PyTorch idioms: `nn.Module`, `forward()`, proper parameter registration
