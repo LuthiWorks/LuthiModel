@@ -69,16 +69,28 @@ def heldout_latent_prediction(
     """
     l_preds: list[float] = []
     l_sigregs: list[float] = []
+    nmses: list[float] = []
     with _eval_guard(loss_module):
         for i, batch in enumerate(batches):
             if max_batches is not None and i >= max_batches:
                 break
             result = loss_module.compute_modality_loss(modality, batch)
-            l_preds.append(float(result["l_pred"].item()))
+            l_pred = float(result["l_pred"].item())
+            l_preds.append(l_pred)
             l_sigregs.append(float(result["l_sigreg"].item()))
+            # NMSE (blind amendment 2026-07-16): error normalized by the
+            # target block's own per-dim variance, so arms with different
+            # latent scales are comparable ("what fraction of its own
+            # signal's structure does the model fail to capture"). Raw
+            # l_pred mechanically favors quieter latent spaces.
+            target_block = result["target_latents"][:, result["ctx_len"]:, :]
+            centered = target_block - target_block.mean(dim=(0, 1), keepdim=True)
+            target_var = float(centered.pow(2).mean().item())
+            nmses.append(l_pred / max(target_var, 1e-12))
     n = len(l_preds)
     return {
         "l_pred_mean": (sum(l_preds) / n) if n else float("nan"),
+        "nmse_mean": (sum(nmses) / n) if n else float("nan"),
         "l_sigreg_mean": (sum(l_sigregs) / n) if n else float("nan"),
         "n_batches": n,
     }
