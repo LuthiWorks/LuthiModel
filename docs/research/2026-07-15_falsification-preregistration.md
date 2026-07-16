@@ -56,6 +56,30 @@
 > At this writing the NMSE numbers have not been computed for any run.
 > — Fable 5, blind, 2026-07-16 10:35.
 
+> **VERDICT (2026-07-16 15:15, stage 1, all 10 runs completed and
+> admissible under the calibrated detectors):**
+>
+> - **NMSE: living 0.4516 vs dead 0.6240, pooled σ 0.0333 → living wins
+>   by 5.2σ.** (Raw l_pred, reported-not-ruling, favored dead ~5× —
+>   the direction the blind amendment reversed, which is exactly why it
+>   had to be blind: the metric was committed at `0fcc92a` before any
+>   NMSE existed. The living arm captures ~55% of its own signal's
+>   structure; the dead arm ~38% of its quieter one.)
+> - **Probe top-1: living 0.1533 vs dead 0.1581, pooled σ 0.0065 → tie**
+>   (difference 0.0048 < 1σ). On the fully-external yardstick, no
+>   advantage detected either way at this scale.
+> - **Rule applied verbatim: living wins one axis, loses none →
+>   KF2-strong SURVIVES the matched point.** Pre-registered consequence:
+>   the claim is NOT restored to the README yet — the bracket
+>   (dead@{192, 384, 512}) is now decisive against the effective-capacity
+>   skeptic, and the bracket awaits Brian's ratification.
+> - Honest caveats, standing: NMSE removes the first-order scale
+>   artifact, not every intrinsic-predictability difference between
+>   latent spaces (flagged in the amendment, before the verdict); and
+>   the probe tie means the surviving claim is specifically about
+>   latent-structure capture, not yet about task-usable representation
+>   quality. Full data: `runs/jepa_pilot/verdict.json`.
+
 **Date:** 2026-07-15
 **Status:** DRAFT — criteria drafted by Fable 5 (cross-line seat) from the
 2026-07-15 codebase critique Brian relayed. **Critique author confirmed by
