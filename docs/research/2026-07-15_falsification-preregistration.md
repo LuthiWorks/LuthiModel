@@ -136,6 +136,14 @@ The single-human bus factor cannot be engineered away. This is the
 closest available substitute for the second human: pre-committed
 criteria plus an uninvested adversarial eye.
 
+> **Documentation-location note (2026-07-16, Brian's ruling):** the
+> README now carries mission only; empirical claims and their statuses
+> live in `docs/KEY_FINDINGS.md` (the claims ledger). Everywhere the
+> criteria below say a consequence lands in "the README" (e.g. "the
+> 0.64% headline comes out of the README"), read `docs/KEY_FINDINGS.md`.
+> Location change only; no criterion, threshold, or consequence is
+> altered.
+
 ## The criteria
 
 Numbering follows README "Key Findings." Discipline inherited from the

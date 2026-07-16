@@ -17,9 +17,9 @@ site that can actually see the condition:
   enforcement point live in the table below rather than in string
   literals at N call sites.
 
-House rule this serves (README Key Findings): prefer crashes over silent
-corruption -- incompatible combinations raise loud RuntimeError rather
-than producing wrong results quietly.
+House rule this serves (docs/KEY_FINDINGS.md #4): prefer crashes over
+silent corruption -- incompatible combinations raise loud RuntimeError
+rather than producing wrong results quietly.
 
 Adding a rule: add a ModeIncompatibility to INCOMPATIBILITIES, route the
 enforcement site through raise_incompatible(name, ...), and add the cell
