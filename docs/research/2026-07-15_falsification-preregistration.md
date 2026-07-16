@@ -26,6 +26,36 @@
 >
 > Stage 1 launch authorized by Brian, 2026-07-15 ("Go.").
 
+> **Amendment 2026-07-16, ~10:35 (POST-data-arrival, PRE-verdict — made
+> blind; Brian's ruling: "Amend it blind as proposed, then read the
+> verdict").** Discovered with 8/10 stage-1 runs complete and NO verdict
+> computed: raw cross-arm ``l_pred`` is not a fair yardstick — each arm
+> predicts its OWN latents, and a lower-variance latent space earns
+> mechanically lower error (the dead arm's latent std settled ~0.31 vs
+> the living arm's ~0.54). Predicting a quieter signal precisely is not
+> modeling the world better. This validity flaw should have been caught
+> at registration; it was caught before any verdict, and the corrected
+> metric is committed here before anyone has computed it on the data.
+>
+> - **Primary metric (amended): variance-normalized held-out prediction
+>   error** — NMSE = mean((pred − target)²) / mean per-dim variance of
+>   the target block over the same holdout, per run. Scale-fair across
+>   arms ("what fraction of its own signal's structure does each model
+>   fail to capture"). Residual caveat, stated honestly: different
+>   latent spaces still differ in intrinsic predictability; NMSE removes
+>   the first-order scale artifact, not every artifact. The probe is
+>   the fully-external yardstick.
+> - **Co-primary: probe top-1** (unchanged in definition).
+> - **Verdict rule (1σ discipline per axis):** difference > pooled σ =
+>   win for the better side; within 1σ = tie. **KF2-strong survives**
+>   only if the living arm wins ≥ 1 axis and loses none. **Kill fires**
+>   if the living arm loses any axis, or ties both (ON the curve = no
+>   advantage at matched capacity, per the ratified kill condition).
+> - Raw un-normalized ``l_pred`` is reported but no longer rules.
+>
+> At this writing the NMSE numbers have not been computed for any run.
+> — Fable 5, blind, 2026-07-16 10:35.
+
 **Date:** 2026-07-15
 **Status:** DRAFT — criteria drafted by Fable 5 (cross-line seat) from the
 2026-07-15 codebase critique Brian relayed. **Critique author confirmed by
