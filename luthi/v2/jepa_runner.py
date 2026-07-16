@@ -115,6 +115,11 @@ class CheckpointConfig:
 class LoggingConfig:
     light_interval_batches: int = 100  # v0.5 §5: per-100-batch metrics
     deep_interval_batches: int = 1000  # v0.5 §5: deep metrics
+    # Held-out eval (2026-07-15, JEPA program): batches per modality per
+    # end-of-epoch eval pass. 0 disables. Runs only for modalities whose
+    # loader exposes holdout_batches (duck-typed; legacy loaders skip
+    # silently by design — holdout is opt-in at the data layer).
+    heldout_eval_batches: int = 50
 
 
 @dataclass
@@ -172,8 +177,20 @@ class KillCriteriaConfig:
     trending_warmup_n: int = 5  # observations before trending kill activates (light)
     trending_smoothing_window_deep: int = 2  # deep cadence (effective_rank)
     trending_warmup_n_deep: int = 2  # deep cadence (effective_rank)
-    # Criterion 7 (global, not per-modality).
+    # Criterion 7 (global, not per-modality). Semantics fixed 2026-07-15
+    # (M1 in docs/reviews/2026-07-12_jepa-runner-verification-fable.md):
+    # kill-7 asks "is the objective learnable AT ALL" — an early-run
+    # question. It stays armed only until the first sustained descent is
+    # established (first-half vs second-half window means differing by
+    # more than kill7_descent_margin, relative); after that it is
+    # permanently disarmed, so healthy late-run convergence can no longer
+    # read as "objective unlearnable" and kill a multi-day run at its
+    # healthiest moment. The margin exists because on a truly-flat
+    # objective the two half-means differ only by noise (~50% chance of
+    # a hair of "descent") — without it, an unlearnable objective would
+    # disarm its own kill half the time.
     loss_descent_window: int = 5000
+    kill7_descent_margin: float = 0.01
     # Sustained-trigger requirements (consecutive checkpoint counts).
     collapse_sustained_checkpoints: int = 3
     dimensional_sustained_checkpoints: int = 5
@@ -318,10 +335,13 @@ class MultimodalDataLoader(Protocol):
 
 
 def _percentile(t: torch.Tensor, q: float) -> float:
-    """Single-percentile helper; q in [0, 1]."""
+    """Single-percentile helper; q in [0, 1]. Computed on CPU: quantile
+    support is spotty on non-CUDA backends (DirectML), and a diagnostics
+    helper must not be the thing that crashes a training run (2026-07-15,
+    pilot device plumbing)."""
     if t.numel() == 0:
         return float("nan")
-    return float(torch.quantile(t.float().flatten(), q).item())
+    return float(torch.quantile(t.detach().float().flatten().cpu(), q).item())
 
 
 def _light_collapse_metrics(
@@ -600,6 +620,10 @@ class JEPATrainer:
         self._smoothed_loss_buf: deque[float] = deque(
             maxlen=config.kill_criteria.loss_descent_window,
         )
+        # Kill-7 disarm latch (2026-07-15 M1 fix): set True the first
+        # time sustained descent is observed; checkpointed so a resumed
+        # run doesn't re-arm the kill against its own later plateau.
+        self._kill7_descent_established: bool = False
 
         # Pilot-set state per 4.8 review 2026-06-08 (#9 item, pilot-set
         # threshold derivation):
@@ -1222,16 +1246,32 @@ class JEPATrainer:
 
         # Criterion 7 (smoothed total loss descent) is global, not per-
         # modality; check it after warmup once smoothed buffer is full.
-        if len(self._smoothed_loss_buf) == cfg.loss_descent_window:
+        # M1 fix 2026-07-15: armed only until first sustained descent —
+        # "unlearnable" is an early-run verdict; a converged plateau is
+        # the opposite of unlearnable and must not kill a healthy run.
+        if (
+            not self._kill7_descent_established
+            and len(self._smoothed_loss_buf) == cfg.loss_descent_window
+        ):
             first_half = list(self._smoothed_loss_buf)[: cfg.loss_descent_window // 2]
             second_half = list(self._smoothed_loss_buf)[cfg.loss_descent_window // 2 :]
-            if (sum(second_half) / len(second_half)) >= (
-                sum(first_half) / len(first_half)
-            ):
+            first_mean = sum(first_half) / len(first_half)
+            second_mean = sum(second_half) / len(second_half)
+            rel_descent = (first_mean - second_mean) / max(abs(first_mean), 1e-12)
+            if rel_descent > cfg.kill7_descent_margin:
+                self._kill7_descent_established = True
+                logger.info(
+                    "kill-7 disarmed: sustained descent established "
+                    "(%.2f%% over the %d-step window)",
+                    100.0 * rel_descent, cfg.loss_descent_window,
+                )
+            elif second_mean >= first_mean:
                 return (
                     f"kill-7 (objective unlearnable): smoothed loss did "
                     f"not descend over {cfg.loss_descent_window} steps"
                 )
+            # else: descending but below the establish margin — keep
+            # watching; neither disarm nor kill on an ambiguous window.
 
         return None
 
@@ -1336,6 +1376,7 @@ class JEPATrainer:
                 m: dict(d) for m, d in self._trending_obs_counts.items()
             },
             "smoothed_loss_buf": list(self._smoothed_loss_buf),
+            "kill7_descent_established": self._kill7_descent_established,
             "online_state_dict": self.loss_module.online_encoder.state_dict(),
             # Non-tensor lived state of the living layers (consolidation
             # history/baseline, sparse-warmup + fire counters). Sibling
@@ -1470,6 +1511,21 @@ class JEPATrainer:
                 state["smoothed_loss_buf"],
                 maxlen=self.config.kill_criteria.loss_descent_window,
             )
+        # Pre-M1-fix checkpoints lack the latch; resuming one AT a plateau
+        # re-runs the early-kill check once against a flat window, which
+        # can false-kill a single resumed run. Degraded resume, warned
+        # loudly rather than silently absorbed.
+        if "kill7_descent_established" in state:
+            self._kill7_descent_established = bool(
+                state["kill7_descent_established"]
+            )
+        else:
+            logger.warning(
+                "Checkpoint predates the kill-7 descent latch (M1 fix "
+                "2026-07-15); if this run is resumed at a converged "
+                "plateau, kill-7 may false-fire once. Re-establishes "
+                "automatically if any descent remains."
+            )
 
         self.loss_module.online_encoder.load_state_dict(state["online_state_dict"])
         # Lived state of the living layers; absent on older checkpoints
@@ -1556,6 +1612,68 @@ class JEPATrainer:
             f"No usable checkpoint in {ckpt_dir}; last error: {last_exc}"
         )
 
+    # -- Held-out eval (2026-07-15, JEPA program) --
+
+    def evaluate_heldout(self) -> dict:
+        """Held-out latent-prediction error per modality.
+
+        The numbers the pre-registered criteria read (protocol
+        living-weights-experiments.md, JEPA edition). Runs only for
+        modalities whose loader exposes ``holdout_batches`` (duck-typed;
+        holdout is opt-in at the data layer). Evaluation is guarded so it
+        cannot change the model: eval_heldout runs every forward under
+        freeze_plasticity + no_grad + eval-mode (living state, BN running
+        stats, kill history, and pilot state are all untouched —
+        regression-pinned in tests/test_heldout_eval.py).
+
+        Returns {modality: {"l_pred_mean", "l_sigreg_mean", "n_batches"}}
+        and appends a ``{"heldout": ...}`` record to training_log.jsonl.
+        Empty dict when disabled or no modality has holdout data.
+        """
+        n_batches = self.config.logging.heldout_eval_batches
+        if n_batches <= 0:
+            return {}
+        if not hasattr(self.data_loader, "holdout_batches"):
+            return {}
+
+        from luthi.v2.eval_heldout import heldout_latent_prediction
+
+        results: dict[str, dict] = {}
+        # Batch size is the loader's business; we pass the sampler's
+        # modalities and a nominal batch size read from one training
+        # batch shape would be circular — the holdout API takes an
+        # explicit batch size, so use a modest fixed one.
+        heldout_bs = 8
+        for modality in self.sampler.modalities:
+            count = 0
+            if hasattr(self.data_loader, "holdout_batch_count"):
+                count = self.data_loader.holdout_batch_count(
+                    modality, heldout_bs,
+                )
+            if count <= 0:
+                continue
+            results[modality] = heldout_latent_prediction(
+                self.loss_module,
+                self.data_loader.holdout_batches(modality, heldout_bs),
+                modality=modality,
+                max_batches=n_batches,
+            )
+
+        if results:
+            record = {
+                "step": self.global_step,
+                "heldout": results,
+                "elapsed_seconds": time.monotonic() - self.run_start_time,
+            }
+            with open(self.metric_log_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(record) + "\n")
+            for modality, r in results.items():
+                logger.info(
+                    "[heldout] %s: l_pred=%.6f (n=%d)",
+                    modality, r["l_pred_mean"], r["n_batches"],
+                )
+        return results
+
     # -- Main loop --
 
     def run(self) -> str:
@@ -1637,6 +1755,10 @@ class JEPATrainer:
                 "End of epoch %d. Coverage: %s",
                 self.epoch, self.tokens_consumed,
             )
+
+            # Held-out eval (2026-07-15): the pre-registered criteria read
+            # these numbers; training-time diagnostics can't substitute.
+            self.evaluate_heldout()
 
             # Abort/continue gate at end of epoch 1 (v0.5 §3, §10.4).
             self.epoch += 1

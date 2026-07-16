@@ -105,6 +105,63 @@ class TextDatasetConfig:
     seq_len: int = 128
     stride: int = 64
     base_seed: int = 42
+    # Held-out fraction for the JEPA eval harness (2026-07-15). The
+    # holdout is the CONTIGUOUS TAIL of the token stream, separated from
+    # the training region by a seq_len gap — never a random sequence
+    # split: with stride < seq_len adjacent sequences share tokens, so a
+    # random split leaks up to (seq_len - stride)/seq_len of every
+    # held-out sequence into training and biases held-out error
+    # optimistically. 0.0 = no holdout (legacy behavior, bit-identical).
+    holdout_fraction: float = 0.0
+
+
+def compute_text_split(
+    n_tokens: int,
+    seq_len: int,
+    stride: int,
+    holdout_fraction: float,
+) -> tuple[int, list[int]]:
+    """Leakage-safe train/holdout split for an overlapping-window token
+    stream. Pure function so the arithmetic is directly testable.
+
+    Returns ``(n_train_sequences, holdout_starts)``:
+    - training sequences start at ``0, stride, ...`` and must END at or
+      before ``train_boundary`` — where ``train_boundary`` leaves a
+      ``seq_len`` GAP before the holdout region, so no training window
+      overlaps (or abuts into) any holdout window;
+    - holdout windows are NON-overlapping (stride = seq_len), fixed
+      deterministic order, covering the tail region.
+
+    Raises if the requested fraction leaves no training sequences or no
+    holdout windows — a silent empty split would fake a perfect eval.
+    """
+    if not 0.0 <= holdout_fraction < 1.0:
+        raise ValueError(f"holdout_fraction must be in [0, 1); got {holdout_fraction}")
+    max_start = n_tokens - seq_len
+    if max_start < 0:
+        raise ValueError(f"Corpus has {n_tokens} tokens, less than seq_len={seq_len}")
+    if holdout_fraction == 0.0:
+        return (max_start // stride) + 1, []
+
+    holdout_tokens = int(n_tokens * holdout_fraction)
+    holdout_begin = n_tokens - holdout_tokens
+    # Training windows must end seq_len BEFORE the holdout begins (the gap).
+    train_boundary = holdout_begin - seq_len
+    train_max_start = train_boundary - seq_len
+    if train_max_start < 0:
+        raise ValueError(
+            f"holdout_fraction={holdout_fraction} leaves no training "
+            f"sequences (corpus {n_tokens} tokens, seq_len {seq_len})."
+        )
+    n_train_sequences = (train_max_start // stride) + 1
+
+    holdout_starts = list(range(holdout_begin, n_tokens - seq_len + 1, seq_len))
+    if not holdout_starts:
+        raise ValueError(
+            f"holdout_fraction={holdout_fraction} yields zero holdout "
+            f"windows (needs >= seq_len={seq_len} tokens; got {holdout_tokens})."
+        )
+    return n_train_sequences, holdout_starts
 
 
 class TextDataset:
@@ -142,13 +199,16 @@ class TextDataset:
         # Iteration state.
         # Sequences are indexed by their starting position. Start positions
         # are 0, stride, 2*stride, ... such that start + seq_len <= len(tokens).
+        # With holdout_fraction > 0, training positions are additionally
+        # capped so no training window overlaps the leakage-gapped holdout
+        # tail (see compute_text_split).
         n = self._tokens.numel()
-        max_start = n - config.seq_len
-        if max_start < 0:
-            raise ValueError(
-                f"Corpus has {n} tokens, less than seq_len={config.seq_len}"
-            )
-        self._n_sequences = (max_start // config.stride) + 1
+        self._n_sequences, self._holdout_starts = compute_text_split(
+            n_tokens=n,
+            seq_len=config.seq_len,
+            stride=config.stride,
+            holdout_fraction=config.holdout_fraction,
+        )
 
         self._epoch_index = 0
         self._pos_within_epoch = 0
@@ -232,6 +292,27 @@ class TextDataset:
 
     def vocab_size(self) -> int:
         return int(self._tokenizer.vocab_size)
+
+    def holdout_batch_count(self, batch_size: int) -> int:
+        """Number of full holdout batches available (0 = no holdout)."""
+        return len(self._holdout_starts) // batch_size
+
+    def holdout_batches(self, batch_size: int):
+        """Yield held-out batches in fixed deterministic order.
+
+        Non-overlapping windows from the leakage-gapped tail; the same
+        windows every call, so held-out numbers are comparable across
+        checkpoints and arms. Yields ``{"text_tokens": Tensor[B, L]}``;
+        drops the final partial batch (fixed set > slightly larger set).
+        """
+        seq_len = self.config.seq_len
+        for i in range(self.holdout_batch_count(batch_size)):
+            starts = self._holdout_starts[i * batch_size : (i + 1) * batch_size]
+            yield {
+                "text_tokens": torch.stack(
+                    [self._tokens[s : s + seq_len] for s in starts], dim=0,
+                )
+            }
 
     def state_dict(self) -> dict:
         """Snapshot the shuffle position so resume preserves
@@ -649,6 +730,21 @@ class MultimodalDataLoaderImpl:
             self._datasets["audio"] = audio
         if vision is not None:
             self._datasets["vision"] = vision
+
+    # -- Held-out eval support (2026-07-15; duck-typed and optional so
+    #    legacy loaders and the audio/vision stubs need no changes) --
+
+    def holdout_batch_count(self, modality: str, batch_size: int) -> int:
+        ds = self._datasets.get(modality)
+        if ds is None or not hasattr(ds, "holdout_batch_count"):
+            return 0
+        return int(ds.holdout_batch_count(batch_size))
+
+    def holdout_batches(self, modality: str, batch_size: int):
+        ds = self._datasets.get(modality)
+        if ds is None or not hasattr(ds, "holdout_batches"):
+            return
+        yield from ds.holdout_batches(batch_size)
 
     # -- Protocol implementation --
 
