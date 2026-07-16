@@ -191,6 +191,16 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
             logging=LoggingConfig(heldout_eval_batches=args.heldout_batches),
             kill_criteria=KillCriteriaConfig(
                 warmup_batches=args.kill_warmup,
+                # Pilot-derived thresholds (calibration pass 1, 2026-07-16
+                # -- docs/research/2026-07-16_jepa-pilot-calibration-pass.md).
+                # The static defaults killed 10/10 healthy runs: kill-1's
+                # init-window baseline fired while effective rank was
+                # RISING; kill-6's 25% band around a transiently-latched
+                # running min fired at the substrate's healthiest moment.
+                stationary_deviation_pct=0.85,
+                substrate_health_degradation_pct=1.0,
+                trending_smoothing_window=9,
+                substrate_health_window=10,
             ),
             epoch=EpochConfig(
                 max_epochs=args.epochs,
