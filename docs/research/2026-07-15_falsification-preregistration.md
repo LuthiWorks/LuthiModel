@@ -165,6 +165,33 @@
 >   modulated plasticity/set_point while measuring — evaluation
 >   contaminating the subject. Guard added; pinned by the living-full
 >   eval-mutates-nothing test.
+>
+> **KILL-5 AMENDMENT (2026-07-17 ~15:45 — POST-HOC, fully disclosed;
+> Brian's ruling: "eliminate that kill trigger or raise the threshold
+> before rerunning").** Run 2's first pass was killed by kill-5
+> (predictor-trivial cosine > 0.99) on a run at peak health: effective
+> rank RISING 165→180, best-ever loss (0.19), healthy variance and
+> SIGReg, probe 0.1595 at 2/3 training. High cosine is ambiguous between
+> predictor degeneracy (copying: rank craters, loss stuck) and the
+> predictor solving its problem (rank rises, loss improves) — and in
+> the living substrate the second is the DESIGN GOAL, since PC
+> self-modification minimizes prediction error; BP + consolidation
+> amplified it past the absolute threshold, which imported an EMA-twin
+> JEPA assumption this substrate constitutively violates. Fifth
+> detector false-positive, same disease: thresholds calibrated on
+> another substrate's physics.
+> **Amended rule:** kill-5 fires only when the high cosine is
+> corroborated by the degeneracy signature — effective rank degrading
+> (recent mean < 0.9 × running best) OR variance collapsing (below the
+> kill-1 floor). Cosine alone with health intact logs once and does not
+> kill. Pinned by tests/test_kill5_corroboration.py (including the
+> redundancy seam: sustained std collapse still fires kill-1 first).
+> **Disclosure:** this amendment is post-data for run 2's first pass —
+> it could not be blind, so it carries the firsthand evidence above
+> instead. The killed pass is preserved at
+> runs/jepa_pilot_run2_kill5_pass1/ (truncated runs, not comparable
+> data). Run 2 RERUNS in full under the amended detector; its frozen
+> predictions and asymmetric verdict rule are unchanged.
 
 > Recorded margins, for honesty not relitigation: the probe loss is
 > 1.1σ at both bracket points, and the living arm's probe variance is

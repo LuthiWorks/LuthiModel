@@ -624,6 +624,9 @@ class JEPATrainer:
         # time sustained descent is observed; checkpointed so a resumed
         # run doesn't re-arm the kill against its own later plateau.
         self._kill7_descent_established: bool = False
+        # Kill-5 solved-not-copying log throttle (2026-07-17 amendment):
+        # per-modality, log the healthy cosine crossing once, not per step.
+        self._kill5_solved_logged: set[str] = set()
 
         # Pilot-set state per 4.8 review 2026-06-08 (#9 item, pilot-set
         # threshold derivation):
@@ -1192,11 +1195,61 @@ class JEPATrainer:
         if len(recent_pred_cos) >= cfg.dimensional_sustained_checkpoints and all(
             v > cfg.cosine_collapse_threshold for v in recent_pred_cos
         ):
-            return (
-                f"kill-5 (predictor-trivial) on {modality}: "
-                f"predicted-vs-target cosine > {cfg.cosine_collapse_threshold} for "
-                f"{cfg.dimensional_sustained_checkpoints} checkpoints"
+            # Amendment 2026-07-17 (Brian's ruling; POST-HOC and disclosed
+            # -- the living_full run exposed it): high predicted-vs-target
+            # cosine is AMBIGUOUS between predictor degeneracy (copying)
+            # and the predictor genuinely solving its prediction problem.
+            # In EMA-twin JEPA only the first is possible; in the living
+            # substrate the second is the design goal -- PC self-mod
+            # MINIMIZES prediction error, and with the backward pass +
+            # consolidation on, seed42 crossed 0.99 with effective rank
+            # RISING (165->180), best-ever loss, healthy variance. The
+            # disambiguator is the degeneracy signature itself: kill-5
+            # now fires only when the high cosine is corroborated by a
+            # degrading rank or collapsing variance. Cosine alone, with
+            # health intact, logs once and does not kill.
+            er_anchor5 = self._get_trending_anchor(modality, "effective_rank")
+            recent_er5 = self.history.recent(
+                modality, "effective_rank",
+                cfg.dimensional_sustained_checkpoints,
             )
+            rank_degrading = (
+                er_anchor5 is not None
+                and len(recent_er5) > 0
+                and (sum(recent_er5) / len(recent_er5)) < er_anchor5 * 0.9
+            )
+            pilot_std5 = self._get_stationary_baseline(modality, "online_std_p5")
+            std_floor5 = (
+                pilot_std5 * (1.0 - cfg.stationary_deviation_pct)
+                if pilot_std5 is not None else cfg.std_collapse_threshold
+            )
+            recent_std5 = self.history.recent(
+                modality, "online_std_p5", cfg.collapse_sustained_checkpoints,
+            )
+            std_collapsing = (
+                len(recent_std5) > 0
+                and (sum(recent_std5) / len(recent_std5)) < std_floor5
+            )
+            if rank_degrading or std_collapsing:
+                return (
+                    f"kill-5 (predictor-trivial, corroborated) on {modality}: "
+                    f"cosine > {cfg.cosine_collapse_threshold} for "
+                    f"{cfg.dimensional_sustained_checkpoints} checkpoints "
+                    f"WITH degeneracy signature "
+                    f"(rank_degrading={rank_degrading}, "
+                    f"std_collapsing={std_collapsing})"
+                )
+            if modality not in self._kill5_solved_logged:
+                self._kill5_solved_logged.add(modality)
+                logger.info(
+                    "kill-5 NOT fired on %s: cosine crossed %.2f but health "
+                    "corroborates solving, not copying (rank anchor %s, "
+                    "recent rank mean %s) -- the living substrate making "
+                    "its experience predictable is the mechanism working.",
+                    modality, cfg.cosine_collapse_threshold,
+                    f"{er_anchor5:.1f}" if er_anchor5 is not None else "n/a",
+                    f"{(sum(recent_er5)/len(recent_er5)):.1f}" if recent_er5 else "n/a",
+                )
 
         # Criterion 6: substrate override on pred_frob / err_acc
         # (v0.5 §7.6). Per 4.8 review 2026-06-08, the anchor is the
