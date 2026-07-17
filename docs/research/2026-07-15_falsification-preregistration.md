@@ -123,6 +123,26 @@
 > effective capacity; the claim retires to "not more costly," and the
 > ledger says so.
 
+> **CEILING VERDICT (2026-07-17 08:41, all 5 dead@384 runs completed
+> and admissible): KILL.** NMSE: living 0.4516 vs dead@384 0.6320
+> (pooled σ 0.0376) → living by ~4.8σ. Probe: living 0.1533 vs dead@384
+> 0.1605 (pooled σ 0.0065) → **dead by 1.1σ — the living arm loses the
+> probe axis, and the frozen rule has no third branch.** KF2-strong is
+> dead: the surviving claim is exactly and only "self-modification is
+> not more costly than equivalent static capacity," plus the Column-B
+> bet, which no result here touches by design.
+>
+> Recorded margins, for honesty not relitigation: the probe loss is
+> 1.1σ at both bracket points, and the living arm's probe variance is
+> dominated by one low seed (46: 0.1316 vs siblings ≈ 0.16). The rule
+> pooled all five seeds because that is what was frozen; a wider tie
+> band needed freezing then, not now. Separately, an OBSERVATION that
+> survives as data (not as the killed claim): the static NMSE curve is
+> FLAT across 256/384/512 (0.624 / 0.632 / 0.637) while the living arm
+> sits at 0.4516 — static capacity does not buy latent-structure
+> capture at any tested size. If that is ever advanced as a claim, it
+> gets its own pre-registration; it does not inherit this one.
+
 **Date:** 2026-07-15
 **Status:** DRAFT — criteria drafted by Fable 5 (cross-line seat) from the
 2026-07-15 codebase critique Brian relayed. **Critique author confirmed by

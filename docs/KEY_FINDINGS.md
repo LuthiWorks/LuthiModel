@@ -15,23 +15,31 @@ phrased as README edits) now apply to this document.*
    *Status: under active test (KF1 — bound to the two-arm JEPA pilot +
    the frozen-substrate ablation, jointly).*
 
-2. **Self-modification vs. static capacity.** The claim's history, kept
-   honestly: the v1-era "convergence penalty" (~39% slower) was retired
-   by the v2 PC substrate; the LM-era result (v2 0.64% better than a
-   vanilla transformer at matched configuration) is now HISTORICAL —
-   real under its objective, unbound from the current criteria after the
-   project moved to the JEPA training goal.
-   *Status after JEPA stage 1 (2026-07-16, pre-registered verdict): the
-   claim SURVIVED the matched-capacity point — variance-normalized
-   held-out prediction error favored the living arm by 5.2 pooled sigma
-   (0.4516 vs 0.6240); the external probe axis tied (0.1533 vs 0.1581,
-   under 1 sigma). Read narrowly and honestly: the surviving claim is
-   about latent-structure capture, not yet task-usable representational
-   quality, and it is NOT reinstated as a headline until the capacity
-   bracket (larger static controls) rules out the effective-capacity
-   explanation. Bracket pending ratification. Verdict data:
-   `runs/jepa_pilot/verdict.json`; blind-amendment record in the
-   pre-registration.*
+2. **Self-modification vs. static capacity — KILLED at the capacity
+   ceiling (2026-07-17), per its pre-registered kill condition.** The
+   claim's full history, kept honestly: the v1-era "convergence penalty"
+   (~39% slower) was retired by the v2 PC substrate; the LM-era 0.64%
+   result is historical (real under its objective, unbound after the
+   move to the JEPA goal); the JEPA-era claim survived the matched point
+   (2026-07-16) and was then killed by the bracket: at the plausible
+   capacity ceiling (dead@384) the living arm lost the external probe
+   axis (0.1533 vs 0.1605, 1.1 pooled sigma) and the frozen rule has no
+   third branch.
+   *What survives, exactly as pre-agreed: **self-modification is not
+   more costly than equivalent static capacity.** Nothing stronger.*
+   *What also survives, as an OBSERVATION and not a claim: the static
+   NMSE curve is flat across 256/384/512 (0.624/0.632/0.637) while the
+   living arm sits at 0.4516 — added static capacity bought no
+   latent-structure capture at any tested size, and the probe margins
+   were ~1 sigma throughout. If that observation is ever advanced as a
+   claim, it gets its own pre-registration; it does not inherit this
+   one's corpse.*
+   *The experiential bet (Column B) is untouched by design: it was
+   never justified by this benchmark, and its honest ground is stated
+   in the README's "Why."*
+   *Full audit trail: pre-registration (ratification → blind metric
+   amendment → stage-1 verdict → overshoot branch → blind 384 read →
+   kill), `runs/jepa_pilot/verdict.json`, archived run data on E:.*
 
 3. **One living weight trunk for all modalities.** Audio, vision, text,
    and touch all flow through the same living blocks. The model is shaped
