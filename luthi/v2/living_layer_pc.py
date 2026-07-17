@@ -728,6 +728,13 @@ class PredictiveCodingLayer(nn.Module):
         """Two-channel top-down: prediction-driven modulation of plasticity
         and set_point.
 
+        Respects freeze_plasticity (fix 2026-07-17, found preparing the
+        living-full run): the top-down sweep is a living-state WRITER
+        (plasticity.mul_, set_point.add_), so under the freeze it must
+        no-op like every other writer -- otherwise a backward-pass-enabled
+        model's held-out eval would silently modulate the substrate while
+        measuring it. Pinned by the frozen x backward-pass tests.
+
         Signal carries:
           - prediction_error: [in_features], nudges set_point.
           - salience: [in_features], modulates plasticity.
@@ -737,6 +744,8 @@ class PredictiveCodingLayer(nn.Module):
         isolation tests verify the two channels do their jobs independently
         without destructive compounding when joint.
         """
+        if self._plasticity_frozen:
+            return
         if signal.salience.shape[-1] != self.in_features:
             raise ValueError(
                 f"TopDownSignal.salience size {signal.salience.shape[-1]} "

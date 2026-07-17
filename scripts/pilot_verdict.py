@@ -60,6 +60,7 @@ def _nmse_for_run(run_dir: Path, result: dict) -> float:
     ))
     loader = _DeviceLoader(MultimodalDataLoaderImpl(text=text_ds), device)
 
+    living_full = result["arm"] == "living_full"
     model = MultimodalPredictiveCodingLM(
         vocab_size=text_ds.vocab_size(),
         d_model=result["d_model"],
@@ -67,7 +68,8 @@ def _nmse_for_run(run_dir: Path, result: dict) -> float:
         n_heads=4,
         ffn_expansion=1,
         max_seq_len=cfg["seq_len"],
-        backward_pass_enabled=False,
+        backward_pass_enabled=living_full,
+        consolidation_enabled=living_full,
         dead_ffn=(result["arm"] == "dead"),
     ).to(device)
     loss_module = JEPALoss(online_encoder=model).to(device)
@@ -110,6 +112,12 @@ def main() -> int:
                         "reads are per-point: 256 = stage 1's matched "
                         "point; 512 = the ratified overshoot; 384 = the "
                         "fallback ceiling). Never pool sizes.")
+    p.add_argument("--living-arm", type=str, default="living",
+                   choices=("living", "living_full"),
+                   help="Which living configuration to compare (the "
+                        "staged ladder: 'living' = minimal, "
+                        "'living_full' = BP + consolidation). Never pool "
+                        "configurations.")
     args = p.parse_args()
 
     runs = []
@@ -120,16 +128,23 @@ def main() -> int:
             continue
         runs.append((path.parent, r))
 
-    living = [r for _, r in runs if r["arm"] == "living"]
+    living = [r for _, r in runs if r["arm"] == args.living_arm]
     dead = [r for _, r in runs
             if r["arm"] == "dead" and r["d_model"] == args.dead_dmodel]
-    print(f"[verdict] comparing living@256 vs dead@{args.dead_dmodel}")
+    print(f"[verdict] comparing {args.living_arm}@256 vs dead@{args.dead_dmodel}")
     if len(living) < 5 or len(dead) < 5:
         print(f"[verdict] incomplete: living={len(living)}/5 dead={len(dead)}/5 admissible")
         return 1
 
+    # Only the two comparison groups get the (checkpoint-reload) NMSE
+    # recompute -- never pool arms or sizes, never waste evals.
+    runs = [
+        (d, r) for d, r in runs
+        if r["arm"] == args.living_arm
+        or (r["arm"] == "dead" and r["d_model"] == args.dead_dmodel)
+    ]
     print("[verdict] recomputing NMSE from final checkpoints (blind metric)...")
-    nmse: dict[str, list[float]] = {"living": [], "dead": []}
+    nmse: dict[str, list[float]] = {args.living_arm: [], "dead": []}
     for run_dir, r in runs:
         value = _nmse_for_run(run_dir, r)
         nmse[r["arm"]].append(value)
@@ -137,19 +152,51 @@ def main() -> int:
               f"(raw l_pred={r['heldout']['l_pred_mean']:.6f})")
 
     probe = {
-        "living": [r["probe"]["top1"] for r in living],
+        args.living_arm: [r["probe"]["top1"] for r in living],
         "dead": [r["probe"]["top1"] for r in dead],
     }
 
-    nmse_axis = _axis(nmse["living"], nmse["dead"], lower_is_better=True)
-    probe_axis = _axis(probe["living"], probe["dead"], lower_is_better=False)
+    nmse_axis = _axis(nmse[args.living_arm], nmse["dead"], lower_is_better=True)
+    probe_axis = _axis(probe[args.living_arm], probe["dead"], lower_is_better=False)
 
     wins = sum(1 for a in (nmse_axis, probe_axis) if a[0] == "living")
     losses = sum(1 for a in (nmse_axis, probe_axis) if a[0] == "dead")
     survives = losses == 0 and wins >= 1
     # Per-point reads, each frozen in the pre-registration BEFORE its
     # runs existed. The comparison point determines the verdict's force.
-    if args.dead_dmodel == 256:  # stage 1: the matched point
+    if args.living_arm == "living_full":
+        # Run 2 of the configuration ladder (frozen 2026-07-17 before any
+        # living_full run existed): NEW claim, not KF2 revived. Asymmetric
+        # rule per the fragility fix -- wins need > 1 sigma; a KILL needs a
+        # loss > 2 SIGMA (a 1-2 sigma loss on 5 seeds with 15x variance
+        # ratios is noise-of-noise territory); anything else is TRACKED.
+        def _ratio(axis, lower_is_better):
+            _, lm, dm, pooled = axis
+            diff = (dm - lm) if lower_is_better else (lm - dm)
+            return diff / max(pooled, 1e-12)
+        r_nmse = _ratio(nmse_axis, True)
+        r_probe = _ratio(probe_axis, False)
+        hard_loss = min(r_nmse, r_probe) < -2.0
+        any_win = max(r_nmse, r_probe) > 1.0
+        soft = [name for name, r in (("nmse", r_nmse), ("probe", r_probe))
+                if -2.0 <= r < -1.0]
+        if hard_loss:
+            verdict = ("KILL (run-2 rule): living_full loses an axis at "
+                       ">2 sigma vs matched static capacity")
+        elif any_win and not soft:
+            verdict = ("living_full SURVIVES vs dead@256: wins an axis, no "
+                       "loss beyond noise -- register the full-config claim "
+                       "on its own feet")
+        elif any_win and soft:
+            verdict = (f"living_full SURVIVES WITH FLAGS: wins an axis but "
+                       f"soft-loses {soft} (1-2 sigma) -- survival stands, "
+                       f"the soft loss is tracked prominently for run 3")
+        else:
+            verdict = ("TRACKED-INCONCLUSIVE: no axis won beyond 1 sigma -- "
+                       "ladder continues to run 3, deltas recorded")
+        verdict += (f" [ratios: nmse {r_nmse:+.1f} sigma, "
+                    f"probe {r_probe:+.1f} sigma]")
+    elif args.dead_dmodel == 256:  # stage 1: the matched point
         if survives:
             verdict = "KF2-strong SURVIVES at the matched point (bracket now decisive)"
         elif losses > 0:
@@ -181,12 +228,12 @@ def main() -> int:
     report = {
         "criteria": "blind amendment 0fcc92a, 2026-07-16",
         "nmse": {
-            "living": nmse["living"], "dead": nmse["dead"],
+            args.living_arm: nmse[args.living_arm], "dead": nmse["dead"],
             "axis": {"winner": nmse_axis[0], "living_mean": nmse_axis[1],
                      "dead_mean": nmse_axis[2], "pooled_sigma": nmse_axis[3]},
         },
         "probe_top1": {
-            "living": probe["living"], "dead": probe["dead"],
+            args.living_arm: probe[args.living_arm], "dead": probe["dead"],
             "axis": {"winner": probe_axis[0], "living_mean": probe_axis[1],
                      "dead_mean": probe_axis[2], "pooled_sigma": probe_axis[3]},
         },

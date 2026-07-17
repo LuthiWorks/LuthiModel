@@ -182,13 +182,15 @@ class _HoldoutTextLoader:
             )}
 
 
-def _build(loader=None, heldout_batches: int = 4):
+def _build(loader=None, heldout_batches: int = 4,
+           backward_pass: bool = False, consolidation: bool = False):
     torch.manual_seed(11)
     model = MultimodalPredictiveCodingLM(
         vocab_size=VOCAB, d_model=D, n_blocks=2, n_heads=2,
         ffn_expansion=1, max_seq_len=SEQ,
         max_audio_tokens=SEQ, max_vision_tokens=SEQ,
-        backward_pass_enabled=False,
+        backward_pass_enabled=backward_pass,
+        consolidation_enabled=consolidation,
     )
     loss_module = JEPALoss(online_encoder=model)
     loader = loader or _HoldoutTextLoader()
@@ -278,6 +280,34 @@ class TestEvalMutatesNothing:
             "same model, same holdout, different numbers -- either the "
             "eval mutates state or the holdout set is not fixed"
         )
+
+    def test_eval_mutates_nothing_with_full_living_config(self):
+        """The living-full configuration (backward pass ON, consolidation
+        ON) is the one the 2026-07-17 freeze bug lived in: the top-down
+        sweep writes plasticity/set_point and had no freeze check, so a
+        BP-enabled model's held-out eval silently modulated the substrate
+        while measuring it. This pins the fix across the full config."""
+        trainer, loss_module, loader = _build(
+            backward_pass=True, consolidation=True,
+        )
+        for _ in range(3):
+            batch = loader.next_batch("text")
+            trainer.train_step("text", batch)
+
+        before = _full_snapshot(trainer)
+        results = trainer.evaluate_heldout()
+        after = _full_snapshot(trainer)
+
+        assert results and results["text"]["n_batches"] > 0
+        for key, prev in before.items():
+            cur = after[key]
+            if isinstance(prev, torch.Tensor):
+                assert torch.equal(prev, cur), (
+                    f"[living-full] evaluate_heldout mutated {key} -- the "
+                    f"top-down sweep is writing under the freeze"
+                )
+            else:
+                assert prev == cur, f"[living-full] counter {key} advanced"
 
     def test_legacy_loader_without_holdout_skips_cleanly(self):
         class _Legacy:

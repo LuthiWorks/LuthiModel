@@ -73,6 +73,14 @@ STAGES: dict[int, list[tuple[str, int]]] = {
     1: [("living", 256), ("dead", 256)],
     2: [("dead", 512)],
     3: [("dead", 384)],  # fallback only -- run on an inconclusive stage 2
+    # Run 2 of the staged-configuration ladder (Brian, 2026-07-17): the
+    # FULL living configuration -- backward pass ON (DNR 9b: the
+    # task-salience -> plasticity channel) + consolidation ON (episodes
+    # become structure). Stage-1's "living" arm ran the MINIMAL config
+    # (both off, inherited from smoke defaults); the ladder turns
+    # subsystems on stepwise so improvements stay attributable. Held for
+    # run 3: plasticity taper, inverted-U gain, recall-gate tightening.
+    4: [("living_full", 256)],
 }
 
 
@@ -165,6 +173,7 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
     ))
     loader = _DeviceLoader(MultimodalDataLoaderImpl(text=text_ds), device)
 
+    living_full = arm == "living_full"
     model = MultimodalPredictiveCodingLM(
         vocab_size=text_ds.vocab_size(),
         d_model=d_model,
@@ -172,7 +181,12 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
         n_heads=4,
         ffn_expansion=1,
         max_seq_len=args.seq_len,
-        backward_pass_enabled=False,  # pilot scope: match the M8 smokes
+        # Minimal living arm keeps the smoke defaults (BP off, no
+        # consolidation) so its condition stays reproducible; the
+        # living_full arm turns both flag-gated subsystems ON (run 2 of
+        # the configuration ladder, Brian 2026-07-17).
+        backward_pass_enabled=living_full,
+        consolidation_enabled=living_full,
         dead_ffn=(arm == "dead"),
     ).to(device)
     loss_module = JEPALoss(online_encoder=model).to(device)

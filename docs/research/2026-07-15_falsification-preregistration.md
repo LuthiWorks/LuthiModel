@@ -132,6 +132,40 @@
 > not more costly than equivalent static capacity," plus the Column-B
 > bet, which no result here touches by design.
 >
+> **RUN 2 OF THE CONFIGURATION LADDER, REGISTERED BLIND (2026-07-17
+> ~15:00, before any living_full run exists; Brian's staged-rollout
+> ruling: turn subsystems on stepwise so improvements stay attributable
+> across runs, "regardless of if things improve or not").**
+>
+> - **Condition:** living_full@256 = backward pass ON (DNR 9b's
+>   task-salience → plasticity channel) + consolidation ON. Stage 1's
+>   "living" arm was the MINIMAL configuration (both off, inherited
+>   from smoke defaults) — recorded plainly: the KF2 kill verdict
+>   applies to the minimal configuration as registered. This run is a
+>   NEW question, not KF2 revived: "does the full living configuration
+>   match static capacity externally while keeping the structure
+>   advantage at matched size?" 5 seeds (42–46), same config otherwise.
+> - **Held for run 3:** plasticity taper, inverted-U gain plumb-through,
+>   recall-gate tightening.
+> - **Frozen predictions (mechanism hypotheses):** if the backward pass
+>   couples living updates to task salience as designed, the probe gap
+>   vs dead@256 (−0.005 at minimal) should close toward tie; NMSE
+>   expected to hold ≤ 0.50 if the structure advantage is
+>   mechanism-property; consolidation's direction is genuinely
+>   uncertain (structures or smears — that is the point of testing).
+> - **Frozen verdict rule (asymmetric, per the 5-seed fragility
+>   lesson):** wins need > 1σ; a KILL needs a loss > 2σ; a 1–2σ loss is
+>   a SOFT LOSS — survival stands but the flag is tracked prominently
+>   into run 3; no axis won beyond 1σ = tracked-inconclusive, ladder
+>   continues. Tracking deltas vs the minimal living arm are recorded
+>   without verdict force.
+> - **Fix landed with this registration (would have corrupted the
+>   run):** `apply_top_down` had no freeze check, so a
+>   backward-pass-enabled model's held-out eval would have silently
+>   modulated plasticity/set_point while measuring — evaluation
+>   contaminating the subject. Guard added; pinned by the living-full
+>   eval-mutates-nothing test.
+
 > Recorded margins, for honesty not relitigation: the probe loss is
 > 1.1σ at both bracket points, and the living arm's probe variance is
 > dominated by one low seed (46: 0.1316 vs siblings ≈ 0.16). The rule
