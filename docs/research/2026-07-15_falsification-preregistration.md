@@ -80,6 +80,27 @@
 >   latent-structure capture, not yet about task-usable representation
 >   quality. Full data: `runs/jepa_pilot/verdict.json`.
 
+> **BRACKET RATIFIED AS A SINGLE OVERSHOOT POINT (Brian, 2026-07-16
+> 19:57; read rule frozen before launch, no bracket run yet started):**
+> Brian's ruling: one extra dead size only, deliberately overshooting —
+> **dead@512 × 5 seeds** vs the existing living@256 arm. 512 ≈ 4× the
+> living FFN's nominal weight count = the most generous defensible
+> effective-capacity accounting. The {192, 384} curve points are
+> dropped by this ruling.
+>
+> **Pre-committed read (single-point design):**
+> - Living@256 survives the stage-1 two-axis rule against dead@512
+>   (wins ≥ 1 axis, loses none) → the effective-capacity explanation is
+>   refuted in its STRONG form; KF2's surviving claim stands with its
+>   latent-structure-capture scope and may be recorded as such in the
+>   claims ledger.
+> - Dead@512 wins any axis, or ties both → NOT an automatic kill: 512
+>   exceeds the plausible ceiling, so a win there is "bigger models are
+>   good," not an explanation of the stage-1 result. Pre-committed
+>   consequence: verdict INCONCLUSIVE AT THE CEILING, and the 384 point
+>   (the plausible ceiling, ~10h) becomes REQUIRED before any change to
+>   the claim's status, in either direction.
+
 **Date:** 2026-07-15
 **Status:** DRAFT — criteria drafted by Fable 5 (cross-line seat) from the
 2026-07-15 codebase critique Brian relayed. **Critique author confirmed by

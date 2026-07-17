@@ -64,11 +64,15 @@ OUTPUT_ROOT = REPO_ROOT / "runs" / "jepa_pilot"
 
 SEEDS = (42, 43, 44, 45, 46)
 
-# (arm, d_model) conditions per stage.
+# (arm, d_model) conditions per stage. Bracket amended by Brian
+# 2026-07-16: a SINGLE overshoot point (dead@512, ~4x the living FFN's
+# nominal weight count) replaces the {192, 384, 512} curve; stage 3 is
+# reserved for the 384 fallback the pre-registered read requires if
+# dead@512 wins or ties (see the pre-registration's bracket entry).
 STAGES: dict[int, list[tuple[str, int]]] = {
     1: [("living", 256), ("dead", 256)],
-    2: [("dead", 192), ("dead", 384)],
-    3: [("dead", 512)],
+    2: [("dead", 512)],
+    3: [("dead", 384)],  # fallback only -- run on an inconclusive stage 2
 }
 
 
