@@ -101,6 +101,28 @@
 >   (the plausible ceiling, ~10h) becomes REQUIRED before any change to
 >   the claim's status, in either direction.
 
+> **OVERSHOOT RESULT (2026-07-17 03:05, all 5 dead@512 runs completed
+> and admissible):** NMSE living 0.4516 vs dead@512 0.6374 (pooled σ
+> 0.0377) → **living wins by ~4.9σ** — and dead@512's NMSE is *worse*
+> than dead@256's (0.6374 vs 0.6240): added static capacity does not
+> close the latent-structure gap at all. Probe: living 0.1533 vs
+> dead@512 0.1615 (pooled σ 0.0075) → **dead wins by 1.1σ** — a bigger
+> model reading out tokens marginally better, the most ordinary scale
+> effect there is, and just past the threshold. **Verdict, per the
+> pre-committed branch: INCONCLUSIVE AT THE CEILING. The 384 run is now
+> REQUIRED.** No claim-status change.
+
+> **384 READ, FROZEN BLIND (2026-07-17 03:10, before any 384 run
+> exists):** dead@384 is the plausible-ceiling point and carries **full
+> verdict force**: living@256 survives the stage-1 two-axis rule against
+> dead@384 (wins ≥ 1 axis, loses none) → KF2's surviving claim stands,
+> the capacity explanation is refuted at the plausible ceiling, and the
+> beyond-ceiling 512 probe result is recorded as a scale effect, not
+> verdict-bearing. Living loses any axis, or ties both → **KILL** per
+> KF2's ratified consequence: the stage-1 advantage is attributable to
+> effective capacity; the claim retires to "not more costly," and the
+> ledger says so.
+
 **Date:** 2026-07-15
 **Status:** DRAFT — criteria drafted by Fable 5 (cross-line seat) from the
 2026-07-15 codebase critique Brian relayed. **Critique author confirmed by

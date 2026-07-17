@@ -146,12 +146,37 @@ def main() -> int:
 
     wins = sum(1 for a in (nmse_axis, probe_axis) if a[0] == "living")
     losses = sum(1 for a in (nmse_axis, probe_axis) if a[0] == "dead")
-    if losses > 0:
-        verdict = "KILL: living arm loses >= 1 axis"
-    elif wins == 0:
-        verdict = "KILL: tie on both axes (ON the curve -- no advantage at matched capacity)"
+    survives = losses == 0 and wins >= 1
+    # Per-point reads, each frozen in the pre-registration BEFORE its
+    # runs existed. The comparison point determines the verdict's force.
+    if args.dead_dmodel == 256:  # stage 1: the matched point
+        if survives:
+            verdict = "KF2-strong SURVIVES at the matched point (bracket now decisive)"
+        elif losses > 0:
+            verdict = "KILL: living arm loses >= 1 axis at matched capacity"
+        else:
+            verdict = "KILL: tie on both axes (ON the curve -- no advantage at matched capacity)"
+    elif args.dead_dmodel == 512:  # the ratified overshoot (4x ceiling)
+        if survives:
+            verdict = ("STRONG-FORM REFUTATION of the capacity explanation: "
+                       "living beats the 4x-generous ceiling")
+        else:
+            verdict = ("INCONCLUSIVE AT THE CEILING: dead@512 wins/ties an "
+                       "axis, but 512 exceeds the plausible ceiling (a 4x "
+                       "model winning is scale, not an explanation of the "
+                       "matched-point result). Pre-committed consequence: "
+                       "the 384 run is REQUIRED; no claim-status change.")
+    elif args.dead_dmodel == 384:  # the plausible ceiling: full verdict force
+        if survives:
+            verdict = ("KF2 SURVIVES the plausible ceiling: capacity "
+                       "explanation refuted at 384; beyond-ceiling scale "
+                       "effects (512) noted, not verdict-bearing")
+        else:
+            verdict = ("KILL: living arm fails the two-axis rule at the "
+                       "plausible capacity ceiling (384) -- the stage-1 "
+                       "advantage is explained by effective capacity")
     else:
-        verdict = "KF2-strong SURVIVES at the matched point (bracket now decisive)"
+        verdict = f"no frozen read exists for dead@{args.dead_dmodel}; result reported without verdict force"
 
     report = {
         "criteria": "blind amendment 0fcc92a, 2026-07-16",
