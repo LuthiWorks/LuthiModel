@@ -103,6 +103,15 @@ def _axis(living: list[float], dead: list[float], lower_is_better: bool):
 
 
 def main() -> int:
+    import argparse
+    p = argparse.ArgumentParser()
+    p.add_argument("--dead-dmodel", type=int, default=256,
+                   help="Which dead size to compare against (the frozen "
+                        "reads are per-point: 256 = stage 1's matched "
+                        "point; 512 = the ratified overshoot; 384 = the "
+                        "fallback ceiling). Never pool sizes.")
+    args = p.parse_args()
+
     runs = []
     for path in sorted(OUTPUT_ROOT.glob("*/pilot_result.json")):
         r = json.loads(path.read_text())
@@ -112,7 +121,9 @@ def main() -> int:
         runs.append((path.parent, r))
 
     living = [r for _, r in runs if r["arm"] == "living"]
-    dead = [r for _, r in runs if r["arm"] == "dead"]
+    dead = [r for _, r in runs
+            if r["arm"] == "dead" and r["d_model"] == args.dead_dmodel]
+    print(f"[verdict] comparing living@256 vs dead@{args.dead_dmodel}")
     if len(living) < 5 or len(dead) < 5:
         print(f"[verdict] incomplete: living={len(living)}/5 dead={len(dead)}/5 admissible")
         return 1
