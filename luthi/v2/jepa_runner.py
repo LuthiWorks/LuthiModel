@@ -207,6 +207,42 @@ class KillCriteriaConfig:
 
 
 @dataclass
+class TaperConfig:
+    """Plasticity taper: formative -> mature with a FLOOR (run-3 build,
+    2026-07-17; the DH-4 schedule applied to training). The living
+    channel's learning rates (pc_rate, pred_learning_rate) scale by 1.0
+    through the formative fraction of the run, then decay linearly to
+    ``floor`` at the end -- never zero: "lowering the learning rate of
+    the self, never halting it." Mechanism target: nonstationarity smear
+    -- quiet the living channel late so attention's co-adaptation lands
+    on a slowing target.
+    """
+
+    enabled: bool = False
+    start_fraction: float = 0.5   # taper begins at this run-progress
+    floor: float = 0.2            # terminal scale; MUST be > 0
+
+
+def taper_scale(progress: float, start_fraction: float, floor: float) -> float:
+    """Pure schedule: 1.0 before start_fraction; linear to floor at 1.0.
+
+    ``progress`` in [0, 1] (clamped). Floor <= 0 raises -- a zero floor
+    is the frozen-model regression the whole architecture exists to
+    avoid, and it must be impossible to configure silently.
+    """
+    if floor <= 0.0:
+        raise ValueError(f"taper floor must be > 0 (got {floor}); a zero "
+                         f"floor freezes the living channel entirely")
+    if not 0.0 <= start_fraction < 1.0:
+        raise ValueError(f"start_fraction must be in [0, 1); got {start_fraction}")
+    p = min(max(progress, 0.0), 1.0)
+    if p <= start_fraction:
+        return 1.0
+    frac = (p - start_fraction) / (1.0 - start_fraction)
+    return 1.0 + (floor - 1.0) * frac
+
+
+@dataclass
 class EpochConfig:
     """Coverage-anchored epochs and multi-epoch policy (v0.5 §3, §10.4)."""
 
@@ -227,6 +263,7 @@ class RunnerConfig:
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     kill_criteria: KillCriteriaConfig = field(default_factory=KillCriteriaConfig)
     epoch: EpochConfig = field(default_factory=EpochConfig)
+    taper: TaperConfig = field(default_factory=TaperConfig)
 
 
 # ---------------------------------------------------------------------------
@@ -627,6 +664,8 @@ class JEPATrainer:
         # Kill-5 solved-not-copying log throttle (2026-07-17 amendment):
         # per-modality, log the healthy cosine crossing once, not per step.
         self._kill5_solved_logged: set[str] = set()
+        # Current plasticity-taper scale (run-3 build); 1.0 = no taper.
+        self._current_taper_scale: float = 1.0
 
         # Pilot-set state per 4.8 review 2026-06-08 (#9 item, pilot-set
         # threshold derivation):
@@ -813,6 +852,7 @@ class JEPATrainer:
             # NaN/False sentinels from __init__ are emitted as-is.
             "grad_norm": self._last_grad_norm,
             "nonfinite": self._last_nonfinite,
+            "taper_scale": self._current_taper_scale,
             "lr": (
                 self.optimizer.param_groups[0]["lr"]
                 if self.optimizer.param_groups
@@ -1328,6 +1368,32 @@ class JEPATrainer:
 
         return None
 
+    # -- Plasticity taper (run-3 build) --
+
+    def _apply_taper(self) -> None:
+        """Recompute run-progress and sweep rate_scale over the living
+        layers. Called per step; a no-op sweep when disabled (scale
+        stays 1.0). Progress = (epoch + within-epoch coverage fraction)
+        / max_epochs, so the schedule is resume-consistent (derived from
+        checkpointed counters, no wall clock)."""
+        t = self.config.taper
+        if not t.enabled:
+            self._current_taper_scale = 1.0
+            return
+        fracs = []
+        for m in self.sampler.modalities:
+            target = self.sampler.corpus_sizes_tokens[m]
+            done = self.tokens_consumed[m] - self.epoch_token_baseline[m]
+            fracs.append(min(max(done / max(target, 1), 0.0), 1.0))
+        within = sum(fracs) / len(fracs) if fracs else 0.0
+        progress = (self.epoch + within) / max(self.config.epoch.max_epochs, 1)
+        scale = taper_scale(progress, t.start_fraction, t.floor)
+        self._current_taper_scale = scale
+        from luthi.v2.living_layer_pc import PredictiveCodingLayer
+        for module in self.loss_module.online_encoder.modules():
+            if isinstance(module, PredictiveCodingLayer):
+                module.rate_scale = scale
+
     # -- Coverage --
 
     def _update_coverage(self, modality: str, batch: dict) -> None:
@@ -1771,6 +1837,9 @@ class JEPATrainer:
                 # and self.modality_step[modality] -- do NOT increment
                 # again here (4.8 review 2026-06-06 item A).
                 self._update_coverage(modality, batch)
+                # Plasticity taper: recompute AFTER coverage advances so
+                # the schedule sees this step's progress (run-3 build).
+                self._apply_taper()
 
                 # Logging fires on this modality's *own* step count, so
                 # rare modalities are instrumented on their own cadence

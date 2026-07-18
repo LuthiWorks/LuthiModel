@@ -81,7 +81,32 @@ STAGES: dict[int, list[tuple[str, int]]] = {
     # subsystems on stepwise so improvements stay attributable. Held for
     # run 3: plasticity taper, inverted-U gain, recall-gate tightening.
     4: [("living_full", 256)],
+    # Run 3 (Brian, 2026-07-17 evening): the three held builds land --
+    # plasticity taper (formative->mature, floor 0.2 from 50% progress),
+    # inverted-U gain, recall gate 0.5 -> 0.7 -- AND the living arm moves
+    # to 512 alongside the existing dead@512 control (no dead rerun: all
+    # three changes are living-side only). Attribution caveat, recorded:
+    # width and the three builds move together in this rung by Brian's
+    # ruling; a bridge arm (living_full@512, no builds) can be run later
+    # if attribution needs splitting.
+    5: [("living_v3", 512)],
 }
+
+# Per-arm model configuration -- single source of truth, shared with
+# pilot_verdict.py's checkpoint-rebuild path (the eval must reconstruct
+# the arm EXACTLY, including the recall gate, which is live at eval).
+ARM_CONFIGS: dict[str, dict] = {
+    "dead":        {"dead_ffn": True},
+    "living":      {},  # minimal: smoke defaults (BP off, consolidation off)
+    "living_full": {"backward_pass_enabled": True,
+                    "consolidation_enabled": True},
+    "living_v3":   {"backward_pass_enabled": True,
+                    "consolidation_enabled": True,
+                    "learning_gain_enabled": True,
+                    "episode_recall_threshold": 0.7},
+}
+# Trainer-side (non-model) per-arm settings.
+ARM_TAPER: dict[str, bool] = {"living_v3": True}
 
 
 def _device() -> torch.device:
@@ -148,6 +173,7 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
         ModalitySampler,
         RunnerConfig,
         SamplerConfig,
+        TaperConfig,
     )
     from luthi.v2.multimodal_data import (
         MultimodalDataLoaderImpl,
@@ -173,7 +199,6 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
     ))
     loader = _DeviceLoader(MultimodalDataLoaderImpl(text=text_ds), device)
 
-    living_full = arm == "living_full"
     model = MultimodalPredictiveCodingLM(
         vocab_size=text_ds.vocab_size(),
         d_model=d_model,
@@ -181,13 +206,15 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
         n_heads=4,
         ffn_expansion=1,
         max_seq_len=args.seq_len,
-        # Minimal living arm keeps the smoke defaults (BP off, no
-        # consolidation) so its condition stays reproducible; the
-        # living_full arm turns both flag-gated subsystems ON (run 2 of
-        # the configuration ladder, Brian 2026-07-17).
-        backward_pass_enabled=living_full,
-        consolidation_enabled=living_full,
-        dead_ffn=(arm == "dead"),
+        # backward_pass defaults True in the model; every arm's living
+        # config is declared in ARM_CONFIGS (single source of truth,
+        # shared with the verdict rebuild). Arms without the key keep
+        # the smoke default (off) for reproducibility.
+        backward_pass_enabled=ARM_CONFIGS[arm].get(
+            "backward_pass_enabled", False,
+        ),
+        **{k: v for k, v in ARM_CONFIGS[arm].items()
+           if k != "backward_pass_enabled"},
     ).to(device)
     loss_module = JEPALoss(online_encoder=model).to(device)
 
@@ -225,6 +252,7 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
                 abort_continue_at_epoch_1=False,  # sweep runs are unattended
                 max_batches_per_epoch=args.max_batches_per_epoch,
             ),
+            taper=TaperConfig(enabled=ARM_TAPER.get(arm, False)),
         ),
         run_dir=run_dir,
     )

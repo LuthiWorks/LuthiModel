@@ -61,6 +61,7 @@ class PredictiveCodingLayer(nn.Module):
         sparse_threshold: float = 0.0,
         sparse_warmup_steps: int = 500,
         inference_steps_per_forward: int = 1,
+        episode_recall_threshold: float = 0.5,
         learning_gain_enabled: bool = False,
         learning_gain_rise: float = 2.0,
         learning_gain_cap: float = 3.0,
@@ -86,6 +87,17 @@ class PredictiveCodingLayer(nn.Module):
         self.num_episodes = num_episodes
         self.context_dim = context_dim
         self.episode_blend = episode_blend
+        # Recall gate (parameterized 2026-07-17, run-3 recall tightening):
+        # minimum context cosine before a stored episode blends in. The
+        # historical 0.5 admits weakly-matched snapshots, which perturb
+        # representations quasi-randomly at readout time.
+        self.episode_recall_threshold = float(episode_recall_threshold)
+        # Plasticity taper scale (run-3 build): multiplies pc_rate and
+        # pred_learning_rate in the forward's self-mod call. Plain
+        # attribute, recomputed each step by the trainer's schedule
+        # (formative -> mature with a FLOOR, never zero -- DH-4's
+        # "lowering the learning rate of the self, never halting it").
+        self.rate_scale: float = 1.0
         self.consolidation_enabled = consolidation_enabled
         self.consolidation_rate_factor = consolidation_rate_factor
         # Salvatori-style attractor consolidation (2026-05-14). "gradient"
@@ -375,7 +387,7 @@ class PredictiveCodingLayer(nn.Module):
         sims = torch.mm(stored, context.unsqueeze(-1)).squeeze(-1)
         best_idx = sims.argmax()
         best_sim = sims[best_idx]
-        if best_sim < 0.5:
+        if best_sim < self.episode_recall_threshold:
             return None
         if self.episode_values.dtype == torch.int8:
             recalled = (
@@ -614,7 +626,13 @@ class PredictiveCodingLayer(nn.Module):
                     self.momentum, self.update_ema, self.precision,
                     self.error_acc, self.plasticity,
                     x_flat, output,
-                    self.pc_rate, self.pred_learning_rate,
+                    # rate_scale: the trainer-scheduled plasticity taper
+                    # (run-3 build). 1.0 = legacy bit-identical; the
+                    # schedule lowers the LEARNING channels only --
+                    # homeostasis and set-point adaptation stay at their
+                    # own rates (stability is not what tapers).
+                    self.pc_rate * self.rate_scale,
+                    self.pred_learning_rate * self.rate_scale,
                     self.homeostatic_decay, self.set_point_adapt_rate,
                     self.momentum_decay, self.update_ema_decay,
                     self.precision_ema_decay,

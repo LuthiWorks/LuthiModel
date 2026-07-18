@@ -216,6 +216,40 @@
 > whether the remaining half is nonstationarity smear, as the
 > mechanism analysis predicts.
 
+> **RUN 3 REGISTERED BLIND (2026-07-18 ~00:20, before any living_v3
+> run exists; Brian's ruling: "parallel runs with 512, one dead and
+> one alive, with the actual builds").**
+>
+> - **Condition: living_v3@512** = living_full's flags (BP +
+>   consolidation) PLUS the three builds: **plasticity taper**
+>   (formative→mature, scale 1.0 through 50% of the run then linear to
+>   floor 0.2 — never zero, DH-4's discipline, mechanism target:
+>   nonstationarity smear), **inverted-U learning gain** (built
+>   2026-07-05, now plumbed model→block→layer for the first time), and
+>   **recall-gate tightening** (episode blend gate 0.5 → 0.7 at both
+>   the layer and block stores; mechanism target: weak-match
+>   perturbation noise at readout). 5 seeds (42–46).
+> - **Control: the EXISTING dead@512 arm** (completed 2026-07-17, all
+>   admissible) — no rerun; all three changes are living-side only.
+> - **Attribution caveat, recorded at Brian's ruling:** width (256→512)
+>   and the three builds move together in this rung, so their effects
+>   are confounded with each other and with the contention hypothesis.
+>   A bridge arm (living_full@512, no builds) can be run later if
+>   attribution needs splitting. The ladder's tracking read vs
+>   living_full@256 carries this caveat on its face.
+> - **Frozen predictions:** if the probe deficit is nonstationarity
+>   smear, the taper should close most of the remaining gap (dead@512
+>   probe = 0.1615, the highest bar yet); NMSE advantage expected to
+>   persist (living NMSE ≤ 0.35 at 512 under the mechanism hypothesis);
+>   recall tightening expected to reduce seed variance further; the
+>   gain's effect at corpus scale is genuinely unknown (it was designed
+>   for lived-experience dynamics — this is its first outing).
+> - **Frozen verdict rule:** identical to run 2's asymmetric rule
+>   (win > 1σ; KILL only at a loss > 2σ; 1–2σ = tracked soft loss),
+>   applied vs dead@512 via `pilot_verdict.py --living-arm living_v3
+>   --dead-dmodel 512`. Verdict force per the same terms as run 2's
+>   registration: this is the ladder's claim, not KF2 revived.
+
 > Recorded margins, for honesty not relitigation: the probe loss is
 > 1.1σ at both bracket points, and the living arm's probe variance is
 > dominated by one low seed (46: 0.1316 vs siblings ≈ 0.16). The rule

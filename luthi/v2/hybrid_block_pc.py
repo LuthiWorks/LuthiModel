@@ -57,6 +57,13 @@ class PredictiveCodingBlock(nn.Module):
         n_blocks_total: int = 1,
         buffer_dtypes: dict[str, torch.dtype] | None = None,
         dead_ffn: bool = False,
+        # Run-3 plumb-through (2026-07-17): the inverted-U learning gain
+        # (built 2026-07-05, layer-level; never reachable from the model
+        # until now) and the episode recall gate.
+        learning_gain_enabled: bool = False,
+        learning_gain_rise: float = 2.0,
+        learning_gain_cap: float = 3.0,
+        episode_recall_threshold: float = 0.5,
     ):
         super().__init__()
         # Dead-encoder arm (Experiment 1 / JEPA pilot control, 2026-07-15):
@@ -146,6 +153,10 @@ class PredictiveCodingBlock(nn.Module):
                 consolidation_style=consolidation_style,
                 consolidation_attractor_passes=consolidation_attractor_passes,
                 buffer_dtypes=buffer_dtypes,
+                learning_gain_enabled=learning_gain_enabled,
+                learning_gain_rise=learning_gain_rise,
+                learning_gain_cap=learning_gain_cap,
+                episode_recall_threshold=episode_recall_threshold,
             )
 
         # Apply Depth-μP re-init AFTER all sub-modules constructed. We
@@ -166,6 +177,7 @@ class PredictiveCodingBlock(nn.Module):
                 d_model,
                 num_episodes=num_episodes,
                 blend_factor=episode_blend,
+                recall_similarity_threshold=episode_recall_threshold,
             )
 
         # Cached state for the top-down sweep — the block's input is needed

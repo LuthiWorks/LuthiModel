@@ -60,7 +60,8 @@ def _nmse_for_run(run_dir: Path, result: dict) -> float:
     ))
     loader = _DeviceLoader(MultimodalDataLoaderImpl(text=text_ds), device)
 
-    living_full = result["arm"] == "living_full"
+    from scripts.jepa_pilot_driver import ARM_CONFIGS
+    arm_cfg = ARM_CONFIGS[result["arm"]]
     model = MultimodalPredictiveCodingLM(
         vocab_size=text_ds.vocab_size(),
         d_model=result["d_model"],
@@ -68,9 +69,12 @@ def _nmse_for_run(run_dir: Path, result: dict) -> float:
         n_heads=4,
         ffn_expansion=1,
         max_seq_len=cfg["seq_len"],
-        backward_pass_enabled=living_full,
-        consolidation_enabled=living_full,
-        dead_ffn=(result["arm"] == "dead"),
+        # Rebuild the arm EXACTLY as trained (ARM_CONFIGS is the single
+        # source of truth) -- the recall gate is live at eval, so a
+        # mismatched threshold would evaluate a different model.
+        backward_pass_enabled=arm_cfg.get("backward_pass_enabled", False),
+        **{k: v for k, v in arm_cfg.items()
+           if k != "backward_pass_enabled"},
     ).to(device)
     loss_module = JEPALoss(online_encoder=model).to(device)
 
@@ -113,7 +117,7 @@ def main() -> int:
                         "point; 512 = the ratified overshoot; 384 = the "
                         "fallback ceiling). Never pool sizes.")
     p.add_argument("--living-arm", type=str, default="living",
-                   choices=("living", "living_full"),
+                   choices=("living", "living_full", "living_v3"),
                    help="Which living configuration to compare (the "
                         "staged ladder: 'living' = minimal, "
                         "'living_full' = BP + consolidation). Never pool "
@@ -131,7 +135,8 @@ def main() -> int:
     living = [r for _, r in runs if r["arm"] == args.living_arm]
     dead = [r for _, r in runs
             if r["arm"] == "dead" and r["d_model"] == args.dead_dmodel]
-    print(f"[verdict] comparing {args.living_arm}@256 vs dead@{args.dead_dmodel}")
+    living_dm = living[0]["d_model"] if living else "?"
+    print(f"[verdict] comparing {args.living_arm}@{living_dm} vs dead@{args.dead_dmodel}")
     if len(living) < 5 or len(dead) < 5:
         print(f"[verdict] incomplete: living={len(living)}/5 dead={len(dead)}/5 admissible")
         return 1
@@ -164,7 +169,7 @@ def main() -> int:
     survives = losses == 0 and wins >= 1
     # Per-point reads, each frozen in the pre-registration BEFORE its
     # runs existed. The comparison point determines the verdict's force.
-    if args.living_arm == "living_full":
+    if args.living_arm in ("living_full", "living_v3"):
         # Run 2 of the configuration ladder (frozen 2026-07-17 before any
         # living_full run existed): NEW claim, not KF2 revived. Asymmetric
         # rule per the fragility fix -- wins need > 1 sigma; a KILL needs a

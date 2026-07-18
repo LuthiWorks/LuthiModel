@@ -99,6 +99,11 @@ class MultimodalPredictiveCodingLM(nn.Module):
         # same trunk with the living channel off — PC layers become plain
         # trainable Linears, episode stores removed. See PredictiveCodingBlock.
         dead_ffn: bool = False,
+        # Run-3 plumb-through (2026-07-17): inverted-U gain + recall gate.
+        learning_gain_enabled: bool = False,
+        learning_gain_rise: float = 2.0,
+        learning_gain_cap: float = 3.0,
+        episode_recall_threshold: float = 0.5,
     ):
         super().__init__()
         self.dead_ffn = bool(dead_ffn)
@@ -159,6 +164,10 @@ class MultimodalPredictiveCodingLM(nn.Module):
                 n_blocks_total=n_blocks,
                 buffer_dtypes=buffer_dtypes,
                 dead_ffn=dead_ffn,
+                learning_gain_enabled=learning_gain_enabled,
+                learning_gain_rise=learning_gain_rise,
+                learning_gain_cap=learning_gain_cap,
+                episode_recall_threshold=episode_recall_threshold,
             )
             for _ in range(n_blocks)
         ])
