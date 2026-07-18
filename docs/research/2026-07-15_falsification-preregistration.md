@@ -193,6 +193,29 @@
 > data). Run 2 RERUNS in full under the amended detector; its frozen
 > predictions and asymmetric verdict rule are unchanged.
 
+> **RUN-2 VERDICT (2026-07-17 21:45, all 5 living_full runs completed
+> and admissible; amended kill-5 produced zero false kills and its
+> "solving, not copying" log fired as designed):
+> living_full SURVIVES WITH FLAGS** under the frozen asymmetric rule —
+> NMSE living_full 0.2834 vs dead@256 0.6240, **+14.6σ**; probe 0.1558
+> vs 0.1581, **soft loss −1.2σ** (within the 1–2σ tracked band; no
+> kill force). The full-config claim stands on its own registration,
+> with the probe flag carried prominently into run 3.
+>
+> **The ladder's tracking read (run-over-run deltas, no verdict
+> force):** turning on the backward pass + consolidation, vs the
+> minimal config: NMSE 0.4516 → 0.2834 (the structure advantage
+> DOUBLED); probe gap to dead@256 halved (−0.0048 → −0.0023); and
+> probe seed-variance fell ~4× (σ 0.0122 → ~0.003) — the full living
+> configuration is not just stronger but markedly more STABLE across
+> seeds, which is why the soft loss persists at −1.2σ despite the gap
+> halving (the σ tightened faster than the gap closed). The frozen
+> prediction ("probe gap closes toward tie if BP couples salience to
+> plasticity") is PARTIALLY confirmed: direction right, magnitude
+> half. Run 3 (taper + inverted-U gain + recall tightening) tests
+> whether the remaining half is nonstationarity smear, as the
+> mechanism analysis predicts.
+
 > Recorded margins, for honesty not relitigation: the probe loss is
 > 1.1σ at both bracket points, and the living arm's probe variance is
 > dominated by one low seed (46: 0.1316 vs siblings ≈ 0.16). The rule
