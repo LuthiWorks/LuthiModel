@@ -49,8 +49,18 @@ def _nmse_for_run(run_dir: Path, result: dict) -> float:
     cfg = result["config"]
     device = _device()
 
+    # Data provenance: 4x arms record their filelist; the rebuild must
+    # use the same corpus or the holdout would be a different test set.
+    if cfg.get("file_list"):
+        source_paths = [
+            line.strip() for line in
+            Path(cfg["file_list"]).read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+    else:
+        source_paths = [cfg["data_dir"]]
     text_ds = TextDataset(TextDatasetConfig(
-        source_paths=[cfg["data_dir"]],
+        source_paths=source_paths,
         tokenizer_path=REPO_ROOT / "corpus_build" / "tokenizer_32k.json",
         batch_size=cfg["batch_size"],
         seq_len=cfg["seq_len"],
@@ -131,13 +141,17 @@ def main() -> int:
                         "reads are per-point: 256 = stage 1's matched "
                         "point; 512 = the ratified overshoot; 384 = the "
                         "fallback ceiling). Never pool sizes.")
+    p.add_argument("--dead-arm", type=str, default="dead",
+                   choices=("dead", "dead_4x"),
+                   help="Which dead arm (dead_4x = the 4x-data control). "
+                        "Never pool data scales.")
     p.add_argument("--living-dmodel", type=int, default=None,
                    help="Living-arm size filter. Required once an arm "
                         "exists at more than one size (the bridge made "
                         "living_full exist at 256 AND 512) -- pooling "
                         "sizes is never valid.")
     p.add_argument("--living-arm", type=str, default="living",
-                   choices=("living", "living_full", "living_v3"),
+                   choices=("living", "living_full", "living_v3", "living_v3_4x"),
                    help="Which living configuration to compare (the "
                         "staged ladder: 'living' = minimal, "
                         "'living_full' = BP + consolidation). Never pool "
@@ -161,7 +175,7 @@ def main() -> int:
               f"{sorted(sizes)}; pass --living-dmodel (never pool sizes)")
         return 1
     dead = [r for _, r in runs
-            if r["arm"] == "dead" and r["d_model"] == args.dead_dmodel]
+            if r["arm"] == args.dead_arm and r["d_model"] == args.dead_dmodel]
     living_dm = living[0]["d_model"] if living else "?"
     print(f"[verdict] comparing {args.living_arm}@{living_dm} vs dead@{args.dead_dmodel}")
     if len(living) < 5 or len(dead) < 5:
@@ -175,7 +189,7 @@ def main() -> int:
         if (r["arm"] == args.living_arm
             and (args.living_dmodel is None
                  or r["d_model"] == args.living_dmodel))
-        or (r["arm"] == "dead" and r["d_model"] == args.dead_dmodel)
+        or (r["arm"] == args.dead_arm and r["d_model"] == args.dead_dmodel)
     ]
     print("[verdict] recomputing NMSE from final checkpoints (blind metric)...")
     nmse: dict[str, list[float]] = {args.living_arm: [], "dead": []}

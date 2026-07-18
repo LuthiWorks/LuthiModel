@@ -297,6 +297,38 @@
 > 3× this wobble. Both value sets preserved here so no future reader
 > discovers the discrepancy without its explanation.
 
+> **RUN 5 — DATA-SCALING CELLS, REGISTERED BLIND (2026-07-18 11:30,
+> before any 4x run exists; Brian's hypothesis + ruling: "we may need
+> to increase the data by a factor equal to how much we widen" →
+> factor set to 4x, the param rule, data ∝ width²).**
+>
+> - **Motivating evidence already in hand:** the dead arms' NMSE
+>   worsens monotonically with width at fixed data (0.624 @256 →
+>   0.632 @384 → 0.651 @512) — the signature of capacity outrunning
+>   data. This experiment tests whether data starvation explains it.
+> - **Corpus:** a 4x SUPERSET — the full 1x corpus (100 books) + 382
+>   more from gutenberg_4gb, ~50.4M tokens
+>   (corpus_build/gutenberg_4x_filelist.txt, deterministic order).
+>   **Caveat, frozen:** the 4x corpus's holdout tail is a DIFFERENT
+>   test set than the 1x tail; within-4x comparisons carry full force,
+>   cross-corpus "recovery" reads are directional.
+> - **Arms:** 7a = dead_4x@512 ×5 (the pure starvation test — no
+>   living confounds); 7b = living_v3_4x@512 ×5. Same seeds, same
+>   3-coverage-epoch schedule (compute scales with the data: ~5.6h and
+>   ~7.6h per run; ~28h + ~38h per arm).
+> - **Frozen predictions:** if starvation explains the dead curve,
+>   dead_4x@512 NMSE recovers toward ≤ 0.624 (dead@256's level) —
+>   Brian's hypothesis confirmed in strong form; no recovery → width
+>   effects are real and data was not the binding constraint. Living
+>   arm: living_v3_4x NMSE recovers toward the run-2 neighborhood
+>   (≤ 0.35) if run 3's attenuation was starvation; probe expected to
+>   rise with data on BOTH arms (more unique tokens = better readout
+>   everywhere).
+> - **Reads:** within-run-5 comparison (living_v3_4x vs dead_4x, both
+>   @512 @4x) under the ladder's asymmetric rule via
+>   ``--living-arm living_v3_4x --dead-arm dead_4x --dead-dmodel 512``;
+>   recovery reads directional per the holdout caveat.
+
 > Recorded margins, for honesty not relitigation: the probe loss is
 > 1.1σ at both bracket points, and the living arm's probe variance is
 > dominated by one low seed (46: 0.1316 vs siblings ≈ 0.16). The rule

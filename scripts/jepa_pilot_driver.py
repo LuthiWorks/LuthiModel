@@ -96,6 +96,14 @@ STAGES: dict[int, list[tuple[str, int]]] = {
     # at fixed width; vs living_full@256 isolates width at fixed config.
     # Tracking arm -- no verdict force; reads frozen in the registry.
     6: [("living_full", 512)],
+    # Run 5, the DATA-SCALING cells (Brian, 2026-07-18: "increase the
+    # data by 4x" -- the param rule, data ~ width^2). Same 512 arms on a
+    # 4x-token SUPERSET corpus (the 1x corpus + 382 more books, ~50.4M
+    # tokens). Stage 7a = dead (the pure starvation test: does the dead
+    # NMSE curve's worsening-with-width reverse with data?); stage 7b =
+    # living_v3 (does the living advantage's magnitude recover?).
+    7: [("dead_4x", 512)],
+    8: [("living_v3_4x", 512)],
 }
 
 # Per-arm model configuration -- single source of truth, shared with
@@ -112,7 +120,17 @@ ARM_CONFIGS: dict[str, dict] = {
                     "episode_recall_threshold": 0.7},
 }
 # Trainer-side (non-model) per-arm settings.
-ARM_TAPER: dict[str, bool] = {"living_v3": True}
+ARM_TAPER: dict[str, bool] = {"living_v3": True, "living_v3_4x": True}
+
+# Data-scaled arms: model config identical to their base arm; the corpus
+# is the 4x superset filelist. Registered as distinct arm names so run
+# dirs, verdict filters, and the never-pool rules all keep them separate.
+ARM_CONFIGS["dead_4x"] = dict(ARM_CONFIGS["dead"])
+ARM_CONFIGS["living_v3_4x"] = dict(ARM_CONFIGS["living_v3"])
+ARM_FILELIST: dict[str, str] = {
+    "dead_4x": str(REPO_ROOT / "corpus_build" / "gutenberg_4x_filelist.txt"),
+    "living_v3_4x": str(REPO_ROOT / "corpus_build" / "gutenberg_4x_filelist.txt"),
+}
 
 
 def _device() -> torch.device:
@@ -194,8 +212,21 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
 
     torch.manual_seed(seed)
 
+    # Data source: per-arm filelist (the 4x superset) when registered,
+    # else the default 1x directory. The 4x corpus's holdout is its own
+    # tail (a DIFFERENT test set than the 1x tail) -- cross-corpus
+    # comparisons are directional only; the registry carries the caveat.
+    if arm in ARM_FILELIST:
+        filelist = Path(ARM_FILELIST[arm])
+        source_paths = [
+            line.strip() for line in
+            filelist.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+    else:
+        source_paths = [args.data_dir]
     text_ds = TextDataset(TextDatasetConfig(
-        source_paths=[args.data_dir],
+        source_paths=source_paths,
         tokenizer_path=Path(args.tokenizer),
         batch_size=args.batch_size,
         seq_len=args.seq_len,
@@ -302,6 +333,9 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
             "stride": args.stride, "lr": args.lr,
             "holdout_fraction": args.holdout_fraction,
             "data_dir": str(args.data_dir),
+            # Honest data provenance: the verdict rebuild must reload
+            # the SAME corpus (the holdout is corpus-derived).
+            "file_list": ARM_FILELIST.get(arm),
         },
     }
     _result_path(arm, d_model, seed).write_text(json.dumps(result, indent=2))
