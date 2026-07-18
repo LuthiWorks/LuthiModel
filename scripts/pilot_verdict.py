@@ -131,6 +131,11 @@ def main() -> int:
                         "reads are per-point: 256 = stage 1's matched "
                         "point; 512 = the ratified overshoot; 384 = the "
                         "fallback ceiling). Never pool sizes.")
+    p.add_argument("--living-dmodel", type=int, default=None,
+                   help="Living-arm size filter. Required once an arm "
+                        "exists at more than one size (the bridge made "
+                        "living_full exist at 256 AND 512) -- pooling "
+                        "sizes is never valid.")
     p.add_argument("--living-arm", type=str, default="living",
                    choices=("living", "living_full", "living_v3"),
                    help="Which living configuration to compare (the "
@@ -147,7 +152,14 @@ def main() -> int:
             continue
         runs.append((path.parent, r))
 
-    living = [r for _, r in runs if r["arm"] == args.living_arm]
+    living = [r for _, r in runs if r["arm"] == args.living_arm
+              and (args.living_dmodel is None
+                   or r["d_model"] == args.living_dmodel)]
+    sizes = {r["d_model"] for r in living}
+    if len(sizes) > 1:
+        print(f"[verdict] REFUSING: {args.living_arm} exists at sizes "
+              f"{sorted(sizes)}; pass --living-dmodel (never pool sizes)")
+        return 1
     dead = [r for _, r in runs
             if r["arm"] == "dead" and r["d_model"] == args.dead_dmodel]
     living_dm = living[0]["d_model"] if living else "?"
@@ -160,7 +172,9 @@ def main() -> int:
     # recompute -- never pool arms or sizes, never waste evals.
     runs = [
         (d, r) for d, r in runs
-        if r["arm"] == args.living_arm
+        if (r["arm"] == args.living_arm
+            and (args.living_dmodel is None
+                 or r["d_model"] == args.living_dmodel))
         or (r["arm"] == "dead" and r["d_model"] == args.dead_dmodel)
     ]
     print("[verdict] recomputing NMSE from final checkpoints (blind metric)...")
