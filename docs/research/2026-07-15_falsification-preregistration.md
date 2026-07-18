@@ -269,7 +269,24 @@
 > (σ ~0.0019). The taper executed as designed (taper_scale logged to
 > 0.2 floor; zero kills; kill-5's solving log fired on every seed).
 >
-> **Instrument note (2026-07-18, disclosed):** comparing the 07-17
+> **BRIDGE ARM REGISTERED BLIND (2026-07-18 09:45, before any
+> living_full@512 run exists; Brian's ruling: "run the bridge arm so we
+> can split the attribution").** Condition: living_full's exact config
+> (BP + consolidation; no taper, no gain, recall gate 0.5) at 512,
+> 5 seeds. Tracking arm — no verdict force. The frozen attribution
+> reads (descriptive bands, 1σ notable / 2σ strong):
+>
+> - **NMSE attenuation split** (run 2's 0.2834@256 vs run 3's
+>   0.4310@512): bridge ≈ 0.43 → the attenuation is WIDTH (the builds
+>   are NMSE-neutral); bridge ≈ 0.28 → the attenuation came from the
+>   BUILDS (prime suspect: the taper quieting late structure-building);
+>   between → mixed, apportioned by position.
+> - **Probe split** (v3@512 = 0.1582): bridge ≈ 0.1582 → the probe
+>   climb was width, builds probe-neutral; bridge meaningfully below →
+>   the builds are carrying probe improvement; bridge above v3 → the
+>   builds are net probe-negative at 512.
+> - **Variance split**: whether run 3's tightened probe σ tracks the
+>   recall-gating (bridge looser) or width (bridge equally tight). comparing the 07-17
 > 03:05 and 07-18 reads exposed an eval-order numerics wobble on the
 > DML backend: the two dead@512 evals that ran AFTER five 256-width
 > evals in one process read ~2% low (0.612-ish vs the

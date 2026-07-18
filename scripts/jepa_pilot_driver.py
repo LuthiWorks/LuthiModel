@@ -90,6 +90,12 @@ STAGES: dict[int, list[tuple[str, int]]] = {
     # ruling; a bridge arm (living_full@512, no builds) can be run later
     # if attribution needs splitting.
     5: [("living_v3", 512)],
+    # The BRIDGE arm (Brian, 2026-07-18): living_full's exact config at
+    # 512 -- no taper, no gain, recall gate 0.5. Fills the attribution
+    # cell run 3 confounded: vs living_v3@512 isolates the three builds
+    # at fixed width; vs living_full@256 isolates width at fixed config.
+    # Tracking arm -- no verdict force; reads frozen in the registry.
+    6: [("living_full", 512)],
 }
 
 # Per-arm model configuration -- single source of truth, shared with
