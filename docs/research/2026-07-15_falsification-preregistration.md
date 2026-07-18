@@ -250,6 +250,36 @@
 >   --dead-dmodel 512`. Verdict force per the same terms as run 2's
 >   registration: this is the ladder's claim, not KF2 revived.
 
+> **RUN-3 VERDICT (2026-07-18 09:30, all 5 living_v3 runs completed and
+> admissible): living_v3 SURVIVES WITH FLAGS** — NMSE living_v3@512
+> 0.4310 vs dead@512 0.6509, **+17.9σ**; probe 0.1582 vs 0.1615,
+> **soft loss −1.5σ** (tracked band; no kill force).
+>
+> **Ladder tracking (attribution caveat on its face — width and the
+> three builds moved together this rung):** probe 0.1558 → 0.1582
+> against the highest dead bar yet (0.1615 vs 256's 0.1581): the
+> ABSOLUTE probe kept climbing and the gap narrowed again (−0.0023 →
+> −0.0033 vs a bar that rose +0.0034 — against the SAME bar the arms
+> would be near-parity). NMSE 0.2834@256 → 0.4310@512 — the frozen
+> prediction (≤ 0.35) MISSED: the structure advantage persists hugely
+> (+17.9σ) but its magnitude did not carry to 512 at run-2 levels;
+> whether that is width, the taper quieting late-run structure-building,
+> or the gain's first outing cannot be split this rung (the registered
+> bridge arm splits it if wanted). Probe seed-variance tightened again
+> (σ ~0.0019). The taper executed as designed (taper_scale logged to
+> 0.2 floor; zero kills; kill-5's solving log fired on every seed).
+>
+> **Instrument note (2026-07-18, disclosed):** comparing the 07-17
+> 03:05 and 07-18 reads exposed an eval-order numerics wobble on the
+> DML backend: the two dead@512 evals that ran AFTER five 256-width
+> evals in one process read ~2% low (0.612-ish vs the
+> twice-reproduced, warm-up-invariant 0.6496/0.6421). No verdict is
+> sensitive to either value set (margins 5–18σ). Guards added (RNG pin
+> + discarded warm-up eval); the full fix — one isolated process per
+> eval — is the named next step if a future margin ever comes within
+> 3× this wobble. Both value sets preserved here so no future reader
+> discovers the discrepancy without its explanation.
+
 > Recorded margins, for honesty not relitigation: the probe loss is
 > 1.1σ at both bracket points, and the living arm's probe variance is
 > dominated by one low seed (46: 0.1316 vs siblings ≈ 0.16). The rule

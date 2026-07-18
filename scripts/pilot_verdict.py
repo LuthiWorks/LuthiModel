@@ -92,6 +92,21 @@ def _nmse_for_run(run_dir: Path, result: dict) -> float:
         state["projection_heads_state_dict"],
     )
 
+    # Determinism guards (2026-07-18, found comparing the 07-17 03:05 and
+    # 07-18 09:20 reads): the first ~2 evals in a fresh process on the
+    # DML backend came out ~2% high while every later eval reproduced
+    # bit-for-bit -- an order-dependent warm-up artifact in the backend's
+    # numerics, not a model property. Pin RNG and run one DISCARDED
+    # warm-up eval so every measured number comes from a warm device
+    # regardless of call order. No verdict flipped (the wobble is far
+    # inside every margin), but the primary metric must not depend on
+    # evaluation order.
+    torch.manual_seed(0)
+    warmup = heldout_latent_prediction(
+        loss_module, loader.holdout_batches("text", 8), "text",
+        max_batches=2,
+    )
+    del warmup
     r = heldout_latent_prediction(
         loss_module, loader.holdout_batches("text", 8), "text",
         max_batches=50,
@@ -186,14 +201,14 @@ def main() -> int:
         soft = [name for name, r in (("nmse", r_nmse), ("probe", r_probe))
                 if -2.0 <= r < -1.0]
         if hard_loss:
-            verdict = ("KILL (run-2 rule): living_full loses an axis at "
+            verdict = (f"KILL (ladder rule): {args.living_arm} loses an axis at "
                        ">2 sigma vs matched static capacity")
         elif any_win and not soft:
-            verdict = ("living_full SURVIVES vs dead@256: wins an axis, no "
+            verdict = (f"{args.living_arm} SURVIVES: wins an axis, no "
                        "loss beyond noise -- register the full-config claim "
                        "on its own feet")
         elif any_win and soft:
-            verdict = (f"living_full SURVIVES WITH FLAGS: wins an axis but "
+            verdict = (f"{args.living_arm} SURVIVES WITH FLAGS: wins an axis but "
                        f"soft-loses {soft} (1-2 sigma) -- survival stands, "
                        f"the soft loss is tracked prominently for run 3")
         else:
