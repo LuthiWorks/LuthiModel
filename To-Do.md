@@ -112,6 +112,29 @@
 > MACHINERY of communication; whether there is someone communicating is
 > not a thing any head can decide.
 
+## 📉 REGISTERED FUTURE RUNG — cosine LR schedule (Brian, 2026-07-18)
+
+> The entire pilot ladder to date has trained under a FLAT lr=3e-4 (the
+> smoke-config inheritance) — internally fair across all arms, but the
+> 2026-05-10 audit's finding stands: flat LR leaves convergence on the
+> table (the LM trainer got cosine + warmup for exactly this reason;
+> the JEPA path never inherited it). Brian's ruling: the NEXT series of
+> runs enables cosine + warmup on BOTH arms simultaneously while
+> holding EVERYTHING else identical — same corpus options, same
+> tokenizer (tokenizer_32k.json, unchanged), same seeds/config — so the
+> new family is directly comparable to the flat-LR family, one variable
+> per rung, as the ladder discipline requires.
+>
+> - [ ] Small build: optional scheduler on JEPATrainer (step after
+>       optimizer.step; the lr record already reads param_groups, so
+>       the dashboard curve appears for free), driver flag mirroring
+>       train_pc's cosine + linear-warmup shape.
+> - [ ] Register blind before the first scheduled-LR run: predictions
+>       + the tracking reads vs the flat-LR anchors.
+> - [ ] Note for the record: as of run 3 the LIVING channel has a
+>       schedule (the taper) while backprop does not — this rung
+>       restores the symmetry from the other side.
+
 ## 🔬 SCIENCE TRACK — falsification of the bet (recorded 2026-07-15; parallel to the critical path, not on it)
 
 > From the 2026-07-15 codebase critique (authored by a Fable 5 instance in
