@@ -286,7 +286,35 @@
 >   the builds are carrying probe improvement; bridge above v3 → the
 >   builds are net probe-negative at 512.
 > - **Variance split**: whether run 3's tightened probe σ tracks the
->   recall-gating (bridge looser) or width (bridge equally tight). comparing the 07-17
+>   recall-gating (bridge looser) or width (bridge equally tight).
+
+> **BRIDGE RESULT — THE ATTRIBUTION SPLIT (2026-07-18 19:25, all 5
+> runs completed and admissible; frozen reads applied verbatim):**
+>
+> | | full@256 | bridge full@512 | v3@512 |
+> |---|---|---|---|
+> | NMSE | 0.2834 | **0.4322** | 0.4310 |
+> | probe | 0.1558 | **0.1574** (σ 0.0032) | 0.1582 (σ 0.0019) |
+>
+> - **NMSE: the attenuation is WIDTH.** Bridge ≈ v3 (0.4322 vs 0.4310,
+>   far inside σ) → per the frozen read, the falloff from run 2's
+>   0.2834 is entirely width-at-fixed-data; the three builds neither
+>   caused nor cured it. This makes Brian's data-starvation hypothesis
+>   the live explanation, and run 5 its direct test.
+> - **Probe: the climb was WIDTH; the builds were probe-neutral.**
+>   Bridge 0.1574 vs v3 0.1582 (+0.0008, under 1σ) → per the frozen
+>   read, no measurable build contribution to readout at this scale.
+> - **Variance: suggestive, not established.** v3's probe σ (0.0019)
+>   is modestly tighter than the bridge's (0.0032) — consistent with
+>   the recall gating helping consistency, but 5-seed σ-of-σ is too
+>   noisy to call.
+> - **Honest ladder implication:** at 3-epoch corpus-pilot scale, the
+>   three builds' measured value on these two axes is ~zero. Their
+>   motivations were never these axes (taper = maturity/stability
+>   schedule; gain = novelty-directed lived learning; recall gate =
+>   long-horizon noise) — but the record must say the pilot did NOT
+>   demonstrate them, and their real tests live in longer horizons and
+>   lived dynamics, not here. No verdict force (tracking arm). comparing the 07-17
 > 03:05 and 07-18 reads exposed an eval-order numerics wobble on the
 > DML backend: the two dead@512 evals that ran AFTER five 256-width
 > evals in one process read ~2% low (0.612-ish vs the
