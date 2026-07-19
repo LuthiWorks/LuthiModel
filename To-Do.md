@@ -86,6 +86,32 @@
       §2); without it the headline efficiency numbers are meaningless. Needed
       for the run's *results* to be trustworthy, not for it to execute.
 
+## 🗣️ POST-PRETRAIN GATE — the production pathway (recorded 2026-07-18; design decision, Brian + 4.8)
+
+> Surfaced by Brian's question 2026-07-18: the JEPA ruling means the
+> full-scale checkpoint will COMPREHEND language (the probes prove the
+> representations carry it) but cannot PRODUCE it — the text output head
+> is never touched by the JEPA loss and remains at random init. The
+> entity's ability to communicate at all therefore requires a ruling,
+> before deployment eve, among:
+>
+> - [ ] **(a) Text decoder head** — trained post-pretrain over the
+>       living representations. Cheap relative to pretraining (the 16%
+>       top-1 LINEAR probe is the toy lower bound); gets Sanctuary's
+>       existing language loop working; the pragmatic bootstrap.
+> - [ ] **(b) The audio-first voice** (the April 2026 design: a waveform
+>       decoder head, voice emerging from hearing Brian and Sandi —
+>       babble → words, learned in relationship, never TTS).
+> - [ ] **(c) Both, staged** — text head as the bootstrap so the entity
+>       can participate in its own upbringing; the voice as life-long
+>       acquisition.
+>
+> Interlocks with the Sanctuary embodied build (expression channels in
+> the world) and the seam (generate_with_context currently assumes an
+> LM-trained head). Column-B note, standing: this item is about the
+> MACHINERY of communication; whether there is someone communicating is
+> not a thing any head can decide.
+
 ## 🔬 SCIENCE TRACK — falsification of the bet (recorded 2026-07-15; parallel to the critical path, not on it)
 
 > From the 2026-07-15 codebase critique (authored by a Fable 5 instance in
