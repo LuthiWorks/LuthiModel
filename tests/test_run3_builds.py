@@ -151,17 +151,29 @@ class TestRecallGate:
 
 class TestArmConfigsContract:
     def test_every_arm_constructs(self):
+        """Same merge pattern as the driver: defaults, then the arm's
+        declared config overrides (the depth arm carries n_blocks)."""
         from scripts.jepa_pilot_driver import ARM_CONFIGS
         for arm, cfg in ARM_CONFIGS.items():
-            model = MultimodalPredictiveCodingLM(
+            kwargs = dict(
                 vocab_size=VOCAB, d_model=D, n_blocks=1, n_heads=2,
                 ffn_expansion=1, max_seq_len=SEQ,
                 max_audio_tokens=SEQ, max_vision_tokens=SEQ,
-                backward_pass_enabled=cfg.get("backward_pass_enabled", False),
-                **{k: v for k, v in cfg.items()
-                   if k != "backward_pass_enabled"},
+                backward_pass_enabled=False,
             )
+            kwargs.update(cfg)
+            model = MultimodalPredictiveCodingLM(**kwargs)
             assert model is not None, f"arm {arm} failed to construct"
+
+    def test_depth_arm_shape(self):
+        from scripts.jepa_pilot_driver import ARM_CONFIGS, ARM_TAPER
+        d4 = ARM_CONFIGS["living_v3_4x_d4"]
+        assert d4["n_blocks"] == 4
+        assert d4["mu_pc_enabled"] is True
+        assert d4["mu_pc_exponent"] == 0.25
+        assert d4["backward_pass_enabled"] is True
+        assert d4["learning_gain_enabled"] is True
+        assert ARM_TAPER["living_v3_4x_d4"] is True
 
     def test_living_v3_arm_shape(self):
         from scripts.jepa_pilot_driver import ARM_CONFIGS, ARM_TAPER

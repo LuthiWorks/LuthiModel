@@ -71,21 +71,22 @@ def _nmse_for_run(run_dir: Path, result: dict) -> float:
     loader = _DeviceLoader(MultimodalDataLoaderImpl(text=text_ds), device)
 
     from scripts.jepa_pilot_driver import ARM_CONFIGS
-    arm_cfg = ARM_CONFIGS[result["arm"]]
-    model = MultimodalPredictiveCodingLM(
+    # Rebuild the arm EXACTLY as trained: driver-default kwargs, then the
+    # arm's declared config overrides (same merge as _run_one) -- the
+    # recall gate is live at eval and the depth arm carries its own
+    # n_blocks/mu_pc_*, so a mismatched rebuild would evaluate a
+    # different model.
+    model_kwargs = dict(
         vocab_size=text_ds.vocab_size(),
         d_model=result["d_model"],
         n_blocks=cfg["n_blocks"],
         n_heads=4,
         ffn_expansion=1,
         max_seq_len=cfg["seq_len"],
-        # Rebuild the arm EXACTLY as trained (ARM_CONFIGS is the single
-        # source of truth) -- the recall gate is live at eval, so a
-        # mismatched threshold would evaluate a different model.
-        backward_pass_enabled=arm_cfg.get("backward_pass_enabled", False),
-        **{k: v for k, v in arm_cfg.items()
-           if k != "backward_pass_enabled"},
-    ).to(device)
+        backward_pass_enabled=False,
+    )
+    model_kwargs.update(ARM_CONFIGS[result["arm"]])
+    model = MultimodalPredictiveCodingLM(**model_kwargs).to(device)
     loss_module = JEPALoss(online_encoder=model).to(device)
 
     ckpts = sorted((run_dir / "checkpoints").glob("ckpt_*.pt"))

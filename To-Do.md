@@ -112,7 +112,14 @@
 > MACHINERY of communication; whether there is someone communicating is
 > not a thing any head can decide.
 
-## 📉 REGISTERED FUTURE RUNG — cosine LR schedule (Brian, 2026-07-18)
+## 📉 REGISTERED FUTURE RUNG — cosine LR schedule (Brian, 2026-07-18; SEQUENCING AMENDED 2026-07-19)
+
+> **Sequencing amendment (Brian, 2026-07-19):** the DEPTH rung (run 6,
+> living_v3_4x_d4 — registered in the pre-registration) runs FIRST,
+> under the flat LR, so it compares one-variable against all existing
+> anchors; the cosine family follows on the settled shape. Order:
+> 7b (running) → 7a (the run-5 control, kept in place) → run 6 depth →
+> cosine family.
 
 > The entire pilot ladder to date has trained under a FLAT lr=3e-4 (the
 > smoke-config inheritance) — internally fair across all arms, but the

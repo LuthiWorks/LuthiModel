@@ -104,6 +104,15 @@ STAGES: dict[int, list[tuple[str, int]]] = {
     # living_v3 (does the living advantage's magnitude recover?).
     7: [("dead_4x", 512)],
     8: [("living_v3_4x", 512)],
+    # Run 6, the DEPTH rung (Brian, 2026-07-19; sequenced AFTER 7a per
+    # the keep-the-control ruling): 2 -> 4 blocks at 512d, 4x data and
+    # everything else held (flat LR -- compares one-variable against the
+    # existing anchors; the cosine family follows on the settled shape).
+    # First JEPA-era outing of the muPC depth machinery (exponent 0.25
+    # per the M6 followup direction). Tracking read vs living_v3_4x@d2;
+    # a dead_4x_d4 control is the registered contingency if depth
+    # changes the picture.
+    9: [("living_v3_4x_d4", 512)],
 }
 
 # Per-arm model configuration -- single source of truth, shared with
@@ -127,9 +136,21 @@ ARM_TAPER: dict[str, bool] = {"living_v3": True, "living_v3_4x": True}
 # dirs, verdict filters, and the never-pool rules all keep them separate.
 ARM_CONFIGS["dead_4x"] = dict(ARM_CONFIGS["dead"])
 ARM_CONFIGS["living_v3_4x"] = dict(ARM_CONFIGS["living_v3"])
+# The depth arm (run 6): v3's living config at 4 blocks with muPC depth
+# scaling enabled -- its first outing under JEPA. n_blocks/mu_pc_* are
+# model kwargs, so they ride in ARM_CONFIGS and override the driver's
+# --n-blocks default via the arm-config merge in _run_one.
+ARM_CONFIGS["living_v3_4x_d4"] = dict(
+    ARM_CONFIGS["living_v3"],
+    n_blocks=4,
+    mu_pc_enabled=True,
+    mu_pc_exponent=0.25,
+)
+ARM_TAPER["living_v3_4x_d4"] = True
 ARM_FILELIST: dict[str, str] = {
     "dead_4x": str(REPO_ROOT / "corpus_build" / "gutenberg_4x_filelist.txt"),
     "living_v3_4x": str(REPO_ROOT / "corpus_build" / "gutenberg_4x_filelist.txt"),
+    "living_v3_4x_d4": str(REPO_ROOT / "corpus_build" / "gutenberg_4x_filelist.txt"),
 }
 
 
@@ -236,23 +257,21 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
     ))
     loader = _DeviceLoader(MultimodalDataLoaderImpl(text=text_ds), device)
 
-    model = MultimodalPredictiveCodingLM(
+    # Model kwargs: driver defaults, overridden by the arm's declared
+    # config (ARM_CONFIGS is the single source of truth, shared with the
+    # verdict rebuild). The depth arm carries its own n_blocks/mu_pc_*
+    # through this merge; arms without a key keep the smoke default.
+    model_kwargs = dict(
         vocab_size=text_ds.vocab_size(),
         d_model=d_model,
         n_blocks=args.n_blocks,
         n_heads=4,
         ffn_expansion=1,
         max_seq_len=args.seq_len,
-        # backward_pass defaults True in the model; every arm's living
-        # config is declared in ARM_CONFIGS (single source of truth,
-        # shared with the verdict rebuild). Arms without the key keep
-        # the smoke default (off) for reproducibility.
-        backward_pass_enabled=ARM_CONFIGS[arm].get(
-            "backward_pass_enabled", False,
-        ),
-        **{k: v for k, v in ARM_CONFIGS[arm].items()
-           if k != "backward_pass_enabled"},
-    ).to(device)
+        backward_pass_enabled=False,
+    )
+    model_kwargs.update(ARM_CONFIGS[arm])
+    model = MultimodalPredictiveCodingLM(**model_kwargs).to(device)
     loss_module = JEPALoss(online_encoder=model).to(device)
 
     sampler_cfg = SamplerConfig(
@@ -328,7 +347,9 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
         "probe_shuffled_floor": probe_floor,
         "wall_clock_seconds": time.time() - started,
         "config": {
-            "n_blocks": args.n_blocks, "epochs": args.epochs,
+            # Effective model shape (the depth arm overrides n_blocks
+            # via ARM_CONFIGS -- record what actually trained).
+            "n_blocks": model_kwargs["n_blocks"], "epochs": args.epochs,
             "batch_size": args.batch_size, "seq_len": args.seq_len,
             "stride": args.stride, "lr": args.lr,
             "holdout_fraction": args.holdout_fraction,

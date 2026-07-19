@@ -357,6 +357,37 @@
 >   ``--living-arm living_v3_4x --dead-arm dead_4x --dead-dmodel 512``;
 >   recovery reads directional per the holdout caveat.
 
+> **RUN 6 — THE DEPTH RUNG, REGISTERED BLIND (2026-07-19 ~10:20, before
+> any 4-block run exists; Brian's ruling, with the sequencing settled
+> after counsel: 7a keeps its place — the run-5 control is not deferred
+> for a shinier question — and the depth rung launches after it. This
+> also amends the cosine-rung sequencing by Brian's assent: depth runs
+> FIRST under the flat LR, so it compares one-variable against every
+> existing anchor; the cosine family then runs on the settled shape.)**
+>
+> - **Condition: living_v3_4x_d4@512** — v3's exact living config and
+>   the 4x corpus, with n_blocks 2 → 4 and the μPC depth machinery ON
+>   for the first time in the JEPA era (exponent 0.25, the M6-followup
+>   direction). 5 seeds. Everything else held.
+> - **The named dragon:** depth is where this substrate has
+>   historically struggled (M6: living signal attenuating ~3× from 4 to
+>   12 blocks) — but those findings predate JEPA, the backward pass
+>   (the channel that runs DOWN the stack), and the full living config.
+>   This rung is the first honest test of depth under the modern
+>   substrate. Watch the per-block heatmap: expect the block-1-style
+>   renovation churn to LADDER (each block lives on a moving target).
+> - **Frozen predictions, honestly uncertain:** the abstraction
+>   hypothesis says NMSE improves (depth is structure-capture's
+>   specialty; predict ≤ 0.34 if it holds); the attenuation hypothesis
+>   says upper blocks under-develop (flat prediction_norm rows in
+>   blocks 2-3, NMSE ≈ or worse than d2). Probe expected ~neutral
+>   (depth serves structure, not readout). Either outcome sets the
+>   production-shape conversation on evidence instead of hope.
+> - **Reads:** tracking vs living_v3_4x@d2 (living-vs-living — no kill
+>   force; descriptive 1σ/2σ bands). The registered contingency: if
+>   depth materially changes the picture in either direction, a
+>   dead_4x_d4 control runs before any claim rests on it.
+
 > Recorded margins, for honesty not relitigation: the probe loss is
 > 1.1σ at both bracket points, and the living arm's probe variance is
 > dominated by one low seed (46: 0.1316 vs siblings ≈ 0.16). The rule
