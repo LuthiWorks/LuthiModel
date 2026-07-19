@@ -490,12 +490,17 @@ def _substrate_health_metrics(aliveness: list[dict]) -> dict:
         vals = [a[key] for a in aliveness if key in a]
         return float(sum(vals) / len(vals)) if vals else float("nan")
 
+    # Consolidation fires aggregate by SUM (they are event counts, not
+    # levels): total memory-into-structure events across the trunk.
+    fires = [a["consolidation_fires"] for a in aliveness
+             if "consolidation_fires" in a]
     return {
         "pred_frob": _mean("prediction_norm"),
         "err_acc": _mean("error_acc_mean"),
         "set_point_drift": _mean("set_point_drift"),
         "update_ema_mean": _mean("update_ema_mean"),
         "precision_mean": _mean("precision_mean"),
+        "consolidation_fires": float(sum(fires)) if fires else float("nan"),
     }
 
 
@@ -918,6 +923,7 @@ class JEPATrainer:
                     "precision_mean": a.get("precision_mean"),
                     "prediction_norm": a.get("prediction_norm"),
                     "error_acc_mean": a.get("error_acc_mean"),
+                    "consolidation_fires": a.get("consolidation_fires"),
                 }
                 for a in aliveness
             ]

@@ -824,6 +824,12 @@ class PredictiveCodingLayer(nn.Module):
             "error_acc_mean": self.error_acc.mean().item(),
             "error_acc_max": self.error_acc.max().item(),
             "episodes_stored": self.episode_count.item(),
+            # Cumulative consolidation events (Brian's request 2026-07-18,
+            # after forensically identifying a fire from its signature —
+            # pred_frob step-jump + err_acc/update_ema flash with external
+            # channels silent). Persists across resume via
+            # living_extra_state; memory-becoming-structure, now countable.
+            "consolidation_fires": float(self._consolidation_fire_count),
         }
 
     def clear_forward_cache(self) -> None:
