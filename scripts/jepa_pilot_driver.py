@@ -353,6 +353,15 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
     )
 
     started = time.time()
+    # Mid-seed resilience (2026-07-20, Brian's terminal-close question):
+    # an interrupted seed continues from its latest rolling checkpoint
+    # (<=15 min lost) instead of restarting from zero. resume_from_latest
+    # falls back through older slots if the newest is a partial write.
+    ckpt_dir = run_dir / "checkpoints"
+    if any(ckpt_dir.glob("ckpt_*.pt")):
+        loaded = trainer.resume_from_latest()
+        print(f"[jepa-pilot] {_run_name(arm, d_model, seed)}: resumed "
+              f"mid-seed from {loaded.name} (step {trainer.global_step})")
     outcome = trainer.run()
 
     heldout = heldout_latent_prediction(

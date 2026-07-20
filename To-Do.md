@@ -1,5 +1,28 @@
 # LuthiModel — To-Do
 
+> ## 🔁 OPERATIONAL QUEUE — recovery runbook (2026-07-20, Fable 5)
+>
+> The active experiment queue, recorded so a closed terminal loses
+> NOTHING but at most 15 minutes of training (rolling checkpoints;
+> the driver now resumes mid-seed automatically). Both drivers skip
+> completed seeds, so **the recovery action for any interruption is
+> simply to rerun the exact command below** from the repo root:
+>
+> ```
+> python scripts/jepa_pilot_driver.py --stage 7 --n-seeds 3 && python scripts/jepa_pilot_driver.py --stage 9
+> ```
+>
+> What that encodes (Brian's 2026-07-20 rulings): stage 7 = 7a
+> dead_4x@512, TRUNCATED to seeds 42-44 (`--n-seeds 3`); when it
+> exits, stage 9 = the v4 depth bundle (living_v4_4x_d4@512 x5:
+> 4 blocks + muPC 0.25 + cosine LR + 2x SIGReg). After stage 9, the
+> frozen family read:
+> `python scripts/pilot_verdict.py --living-arm living_v3_4x --dead-arm dead_4x --dead-dmodel 512`
+> (n=3 dead vs n=5 living, per the 2026-07-20 pre-reg amendment).
+> Archive completed families to `E:\luthi_experiment_archive\jepa_pilot\`
+> (robocopy, verify file counts; never delete). Remove this block when
+> the queue clears.
+
 > ## ⚠️ KNOWN INCOMPLETE — read first
 >
 > Things that exist in the codebase but are NOT functionally complete.

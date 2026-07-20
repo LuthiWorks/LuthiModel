@@ -148,6 +148,38 @@ class TestTrainerSchedule:
         assert tr.optimizer.param_groups[0]["lr"] == pytest.approx(BASE_LR)
 
 
+class TestMidSeedResume:
+    """Resume must CONTINUE the interrupted epoch, not restart its token
+    count. Pre-fix, run() clobbered the restored epoch_token_baseline
+    via _start_new_epoch(), so a resumed epoch served a full extra pass
+    (2026-07-20, found wiring driver-level mid-seed resume)."""
+
+    def test_resumed_epoch_continues_not_restarts(self, tmp_path):
+        # Fake loader: 1000-token corpus, 32 tokens/batch -> the coverage
+        # anchor ends epoch 0 at ceil(1000/32) = 32 steps.
+        full_epoch_steps = math.ceil(1000 / (B * SEQ))
+
+        tr_a = _build_trainer(tmp_path, LRScheduleConfig(enabled=False))
+        for _ in range(10):
+            tr_a.train_step("text", tr_a.data_loader.next_batch("text"))
+            tr_a.tokens_consumed["text"] += B * SEQ
+        tr_a._checkpoint(reason="test")
+
+        tr_b = _build_trainer(tmp_path, LRScheduleConfig(enabled=False))
+        tr_b.resume_from_latest()
+        assert tr_b.global_step == 10
+        assert tr_b._resumed_mid_epoch is True
+
+        outcome = tr_b.run()
+        assert outcome == "completed"
+        # Continue-from-10: total lands at one full epoch (+/- a partial
+        # batch), NOT 10 + a full epoch.
+        assert tr_b.global_step <= full_epoch_steps + 2, (
+            f"resumed epoch restarted its token count: "
+            f"{tr_b.global_step} steps vs expected ~{full_epoch_steps}"
+        )
+
+
 class TestV4ArmWiring:
     """The v4 bundle must be complete in every per-arm table -- a missing
     entry silently runs the arm with defaults (the exact class of quiet

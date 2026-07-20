@@ -676,6 +676,12 @@ class JEPATrainer:
             )
         self._base_lrs = [g["lr"] for g in optimizer.param_groups]
 
+        # Set by resume(): the next run() must CONTINUE the restored
+        # epoch, not reset its token baseline (which would make the
+        # interrupted epoch serve a full extra pass -- found 2026-07-20
+        # wiring driver-level mid-seed resume).
+        self._resumed_mid_epoch = False
+
         # State.
         self.global_step = 0
         # Per-modality step counter (4.8 review 2026-06-06 item A). The
@@ -1755,6 +1761,9 @@ class JEPATrainer:
         # Time anchors restart from now; do not roll wall-clock backward.
         self.run_start_time = time.monotonic() - state["wall_clock_seconds"]
         self.last_checkpoint_time = time.monotonic()
+        # The restored epoch_token_baseline is live mid-epoch state;
+        # run() must not clobber it with _start_new_epoch().
+        self._resumed_mid_epoch = True
         logger.info(
             "Resumed from %s at step %d, epoch %d",
             ckpt_path, self.global_step, self.epoch,
@@ -1859,9 +1868,15 @@ class JEPATrainer:
         Returns one of: "completed", "killed:<reason>", "aborted".
         """
         while self.epoch < self.config.epoch.max_epochs:
-            self._start_new_epoch()
+            if self._resumed_mid_epoch:
+                # Continue the interrupted epoch with its restored token
+                # baseline; resetting it would serve a full extra pass.
+                self._resumed_mid_epoch = False
+                logger.info("Continuing resumed epoch %d", self.epoch)
+            else:
+                self._start_new_epoch()
+                logger.info("Starting epoch %d", self.epoch)
             steps_this_epoch = 0
-            logger.info("Starting epoch %d", self.epoch)
 
             while not self._epoch_done():
                 modality = self.sampler.sample()
