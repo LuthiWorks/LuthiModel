@@ -357,6 +357,27 @@
 >   ``--living-arm living_v3_4x --dead-arm dead_4x --dead-dmodel 512``;
 >   recovery reads directional per the holdout caveat.
 
+> **Instrument note (2026-07-19 ~19:00, seed44 complete, seeds 45-46
+> pending — recorded BEFORE the family read).** Seed44 completed all
+> 72,000 steps with no kill fired: ADMISSIBLE. It was visibly the
+> turbulent sibling (Brian's live observation, quantified: 2nd-half
+> l_pred roughness 22.7% vs 2.3%/12.9% for seeds 42/43; err_acc
+> roughness 15.4% vs 7.0%/8.7%). Its heldout NMSE ROSE epoch-over-epoch
+> (0.431 -> 0.494 -> 0.523) while both siblings improved-then-plateaued
+> (42: 0.446 -> 0.359 -> 0.366; 43: 0.380 -> 0.276 -> 0.284). Mechanism,
+> measured not guessed: heldout l_pred FELL every epoch on seed44
+> (0.0591 -> 0.0234 -> 0.0161, comparable to siblings) while its NMSE
+> denominator (per-dim target variance, l_pred/nmse) contracted 4.4x
+> (0.137 -> 0.047 -> 0.031) - faster than its error fell. Seed42's
+> error fell 4.8x against a 4.0x contraction, so its ratio improved.
+> Rising NMSE here is the normalization race being lost, NOT rising
+> prediction error. Note also seed44 posts the family's BEST
+> prior-corrected probe margin (+4.0 pts vs +3.0/+2.9). No criteria are
+> amended by this note; the frozen family read proceeds as registered
+> with seed44 included. This note exists so the family verdict is
+> interpreted with the denominator race on record, not reconstructed
+> after the number is known.
+
 > **RUN 6 — THE DEPTH RUNG, REGISTERED BLIND (2026-07-19 ~10:20, before
 > any 4-block run exists; Brian's ruling, with the sequencing settled
 > after counsel: 7a keeps its place — the run-5 control is not deferred
