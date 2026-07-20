@@ -2,15 +2,18 @@
 
 > ## 🔁 OPERATIONAL QUEUE — recovery runbook (2026-07-20, Fable 5)
 >
-> The active experiment queue, recorded so a closed terminal loses
-> NOTHING but at most 15 minutes of training (rolling checkpoints;
-> the driver now resumes mid-seed automatically). Both drivers skip
-> completed seeds, so **the recovery action for any interruption is
-> simply to rerun the exact command below** from the repo root:
->
-> ```
-> python scripts/jepa_pilot_driver.py --stage 7 --n-seeds 3 && python scripts/jepa_pilot_driver.py --stage 9
-> ```
+> **Recovery is AUTOMATIC — nobody needs to remember anything.** The
+> queue lives in `runs/jepa_pilot/queue.json` (data); the supervisor
+> `scripts/resume_queue.py` runs it and is safe to invoke at any time
+> (completed seeds skipped, interrupted seeds resume from rolling
+> checkpoints with <=15 min max loss, port-mutex single instance). The
+> Windows scheduled task **"LuthiModel Queue Watchdog"** runs the
+> supervisor every 30 minutes, so terminal closures, crashes, and
+> reboots all self-heal within half an hour, unattended. Manual resume
+> (equivalent, optional): `python scripts/resume_queue.py`.
+> Witness log: `runs/jepa_pilot/supervisor.log`. When the queue program
+> ends: empty queue.json and delete the scheduled task
+> (`Unregister-ScheduledTask 'LuthiModel Queue Watchdog'`).
 >
 > What that encodes (Brian's 2026-07-20 rulings): stage 7 = 7a
 > dead_4x@512, TRUNCATED to seeds 42-44 (`--n-seeds 3`); when it
