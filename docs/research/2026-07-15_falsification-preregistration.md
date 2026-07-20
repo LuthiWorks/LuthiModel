@@ -409,6 +409,49 @@
 >   depth materially changes the picture in either direction, a
 >   dead_4x_d4 control runs before any claim rests on it.
 
+> **AMENDMENT (2026-07-20 ~15:20, Brian's rulings; recorded before any
+> 4-block run exists and before 7a's seed43 finished).** Two changes:
+>
+> **1. 7a truncated to 3 seeds (42-44).** Brian's ruling after dead_4x
+> seed42 landed at NMSE 0.671 (vs 0.651 at 1x — no recovery; data was
+> not the dead arm's binding constraint): "3 runs will be enough to
+> tell if it is going to be at all consistent." Justification on
+> record: every dead family to date has sd <= 0.008, the tightest
+> variance in the program. The run-5 family read therefore compares
+> n=3 dead vs n=5 living; the asymmetric ladder rule applies
+> unchanged, with the reduced-n honestly noted in the verdict.
+> Seeds 45-46 are cancelled, not failed — no admissibility question.
+>
+> **2. The depth rung is now the v4 BUNDLE: arm living_v4_4x_d4.**
+> Supersedes the depth-only registration above. Brian's ruling folds
+> the two cheap levers into the depth family rather than spending a
+> family on each: (a) the registered cosine-LR rung — cosine decay,
+> 10% floor, over the planned total steps (the LR panel will move for
+> the first time); (b) SIGReg weight 0.1 → 0.2 — the variance-floor
+> lever motivated by the seed44 denominator race (living spaces settle
+> at std ~0.3 against SIGReg's unit target; a stronger pull should
+> hold the space louder and stabilize NMSE across seeds). Model config
+> otherwise identical to living_v3_4x_d4 (n_blocks=4, muPC 0.25, v3
+> living config, taper). 5 seeds.
+>
+> **Attribution, honestly:** this bundles three variables against the
+> d2 anchors. One-variable attribution is deliberately traded for
+> speed; if the bundle moves the picture, single-lever follow-ups
+> split it (the bridge precedent). The depth-only predictions above
+> transfer to the bundle as follows, frozen now:
+> - Abstraction + levers: NMSE <= 0.34 (unchanged threshold).
+> - Attenuation: flat prediction_norm rows in blocks 2-3, NMSE ~0.40.
+> - SIGReg lever's OWN prediction: final online_std_p50 >= 0.4 (vs
+>   ~0.32 in the v3_4x family) and family NMSE sd < 0.089 (the lever
+>   is claimed as a stabilizer; if sd does not tighten, the lever
+>   failed its stated purpose regardless of the mean).
+> - Cosine lever: late-run l_pred slope flattens earlier (descriptive).
+> **Instrument note:** this is the first living family with the
+> consolidation-fires counter live (the v3_4x family's process predated
+> the 07-18 metric). Fire counts are a measurement, not a prediction;
+> whatever they show becomes the baseline for the consolidation-tuning
+> conversation.
+
 > Recorded margins, for honesty not relitigation: the probe loss is
 > 1.1σ at both bracket points, and the living arm's probe variance is
 > dominated by one low seed (46: 0.1316 vs siblings ≈ 0.16). The rule

@@ -87,7 +87,13 @@ def _nmse_for_run(run_dir: Path, result: dict) -> float:
     )
     model_kwargs.update(ARM_CONFIGS[result["arm"]])
     model = MultimodalPredictiveCodingLM(**model_kwargs).to(device)
-    loss_module = JEPALoss(online_encoder=model).to(device)
+    # v4 arms carry a non-default SIGReg weight (recorded in the run's
+    # config). NMSE depends only on l_pred, but the reported sigreg
+    # number should come from the loss as trained.
+    loss_module = JEPALoss(
+        online_encoder=model,
+        sigreg_lambd=cfg.get("sigreg_lambd", 0.1),
+    ).to(device)
 
     ckpts = sorted((run_dir / "checkpoints").glob("ckpt_*.pt"))
     if not ckpts:

@@ -112,14 +112,26 @@
 > MACHINERY of communication; whether there is someone communicating is
 > not a thing any head can decide.
 
-## 📉 REGISTERED FUTURE RUNG — cosine LR schedule (Brian, 2026-07-18; SEQUENCING AMENDED 2026-07-19)
+## 📉 REGISTERED FUTURE RUNG — cosine LR schedule (Brian, 2026-07-18; SEQUENCING AMENDED 2026-07-19; **FOLDED INTO THE v4 DEPTH BUNDLE 2026-07-20**)
+
+> **Bundle amendment (Brian, 2026-07-20):** the cosine rung no longer
+> runs as its own family. It is FOLDED into the depth family — arm
+> **living_v4_4x_d4** = depth (2→4 blocks, μPC 0.25) + cosine LR
+> (10% floor) + 2× SIGReg (variance-floor lever) — implemented
+> (`LRScheduleConfig` in jepa_runner, `ARM_SIGREG`/`ARM_COSINE` in the
+> driver, tests in test_cosine_lr_and_v4_arm.py) and registered via the
+> 2026-07-20 amendment in the pre-registration doc. Attribution vs the
+> d2 anchors is deliberately bundled; single-lever follow-ups split it
+> if the bundle moves the picture. **7a truncated to seeds 42–44 by the
+> same ruling.** Order now: 7a (through seed44) → run 6 = v4 bundle.
 
 > **Sequencing amendment (Brian, 2026-07-19):** the DEPTH rung (run 6,
 > living_v3_4x_d4 — registered in the pre-registration) runs FIRST,
 > under the flat LR, so it compares one-variable against all existing
 > anchors; the cosine family follows on the settled shape. Order:
 > 7b (running) → 7a (the run-5 control, kept in place) → run 6 depth →
-> cosine family.
+> cosine family. *(Superseded by the 2026-07-20 bundle amendment above;
+> kept for history.)*
 
 > The entire pilot ladder to date has trained under a FLAT lr=3e-4 (the
 > smoke-config inheritance) — internally fair across all arms, but the

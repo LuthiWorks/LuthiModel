@@ -242,6 +242,37 @@ def taper_scale(progress: float, start_fraction: float, floor: float) -> float:
     return 1.0 + (floor - 1.0) * frac
 
 
+def cosine_lr_scale(progress: float, min_ratio: float) -> float:
+    """Pure schedule: cosine from 1.0 at progress=0 to min_ratio at 1.0.
+
+    ``progress`` in [0, 1] (clamped -- steps past the planned total hold
+    the floor). min_ratio must be in (0, 1]: a zero floor stalls the
+    optimizer's late-run learning entirely, which is a silent way to
+    freeze training -- same guard philosophy as taper_scale.
+    """
+    if not 0.0 < min_ratio <= 1.0:
+        raise ValueError(f"min_ratio must be in (0, 1]; got {min_ratio}")
+    p = min(max(progress, 0.0), 1.0)
+    return min_ratio + 0.5 * (1.0 - min_ratio) * (1.0 + math.cos(math.pi * p))
+
+
+@dataclass
+class LRScheduleConfig:
+    """Optimizer-side cosine decay (registered rung, folded into the depth
+    family by Brian 2026-07-20). Distinct from TaperConfig, which decays
+    the SUBSTRATE's self-modification rate -- this one decays the
+    gradient learning rate. Both are progress schedules; keep the
+    attribution distinction in mind when reading runs with both enabled.
+    """
+
+    enabled: bool = False
+    min_lr_ratio: float = 0.1
+    # Planned total optimizer steps; the driver estimates this from
+    # corpus size. Required (> 0) when enabled -- cosine needs to know
+    # where the end is.
+    total_steps: int = 0
+
+
 @dataclass
 class EpochConfig:
     """Coverage-anchored epochs and multi-epoch policy (v0.5 §3, §10.4)."""
@@ -264,6 +295,7 @@ class RunnerConfig:
     kill_criteria: KillCriteriaConfig = field(default_factory=KillCriteriaConfig)
     epoch: EpochConfig = field(default_factory=EpochConfig)
     taper: TaperConfig = field(default_factory=TaperConfig)
+    lr_schedule: LRScheduleConfig = field(default_factory=LRScheduleConfig)
 
 
 # ---------------------------------------------------------------------------
@@ -632,6 +664,18 @@ class JEPATrainer:
         self.run_dir = Path(run_dir)
         self.run_dir.mkdir(parents=True, exist_ok=True)
 
+        # Cosine LR: capture construction-time base rates once; the
+        # schedule recomputes absolute lr from (base, global_step) every
+        # step, so checkpoint resume lands on the right point without
+        # any schedule state in the checkpoint.
+        sched = config.lr_schedule
+        if sched.enabled and sched.total_steps <= 0:
+            raise ValueError(
+                "LRScheduleConfig.enabled requires total_steps > 0 "
+                f"(got {sched.total_steps}); cosine needs the run length"
+            )
+        self._base_lrs = [g["lr"] for g in optimizer.param_groups]
+
         # State.
         self.global_step = 0
         # Per-modality step counter (4.8 review 2026-06-06 item A). The
@@ -792,6 +836,14 @@ class JEPATrainer:
                     total_sq += float(gr.norm().item()) ** 2
             self._last_grad_norm = total_sq ** 0.5
             self._last_nonfinite = nonfinite
+
+        sched = self.config.lr_schedule
+        if sched.enabled:
+            scale = cosine_lr_scale(
+                self.global_step / sched.total_steps, sched.min_lr_ratio,
+            )
+            for group, base in zip(self.optimizer.param_groups, self._base_lrs):
+                group["lr"] = base * scale
 
         self.optimizer.step()
 

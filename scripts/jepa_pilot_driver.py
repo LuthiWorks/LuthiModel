@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import statistics
 import sys
 import time
@@ -104,15 +105,17 @@ STAGES: dict[int, list[tuple[str, int]]] = {
     # living_v3 (does the living advantage's magnitude recover?).
     7: [("dead_4x", 512)],
     8: [("living_v3_4x", 512)],
-    # Run 6, the DEPTH rung (Brian, 2026-07-19; sequenced AFTER 7a per
-    # the keep-the-control ruling): 2 -> 4 blocks at 512d, 4x data and
-    # everything else held (flat LR -- compares one-variable against the
-    # existing anchors; the cosine family follows on the settled shape).
-    # First JEPA-era outing of the muPC depth machinery (exponent 0.25
-    # per the M6 followup direction). Tracking read vs living_v3_4x@d2;
-    # a dead_4x_d4 control is the registered contingency if depth
-    # changes the picture.
-    9: [("living_v3_4x_d4", 512)],
+    # Run 6, the DEPTH rung -- AMENDED 2026-07-20 (Brian): the depth
+    # family now BUNDLES the two cheap levers with the depth increase
+    # (2 -> 4 blocks): cosine LR decay (the registered cosine rung,
+    # folded in) and 2x SIGReg weight (the variance-floor lever from the
+    # seed44 denominator-race finding). One-variable attribution vs the
+    # d2 anchors is deliberately traded for speed; if the bundle moves
+    # the picture, single-lever follow-ups split it (bridge precedent).
+    # First JEPA-era outing of the muPC depth machinery (exponent 0.25).
+    # The depth-only registration is superseded -- see the 2026-07-20
+    # amendment in the falsification pre-registration doc.
+    9: [("living_v4_4x_d4", 512)],
 }
 
 # Per-arm model configuration -- single source of truth, shared with
@@ -147,11 +150,29 @@ ARM_CONFIGS["living_v3_4x_d4"] = dict(
     mu_pc_exponent=0.25,
 )
 ARM_TAPER["living_v3_4x_d4"] = True
+# v4 (Brian's 2026-07-20 bundle ruling): the depth arm as actually run --
+# same MODEL config as living_v3_4x_d4 (the sigreg weight and LR schedule
+# are trainer/loss-side, not model kwargs; see ARM_SIGREG / ARM_COSINE).
+# Registered as a distinct arm name so run dirs, verdict filters, and the
+# never-pool rules keep it separate from any pure-depth run.
+ARM_CONFIGS["living_v4_4x_d4"] = dict(ARM_CONFIGS["living_v3_4x_d4"])
+ARM_TAPER["living_v4_4x_d4"] = True
 ARM_FILELIST: dict[str, str] = {
     "dead_4x": str(REPO_ROOT / "corpus_build" / "gutenberg_4x_filelist.txt"),
     "living_v3_4x": str(REPO_ROOT / "corpus_build" / "gutenberg_4x_filelist.txt"),
     "living_v3_4x_d4": str(REPO_ROOT / "corpus_build" / "gutenberg_4x_filelist.txt"),
+    "living_v4_4x_d4": str(REPO_ROOT / "corpus_build" / "gutenberg_4x_filelist.txt"),
 }
+# Loss-side per-arm setting: SIGReg weight. v4 doubles the default 0.1 --
+# the variance-floor lever. Rationale (2026-07-20): living spaces settle
+# at per-dim std ~0.3 against SIGReg's implicit unit target, and the
+# seed44 denominator race showed over-quieting destabilizes NMSE across
+# seeds. A stronger pull toward the isotropic target should hold the
+# space louder; registered prediction in the pre-reg amendment.
+ARM_SIGREG: dict[str, float] = {"living_v4_4x_d4": 0.2}
+# Trainer-side per-arm setting: cosine LR decay to a 10% floor (the
+# registered cosine rung, folded into v4 by the same ruling).
+ARM_COSINE: dict[str, bool] = {"living_v4_4x_d4": True}
 
 
 def _device() -> torch.device:
@@ -208,13 +229,14 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
         heldout_latent_prediction,
         probe_accuracy,
     )
-    from luthi.v2.jepa_loss import JEPALoss
+    from luthi.v2.jepa_loss import JEPALoss, SIGREG_LAMBD
     from luthi.v2.jepa_runner import (
         CheckpointConfig,
         EpochConfig,
         JEPATrainer,
         KillCriteriaConfig,
         LoggingConfig,
+        LRScheduleConfig,
         ModalitySampler,
         RunnerConfig,
         SamplerConfig,
@@ -272,7 +294,23 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
     )
     model_kwargs.update(ARM_CONFIGS[arm])
     model = MultimodalPredictiveCodingLM(**model_kwargs).to(device)
-    loss_module = JEPALoss(online_encoder=model).to(device)
+    loss_module = JEPALoss(
+        online_encoder=model,
+        sigreg_lambd=ARM_SIGREG.get(arm, SIGREG_LAMBD),
+    ).to(device)
+
+    # Cosine LR needs the planned run length. tokens_per_pass is
+    # n_sequences * seq_len (exact), so steps/epoch falls out directly;
+    # epoch-boundary partial batches can shift the true total by a step
+    # or two, which cosine absorbs (progress past 1.0 holds the floor).
+    steps_per_epoch = math.ceil(
+        text_ds.tokens_per_pass() / args.seq_len / args.batch_size
+    )
+    lr_schedule = LRScheduleConfig(
+        enabled=ARM_COSINE.get(arm, False),
+        min_lr_ratio=0.1,
+        total_steps=args.epochs * steps_per_epoch,
+    )
 
     sampler_cfg = SamplerConfig(
         corpus_sizes_tokens={"text": text_ds.tokens_per_pass()}, alpha=0.7,
@@ -309,6 +347,7 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
                 max_batches_per_epoch=args.max_batches_per_epoch,
             ),
             taper=TaperConfig(enabled=ARM_TAPER.get(arm, False)),
+            lr_schedule=lr_schedule,
         ),
         run_dir=run_dir,
     )
@@ -357,6 +396,11 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
             # Honest data provenance: the verdict rebuild must reload
             # the SAME corpus (the holdout is corpus-derived).
             "file_list": ARM_FILELIST.get(arm),
+            # v4 bundle provenance (2026-07-20): loss/trainer-side
+            # settings that don't ride in ARM_CONFIGS model kwargs.
+            "sigreg_lambd": ARM_SIGREG.get(arm, SIGREG_LAMBD),
+            "cosine_lr": ARM_COSINE.get(arm, False),
+            "lr_total_steps": lr_schedule.total_steps,
         },
     }
     _result_path(arm, d_model, seed).write_text(json.dumps(result, indent=2))
