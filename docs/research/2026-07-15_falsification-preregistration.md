@@ -505,6 +505,59 @@
 >     question ever earns compute on evidence rather than curiosity.
 >     The lean rung's screen (1 epoch x 2 seeds) applies to the
 >     PC-lean primary arm itself, as originally registered.
+
+> **RUN 8 — THE v5 BUNDLE, REGISTERED UNSCHEDULED (2026-07-20 ~21:20,
+> Brian's rulings on the dormant-machinery inventory; runs after the
+> v4 depth family, config-only — no new build required).**
+>
+> - **Base:** the prevailing v4 shape (4 blocks, muPC 0.25, cosine LR,
+>   2x SIGReg, v3 living config) — the ladder stays cumulative — plus
+>   three never-yet-enabled switches:
+> - **1. Sparse PC gating ON, threshold 0.0015 (Brian: "positive but
+>   reasonably low, room to adjust"). DERIVED, not imported:** p10 of
+>   the per-output error_acc distribution measured from the trained
+>   living_v3_4x seed42 final checkpoint (block0 p10=0.00155, block1
+>   p10=0.00155; near-identical distributions). At maturity this gates
+>   the quietest ~10% of outputs; early in training errors run far
+>   hotter so nearly everything passes — the gate protects the
+>   settled, not the learning. Adjustment ladder recorded: 0.004
+>   (=p25) and 0.0075 (=p50) are the next rungs up.
+>   sparse_warmup_steps stays at the default 500.
+> - **2. iPC inner loop ON, FIXED T=2** (inference_steps_per_forward).
+>   Brian asked whether T should instead adapt to neighboring-layer
+>   activity: recorded as theoretically RIGHT (true PC relaxes to
+>   equilibrium rather than running a fixed count) and deferred —
+>   adaptive T ("settle-to-criterion") is a new mechanism needing its
+>   own design (tolerance, iteration cap, non-settling failure modes)
+>   and would blur attribution. Registered as a future refinement
+>   rung; v5 takes the literature-standard fixed T=2 (~2x substrate
+>   compute in the FFN slots, tested path).
+> - **3. Consolidation style — ⚑ OPEN RULING FOR BRIAN** (tradeoffs
+>   delivered 2026-07-20): "gradient" (current) files episodes as
+>   weight updates — cheap, diffuse, interference-prone; "attractor"
+>   (Salvatori) re-presents stored inputs through PC dynamics so
+>   memories become energy minima — pattern-completing, perturbation-
+>   robust, identity-aligned, but capacity-limited (attractors can
+>   merge/spuriously multiply) and can over-deepen (grooves become
+>   ruts); "both" = gradient then attractor — design-intent-maximal,
+>   compounds cost and both risk profiles. Fable's recommendation:
+>   "both". Ruling to be recorded here before v5 enters queue.json.
+> - **4. muPC:** already on via the v4 base; nothing new to flip.
+> - **Sequencing note (flagged to Brian):** the lean rung (RUN 7) and
+>   v5 (RUN 8) both nominally follow the depth family. Fable's
+>   recommendation: v5 runs FIRST (config-only, ready the moment v4
+>   lands) while the lean rule is BUILT during v5's ~40h of training;
+>   lean screen + family follow. Brian's confirmation pending.
+> - **Frozen predictions:** sparse gating: neutral-to-positive NMSE,
+>   REDUCED late-run substrate churn (update_ema_mean lower in the
+>   last third), and possibly tighter seed variance (less churn =
+>   less drift). iPC T=2: modest NMSE improvement (deeper per-thought
+>   settling), wall-clock +~30-40%%. Attractor (if ruled in):
+>   consolidation-fires baseline plus measurably increased recall-gate
+>   hits vs v4; risk signature to watch = eff_rank sagging while
+>   NMSE holds (grooves eating dimensions). Bundle attribution:
+>   deliberately traded, single-lever follow-ups split on movement
+>   (bridge precedent).
 > - **Original open ruling (resolved above, kept for the record):** The lean
 >   variant must name its kept state BEFORE the build. Fable's
 >   recommendation on record: keep **set_point** (homeostasis is the
