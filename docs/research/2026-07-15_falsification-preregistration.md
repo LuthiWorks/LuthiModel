@@ -602,6 +602,30 @@
 >   recommendation: v5 runs FIRST (config-only, ready the moment v4
 >   lands) while the lean rule is BUILT during v5's ~40h of training;
 >   lean screen + family follow. Brian's confirmation pending.
+> - **PRE-v5 CALIBRATION SCREEN — SIGReg λ (registered 2026-07-21
+>   ~14:45, Brian's direction after the standardization-regime
+>   finding).** Evidence: λ=0.1 leaves latent per-dim variance ~0.042
+>   (v3) and λ=0.2 ~0.068 (v4 seed42) against SIGReg's unit target —
+>   the "messy middle" where neither raw loss nor NMSE is externally
+>   anchored and per-seed denominator drift (the seed44/45 races)
+>   is structural. Screen: single-seed 1-epoch runs at λ ∈ {0.5,
+>   1.0, 2.0}, 2-block @1x corpus (instrument calibration, not a
+>   family), measuring final std_p50 + substrate health (homeostasis
+>   actively fights variance inflation — watch for oscillation or
+>   eff_rank cost where SIGReg's push meets the set-point pull).
+>   Pick the λ that lands std_p50 in [0.8, 1.2]; it enters the v5
+>   bundle. RECORDED CONSEQUENCE: variance pinning re-baselines NMSE
+>   — pre- and post-pin families are not directly comparable; v5
+>   opens a new anchor era, deliberately.
+> - **Precision-cap revisit bound to the same screen (2026-07-21
+>   measurement on the v4 seed42 checkpoint):** precision is 100.0%
+>   saturated at cap 10 in ALL blocks; unclamped targets read
+>   977–998 vs the formula's own ceiling of 1000 (|err| p50 ~0.001–
+>   0.005). Trust-weighting is functionally INERT in this regime — a
+>   constant x10, not differentiation. The λ fix partially revives it
+>   for free (louder space → larger errors → targets fall toward the
+>   cap); precision_max gets re-derived from the post-λ error regime
+>   in the v5 registration, measure-first like every threshold.
 > - **Frozen predictions:** sparse gating: neutral-to-positive NMSE,
 >   REDUCED late-run substrate churn (update_ema_mean lower in the
 >   last third), and possibly tighter seed variance (less churn =
