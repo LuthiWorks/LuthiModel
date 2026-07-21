@@ -229,7 +229,36 @@ def main() -> int:
     survives = losses == 0 and wins >= 1
     # Per-point reads, each frozen in the pre-registration BEFORE its
     # runs existed. The comparison point determines the verdict's force.
-    if args.living_arm in ("living_full", "living_v3"):
+    if args.living_arm == "living_v3_4x":
+        # RUN 5 family read (registered 2026-07-19; truncation amendment
+        # 2026-07-20): within-4x comparison under the ladder's asymmetric
+        # rule. This is a TRACKING read against the run-5 frozen
+        # predictions (starvation hypothesis), NOT the KF2 claim-status
+        # machinery -- no dmodel-branch text applies. The probe axis
+        # carries the standing instrument caveat: the frozen metric is
+        # RAW top1; per-arm shuffled floors differ (dead_4x floors ran
+        # ~1-2 pts higher), so the floor-corrected margins are reported
+        # alongside for honesty, never substituted.
+        def _ratio4(axis, lower_is_better):
+            _, lm, dm, pooled = axis
+            diff = (dm - lm) if lower_is_better else (lm - dm)
+            return diff / max(pooled, 1e-12)
+        r_nmse = _ratio4(nmse_axis, True)
+        r_probe = _ratio4(probe_axis, False)
+        parts = [
+            f"RUN-5 FAMILY READ (n=3 dead vs n=5 living, per amendment):",
+            f"NMSE {'living' if r_nmse > 0 else 'dead'} by {abs(r_nmse):.1f} sigma;",
+            f"probe (raw top1) {'living' if r_probe > 0 else 'dead'} by {abs(r_probe):.1f} sigma.",
+            "Starvation reads vs frozen predictions: dead_4x recovery "
+            f"{'YES' if statistics.mean(nmse[args.dead_arm]) <= 0.624 else 'NO'} "
+            f"(mean {statistics.mean(nmse[args.dead_arm]):.4f} vs <=0.624 predicted); "
+            "living_v3_4x strong-form recovery "
+            f"{'YES' if statistics.mean(nmse[args.living_arm]) <= 0.35 else 'NO'} "
+            f"(mean {statistics.mean(nmse[args.living_arm]):.4f} vs <=0.35 predicted).",
+            "No claim-status change attaches to this family; deltas recorded.",
+        ]
+        verdict = " ".join(parts)
+    elif args.living_arm in ("living_full", "living_v3"):
         # Run 2 of the configuration ladder (frozen 2026-07-17 before any
         # living_full run existed): NEW claim, not KF2 revived. Asymmetric
         # rule per the fragility fix -- wins need > 1 sigma; a KILL needs a
