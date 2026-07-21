@@ -164,7 +164,8 @@ def main() -> int:
                         "(recorded before seeds 43/44 completed). The "
                         "reduced n is printed in the verdict banner.")
     p.add_argument("--living-arm", type=str, default="living",
-                   choices=("living", "living_full", "living_v3", "living_v3_4x"),
+                   choices=("living", "living_full", "living_v3", "living_v3_4x",
+                            "living_v4_4x_d4", "living_v5_4x_d4"),
                    help="Which living configuration to compare (the "
                         "staged ladder: 'living' = minimal, "
                         "'living_full' = BP + consolidation). Never pool "
@@ -229,7 +230,24 @@ def main() -> int:
     survives = losses == 0 and wins >= 1
     # Per-point reads, each frozen in the pre-registration BEFORE its
     # runs existed. The comparison point determines the verdict's force.
-    if args.living_arm == "living_v3_4x":
+    if args.living_arm in ("living_v4_4x_d4", "living_v5_4x_d4"):
+        # v4/v5 family reads are TRACKING reads vs their registered
+        # anchors (descriptive bands, no kill force, no claim-status
+        # machinery) -- never let them fall through to the stage-1
+        # dmodel branches (the 2026-07-21 wrong-branch lesson).
+        def _ratio_t(axis, lower_is_better):
+            _, lm, dm, pooled = axis
+            diff = (dm - lm) if lower_is_better else (lm - dm)
+            return diff / max(pooled, 1e-12)
+        verdict = (
+            f"TRACKING READ ({args.living_arm} vs {args.dead_arm}@"
+            f"{args.dead_dmodel}): NMSE ratio {_ratio_t(nmse_axis, True):+.1f} "
+            f"sigma; probe ratio {_ratio_t(probe_axis, False):+.1f} sigma. "
+            "Descriptive only; per-registration reads (vs living-arm "
+            "anchors, prior-corrected probe primary) are computed in the "
+            "registry entry, not by this script."
+        )
+    elif args.living_arm == "living_v3_4x":
         # RUN 5 family read (registered 2026-07-19; truncation amendment
         # 2026-07-20): within-4x comparison under the ladder's asymmetric
         # rule. This is a TRACKING read against the run-5 frozen

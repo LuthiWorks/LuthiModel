@@ -339,6 +339,13 @@ class PredictiveCodingLayer(nn.Module):
         # weighting + numerics-only eps + freed ledger. Default False
         # = legacy bit-identical (every pre-v5 family).
         self.relative_trust = bool(relative_trust)
+        if self.relative_trust and self._buf_dtype("precision") != torch.float32:
+            # The freed ledger records values up to 1e12; fp16 overflows
+            # to inf at 65504 and the trust ratios silently rot.
+            raise ValueError(
+                "relative_trust requires a float32 precision buffer; got "
+                f"{self._buf_dtype('precision')} via buffer_dtypes override"
+            )
         self.learning_gain_rise = float(learning_gain_rise)
         self.learning_gain_cap = float(learning_gain_cap)
         from luthi.v2.slow_trace import SlowEMA, ReadResetAccumulator
