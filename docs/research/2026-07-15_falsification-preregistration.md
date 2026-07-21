@@ -474,17 +474,30 @@
 >   fit on hardware. Lean-retains-the-win buys ~an order of magnitude
 >   of headroom; lean-loses-the-win means the ledgers earned their
 >   memory. Either answer configures the full-scale run.
-> - **⚑ RULED (Brian, 2026-07-20 ~19:45): set_point only, per Fable's
->   recommendation.** The lean variant keeps in-forward self-
->   modification + the homeostatic anchor and cuts prediction,
->   precision, momentum, update_ema, error_acc, and plasticity.
->   Consequence recorded honestly: cutting the prediction buffer
->   removes the predictive-coding error signal itself, so the lean
->   update rule is necessarily Hebbian-with-homeostasis rather than
->   "PC with fewer ledgers" — which sharpens the question the rung
->   asks: is PREDICTIVE self-modification load-bearing, or does any
->   self-organization + homeostasis suffice? Rule design to be
->   reviewed against this framing before the build.
+> - **⚑ RULED, AMENDED (Brian, 2026-07-20 ~19:55): primary lean arm =
+>   set_point + prediction.** Supersedes the ~19:45 set_point-only
+>   ruling within the same evening, before any build. The correction's
+>   history, kept honestly: Fable first recommended set_point-only,
+>   conflating the `prediction` buffer with the guidance ledgers;
+>   writing out the consequence exposed that cutting `prediction`
+>   removes the PC error signal itself (the rule degenerates to
+>   Hebbian-with-homeostasis: outer(output, input) correlation-driven,
+>   self-reinforcing, needing the set point as a runaway brake) —
+>   Brian's challenge ("this is supposed to be predictive coding")
+>   forced the distinction onto the record. The amended design:
+>   - **living_lean_4x@512 (primary, full family):** weight +
+>     set_point + prediction — genuine PC (error-driven,
+>     self-limiting) with ALL guidance ledgers cut (precision,
+>     plasticity, momentum, update_ema, error_acc). Three matrices
+>     vs five: most of the memory savings survive. Tests Brian's
+>     actual question — how much of the rich guidance does PC need?
+>   - **living_hebbian screen cell (screening only, 1 epoch x 2
+>     seeds):** set_point-only, the Hebbian-with-homeostasis variant.
+>     Not owed a full family; it runs in the screen as the deeper
+>     control. If it keeps up with PC-lean, that finding earns its
+>     own registered family; if it collapses (registered prior:
+>     strong), it is the cleanest evidence yet that PREDICTION is
+>     the load-bearing ingredient of aliveness.
 > - **Original open ruling (resolved above, kept for the record):** The lean
 >   variant must name its kept state BEFORE the build. Fable's
 >   recommendation on record: keep **set_point** (homeostasis is the
