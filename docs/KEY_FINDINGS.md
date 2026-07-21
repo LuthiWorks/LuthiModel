@@ -73,3 +73,21 @@ phrased as README edits) now apply to this document.*
    *Status: mechanism built and unit-validated; the functional claim
    (structure beats lookup on generalization and post-eviction measures)
    is bound to KF6 (retrieval-only control), deferred.*
+
+7. **The living substrate converts additional experience into skill;
+   matched static capacity cannot (2026-07-21, the 4x data program).**
+   The direct test of the data-scaling question: both arms at 512d
+   received a 4x-token superset corpus (~50.4M tokens) with 4x the
+   optimizer steps. The dead arm moved ZERO (family NMSE 0.6514 at 4x
+   vs 0.651 at 1x, n=3 per the truncation amendment); the living arm
+   improved (0.3974 at 4x vs 0.429 at 1x, n=5), widening the
+   structure-axis gap to 4.8 pooled sigma. The frozen strong-form
+   predictions both failed honestly: dead showed no starvation recovery
+   (data was never its constraint — the architecture is), and living
+   fell short of the <=0.35 strong-recovery line (starvation explains
+   part of its width attenuation, not all).
+   *Status: run-5 family verdict, frozen read (verdict.json + the
+   pre-registration's RUN-5 entry). Probe axis: raw top1 dead by 2.6
+   sigma / floor-corrected margins reverse the sign — both on record;
+   all future rungs pre-committed (2026-07-21, blind) to the
+   prior-corrected probe as primary.*

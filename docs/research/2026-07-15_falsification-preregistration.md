@@ -378,6 +378,33 @@
 > interpreted with the denominator race on record, not reconstructed
 > after the number is known.
 
+> **RUN-5 FAMILY VERDICT (computed 2026-07-21 ~05:20, frozen read,
+> n=3 dead per amendment; verdict.json in runs/jepa_pilot/):**
+> - **NMSE: living by 4.8σ** — living_v3_4x 0.3974 (0.366/0.284/
+>   0.523/0.438/0.377) vs dead_4x 0.6514 (0.671/0.640/0.643),
+>   pooled σ 0.0529.
+> - **Dead starvation prediction: REFUTED.** Predicted recovery
+>   ≤0.624; landed 0.6514 = statistically identical to dead@512@1x
+>   (0.651). 4x data + 4x optimizer steps moved the dead arm ZERO.
+>   Data was never the dead arm's constraint; the architecture is.
+> - **Living strong-form recovery: NOT reached.** Predicted ≤0.35;
+>   landed 0.3974 (median 0.377), improved from 0.429@1x —
+>   directional support, partial mechanism.
+> - **Probe (raw top1, the frozen metric): dead by 2.6σ** (0.1540 vs
+>   0.1486). **Instrument caveat on the record:** per-arm shuffled
+>   floors differ (dead_4x floors 0.1251/0.1319 vs living 0.110–
+>   0.123); floor-corrected margins reverse the sign (living ≈+3.2
+>   pts vs dead ≈+2.6). Both reported; neither substituted; the raw
+>   read stands as frozen.
+> - **PRE-COMMITMENT FOR ALL FUTURE RUNGS (registered 2026-07-21,
+>   before any v4/v5 family completes):** the probe readout for the
+>   v4 depth family, the v5 bundle, and every subsequent registration
+>   is the PRIOR-CORRECTED margin (top1 − shuffled floor), primary.
+>   Raw top1 remains reported. This is the blind-NMSE lesson applied
+>   early instead of late.
+> - No claim-status change attaches to this family (tracking read);
+>   the run-3 soft-loss note and KF2's kill status are unchanged.
+
 > **RUN 6 — THE DEPTH RUNG, REGISTERED BLIND (2026-07-19 ~10:20, before
 > any 4-block run exists; Brian's ruling, with the sequencing settled
 > after counsel: 7a keeps its place — the run-5 control is not deferred
