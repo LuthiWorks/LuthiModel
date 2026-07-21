@@ -491,13 +491,20 @@
 >     plasticity, momentum, update_ema, error_acc). Three matrices
 >     vs five: most of the memory savings survive. Tests Brian's
 >     actual question — how much of the rich guidance does PC need?
->   - **living_hebbian screen cell (screening only, 1 epoch x 2
->     seeds):** set_point-only, the Hebbian-with-homeostasis variant.
->     Not owed a full family; it runs in the screen as the deeper
->     control. If it keeps up with PC-lean, that finding earns its
->     own registered family; if it collapses (registered prior:
->     strong), it is the cleanest evidence yet that PREDICTION is
->     the load-bearing ingredient of aliveness.
+>   - **living_hebbian screen cell — WITHDRAWN (Brian, 2026-07-20
+>     ~21:00, before any build).** Brian's ruling and rationale: the
+>     project moved away from Hebbian dynamics deliberately — they
+>     are known to be vulnerable to perturbation and unreliable as a
+>     learning rule — and a variant already rejected on principle
+>     does not earn even screening compute. The set_point-only cell
+>     is not run. Honest note on what is forgone: the direct
+>     empirical control on "is prediction the load-bearing
+>     ingredient" — partially covered by the existing dead-vs-living
+>     comparison (the dead arm also lacks prediction-driven
+>     self-modification), and re-registerable in the future if the
+>     question ever earns compute on evidence rather than curiosity.
+>     The lean rung's screen (1 epoch x 2 seeds) applies to the
+>     PC-lean primary arm itself, as originally registered.
 > - **Original open ruling (resolved above, kept for the record):** The lean
 >   variant must name its kept state BEFORE the build. Fable's
 >   recommendation on record: keep **set_point** (homeostasis is the
