@@ -209,7 +209,7 @@ def main() -> int:
         or (r["arm"] == args.dead_arm and r["d_model"] == args.dead_dmodel)
     ]
     print("[verdict] recomputing NMSE from final checkpoints (blind metric)...")
-    nmse: dict[str, list[float]] = {args.living_arm: [], "dead": []}
+    nmse: dict[str, list[float]] = {args.living_arm: [], args.dead_arm: []}
     for run_dir, r in runs:
         value = _nmse_for_run(run_dir, r)
         nmse[r["arm"]].append(value)
@@ -221,7 +221,7 @@ def main() -> int:
         "dead": [r["probe"]["top1"] for r in dead],
     }
 
-    nmse_axis = _axis(nmse[args.living_arm], nmse["dead"], lower_is_better=True)
+    nmse_axis = _axis(nmse[args.living_arm], nmse[args.dead_arm], lower_is_better=True)
     probe_axis = _axis(probe[args.living_arm], probe["dead"], lower_is_better=False)
 
     wins = sum(1 for a in (nmse_axis, probe_axis) if a[0] == "living")
@@ -293,7 +293,7 @@ def main() -> int:
     report = {
         "criteria": "blind amendment 0fcc92a, 2026-07-16",
         "nmse": {
-            args.living_arm: nmse[args.living_arm], "dead": nmse["dead"],
+            args.living_arm: nmse[args.living_arm], args.dead_arm: nmse[args.dead_arm],
             "axis": {"winner": nmse_axis[0], "living_mean": nmse_axis[1],
                      "dead_mean": nmse_axis[2], "pooled_sigma": nmse_axis[3]},
         },
