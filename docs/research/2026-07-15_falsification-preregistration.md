@@ -452,9 +452,17 @@
 > whatever they show becomes the baseline for the consolidation-tuning
 > conversation.
 
-> **RUN 7 — THE LEAN-LIVING RUNG, REGISTERED UNSCHEDULED (2026-07-20
-> ~17:45, Brian's ruling; runs AFTER the v4 depth family; requires a
-> small new build and one open ruling before launch).**
+> **RUN 7 — THE LEAN-LIVING RUNG — WITHDRAWN ENTIRELY (Brian,
+> 2026-07-21 ~04:50, before any build; registration below kept for
+> the record).** Brian's ruling: no reduced-rich-parameter runs at
+> all — the program goes v4 (depth) then v5 (sparse gating + iPC T=2
+> + attractor consolidation), both on the full rich substrate. The
+> memory-cost question the rung was registered to answer remains
+> real at full scale; it is re-registerable on evidence if the
+> hardware budget ever forces it. The evening's design chain
+> (set_point-only -> Hebbian exposure -> set_point+prediction ->
+> withdrawal) stays in the record as the worked example of names
+> having to be earned.
 >
 > - **The question (Brian's, sharpened 2026-07-20):** the living win is
 >   currently a package deal — self-modification AND rich per-weight

@@ -16,14 +16,15 @@
 > (`Unregister-ScheduledTask 'LuthiModel Queue Watchdog'`) and the
 > Startup-folder entry (`LuthiModel Queue Resume.vbs`).
 >
-> **After the v4 depth family (queued next-after-current):** RUN 7, the
-> **lean-living rung** (Brian, 2026-07-20) — registered in the pre-reg
-> doc, NOT yet in queue.json because it needs (a) **Brian's buffer
-> ruling** (⚑ flagged in the registration: which per-weight buffers
-> survive the lean cut — Fable recommends set_point-only) and (b) a
-> small new build (lean self-modification rule) plus a 1-epoch 2-seed
-> screen before the full family. Do not add to queue.json until both
-> exist.
+> **After the v4 depth family:** RUN 8, the **v5 bundle** (Brian,
+> 2026-07-20/21) — v4 shape + sparse gating (derived threshold
+> 0.0015) + iPC T=2 + attractor-only consolidation (passes=1). NOT
+> yet in queue.json: one small pre-v5 build is owed first (the
+> episode write-time separation guard, threshold derived from
+> checkpoint episode-context similarity — the anti-hallucinated-
+> memory mitigation, see the RUN 8 registration). The lean-living
+> rung (RUN 7) was withdrawn entirely by Brian 2026-07-21; program
+> is v4 → v5, full rich substrate throughout.
 >
 > What that encodes (Brian's 2026-07-20 rulings): stage 7 = 7a
 > dead_4x@512, TRUNCATED to seeds 42-44 (`--n-seeds 3`); when it
