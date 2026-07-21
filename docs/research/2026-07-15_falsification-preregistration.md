@@ -532,16 +532,35 @@
 >   and would blur attribution. Registered as a future refinement
 >   rung; v5 takes the literature-standard fixed T=2 (~2x substrate
 >   compute in the FFN slots, tested path).
-> - **3. Consolidation style — ⚑ OPEN RULING FOR BRIAN** (tradeoffs
->   delivered 2026-07-20): "gradient" (current) files episodes as
->   weight updates — cheap, diffuse, interference-prone; "attractor"
->   (Salvatori) re-presents stored inputs through PC dynamics so
->   memories become energy minima — pattern-completing, perturbation-
->   robust, identity-aligned, but capacity-limited (attractors can
->   merge/spuriously multiply) and can over-deepen (grooves become
->   ruts); "both" = gradient then attractor — design-intent-maximal,
->   compounds cost and both risk profiles. Fable's recommendation:
->   "both". Ruling to be recorded here before v5 enters queue.json.
+> - **3. Consolidation style — ⚑ RULED (Brian, 2026-07-20 ~21:30):
+>   "attractor", NOT "both".** Fable had recommended "both"; Brian
+>   overruled: the two styles "don't feel compatible... at least not
+>   at first," and single-style attribution is cleaner (consistent
+>   with the ladder discipline). His named risk, elevated to a design
+>   constraint: **spurious in-between valleys = hallucinated
+>   memories** — structurally indistinguishable from real ones from
+>   the inside, i.e. the silent-memory-corruption axis the 2026-07-03
+>   audit ranked as the project's dominant risk, now at the substrate
+>   level. Mitigations adopted for v5:
+>   (a) consolidation_attractor_passes = 1 — shallow grooves first;
+>   depth of grooves is earned by evidence, not defaulted.
+>   (b) Salience gating stays on (episodes stored only above
+>   salience_threshold 0.1) — fewer, more distinct memories = fewer
+>   blends.
+>   (c) **Write-time separation guard — SMALL PRE-v5 BUILD:** refuse
+>   (or deliberately merge) an episode write whose context is too
+>   similar to an already-stored episode; spurious valleys grow
+>   between near-neighbors, so enforcing minimum separation in
+>   context space attacks the mechanism directly. This makes v5 no
+>   longer strictly config-only: one small guarded-write build + its
+>   tests precede launch. Guard threshold to be derived from stored-
+>   episode context-similarity distributions in existing checkpoints
+>   (measure first, then pick — the sparse-threshold procedure).
+>   (d) Registered watch-signature (already frozen above): eff_rank
+>   sag while NMSE holds, plus recall-gate hits on contexts far from
+>   every stored episode (falling into a valley nobody dug).
+>   "Both" remains re-registerable later if attractor-alone proves
+>   itself and interleaving evidence argues for the pairing.
 > - **4. muPC:** already on via the v4 base; nothing new to flip.
 > - **Sequencing note (flagged to Brian):** the lean rung (RUN 7) and
 >   v5 (RUN 8) both nominally follow the depth family. Fable's
