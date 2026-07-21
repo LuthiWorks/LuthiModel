@@ -617,15 +617,44 @@
 >   bundle. RECORDED CONSEQUENCE: variance pinning re-baselines NMSE
 >   — pre- and post-pin families are not directly comparable; v5
 >   opens a new anchor era, deliberately.
-> - **Precision-cap revisit bound to the same screen (2026-07-21
->   measurement on the v4 seed42 checkpoint):** precision is 100.0%
->   saturated at cap 10 in ALL blocks; unclamped targets read
->   977–998 vs the formula's own ceiling of 1000 (|err| p50 ~0.001–
->   0.005). Trust-weighting is functionally INERT in this regime — a
->   constant x10, not differentiation. The λ fix partially revives it
->   for free (louder space → larger errors → targets fall toward the
->   cap); precision_max gets re-derived from the post-λ error regime
->   in the v5 registration, measure-first like every threshold.
+> - **Precision fix — DIAGNOSIS CORRECTED (2026-07-21 ~15:10, forced
+>   by Brian's "are you CERTAIN" challenge; supersedes the cap-first
+>   framing below).** Measurement on the v4 seed42 checkpoint, 8-batch
+>   per-input error profile: TRUE reliability spread (1/err² with
+>   numerics-only eps) is **13–22x p95/p5 in every block** — real
+>   trust signal exists — and the formula's eps=1e-3 (chosen for a
+>   noisier era; |err| now ~0.001–0.005, err² 40–1000x SMALLER than
+>   eps) flattens that spread to **1.01–1.11x** before the cap or any
+>   normalization ever acts. The cap was the SECOND-stage flattener;
+>   the epsilon is the first and dominant one. Fable's original
+>   relative-trust proposal, applied alone, would have normalized an
+>   already-flattened signal (ratios ~0.85–1.05: still inert).
+>   **Revised three-stage design, in causal order:**
+>   (1) eps becomes numerics-only (1e-8) — the actual bug fix;
+>   (2) the stored reliability ledger un-clamped (numerics bounds
+>   only) so real magnitudes can be recorded;
+>   (3) use-time weighting = ratio to layer mean (median if the
+>   λ-screen error distributions are heavy-tailed), hard-capped
+>   [0.1, 10] — the scale-free relative-trust part survives as stage
+>   3, now normalizing a real 13–22x signal. Raw ledger stays logged
+>   (absolute seismograph); relative weights act (differentiation);
+>   absolute-health monitoring explicitly remains with err_acc /
+>   heldout / collapse detectors (relative trust cannot see uniform
+>   degradation — recorded division of labor).
+>   **Honest unknown, frozen:** trust-weighting has NEVER operated —
+>   every result in this program was won with it inert. Waking it
+>   has UNKNOWN SIGN. Ships behind a flag with a registered
+>   precision-uniform ablation cell; predicted observables: at-cap
+>   fraction well below 100% by construction, measurable per-input
+>   weight spread, and (frozen directional guess only) NMSE neutral
+>   or better. C++/Python parity required before any family runs it
+>   (the learning-gain precedent).
+> - **[Superseded cap-first framing, kept for the record:]** precision
+>   is 100.0% saturated at cap 10 in ALL blocks; unclamped targets
+>   read 977–998 vs the formula's own ceiling of 1000. The λ fix
+>   partially revives differentiation for free (louder space → larger
+>   errors); precision_max gets re-derived from the post-λ error
+>   regime, measure-first like every threshold.
 > - **Frozen predictions:** sparse gating: neutral-to-positive NMSE,
 >   REDUCED late-run substrate churn (update_ema_mean lower in the
 >   last third), and possibly tighter seed variance (less churn =
