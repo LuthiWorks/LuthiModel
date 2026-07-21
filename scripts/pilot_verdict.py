@@ -157,6 +157,12 @@ def main() -> int:
                         "exists at more than one size (the bridge made "
                         "living_full exist at 256 AND 512) -- pooling "
                         "sizes is never valid.")
+    p.add_argument("--dead-n-seeds", type=int, default=5,
+                   help="Expected dead-family size. Default 5; pass 3 ONLY "
+                        "for the dead_4x family, which Brian truncated to "
+                        "seeds 42-44 by the 2026-07-20 pre-reg amendment "
+                        "(recorded before seeds 43/44 completed). The "
+                        "reduced n is printed in the verdict banner.")
     p.add_argument("--living-arm", type=str, default="living",
                    choices=("living", "living_full", "living_v3", "living_v3_4x"),
                    help="Which living configuration to compare (the "
@@ -185,9 +191,13 @@ def main() -> int:
             if r["arm"] == args.dead_arm and r["d_model"] == args.dead_dmodel]
     living_dm = living[0]["d_model"] if living else "?"
     print(f"[verdict] comparing {args.living_arm}@{living_dm} vs dead@{args.dead_dmodel}")
-    if len(living) < 5 or len(dead) < 5:
-        print(f"[verdict] incomplete: living={len(living)}/5 dead={len(dead)}/5 admissible")
+    if len(living) < 5 or len(dead) < args.dead_n_seeds:
+        print(f"[verdict] incomplete: living={len(living)}/5 "
+              f"dead={len(dead)}/{args.dead_n_seeds} admissible")
         return 1
+    if args.dead_n_seeds != 5:
+        print(f"[verdict] NOTE: dead family read at n={args.dead_n_seeds} "
+              f"per the 2026-07-20 truncation amendment (n=3 vs n=5 living)")
 
     # Only the two comparison groups get the (checkpoint-reload) NMSE
     # recompute -- never pool arms or sizes, never waste evals.
