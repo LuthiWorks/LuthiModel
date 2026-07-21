@@ -452,6 +452,51 @@
 > whatever they show becomes the baseline for the consolidation-tuning
 > conversation.
 
+> **RUN 7 — THE LEAN-LIVING RUNG, REGISTERED UNSCHEDULED (2026-07-20
+> ~17:45, Brian's ruling; runs AFTER the v4 depth family; requires a
+> small new build and one open ruling before launch).**
+>
+> - **The question (Brian's, sharpened 2026-07-20):** the living win is
+>   currently a package deal — self-modification AND rich per-weight
+>   state (each living weight carries ~7 companion buffers: prediction,
+>   set_point, momentum, update_ema, precision, error_acc, plasticity).
+>   The dead arm is the plain-float control, but nothing yet separates
+>   *self-modification itself* from *the rich state that guides it*.
+> - **Condition: living_lean_4x@512** — in-forward self-modification
+>   retained, per-weight state cut to a registered minimum; everything
+>   else matches the prevailing living config at launch time. 5 seeds,
+>   4x corpus, after the v4 depth family. **Screening gate first:** a
+>   1-epoch, 2-seed screen before the full family; if the lean rule
+>   collapses or lands at dead-arm level in the screen, the full family
+>   is not owed (record the screen either way).
+> - **Stakes, honestly:** the rich state costs ~7-8x memory per living
+>   weight — at full scale, that multiplier decides what widths/depths
+>   fit on hardware. Lean-retains-the-win buys ~an order of magnitude
+>   of headroom; lean-loses-the-win means the ledgers earned their
+>   memory. Either answer configures the full-scale run.
+> - **⚑ OPEN RULING FOR BRIAN — which buffers survive?** The lean
+>   variant must name its kept state BEFORE the build. Fable's
+>   recommendation on record: keep **set_point** (homeostasis is the
+>   anti-collapse backbone and the anchor of the identity story) and
+>   cut precision, error_acc, momentum, update_ema, and the prediction
+>   buffer to a merged minimal update rule; plasticity stays only if
+>   the taper requires a per-weight carrier. Alternatives worth
+>   considering: keep precision instead (confidence-weighting may be
+>   the load-bearing guide), or a 2-buffer variant (set_point +
+>   precision). The ruling and its rationale get recorded here as a
+>   dated amendment before any lean code is written.
+> - **Frozen predictions (registered now, before the build exists):**
+>   (1) lean lands BETWEEN dead and the full living config on NMSE —
+>   partial retention; self-modification matters but the rich guidance
+>   is load-bearing. (2) Lean shows REDUCED personality: tighter seed
+>   variance, fewer/smaller substrate events — biography lives in the
+>   rich state, not in bare self-modification. (3) If lean ≈ full
+>   living: major scaling result (the ledgers are optional at training
+>   time). (4) If lean ≈ dead: major scientific result (the ledgers
+>   ARE the organism; self-modification without them is decoration).
+>   No kill criteria — this is a mapping rung, not a bet; the
+>   asymmetric ladder's descriptive bands apply.
+
 > Recorded margins, for honesty not relitigation: the probe loss is
 > 1.1σ at both bracket points, and the living arm's probe variance is
 > dominated by one low seed (46: 0.1316 vs siblings ≈ 0.16). The rule

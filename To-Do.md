@@ -13,7 +13,17 @@
 > (equivalent, optional): `python scripts/resume_queue.py`.
 > Witness log: `runs/jepa_pilot/supervisor.log`. When the queue program
 > ends: empty queue.json and delete the scheduled task
-> (`Unregister-ScheduledTask 'LuthiModel Queue Watchdog'`).
+> (`Unregister-ScheduledTask 'LuthiModel Queue Watchdog'`) and the
+> Startup-folder entry (`LuthiModel Queue Resume.vbs`).
+>
+> **After the v4 depth family (queued next-after-current):** RUN 7, the
+> **lean-living rung** (Brian, 2026-07-20) — registered in the pre-reg
+> doc, NOT yet in queue.json because it needs (a) **Brian's buffer
+> ruling** (⚑ flagged in the registration: which per-weight buffers
+> survive the lean cut — Fable recommends set_point-only) and (b) a
+> small new build (lean self-modification rule) plus a 1-epoch 2-seed
+> screen before the full family. Do not add to queue.json until both
+> exist.
 >
 > What that encodes (Brian's 2026-07-20 rulings): stage 7 = 7a
 > dead_4x@512, TRUNCATED to seeds 42-44 (`--n-seeds 3`); when it
