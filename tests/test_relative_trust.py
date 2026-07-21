@@ -153,6 +153,21 @@ class TestCppParity:
             assert torch.allclose(py[k], cp[k], rtol=1e-5, atol=1e-7), k
 
 
+class TestSpreadInstrument:
+    def test_aliveness_reports_precision_spread(self):
+        from luthi.v2.living_layer_pc import PredictiveCodingLayer
+        torch.manual_seed(0)
+        layer = PredictiveCodingLayer(16, 8)
+        a = layer.aliveness()
+        assert "precision_spread" in a
+        # Fresh layer: uniform ones -> spread exactly 1.0.
+        assert a["precision_spread"] == pytest.approx(1.0)
+        # Hand-spread ledger reads its true ratio.
+        layer.precision.copy_(torch.linspace(1.0, 100.0, 16))
+        s = layer.aliveness()["precision_spread"]
+        assert s > 10.0
+
+
 class TestPlumbing:
     def test_model_kwarg_reaches_layers(self):
         from luthi.v2.multimodal_model_pc import MultimodalPredictiveCodingLM

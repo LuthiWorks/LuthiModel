@@ -532,6 +532,10 @@ def _substrate_health_metrics(aliveness: list[dict]) -> dict:
         "set_point_drift": _mean("set_point_drift"),
         "update_ema_mean": _mean("update_ema_mean"),
         "precision_mean": _mean("precision_mean"),
+        # Trust differentiation (v5): mean across blocks of per-block
+        # p95/p5 reliability spread. ~1.0 = saturated/uniform trust;
+        # >1 = the weighting has something to differentiate.
+        "precision_spread": _mean("precision_spread"),
         "consolidation_fires": float(sum(fires)) if fires else float("nan"),
     }
 
@@ -979,6 +983,7 @@ class JEPATrainer:
                     "set_point_drift": a.get("set_point_drift"),
                     "update_ema_mean": a.get("update_ema_mean"),
                     "precision_mean": a.get("precision_mean"),
+                    "precision_spread": a.get("precision_spread"),
                     "prediction_norm": a.get("prediction_norm"),
                     "error_acc_mean": a.get("error_acc_mean"),
                     "consolidation_fires": a.get("consolidation_fires"),

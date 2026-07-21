@@ -834,6 +834,16 @@ class PredictiveCodingLayer(nn.Module):
             "precision_mean": self.precision.mean().item(),
             "precision_min": self.precision.min().item(),
             "precision_max": self.precision.max().item(),
+            # Trust differentiation (v5 relative-trust instrument,
+            # 2026-07-21): p95/p5 of the reliability ledger. Legacy
+            # saturated regime reads ~1.0 (everyone pinned); a working
+            # relative-trust regime reads the real spread (13-22x
+            # measured pre-fix). Quantile on CPU -- DML lacks the op.
+            "precision_spread": (
+                lambda p: (
+                    torch.quantile(p, 0.95) / torch.quantile(p, 0.05).clamp(min=1e-12)
+                ).item()
+            )(self.precision.detach().float().cpu()),
             "error_acc_mean": self.error_acc.mean().item(),
             "error_acc_max": self.error_acc.max().item(),
             "episodes_stored": self.episode_count.item(),
