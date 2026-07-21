@@ -474,7 +474,18 @@
 >   fit on hardware. Lean-retains-the-win buys ~an order of magnitude
 >   of headroom; lean-loses-the-win means the ledgers earned their
 >   memory. Either answer configures the full-scale run.
-> - **⚑ OPEN RULING FOR BRIAN — which buffers survive?** The lean
+> - **⚑ RULED (Brian, 2026-07-20 ~19:45): set_point only, per Fable's
+>   recommendation.** The lean variant keeps in-forward self-
+>   modification + the homeostatic anchor and cuts prediction,
+>   precision, momentum, update_ema, error_acc, and plasticity.
+>   Consequence recorded honestly: cutting the prediction buffer
+>   removes the predictive-coding error signal itself, so the lean
+>   update rule is necessarily Hebbian-with-homeostasis rather than
+>   "PC with fewer ledgers" — which sharpens the question the rung
+>   asks: is PREDICTIVE self-modification load-bearing, or does any
+>   self-organization + homeostasis suffice? Rule design to be
+>   reviewed against this framing before the build.
+> - **Original open ruling (resolved above, kept for the record):** The lean
 >   variant must name its kept state BEFORE the build. Fable's
 >   recommendation on record: keep **set_point** (homeostasis is the
 >   anti-collapse backbone and the anchor of the identity story) and
