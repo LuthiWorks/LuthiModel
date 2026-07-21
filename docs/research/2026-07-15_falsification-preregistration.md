@@ -541,9 +541,28 @@
 >     The lean rung's screen (1 epoch x 2 seeds) applies to the
 >     PC-lean primary arm itself, as originally registered.
 
-> **RUN 8 — THE v5 BUNDLE, REGISTERED UNSCHEDULED (2026-07-20 ~21:20,
+> **RESEQUENCED (Brian, 2026-07-21 ~15:10): the precision awakening
+> becomes its OWN family — the new v5 — and the bundle below becomes
+> v6.** Brian's ruling: build the three-stage precision fix NOW,
+> during v4's remaining runtime, and run it as the next family
+> (living_v5: v4's exact config + relative trust enabled — ONE change
+> vs v4, clean attribution) before the dormant-machinery bundle
+> (sparse gating + iPC T=2 + attractor + λ), which shifts to v6
+> unchanged. Two calibration notes recorded with this amendment:
+> (1) **λ rides with v6**, not v5 — the relative-trust design is
+> scale-free BY CONSTRUCTION (ratio to layer center, fixed ratio cap),
+> so it survives the later λ re-baselining without re-derivation;
+> running v5 at v4's λ=0.2 keeps the family single-variable.
+> (2) **Median-normalization chosen over mean (decided 2026-07-21
+> from the measured 8-batch profiles, not taste):** 1/err² inverse-
+> square amplifies the small-error tail (measured spreads 13–22x
+> p95/p5), so the layer mean would be tail-dominated; the used weight
+> is precision / median(precision), ratio-capped [0.1, 10].
+
+> **RUN 8 — THE v6 BUNDLE (formerly v5; renumbered by the 2026-07-21
+> resequencing above), REGISTERED UNSCHEDULED (2026-07-20 ~21:20,
 > Brian's rulings on the dormant-machinery inventory; runs after the
-> v4 depth family, config-only — no new build required).**
+> NEW v5 precision family).**
 >
 > - **Base:** the prevailing v4 shape (4 blocks, muPC 0.25, cosine LR,
 >   2x SIGReg, v3 living config) — the ladder stays cumulative — plus

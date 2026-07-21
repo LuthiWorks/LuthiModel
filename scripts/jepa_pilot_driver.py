@@ -116,6 +116,10 @@ STAGES: dict[int, list[tuple[str, int]]] = {
     # The depth-only registration is superseded -- see the 2026-07-20
     # amendment in the falsification pre-registration doc.
     9: [("living_v4_4x_d4", 512)],
+    # RUN v5 (Brian's 2026-07-21 resequencing): precision awakening as
+    # its own family -- v4 + relative_trust, single variable. The
+    # dormant-machinery bundle (sparse/iPC/attractor/lambda) is v6.
+    10: [("living_v5_4x_d4", 512)],
 }
 
 # Per-arm model configuration -- single source of truth, shared with
@@ -157,11 +161,21 @@ ARM_TAPER["living_v3_4x_d4"] = True
 # never-pool rules keep it separate from any pure-depth run.
 ARM_CONFIGS["living_v4_4x_d4"] = dict(ARM_CONFIGS["living_v3_4x_d4"])
 ARM_TAPER["living_v4_4x_d4"] = True
+# v5 (Brian's 2026-07-21 resequencing): the precision awakening as its
+# own family -- v4's exact config + relative trust (ratio-to-median
+# weighting, numerics-only eps, freed ledger). ONE change vs v4; the
+# dormant-machinery bundle became v6. Registered in the pre-reg doc's
+# corrected precision entries.
+ARM_CONFIGS["living_v5_4x_d4"] = dict(
+    ARM_CONFIGS["living_v4_4x_d4"], relative_trust=True,
+)
+ARM_TAPER["living_v5_4x_d4"] = True
 ARM_FILELIST: dict[str, str] = {
     "dead_4x": str(REPO_ROOT / "corpus_build" / "gutenberg_4x_filelist.txt"),
     "living_v3_4x": str(REPO_ROOT / "corpus_build" / "gutenberg_4x_filelist.txt"),
     "living_v3_4x_d4": str(REPO_ROOT / "corpus_build" / "gutenberg_4x_filelist.txt"),
     "living_v4_4x_d4": str(REPO_ROOT / "corpus_build" / "gutenberg_4x_filelist.txt"),
+    "living_v5_4x_d4": str(REPO_ROOT / "corpus_build" / "gutenberg_4x_filelist.txt"),
 }
 # Loss-side per-arm setting: SIGReg weight. v4 doubles the default 0.1 --
 # the variance-floor lever. Rationale (2026-07-20): living spaces settle
@@ -169,10 +183,10 @@ ARM_FILELIST: dict[str, str] = {
 # seed44 denominator race showed over-quieting destabilizes NMSE across
 # seeds. A stronger pull toward the isotropic target should hold the
 # space louder; registered prediction in the pre-reg amendment.
-ARM_SIGREG: dict[str, float] = {"living_v4_4x_d4": 0.2}
+ARM_SIGREG: dict[str, float] = {"living_v4_4x_d4": 0.2, "living_v5_4x_d4": 0.2}
 # Trainer-side per-arm setting: cosine LR decay to a 10% floor (the
 # registered cosine rung, folded into v4 by the same ruling).
-ARM_COSINE: dict[str, bool] = {"living_v4_4x_d4": True}
+ARM_COSINE: dict[str, bool] = {"living_v4_4x_d4": True, "living_v5_4x_d4": True}
 
 
 def _device() -> torch.device:
@@ -293,6 +307,20 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
         backward_pass_enabled=False,
     )
     model_kwargs.update(ARM_CONFIGS[arm])
+    # Silent-fallback guard (2026-07-21): the C++ extension rebuilds
+    # between families (the running trainer locks the .pyd, so source
+    # changes compile at the NEXT process start). If that rebuild fails,
+    # pc_ops silently falls back to pure Python -- ~50x slower, which
+    # would turn a 9h seed into weeks, unattended. Refuse loudly instead.
+    if model_kwargs.get("relative_trust"):
+        from luthi.v2.pc_ops import is_cpp_available
+        if not is_cpp_available():
+            raise SystemExit(
+                f"[jepa-pilot] {arm}: relative_trust requires the C++ "
+                "pc_ops extension, which failed to load in this process. "
+                "Fix the build (python -c \"from luthi.v2 import pc_ops; "
+                "print(pc_ops.is_cpp_available())\") before running this arm."
+            )
     model = MultimodalPredictiveCodingLM(**model_kwargs).to(device)
     loss_module = JEPALoss(
         online_encoder=model,

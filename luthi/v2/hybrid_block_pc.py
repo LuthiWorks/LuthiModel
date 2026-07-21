@@ -61,6 +61,7 @@ class PredictiveCodingBlock(nn.Module):
         # (built 2026-07-05, layer-level; never reachable from the model
         # until now) and the episode recall gate.
         learning_gain_enabled: bool = False,
+        relative_trust: bool = False,
         learning_gain_rise: float = 2.0,
         learning_gain_cap: float = 3.0,
         episode_recall_threshold: float = 0.5,
@@ -154,6 +155,7 @@ class PredictiveCodingBlock(nn.Module):
                 consolidation_attractor_passes=consolidation_attractor_passes,
                 buffer_dtypes=buffer_dtypes,
                 learning_gain_enabled=learning_gain_enabled,
+                relative_trust=relative_trust,
                 learning_gain_rise=learning_gain_rise,
                 learning_gain_cap=learning_gain_cap,
                 episode_recall_threshold=episode_recall_threshold,

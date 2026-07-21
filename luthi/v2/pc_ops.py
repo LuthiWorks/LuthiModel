@@ -140,6 +140,7 @@ def _pc_self_modify_python(
     precision_min: float,
     precision_max: float,
     prediction_clamp: float,
+    relative_trust: bool = False,
     sparse_gate: torch.Tensor | None = None,
     learning_gain_enabled: bool = False,
     learning_gain_progress: float = 0.0,
@@ -184,7 +185,22 @@ def _pc_self_modify_python(
     #    `input_avg_mag`, removed in v2), large pred_error can drive
     #    delta_w into a positive-feedback loop where weight growth
     #    amplifies output, which amplifies the next pred_error.
-    weighted_error = (pred_error * precision).clamp(-1.0, 1.0)  # [in]
+    if relative_trust:
+        # Relative trust (v5, 2026-07-21): weight by the RATIO of each
+        # input's reliability to the layer's MEDIAN reliability, with
+        # precision_min/max reinterpreted as RATIO bounds (an input can
+        # earn at most precision_max times the layer-typical trust).
+        # Median, not mean: 1/err^2 is tail-amplified (measured 13-22x
+        # p95/p5 spreads), so a mean would be dominated by its own tail.
+        # Scale-free by construction -- survives lambda/regime changes
+        # without re-derivation. Design + measurements: pre-registration
+        # doc, 2026-07-21 precision entries.
+        trust = (precision / precision.median().clamp(min=1e-12)).clamp(
+            precision_min, precision_max
+        )
+        weighted_error = (pred_error * trust).clamp(-1.0, 1.0)  # [in]
+    else:
+        weighted_error = (pred_error * precision).clamp(-1.0, 1.0)  # [in]
 
     # d. Weight delta — outer product of output_mean and weighted error,
     #    scaled by per-input plasticity and the global PC rate.
@@ -272,11 +288,26 @@ def _pc_self_modify_python(
     #    error is small for some input dims; without it, the EMA can
     #    inherit inf even though the running buffer is clamped.
     err_sq = pred_error.pow(2)
-    precision_target = 1.0 / (err_sq + 1e-3)
-    precision.mul_(precision_ema_decay).add_(
-        precision_target, alpha=1.0 - precision_ema_decay
-    )
-    precision.clamp_(precision_min, precision_max)
+    if relative_trust:
+        # The eps was the first-stage differentiation destroyer (measured
+        # 2026-07-21: err^2 runs 40-1000x SMALLER than the legacy 1e-3
+        # floor, flattening a real 13-22x reliability spread to ~1.05x).
+        # In relative mode eps is a numerics guard only, and the LEDGER
+        # is freed: wide numerics bounds instead of the ratio bounds
+        # (the ratio clamp lives at use time, step b/c above). Raw
+        # magnitudes stay recorded so absolute instruments keep their
+        # calibration even though weighting no longer uses them.
+        precision_target = 1.0 / (err_sq + 1e-8)
+        precision.mul_(precision_ema_decay).add_(
+            precision_target, alpha=1.0 - precision_ema_decay
+        )
+        precision.clamp_(1e-6, 1e12)
+    else:
+        precision_target = 1.0 / (err_sq + 1e-3)
+        precision.mul_(precision_ema_decay).add_(
+            precision_target, alpha=1.0 - precision_ema_decay
+        )
+        precision.clamp_(precision_min, precision_max)
 
     # k. error_acc — per-output running prediction-error contribution.
     #    error_acc[j] tracks |output_mean[j]| * mean|pred_error|, so
@@ -325,6 +356,7 @@ def pc_self_modify(
     precision_min: float,
     precision_max: float,
     prediction_clamp: float,
+    relative_trust: bool = False,
     sparse_gate: torch.Tensor | None = None,
     learning_gain_enabled: bool = False,
     learning_gain_progress: float = 0.0,
@@ -365,6 +397,7 @@ def pc_self_modify(
             set_point_adapt_rate, momentum_decay, update_ema_decay,
             precision_ema_decay, precision_min, precision_max,
             prediction_clamp,
+            relative_trust=relative_trust,
             sparse_gate=sparse_gate,
             learning_gain_enabled=learning_gain_enabled,
             learning_gain_progress=learning_gain_progress,
@@ -381,7 +414,8 @@ def pc_self_modify(
         pc_rate, pred_learning_rate, homeostatic_decay,
         set_point_adapt_rate, momentum_decay, update_ema_decay,
         precision_ema_decay, precision_min, precision_max,
-        prediction_clamp, sparse_gate=sparse_gate,
+        prediction_clamp, relative_trust=relative_trust,
+        sparse_gate=sparse_gate,
         learning_gain_enabled=learning_gain_enabled,
         learning_gain_progress=learning_gain_progress,
         learning_gain_rise=learning_gain_rise,

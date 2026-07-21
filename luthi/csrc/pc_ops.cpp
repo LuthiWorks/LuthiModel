@@ -75,6 +75,7 @@ std::tuple<Tensor, Tensor, Tensor> pc_self_modify(
     double precision_min,
     double precision_max,
     double prediction_clamp,
+    bool relative_trust,
     c10::optional<Tensor> sparse_gate,
     bool learning_gain_enabled,
     double learning_gain_progress,
@@ -93,7 +94,17 @@ std::tuple<Tensor, Tensor, Tensor> pc_self_modify(
     //    Mirrors v1 apply_error's local-update clamp; prevents the runaway
     //    weight growth that the bounded-growth test (refinement 6) found
     //    when input_avg_mag normalization (v1 only) is absent.
-    auto weighted_error = (pred_error * precision).clamp(-1.0, 1.0);  // [in]
+    // Relative trust (v5, 2026-07-21): ratio to the layer's MEDIAN
+    // reliability, precision_min/max reinterpreted as RATIO bounds.
+    // Mirrors the Python reference exactly (parity-tested).
+    Tensor weighted_error;
+    if (relative_trust) {
+        auto med = precision.median().clamp_min(1e-12);
+        auto trust = (precision / med).clamp(precision_min, precision_max);
+        weighted_error = (pred_error * trust).clamp(-1.0, 1.0);  // [in]
+    } else {
+        weighted_error = (pred_error * precision).clamp(-1.0, 1.0);  // [in]
+    }
 
     // d. Weight delta = outer(output_mean, weighted_error) * plasticity * pc_rate.
     //    plasticity is [in], broadcasts as [1, in] against [out, in].
@@ -164,11 +175,22 @@ std::tuple<Tensor, Tensor, Tensor> pc_self_modify(
     //    the running buffer can inherit inf even though the clamp would
     //    catch the final value.
     auto err_sq = pred_error.pow(2);
-    auto precision_target = 1.0 / (err_sq + 1e-3);
-    precision.mul_(precision_ema_decay).add_(
-        precision_target, 1.0 - precision_ema_decay
-    );
-    precision.clamp_(precision_min, precision_max);
+    if (relative_trust) {
+        // Numerics-only eps (the legacy 1e-3 floor flattened a measured
+        // 13-22x reliability spread to ~1.05x); ledger freed to wide
+        // numerics bounds -- the ratio clamp lives at use time above.
+        auto precision_target = 1.0 / (err_sq + 1e-8);
+        precision.mul_(precision_ema_decay).add_(
+            precision_target, 1.0 - precision_ema_decay
+        );
+        precision.clamp_(1e-6, 1e12);
+    } else {
+        auto precision_target = 1.0 / (err_sq + 1e-3);
+        precision.mul_(precision_ema_decay).add_(
+            precision_target, 1.0 - precision_ema_decay
+        );
+        precision.clamp_(precision_min, precision_max);
+    }
 
     // k. error_acc — per-output running prediction-error contribution.
     //    error_acc[j] tracks |output_mean[j]| * mean|pred_error|; mean of
@@ -218,6 +240,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         py::arg("precision_min"),
         py::arg("precision_max"),
         py::arg("prediction_clamp"),
+        py::arg("relative_trust") = false,
         py::arg("sparse_gate") = c10::nullopt,
         py::arg("learning_gain_enabled") = false,
         py::arg("learning_gain_progress") = 0.0,

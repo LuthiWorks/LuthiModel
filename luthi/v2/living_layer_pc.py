@@ -63,6 +63,7 @@ class PredictiveCodingLayer(nn.Module):
         inference_steps_per_forward: int = 1,
         episode_recall_threshold: float = 0.5,
         learning_gain_enabled: bool = False,
+        relative_trust: bool = False,
         learning_gain_rise: float = 2.0,
         learning_gain_cap: float = 3.0,
         resolution_short_decay: float = 0.99,
@@ -334,6 +335,10 @@ class PredictiveCodingLayer(nn.Module):
         # living_extra_state (regime i) -- a restore mid-hard-growth must not
         # reset them, or the entity re-sensitizes on every waking.
         self.learning_gain_enabled = bool(learning_gain_enabled)
+        # v5 precision awakening (2026-07-21): ratio-to-median trust
+        # weighting + numerics-only eps + freed ledger. Default False
+        # = legacy bit-identical (every pre-v5 family).
+        self.relative_trust = bool(relative_trust)
         self.learning_gain_rise = float(learning_gain_rise)
         self.learning_gain_cap = float(learning_gain_cap)
         from luthi.v2.slow_trace import SlowEMA, ReadResetAccumulator
@@ -638,6 +643,7 @@ class PredictiveCodingLayer(nn.Module):
                     self.precision_ema_decay,
                     self.precision_min, self.precision_max,
                     self.prediction_clamp,
+                    relative_trust=self.relative_trust,
                     sparse_gate=sparse_gate,
                     learning_gain_enabled=self.learning_gain_enabled,
                     learning_gain_progress=gain_progress,
