@@ -108,4 +108,4 @@ Stating this so the green is as legible as the red:
 3. **Finding 2** (gamma ratchet) — one-line conceptual fix (gamma-independent spread), Gate 6.
 4. **Finding 3** (staleness verification) — Gate 4; the instrument fix is small, the alpha fix needs a design touch.
 
-When a fix lands, the matching probe flips to REFUTED — invert its assertion and move it into `luthi/v2/m9/test_*.py` as a regression guard so the seam can't silently reopen.
+When a fix lands, the matching probe flips to REFUTED — invert its assertion and move it into `tests/m9/test_*.py` as a regression guard so the seam can't silently reopen.

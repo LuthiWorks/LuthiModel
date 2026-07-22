@@ -20,7 +20,7 @@ from luthi.v2.m9.tuning_harness import (
 )
 
 # Reuse the staleness-live smoke fixture (trainer builder + state generator).
-from luthi.v2.m9.test_staleness_live import _trainer, _state_and_context
+from tests.m9.test_staleness_live import _trainer, _state_and_context
 
 
 def _next_batch(trainer):

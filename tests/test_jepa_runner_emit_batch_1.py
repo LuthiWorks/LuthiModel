@@ -50,7 +50,7 @@ B = 2
 class _TextLoader:
     """Minimal text-only loader satisfying the MultimodalDataLoader Protocol.
 
-    Same shape as the loader in ``luthi/v2/m9/test_runner.py`` -- a
+    Same shape as the loader in ``tests/m9/test_runner.py`` -- a
     JEPATrainer needs ``next_batch``/``batch_token_count``/``state_dict``/
     ``load_state_dict``/``corpus_sizes_tokens`` to function.
     """

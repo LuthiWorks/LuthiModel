@@ -16,7 +16,7 @@ the per-candidate path makes G candidate-discriminating.
 Each verdict below is the same claim Fable made on 2026-06-11; the
 condition under which the attack lands is the same. If `confirmed`
 is False after this build, the fix landed -- migrate the inverted
-assertions to luthi/v2/m9/test_preferences_discriminate.py as
+assertions to tests/m9/test_preferences_discriminate.py as
 regression guards.
 """
 

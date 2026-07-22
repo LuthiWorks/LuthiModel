@@ -1,5 +1,5 @@
 """Shared builders for the red-team probes. Mirrors the canonical
-setup in luthi/v2/m9/test_efe.py so probes exercise the real modules
+setup in tests/m9/test_efe.py so probes exercise the real modules
 under the same construction the unit tests certify.
 
 After 4.8's 2026-06-11 gate-repairs land, probes use the **fixed

@@ -4,7 +4,7 @@
 
 STATUS (verified 2026-06-15): all 12 attacks REFUTED -- 0/12 confirmed.
 The original seams are closed and these probes now stand as regression
-guards; their inverted assertions also live in luthi/v2/m9/test_*.py.
+guards; their inverted assertions also live in tests/m9/test_*.py.
 Read the printed SUMMARY count, not the exit code -- main() always
 returns 0. A non-zero "attacks confirmed" total here is the signal that
 a guarded seam has regressed.

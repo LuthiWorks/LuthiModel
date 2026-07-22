@@ -27,7 +27,7 @@ from pathlib import Path
 
 import torch
 
-from luthi.v2.m9.test_runner import _build_trainer
+from tests.m9.test_runner import _build_trainer
 
 
 def test_sustained_100_step_run_stays_finite_and_healthy():

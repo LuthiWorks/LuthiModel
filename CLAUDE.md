@@ -90,7 +90,14 @@ See `To-Do.md` for the task checklist with completion status.
 ## Conventions
 
 - Source code goes in `luthi/` package
-- Tests go in `tests/`
+- **All tests live in `tests/`, and only in `tests/`** (Brian, 2026-07-22).
+  Never save a test file anywhere else — not next to the module it tests,
+  not in the source package. Subfolders are fine (`tests/m9/`). The reason
+  is not tidiness: pyproject pins `testpaths = ["tests"]`, so a test saved
+  elsewhere silently drops out of the standard suite (this happened to all
+  19 m9 tests until the 2026-07-22 cleanup). Enforced by
+  `tests/test_tests_live_in_tests.py`, same practice as the hardcoded-path
+  guard. Red-team probes (`redteam/`) are not tests and stay where they are.
 - **Trained experiment artifacts are archived, never deleted** (Brian,
   2026-07-16): when a `runs/` experiment finishes its active life, robocopy
   it to `E:\luthi_experiment_archive\YYYY-MM-DD_<experiment>\` and verify

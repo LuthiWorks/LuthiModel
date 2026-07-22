@@ -77,7 +77,7 @@ Two coupled issues in `staleness.py`:
 5. **F-E** (degraded-duration metric).
 6. darkroom disarmed-cycle → reset counter (my §4 call).
 
-Each refinement keeps its probe REFUTED *and* extends the probe to the regime that currently hides the seam (F-A scale, F-B born-still) before migrating to `luthi/v2/m9/test_*.py`. The extended probes are the durable part — a fix whose probe only tests the easy regime is a gate that can reopen.
+Each refinement keeps its probe REFUTED *and* extends the probe to the regime that currently hides the seam (F-A scale, F-B born-still) before migrating to `tests/m9/test_*.py`. The extended probes are the durable part — a fix whose probe only tests the easy regime is a gate that can reopen.
 
 ---
 

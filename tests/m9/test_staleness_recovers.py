@@ -253,7 +253,7 @@ def test_mcts_stamps_with_theta_version_when_set():
     mcts.current_theta_version, child node theta_stamps record that
     value instead of sim_counter (the legacy fall-back).
     """
-    from luthi.v2.m9.test_staleness import _build_mcts
+    from tests.m9.test_staleness import _build_mcts
     _, mcts = _build_mcts()
     mcts.current_theta_version = 42
     mcts.plan_budget(budget=5)
@@ -271,7 +271,7 @@ def test_staleness_clock_uses_theta_version_when_flag_set():
     of `mcts.sim_counter`. The runner sets the flag so staleness
     measures cycles, not simulations.
     """
-    from luthi.v2.m9.test_staleness import _build_mcts
+    from tests.m9.test_staleness import _build_mcts
     mgr = StalenessManager(StalenessConfig(staleness_uses_theta_version=True))
     _, mcts = _build_mcts()
     mcts.plan_budget(budget=5)

@@ -29,7 +29,7 @@ Research recommendation given; the call is the designers'. Neither blocks the *p
 
 ### Phase 0 — prerequisites (no new design)
 - **0a. v2-checkpoint-loader bridge.** `luthi/generate.py::load_model_from_checkpoint` has **no v2 branch** — it constructs only v1 classes (`LuthiLM`/`SpikingLuthiLM`/`MultimodalLuthiLM`). Add a v2 (`model_pc`/multimodal-PC) construction branch keyed off checkpoint config so the contract can load the actual M8/M9 substrate. Until this lands, Sanctuary↔v2 works only via in-process `load_from_objects`. `get_introspection` already advertises v2 fields — make the loader honor them. **Fail loud** on a v1/v2 config mismatch; never silently build the wrong architecture.
-- **0b. Stale red-team bookkeeping (correctness, trivial).** `redteam/m9_step1/run_all*.py` headers and `FINDINGS_ROUND2.md` still say "12/12" / "8/8"; the suites actually run **0/12 and 0/9 (all REFUTED)**. Update the narrative to current state and confirm each repaired probe has a migrated `luthi/v2/m9/test_*.py` regression guard.
+- **0b. Stale red-team bookkeeping (correctness, trivial).** `redteam/m9_step1/run_all*.py` headers and `FINDINGS_ROUND2.md` still say "12/12" / "8/8"; the suites actually run **0/12 and 0/9 (all REFUTED)**. Update the narrative to current state and confirm each repaired probe has a migrated `tests/m9/test_*.py` regression guard.
 
 ### Phase 1 — extend the contract (`sanctuary_interface.py`) with a training/actor surface
 Narrow, stable additions mirroring the existing inference surface:
