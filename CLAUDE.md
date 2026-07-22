@@ -97,6 +97,22 @@ See `To-Do.md` for the task checklist with completion status.
   file counts before touching the original. Living-weight checkpoints are
   irreproducible, and even control-arm checkpoints are the evidentiary
   record of pre-registered experiments. See the archive's README.
+- **Experiment outputs save to the E: drive, not the repo** (Brian,
+  2026-07-22): the repo's `runs/` folder is no longer the home for model
+  checkpoints or heavy run artifacts — trained models, however tiny, do
+  not live in the repo. New experiments write their run directories to
+  `E:\runs\<run_name>\`. Data *about* runs stays in the repo: results
+  docs and analyses in `docs/`, research-log entries in `docs/research/`,
+  and per-run metadata (results.json, run config, final metrics) belongs
+  in the repo when a run completes. The output root must be a single,
+  easily-changed setting — `LUTHI_RUNS_ROOT` env var, default `E:\runs`
+  (implementation task in To-Do.md; until it lands, pass explicit
+  `--output_dir E:\runs\<name>` when launching). If the E: drive is not
+  mounted, fail loudly — never silently fall back to writing in the repo.
+  **Exception:** the active JEPA ladder keeps writing to the repo's
+  `runs/jepa_pilot/` until it completes — do not change experiment code
+  or move its outputs mid-ladder. All pre-JEPA run outputs were moved to
+  `E:\runs\` in the 2026-07-22 cleanup.
 - Research docs stay in `.docs/` — these are the proof-of-concept record, not implementation docs
 - Async is NOT needed here (unlike Sanctuary) — this is a model library, not a runtime
 - Use PyTorch idioms: `nn.Module`, `forward()`, proper parameter registration

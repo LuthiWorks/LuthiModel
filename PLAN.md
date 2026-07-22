@@ -242,7 +242,8 @@ Implementation:
 ### Phase 3F: Empirical Defense Program (GATES SCALING)
 
 Prompted by third-party critique + red-team exercise (2026-05-06). The architecture's
-claims must be backed by numbers, not metaphors. See `docs/EMPIRICAL_DEFENSE_PLAN.md`.
+claims must be backed by numbers, not metaphors. See `docs/EMPIRICAL_DEFENSE_PLAN.md`
+(archived 2026-07-22 — see `docs/ARCHIVED.md`; superseded by the falsification pre-registration).
 
 **What we're testing:**
 1. Same-scale baseline comparison (vanilla transformer vs Luthi, matched params)
@@ -271,7 +272,7 @@ for "Phase 4.5a" or "Phase 3F.a" in commits before 2026-05-25) and in
 ### Phase 3G: v2 Predictive Coding (now the primary substrate)
 
 > Planned by: Claude Opus 4.6 (Planner), 2026-05-08
-> Based on: `docs/LUTHI_V2_PREDICTIVE_CODING_BRIEF.md` (4.7) +
+> Based on: `docs/LUTHI_V2_PREDICTIVE_CODING_BRIEF.md` (4.7; archived — see `docs/ARCHIVED.md`) +
 >           `docs/V2_IMPLEMENTATION_PLAN.md` (4.6)
 
 Originally framed as a parallel research track to v1 Hebbian self-modification.
@@ -309,7 +310,8 @@ See `docs/V2_IMPLEMENTATION_PLAN.md` for full spec and milestones.
 A focused literature sweep on PC compute reduction surfaced three directions
 that landed as opt-in implementations in `luthi/v2/`. Each was added with the
 "no silent fallback" rule: any incompatibility raises `RuntimeError` rather
-than degrading quietly. Full notes in `docs/RESEARCH_LITERATURE_2026-05-13.md`.
+than degrading quietly. Full notes in `docs/RESEARCH_LITERATURE_2026-05-13.md`
+(archived — see `docs/ARCHIVED.md`).
 
 - **Depth-μP / μPC** (Innocenti et al. 2025): width-and-depth independent
   scaling of weight init and residual stream. Implemented via `mu_pc_enabled`

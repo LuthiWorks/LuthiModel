@@ -370,7 +370,8 @@ def main():
 
     # ------------------------------------------------------------------
     # Phase 3G knobs (v2 only — all ignored for --arch dead).
-    # See `docs/RESEARCH_LITERATURE_2026-05-13.md` and
+    # See `docs/RESEARCH_LITERATURE_2026-05-13.md` (archived — see
+    # `docs/ARCHIVED.md`) and
     # `docs/RESEARCH_SALVATORI_ATTRACTOR_MEMORY.md` for the design
     # rationale on each. Defaults preserve M5 behavior — these knobs
     # default to off so existing run_*.bat scripts and reproductions of

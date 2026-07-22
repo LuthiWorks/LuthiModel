@@ -9,7 +9,8 @@ Two-tier memory: fast episode store (retrieval, identical to v1) plus
 consolidation into PC weights (M4 work — see consolidation.py).
 
 See `docs/V2_IMPLEMENTATION_PLAN.md` for the architectural specification
-and `docs/LUTHI_V2_PREDICTIVE_CODING_BRIEF.md` for the design rationale.
+and `docs/LUTHI_V2_PREDICTIVE_CODING_BRIEF.md` (archived — see
+`docs/ARCHIVED.md`) for the design rationale.
 """
 
 import torch

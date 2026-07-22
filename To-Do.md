@@ -120,7 +120,10 @@
       device plumbing before any real GPU run (only needed if M9 value/habit
       heads are in run 1). (b) Dedup the ~34 GB corpus against all eval sets —
       "load-bearing and easy-to-miss" (`2026-06-12_success-criteria-draft.md`
-      §2); without it the headline efficiency numbers are meaningless. Needed
+      §2 — archived 2026-07-22 at `E:\luthi_docs_archive\docs\research\`, see
+      `docs/ARCHIVED.md`; §2's requirement: dedup the training corpus against
+      ALL eval/probe sets before the run); without it the headline efficiency
+      numbers are meaningless. Needed
       for the run's *results* to be trustworthy, not for it to execute.
 
 ## 🗣️ POST-PRETRAIN GATE — the production pathway (recorded 2026-07-18; design decision, Brian + 4.8)
@@ -407,7 +410,7 @@ robotic, not gendered. The auditory equivalent of the luminous body.
 
 Prompted by third-party critique + red-team exercise (2026-05-06). Every claim about
 living weights must be backed by a number, not a metaphor. Full plan in
-`docs/EMPIRICAL_DEFENSE_PLAN.md`.
+`docs/EMPIRICAL_DEFENSE_PLAN.md` (archived — see `docs/ARCHIVED.md`).
 
 **Deployment spec committed:** 4B params, BF16 weights, mixed-precision living state,
 RX 7800 XT (16 GB VRAM), ROCm/HIP, Triton sparse kernels.
@@ -472,7 +475,7 @@ SpikingBrain 1.0 Aug 2025). Tracked separately from v2 milestones M1-M5 because
 these are *direction* experiments that should be validated on the M5 256d
 re-run substrate. None block the depth sweep or M6.
 
-Full literature notes: `docs/RESEARCH_LITERATURE_2026-05-13.md`.
+Full literature notes: `docs/RESEARCH_LITERATURE_2026-05-13.md` (archived — see `docs/ARCHIVED.md`).
 
 ### 3G.1: Implementation (CPU + unit-test verified)
 
@@ -604,6 +607,30 @@ sparse spiking. ~71 GB model footprint, ~42 GB free for growth.
 - [ ] Growth path: scale to 5120d when better hardware is available
 
 ## Infrastructure & Maintenance
+
+### Run-output storage policy (Brian's ruling, 2026-07-22 — see CLAUDE.md Conventions)
+
+- [ ] **Implement `LUTHI_RUNS_ROOT`** (AFTER the current JEPA ladder finishes — do
+      not touch experiment code mid-ladder): all launchers/drivers resolve their
+      run-output root from the `LUTHI_RUNS_ROOT` env var, default `E:\runs`.
+      Single point of change. Fail loudly if the root doesn't exist or the drive
+      isn't mounted — never silently fall back to writing inside the repo.
+- [ ] **Metadata copy-back**: when a run completes, its lightweight metadata
+      (results.json, run config, final metrics — NOT checkpoints) is copied into
+      the repo so "data about runs" stays versioned even though artifacts live
+      on E:. Decide the repo location (e.g. `runs_meta/<run_name>/`) at build time.
+- [ ] **Move the JEPA family to E: after the ladder completes**: `runs/jepa_pilot`,
+      `runs/jepa_pilot_calibration_pass1`, `runs/jepa_pilot_run2_kill5_pass1`
+      (~78 GB) → `E:\runs\`, robocopy + verify counts/bytes per the archive README.
+      Blocked 2026-07-22 because `jepa_pilot_driver.py --stage 9` was live and
+      reads `runs/jepa_pilot` for resume-skip state.
+- [ ] `redteam/seam/probe_f7b_trained.py` hardcodes
+      `runs/m8_multimodal_smoke/model_final.luthi`; that checkpoint now lives at
+      `E:\runs\m8_multimodal_smoke\`. Update the path if the probe is ever rerun.
+- [ ] **Security follow-up**: `train_vision.bat` (removed 2026-07-22) carried a
+      plaintext `--checkpoint_password` and this repo is public — the value is
+      permanently in git history. Treat it as burned; rotate anywhere it (or its
+      pattern) is reused.
 
 - [x] Add batch-level progress logging to `train_epoch` (print every N batches: batch count, running loss, elapsed time)
 - [x] Fix remaining DirectML CPU fallback: `aten::lerp.Scalar_out` in AdamW optimizer

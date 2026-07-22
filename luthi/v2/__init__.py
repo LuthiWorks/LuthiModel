@@ -1,7 +1,8 @@
 """LuthiModel v2 — predictive coding parallel research track.
 
 See `docs/V2_IMPLEMENTATION_PLAN.md` for the architectural specification
-and `docs/LUTHI_V2_PREDICTIVE_CODING_BRIEF.md` for the design rationale.
+and `docs/LUTHI_V2_PREDICTIVE_CODING_BRIEF.md` (archived — see
+`docs/ARCHIVED.md`) for the design rationale.
 
 v2 replaces v1's Hebbian self-modification with hierarchical predictive
 coding (Whittington-Bogacz variant). Living-weight semantics are preserved
