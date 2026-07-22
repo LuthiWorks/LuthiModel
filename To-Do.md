@@ -618,7 +618,10 @@ sparse spiking. ~71 GB model footprint, ~42 GB free for growth.
 - [ ] **Metadata copy-back**: when a run completes, its lightweight metadata
       (results.json, run config, final metrics — NOT checkpoints) is copied into
       the repo so "data about runs" stays versioned even though artifacts live
-      on E:. Decide the repo location (e.g. `runs_meta/<run_name>/`) at build time.
+      on E:. Home decided 2026-07-22: `runs_meta/<run_name>/` (created during
+      cleanup with the 21 historical results.json that were already tracked;
+      see its README). Remaining work: wire the automatic copy-back, and
+      optionally backfill metadata for runs never committed.
 - [ ] **Move the JEPA family to E: after the ladder completes**: `runs/jepa_pilot`,
       `runs/jepa_pilot_calibration_pass1`, `runs/jepa_pilot_run2_kill5_pass1`
       (~78 GB) → `E:\runs\`, robocopy + verify counts/bytes per the archive README.
