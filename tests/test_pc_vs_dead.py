@@ -166,7 +166,7 @@ def test_attractor_recovery_distinguishable_from_random():
 # 2. Head-to-head comparison — loads m5_runner results, skips if absent
 # ---------------------------------------------------------------------------
 
-M5_RUNS_DIR = Path("runs/m5")
+M5_RUNS_DIR = Path("E:/runs/m5")  # pre-JEPA runs moved to E: 2026-07-22
 
 
 def _collect_results(arch: str, expected_seeds: list[int]) -> list[dict]:

@@ -260,7 +260,8 @@ INT8 episode deltas) was deferred when v2 (predictive coding) became the
 primary substrate. v2's intrinsic per-weight cost (~18-20 bytes/param) is
 already lower than v1's post-compression target (~14), so the ablations
 optimize an abandoned path. Baseline v1 FP32 data lives in
-`runs/ablation_A/baseline_seed{42,1337,2026}/` as a reference point.
+`runs/ablation_A/baseline_seed{42,1337,2026}/` as a reference point (now
+`E:\runs\ablation_A\`, moved 2026-07-22).
 
 **Revive only if v2 fails M5 falsification.** The full protocol — memory-
 ceiling tables, four-ablation execution sequence, decision gates, and

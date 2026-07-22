@@ -1,8 +1,9 @@
 # M5 Re-Run at 256d — Plan-Spec Configuration Results
 
 > Run completed: 2026-05-13 22:14 (started 2026-05-12 19:37 — ~26.5h wall-clock for 6 runs sequentially).
-> Source: `runs/m5_256d/{v2,dead}_seed{42,1337,2026}/`
-> Launcher: `run_m5_256d.bat` (M5 fix #5)
+> Source: `runs/m5_256d/{v2,dead}_seed{42,1337,2026}/` — **artifacts now at
+> `E:\runs\m5_256d\`** (pre-JEPA runs moved off-repo 2026-07-22).
+> Launcher: `run_m5_256d.bat` (M5 fix #5; launcher deleted 2026-07-22, recoverable from git history)
 > Audit: 4.6's adversarial review of the 128d pilot ("M5 Performance Review") flagged that the V2 plan §M5 specifies 256d/2 blocks and the 128d pilot was a plan deviation. This re-run closes that gate.
 
 ## Headline
@@ -124,7 +125,7 @@ Slower than the 128d pilot's ~21h-for-6 because the model is 4× larger in d_mod
 
 ## Outstanding gates (carrying forward from 128d)
 
-1. **Depth sweep at 4/8/12 blocks** (M5 fix #4 harness exists at `run_m6_depth_sweep.bat`, queued behind compute-optimization work). Hierarchical PC dynamics at depth still untested.
+1. **Depth sweep at 4/8/12 blocks** (M5 fix #4 harness was `run_m6_depth_sweep.bat` — executed, then deleted 2026-07-22 with the other retired launchers; in git history). Hierarchical PC dynamics at depth still untested.
 2. **Statistical significance** (n=3 still). The 256d gap is wide enough relative to dead's variance that it survives an informal eyeball, but 5+ seeds would give actual confidence intervals.
 3. **Precision-ceiling sensitivity**: does lifting `precision_max` from 10.0 → 100.0 change anything, or is precision truly bounded by the clamp? Worth a one-seed sweep.
 
@@ -133,4 +134,5 @@ Slower than the 128d pilot's ~21h-for-6 because the model is 4× larger in d_mod
 - Per-seed `results.json` in `runs/m5_256d/{v2,dead}_seed{42,1337,2026}/`
 - Per-seed `model_final.luthi` checkpoints (encrypted; same dir)
 - Combined log at `runs/m5_256d/m5_256d.log`
+- (All of the above moved to `E:\runs\m5_256d\` on 2026-07-22, byte-verified.)
 - Comparison data also reflected in `docs/V2_PILOT_RESULTS.md` (128d pilot results retained for reference; this doc supersedes the "256d re-run pending" outstanding gate)

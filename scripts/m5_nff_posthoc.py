@@ -27,7 +27,7 @@ from luthi.v2 import PredictiveCodingLM
 from luthi.model import DeadLM
 
 
-M5_DIR = Path("runs/m5")
+M5_DIR = Path("E:/runs/m5")  # pre-JEPA runs moved to E: 2026-07-22
 TOKENIZER_PATH = "corpus_build/gutenberg_100_bpe32k.json"
 PROBE_BATCH = 4
 PROBE_SEQ_LEN = 64

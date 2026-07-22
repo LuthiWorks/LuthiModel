@@ -41,7 +41,8 @@ than v1's post-compression 14, without any ablation needed.
   PC substrate beat a vanilla transformer + episode store? Falsification
   criteria below stay; the v1 comparison drops.
 - Phase 4.5a (v1 ablations) DEFERRED, not abandoned. `runs/ablation_A/`
-  baseline data preserved as the v1 reference point. Revive only if v2 fails
+  baseline data (now `E:\runs\ablation_A\`, moved 2026-07-22) preserved as
+  the v1 reference point. Revive only if v2 fails
   M5 falsification.
 - DirectML stays as the daily driver; FP32 weight (instead of BF16) is the
   default for development. ~560M params fits in 16 GB VRAM at 20 bytes/param,
@@ -476,7 +477,8 @@ episode store.
 
 > Updated 2026-05-09 per the strategic shift to v2-primary: this comparison
 > drops v1 and runs **v2 vs DeadLM only**. The v1 baseline FP32 numbers from
-> `runs/ablation_A/baseline_seed{42,1337,2026}/` are preserved as a v1
+> `runs/ablation_A/baseline_seed{42,1337,2026}/` (now `E:\runs\ablation_A\`,
+> moved 2026-07-22) are preserved as a v1
 > reference if needed for fallback diligence, but they do not gate M5.
 
 - **v2 vs DeadLM**: 256d / 2 blocks, 30 epochs, 3 seeds, Gutenberg-100.

@@ -372,7 +372,8 @@ Top-down modulation broke through a 25-epoch val loss plateau on its first attem
 
 **Setup:** Resumed training after GPU stabilization. Audio+text and vision+text training completed successfully.
 
-**Checkpoint:** `runs/multimodal/` (828 MB, epoch 102) — current latest checkpoint.
+**Checkpoint:** `runs/multimodal/` (828 MB, epoch 102) — latest checkpoint at
+the time of writing (now `E:\runs\multimodal\`, moved 2026-07-22).
 
 - Audio encoder trained on LibriSpeech clean-100 (epoch 91)
 - Vision encoder (VisionEncoder, Conv2d 16x16 patches, 196 tokens/image, ~2.1M params) trained on COCO 2017 (118K images + captions)

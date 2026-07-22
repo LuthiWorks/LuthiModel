@@ -7,6 +7,12 @@ revisions they prompted.
 
 See `CLAUDE.md` section "Research Log" for the spec that governs these entries.
 
+**Artifact paths in dated entries:** entries cite run artifacts at the
+`runs/<name>/` paths that were current when written. All pre-JEPA run outputs
+moved to `E:\runs\` on 2026-07-22 (byte-verified; see CLAUDE.md Conventions) —
+resolve any dead `runs/` path there. Entries archived off-repo are listed in
+`docs/ARCHIVED.md` and live at `E:\luthi_docs_archive\`.
+
 ## Entries
 
 *(newest first)*

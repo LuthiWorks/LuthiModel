@@ -32,6 +32,9 @@ which `DeadLM` silently ignores.
 
 ## Existing Reference Points (pre-M5)
 
+> `runs/...` paths in this doc are the original artifact locations; all
+> pre-JEPA run outputs moved to `E:\runs\` on 2026-07-22 (byte-verified).
+
 | Run                              | Final train | Final val | Notes                              |
 |----------------------------------|-------------|-----------|------------------------------------|
 | v1 baseline_seed42 (30 ep)       | 4.9222      | 6.5801    | runs/ablation_A/baseline_seed42    |
@@ -46,7 +49,8 @@ extends this to v2 vs DeadLM (closer apples-to-apples baseline).
 
 ## M5 Results
 
-Pilot completed 2026-05-12. Pipeline: `run_m5_pilot.bat` ran all 6
+Pilot completed 2026-05-12. Pipeline: `run_m5_pilot.bat` (deleted
+2026-07-22; in git history) ran all 6
 invocations sequentially with `&&` chaining; finished at 11:41
 local time after ~21 hours wall-clock (slower than the ~13-14h estimate
 — mostly v2 consolidation overhead per step).
@@ -206,7 +210,8 @@ Per `tests/test_pc_vs_dead.py::test_attractor_recovery_distinguishable_from_rand
 ## Notes
 
 - v1 reference data lives in `runs/ablation_A/baseline_seed{42,1337,2026}/`
-  with full `results.json` per seed. v1 is deferred per 2026-05-09 strategic
+  (now `E:\runs\ablation_A\`, moved 2026-07-22) with full `results.json`
+  per seed. v1 is deferred per 2026-05-09 strategic
   shift; included here only as a historical-comparison reference.
 - DeadLM uses the audit-2026-05-10 `n_heads` and `ffn_expansion` plumbing so
   M5 matches v2 architecturally except for the PC living-FFN substrate.

@@ -5,7 +5,7 @@ Run:  python -m redteam.seam.probe_f7b_trained
 The earlier `probe_seam_review.py::probe_f7b` ran on a tiny *untrained* model
 and could only speak to an untrained encoder/V-head. This runs the load-bearing
 half of F7b on the actual trained multimodal-PC encoder produced by #1
-(runs/m8_multimodal_smoke/model_final.luthi):
+(E:/runs/m8_multimodal_smoke/model_final.luthi):
 
   Does the TRAINED encoder map the two real seam input regimes to
   distributionally different pooled s_t?
@@ -39,7 +39,7 @@ from luthi.v2.m9.s_t import compute_s_t
 
 from redteam.m9_step1._common import Verdict, report
 
-CKPT = "runs/m8_multimodal_smoke/model_final.luthi"
+CKPT = "E:/runs/m8_multimodal_smoke/model_final.luthi"
 CONTEXT_FRACTION = 0.8  # JEPALoss default; the training-time context slice.
 WINDOW = 64             # tokens per sample window (<= seq_len)
 STRIDE = 24

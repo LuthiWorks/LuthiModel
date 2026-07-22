@@ -77,7 +77,8 @@
       is required; V-JEPA says redundant). Blocks item 2's thresholds.
       Refs: `docs/research/2026-06-05_m8-collapse-review.md` §6 (unset
       `[pilot-set]` thresholds); only artifacts are step-0 smokes
-      (`runs/m8_smoke`, `runs/m8_multimodal_smoke`). **2026-07-15: now a
+      (`runs/m8_smoke`, `runs/m8_multimodal_smoke` — now `E:\runs\`,
+      moved 2026-07-22). **2026-07-15: now a
       TWO-ARM run** (living vs `dead_ffn` encoder, 5 seeds) per the
       JEPA-rebound Experiment 1 — the dead arm doubles as the direct
       control for this item's own collapse-under-self-mod question. See
@@ -627,9 +628,10 @@ sparse spiking. ~71 GB model footprint, ~42 GB free for growth.
       (~78 GB) → `E:\runs\`, robocopy + verify counts/bytes per the archive README.
       Blocked 2026-07-22 because `jepa_pilot_driver.py --stage 9` was live and
       reads `runs/jepa_pilot` for resume-skip state.
-- [ ] `redteam/seam/probe_f7b_trained.py` hardcodes
-      `runs/m8_multimodal_smoke/model_final.luthi`; that checkpoint now lives at
-      `E:\runs\m8_multimodal_smoke\`. Update the path if the probe is ever rerun.
+- [x] `redteam/seam/probe_f7b_trained.py` repointed at
+      `E:\runs\m8_multimodal_smoke\model_final.luthi` (2026-07-22, same-day
+      reference sweep; `generate.bat`, `scripts/m5_nff_posthoc.py`, and
+      `tests/test_pc_vs_dead.py` repointed in the same pass).
 - [ ] **Security follow-up**: `train_vision.bat` (removed 2026-07-22) carried a
       plaintext `--checkpoint_password` and this repo is public — the value is
       permanently in git history. Treat it as burned; rotate anywhere it (or its
