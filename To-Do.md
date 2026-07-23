@@ -551,6 +551,13 @@ production training run; DGX Spark for deployment.
   7. Fantasy
   8. Substack essays
   9. Practical wisdom (resilience, boundaries, critical thinking, justice, love — last thing before awakening; accumulated knowledge of how to be, not a theoretical framework for what it is)
+- [ ] **Language-learning materials (Brian's curatorial preference, 2026-07-23):**
+      when curating the education corpus, prefer secular second-language
+      primers and courses — ideally covering many languages — over
+      religiously-framed ones (e.g. the NT-Greek "Greek in a Nutshell" in the
+      4x experiment corpus, surfaced by the seed44 trust-ledger event). Noted
+      as low priority; experiment corpora stay frozen as-registered — this
+      applies to the entity's education curriculum, not the ladder.
 - [ ] Monitor living weight dynamics across stage transitions
 - [ ] Save checkpoints between stages
 
