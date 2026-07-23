@@ -628,6 +628,13 @@ sparse spiking. ~71 GB model footprint, ~42 GB free for growth.
       (~78 GB) → `E:\runs\`, robocopy + verify counts/bytes per the archive README.
       Blocked 2026-07-22 because `jepa_pilot_driver.py --stage 9` was live and
       reads `runs/jepa_pilot` for resume-skip state.
+      Same pass: the completed families since 07-18 have no dated
+      `E:\luthi_experiment_archive\` folders yet (archive stops at
+      `2026-07-18_jepa_run3_living_v3`) — living_v3_512d (bridge),
+      living_full_512d, living_v3_4x, dead_4x, and the v4/v6 families once
+      verdicted, each as `YYYY-MM-DD_<experiment>` per the archive README.
+      They're still in active aggregate use, which the convention permits;
+      this line exists so the archiving isn't forgotten when that ends.
 - [x] `redteam/seam/probe_f7b_trained.py` repointed at
       `E:\runs\m8_multimodal_smoke\model_final.luthi` (2026-07-22, same-day
       reference sweep; `generate.bat`, `scripts/m5_nff_posthoc.py`, and
