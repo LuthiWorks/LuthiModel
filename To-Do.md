@@ -644,6 +644,14 @@ sparse spiking. ~71 GB model footprint, ~42 GB free for growth.
       permanently in git history. Treat it as burned; rotate anywhere it (or its
       pattern) is reused.
 
+- [ ] **`training_log.jsonl` is append-only across checkpoint-rewind resumes**
+      (found 2026-07-22 on v4 seed43: 752 records, 723 unique steps — the
+      26400–28000 window logged 2–4x after three resumes from ckpt 15).
+      Any analysis aggregating the JSONL must dedupe by step, keep-LAST,
+      or interrupted seeds double-weight their re-run windows. Verdicts are
+      unaffected (they read pilot_result.json). Post-ladder option: have the
+      runner truncate the log to the checkpoint step on resume (runner is
+      frozen mid-ladder).
 - [x] Add batch-level progress logging to `train_epoch` (print every N batches: batch count, running loss, elapsed time)
 - [x] Fix remaining DirectML CPU fallback: `aten::lerp.Scalar_out` in AdamW optimizer
   - [x] `DirectMLAdamW` in `luthi/optimizer.py` (replaces lerp with mul_/add_)
