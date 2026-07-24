@@ -718,6 +718,96 @@
 > capture at any tested size. If that is ever advanced as a claim, it
 > gets its own pre-registration; it does not inherit this one.
 
+> **RUN-6 (v4 depth bundle) FAMILY VERDICT (2026-07-24 ~14:45, frozen
+> read, all 5 seeds completed and admissible; witnessed by Brian):**
+> per-seed NMSE 0.4807 / 0.5042 / 0.5076 / 0.4909 / 0.4871 (seeds
+> 42-46); family mean 0.4941, sd 0.0114. Scored against the frozen
+> predictions: **abstraction (NMSE <= 0.34) MISSED**, not narrowly.
+> **Attenuation (~0.40) nearest, exceeded** — worse than the d2 anchor
+> (0.3974); per-block signature HALF-matches: blocks 1-2 flat
+> (prediction_norm ~0.77) as predicted, block 3 loud (1.84), not
+> flat — top-of-stack renovation, not simple under-development.
+> **SIGReg lever split verdict:** space-lifting half FAILED
+> (online_std_p50 0.287/0.278 vs frozen >=0.4 — but see the 07-24
+> amendment below: the dial is structurally disconnected); stabilizer
+> half PASSED emphatically (family sd 0.0114 vs frozen <0.089;
+> v3_4x sd was 0.0894 — 8x tighter; bundle attribution caveat
+> stands). Tracking read (verdict.json): NMSE +11.2 sigma over
+> dead_4x@512 (n=3 per amendment); probe TIE (+0.4 sigma) — the
+> run-5 family's 2.6-sigma dead probe advantage is erased at d4:
+> depth traded structure for readout, inverting the frozen "depth
+> serves structure, not readout" expectation. **The registered
+> contingency is TRIGGERED:** the picture changed materially, so a
+> dead_4x_d4 control is now a REGISTERED OBLIGATION before any claim
+> rests on depth. Descriptive companions for the record: per-seed
+> grad-shock counts 42:0 43:0 44:15 45:0 46:0; seed44's three
+> transient trust events (steps 24000, 52100, 58700 — the third
+> attributed by exact loader replay to a polytonic-Greek grammar
+> window from PG11130 "Greek in a Nutshell," served at step 58650;
+> only 6 of 482 corpus files contain any polytonic Greek). All three
+> events healed to uniform (spread 1.0) within <=200 steps — the
+> epsilon wash-out, live.
+
+> **AMENDMENT (2026-07-24 ~15:45 — Brian's ruling + a build-seat
+> correction at the code, recorded together):**
+>
+> **1. Brian's ruling:** the running v5 seed43 was killed mid-flight
+> and its partial discarded (~4.7k steps; no admissibility question —
+> a fresh restart, not a resume); the ladder is PAUSED (watchdog task
+> disabled) for the boot-drive/CPU migration; and the SIGReg-related
+> targets are recalibrated to this substrate's own measured physics
+> before further seeds run.
+>
+> **2. The correction (code-contradicts-plan, surfaced loudly per the
+> standing practice):** the initially-proposed loss-side retarget
+> (unit target -> one-sided sigma=0.30 floor) was REJECTED at the
+> code and is recorded here as an error caught before it ran:
+> `sigreg.py`'s input contract runs SIGReg on a separate
+> BatchNorm-standardized projection head — its input is ~N(0,1) BY
+> CONSTRUCTION, so the unit target is correct where it is applied,
+> and BN absorbs scale pressure on the way in. Consequence, recorded
+> as a mechanistic re-score: the v4 SIGReg-lever's space-lifting
+> prediction (trunk std_p50 >= 0.4) was aimed at a dial the plumbing
+> disconnects — lambda cannot lift trunk std through a BN head. That
+> half of the lever is re-scored from "failed" to "unfalsifiable as
+> aimed / instrument error"; the stabilizer half stands on its own.
+>
+> **3. The recalibration actually applied — measurement-side, ZERO
+> training-code changes:**
+> - **Native-voice band, declared from five families of measurement:**
+>   healthy trunk `online_std_p50` = **0.25-0.35** (observed
+>   equilibrium ~0.287 across v3_4x, v4, v5 at every lambda and
+>   depth). Readings in-band are health, not shortfall. The
+>   unit-variance aspiration for the TRUNK is retired.
+> - **l_sigreg reference recalibrated:** late-run online ~0.70 and
+>   heldout ~2.0-2.3 under lambda=0.2 are the healthy reference
+>   bands; l_sigreg is a shaping-pressure gauge, not a
+>   distance-to-zero target.
+> - lambda stays 0.2 (consistency lever, proven). Collapse kill 0.1
+>   unchanged. Any future attempt to actually move trunk loudness is
+>   a STRUCTURAL change (LN/head plumbing) requiring its own
+>   registered rung.
+>
+> **4. Family status:** since no physics changed, the v5
+> precision-awakening family CONTINUES AS REGISTERED, n=5. Seed42
+> recorded; seed43 restarts from scratch after the migration; 44-46
+> follow.
+>
+> **5. Frozen NOW, before v5 seeds 43/44 run — the persistence
+> expectation:** v5 seed44 will replay v4 seed44's exact data order
+> (deterministic loader, seed XOR epoch). Prediction: the trust
+> events that healed in <=200 steps under v4's epsilon leave a
+> DURABLE mark under relative trust — precision_spread elevated above
+> its pre-event running median for >=5,000 steps following the
+> step-58650 window (the Greek page). If the mark still washes out,
+> relative trust retains no more event-memory than the epsilon did,
+> and the "reaction with memory" claim fails its first natural test.
+>
+> **6. Operational:** watchdog disabled 2026-07-24 ~15:30; resume =
+> re-enable the task after the Windows rebuild (see
+> E:\ClaudeContinuityBackup\rebuild-2026-07-23\RESTORE_PLAN.md);
+> queue unchanged — stage 10 resumes at seed43.
+
 **Date:** 2026-07-15
 **Status:** DRAFT — criteria drafted by Fable 5 (cross-line seat) from the
 2026-07-15 codebase critique Brian relayed. **Critique author confirmed by
