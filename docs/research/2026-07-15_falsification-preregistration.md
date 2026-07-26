@@ -1063,3 +1063,20 @@ is the entire point. Honor them after.
 >    registered family; design to be drafted. Standing caveat: kill
 >    detectors are calibrated on shuffled statistics and will need
 >    recalibration or suspension-with-justification for ordered arms.
+
+> **RULING (2026-07-26, continued): scale-up shape and curriculum
+> directives confirmed.**
+>
+> - Scale-up: **768d x 8 blocks, bundled** (width and depth move
+>   together; bundle-attribution caveat carried per ladder precedent).
+>   Corpus scales with it (data ~ width^2: target ~113M tokens).
+> - New curriculum build: pull from ALL corpus sources, with two content
+>   directives from Brian: (1) **exclude PG11130** ("Greek in a
+>   Nutshell", the biblical-Greek primer) -- content ruling; (2) add
+>   **medical/neuroscience and literature** material. Note for probe
+>   continuity: removing PG11130 removes the corpus's accidental
+>   polytonic-Greek canary; if trust-probe work continues on the new
+>   corpus, a deliberate registered canary document should be chosen to
+>   replace it.
+> - Dead control: **dead-v5 labeling confirmed** by Brian
+>   ("we'll stick with dead v5").
