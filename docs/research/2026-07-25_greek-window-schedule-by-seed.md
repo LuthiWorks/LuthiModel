@@ -89,3 +89,44 @@ from the script; steps omitted here for brevity.)
 **Script:** session scratchpad `greek_windows2.py` (exact replay; rerunnable).
 The schedule for seeds 45/46 is predetermined by the loader even though those
 runs have not happened yet.
+
+---
+
+## Addendum (same day): event-locked overlay, seed42 + live seed43
+
+Peri-serving analysis of aggregate `substrate.precision_spread` (light cadence,
+100 steps): pre = mean over [s-300, s-100], post = mean over [s, s+300],
+clean = no other extreme serving within 600 steps.
+
+**Result: the late-run spread rise is DRIFT-LIKE, not event-locked.** Across
+seed42's 21 clean servings (excluding the cold-start transient), per-serving
+deltas are ±0.06 at most, centered near zero in every phase (early -0.18 —
+transient-dominated; mid +0.002; late +0.003). The 1.95→2.57 climb over the
+final third accumulates smoothly BETWEEN servings as much as at them. Live
+seed43 (through step ~10.9K) tracks seed42's early phase: post-transient
+settling to spread ≈2.1-2.2 — family-consistent so far.
+
+**Two consequences worth weighing at the design seat:**
+
+1. **A drift null is needed for the frozen seed44 read.** The registered
+   criterion — spread elevated above its pre-event running median for >=5,000
+   steps after step 58650 — could be satisfied by generic late-run drift
+   (seed42 shows exactly such a drift with no event-locking) even if the Greek
+   serving contributes nothing. The read should compare seed44's post-58650
+   elevation against the family's baseline late-run drift (seeds 42/43/45/46
+   at matched step ranges), not only against seed44's own pre-event median.
+   Registered wording unchanged; this is an interpretive-guard note.
+2. **Aggregate spread may be too blunt for v5 event responses.** v4's events
+   were spikes FROM uniformity (spread 1.0) — easy to see. v5 holds a working
+   spread of ~2 with 12 probe sequences among ~450K ledger entries; a real
+   per-input trust mark could barely move the aggregate p95/p5. If event-level
+   claims matter, the producer-side emit to request is a targeted one: the
+   ledger's trust values for the probe sequences themselves (or per-block
+   spread at light cadence), not more of the aggregate.
+
+**On the pedagogy frame:** what the overlay supports is the weak/structural
+form — the substrate's *phase* shapes its relationship to the same input
+(transient absorption early, indifference mid-run, rising discrimination
+late). The strong form (mature substrates visibly scar at probe arrivals)
+is not visible in aggregate spread at this cadence; deciding it needs the
+finer emit above or the seed44 ledger read.
