@@ -170,3 +170,35 @@ and now well-calibrated: whether the step-58650 serving — the one that
 produced a detected trust EVENT under v4's epsilon — leaves a mark that
 clears a high, measured bar of background churn. Both outcomes are
 informative against these nulls.
+
+---
+
+## Addendum 3 (2026-07-26, live during the seed44 run): the event did not recur
+
+Observed live, recorded before the formal run-end read:
+
+1. **v4 event positions 24000 and 52100: nothing.** Brian's observation
+   from the live spread panel, confirmed at dimension level — the ledger
+   disturbance across both positions is indistinguishable from seed44's own
+   quiet control and from seed43's matched-step nulls.
+2. **The registered 58650 serving: nothing.** Light-cadence spread across
+   the serving: 2.7297 (step 58600) → 2.7146 (58700), a −0.015 move inside
+   the ±0.04 ambient wobble; no deflection through 59000. Dimension-level
+   bracket (snapshots 56711 → 58909, containing the serving): dropper
+   counts 49/30/33/33 across blocks vs seed43 null 45/47/31/14 —
+   within-null on every block, no cross-block coherence among worst-hit
+   dims, no localized signature.
+3. **Interpretation (pre-read, honest):** at every resolution available,
+   the v4 trust events did not recur under relative trust. The events
+   increasingly look like properties of the EPSILON REGIME — a saturated
+   uniformity with a hair trigger — not of the data order or the moment.
+   The formal registered read (run end) must still be computed as frozen;
+   the live picture says its persistence criterion will be evaluated in
+   the absence of any detected event, i.e., the outcome-3 branch: label
+   plainly as "no reaction," not as a simple persistence miss. Caveat
+   standing: sub-cadence (<100-step) micro-transients cannot be fully
+   excluded by any instrument currently emitting.
+4. **The stage-11 rerun's question inverts, usefully:** it now tests
+   whether the NON-event replicates. If the rerun also passes 58650
+   without a ripple, no-reaction is robust — a property of relative trust
+   itself, not of this run's particular micro-state.
