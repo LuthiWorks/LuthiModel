@@ -77,6 +77,8 @@ def main() -> int:
         ]
         if "n_seeds" in entry:
             cmd += ["--n-seeds", str(entry["n_seeds"])]
+        if "seeds" in entry:
+            cmd += ["--seeds", str(entry["seeds"])]
         _log(f"stage {entry['stage']}: {entry.get('note', '')} -> {' '.join(cmd[1:])}")
         with open(LOG_PATH, "a", encoding="utf-8") as logf:
             rc = subprocess.run(

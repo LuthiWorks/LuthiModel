@@ -120,6 +120,16 @@ STAGES: dict[int, list[tuple[str, int]]] = {
     # its own family -- v4 + relative_trust, single variable. The
     # dormant-machinery bundle (sparse/iPC/attractor/lambda) is v6.
     10: [("living_v5_4x_d4", 512)],
+    # Seed44 ROBUSTNESS RERUN (Brian's 2026-07-26 ruling): identical
+    # config and data order as stage 10's seed44; GPU float
+    # nondeterminism supplies the only perturbation. Distinguishes a
+    # robust trigger (the ~58650 trust event recurs) from a knife-edge
+    # one (it does not). Distinct arm name so run dirs and verdict
+    # filters keep it out of the registered v5 family (never-pool).
+    # Unregistered descriptive probe -- no frozen prediction. Replaces
+    # the dead_4x_d4 control in the SCHEDULE only; that control remains
+    # a registered obligation (deferred; no depth claims until it runs).
+    11: [("living_v5_4x_d4_rerun", 512)],
 }
 
 # Per-arm model configuration -- single source of truth, shared with
@@ -187,6 +197,14 @@ ARM_SIGREG: dict[str, float] = {"living_v4_4x_d4": 0.2, "living_v5_4x_d4": 0.2}
 # Trainer-side per-arm setting: cosine LR decay to a 10% floor (the
 # registered cosine rung, folded into v4 by the same ruling).
 ARM_COSINE: dict[str, bool] = {"living_v4_4x_d4": True, "living_v5_4x_d4": True}
+# Rerun alias (stage 11): byte-identical configuration to the v5 arm
+# under a distinct name, so the rerun's artifacts can never pool with
+# the registered family by accident.
+ARM_CONFIGS["living_v5_4x_d4_rerun"] = dict(ARM_CONFIGS["living_v5_4x_d4"])
+ARM_TAPER["living_v5_4x_d4_rerun"] = ARM_TAPER["living_v5_4x_d4"]
+ARM_FILELIST["living_v5_4x_d4_rerun"] = ARM_FILELIST["living_v5_4x_d4"]
+ARM_SIGREG["living_v5_4x_d4_rerun"] = ARM_SIGREG["living_v5_4x_d4"]
+ARM_COSINE["living_v5_4x_d4_rerun"] = ARM_COSINE["living_v5_4x_d4"]
 
 
 def _device() -> torch.device:
@@ -445,11 +463,17 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
 
 
 def run(stages: list[int], args) -> int:
+    # Explicit --seeds overrides the prefix-of-SEEDS selection (added for
+    # the stage-11 seed44 rerun, which must run seed 44 alone).
+    run_seeds = (
+        [int(x) for x in args.seeds.split(",")]
+        if args.seeds else list(SEEDS[: args.n_seeds])
+    )
     plan = [
         (arm, d, s)
         for stage in stages
         for arm, d in STAGES[stage]
-        for s in (SEEDS[: args.n_seeds])
+        for s in run_seeds
     ]
     done = [c for c in plan if _result_path(*c).exists()]
     todo = [c for c in plan if not _result_path(*c).exists()]
@@ -541,6 +565,9 @@ def main() -> int:
     p.add_argument("--max-batches-per-epoch", dest="max_batches_per_epoch",
                    type=int, default=-1)
     p.add_argument("--n-seeds", dest="n_seeds", type=int, default=len(SEEDS))
+    p.add_argument("--seeds", type=str, default=None,
+                   help="Explicit comma-separated seed list (overrides "
+                        "--n-seeds), e.g. '44'.")
     args = p.parse_args()
 
     if args.smoke:

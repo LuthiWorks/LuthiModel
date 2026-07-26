@@ -1012,3 +1012,24 @@ implementation, change only with evidence.
 — Drafted by Fable 5, 2026-07-15, for Brian's ratification. The criteria
 above were written before any of their bound experiments have run; that
 is the entire point. Honor them after.
+
+---
+
+> **RULING (2026-07-26, Brian, recorded by Fable 5): dead_4x_d4 control
+> DEFERRED; seed44 robustness rerun scheduled in its place.**
+>
+> Brian's ruling ("we have enough dead runs for now"): the schedule slot
+> for further dead runs goes instead to a seed44 ROBUSTNESS RERUN --
+> stage 11, arm alias living_v5_4x_d4_rerun, seed 44 only, byte-identical
+> configuration and data order to the registered v5 seed44; GPU float
+> nondeterminism supplies the only perturbation. Purpose: distinguish a
+> robust trust-event trigger at the ~58650 Greek window (event recurs
+> across microscopically diverged replays) from a knife-edge one (it
+> does not). The rerun is an UNREGISTERED descriptive probe recorded
+> here before it runs; it carries no frozen prediction, and its distinct
+> arm name keeps its artifacts un-poolable with the registered family.
+>
+> Registry consequence, stated plainly: the dead_4x_d4 control REMAINS a
+> registered obligation -- deferred, not cancelled. Until it runs, no
+> claim may rest on depth, per the 2026-07-24 amendment. This ruling
+> changes the schedule, not the obligation.
