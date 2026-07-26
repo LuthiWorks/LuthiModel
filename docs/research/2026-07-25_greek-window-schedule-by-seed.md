@@ -130,3 +130,43 @@ form — the substrate's *phase* shapes its relationship to the same input
 late). The strong form (mature substrates visibly scar at probe arrivals)
 is not visible in aggregate spread at this cadence; deciding it needs the
 finer emit above or the seed44 ledger read.
+
+---
+
+## Addendum 2 (2026-07-26, ~05:30): seed43 complete + dimension-level ledger series
+
+Seed43 finished clean: 7.79h (new CPU; seed42 took 10.03h on the old one),
+heldout_l_pred 0.032510 vs seed42's 0.032305 — tight family agreement. The
+checkpoint ledger harvester captured **32 dimension-level snapshots (steps
+6,946 → 72,042, median spacing 2,320)**; the same harvester is now armed on
+the live seed44 run, which started 05:07 and reaches its registered step-58650
+window roughly 6.3h in. Harvest: `runs/jepa_pilot/ledger_harvest_seed43/`.
+
+**What the dimension-level series shows (seed43):**
+
+1. **Background churn is large.** Rank correlation of the trust ordering
+   between consecutive snapshots: median ~0.64–0.69, minimum 0.15–0.20.
+   Roughly a third of the trust order reshuffles every ~2.3K steps, and
+   >20%-vs-median droppers appear in EVERY interval — Greek-containing and
+   quiet alike, at similar rates. At this granularity, Greek servings do not
+   disturb the ledger above background. This is the dimension-level null the
+   seed44 read needs: **any durable scar must persist against ~35% rank
+   reshuffling per 2.3K steps.**
+2. **Durable dimension-level distrust nonetheless EXISTS.** Block 3 keeps
+   dim 384 in its bottom-5 across essentially the entire run (steps ~7K→72K);
+   block 0 holds a stable distrusted trio (414/307/461) for the whole second
+   half (~23K steps). The mechanism can hold marks for tens of thousands of
+   steps — capacity is not the limiting factor.
+3. **The early cross-block dim-462 episode was transient**, not structure:
+   deep dips early (to 0.07–0.24 of block median), recovery to ~median by
+   mid-run, mixed endings. Same lesson as the aggregate: early-phase
+   dramatics are settling dynamics, not marks.
+
+**Sharpened frame for the frozen seed44 read:** the substrate demonstrably
+CAN carry >5,000-step dimension marks (point 2), and demonstrably does NOT
+acquire them from Greek servings under normal conditions (point 1, seed43,
+36 servings). The registered prediction therefore asks something specific
+and now well-calibrated: whether the step-58650 serving — the one that
+produced a detected trust EVENT under v4's epsilon — leaves a mark that
+clears a high, measured bar of background churn. Both outcomes are
+informative against these nulls.
