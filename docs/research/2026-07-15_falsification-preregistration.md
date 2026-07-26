@@ -1033,3 +1033,33 @@ is the entire point. Honor them after.
 > registered obligation -- deferred, not cancelled. Until it runs, no
 > claim may rest on depth, per the 2026-07-24 amendment. This ruling
 > changes the schedule, not the obligation.
+
+---
+
+> **RULING (2026-07-26 midday, Brian, recorded by Fable 5): the deferred
+> dead control becomes a V5-MATCHED control; roadmap sequence fixed.**
+>
+> 1. The deferred dead_4x_d4 control will be run as a **dead control
+>    matched to the v5 family** (Brian: "dead v5 instead of v4") -- same
+>    depth (d4), corpus (4x), loss settings (sigreg 0.2, cosine, taper)
+>    as the v5 arms. Technical note to resolve at build time: a dead-FFN
+>    arm has no living ledger, so relative_trust may have no referent --
+>    if so, the dead-v5 and dead-v4 controls are configurationally
+>    identical and ONE run serves both families; the registration label
+>    should say so explicitly rather than imply two distinct controls.
+> 2. **No lesser-scale experiments in any dimension** (Brian's ruling --
+>    the proposed 256/384 width sweep is rejected). Scale moves go UP.
+> 3. **Sequence:** finish v5 (seeds 45/46 + stage-11 rerun + family
+>    read) -> dead v5-matched control -> **v6 (dormant-machinery bundle)
+>    at current scale (512d, d4)** -> true scale-up.
+> 4. **Scale-up shape (direction, not yet registered):** width beyond
+>    512 but possibly short of 1024 (640/768 candidates); depth to
+>    8 blocks is favored with or without the width move. Corpus grows
+>    with scale (the data ~ width^2 rule). Note: any d8 family carries
+>    its own dead-d8 control obligation under the standing depth-claims
+>    rule.
+> 5. **Ordered-corpus experiments** (curriculum pedagogy: sequential or
+>    staged serving instead of shuffled) are on the roadmap as their own
+>    registered family; design to be drafted. Standing caveat: kill
+>    detectors are calibrated on shuffled statistics and will need
+>    recalibration or suspension-with-justification for ordered arms.
