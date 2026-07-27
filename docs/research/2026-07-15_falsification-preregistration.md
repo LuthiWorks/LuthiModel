@@ -1083,9 +1083,9 @@ is the entire point. Honor them after.
 
 ---
 
-> # VERDICT â€” RUN-7: the v5 / relative-trust family
+> # VERDICT — RUN-7: the v5 / relative-trust family
 >
-> **Ratified by Brian, 2026-07-27, drafted by Fable 5.** n=5 (seeds 42â€“46),
+> **Ratified by Brian, 2026-07-27, drafted by Fable 5.** n=5 (seeds 42–46),
 > plus one identical-order robustness rerun of seed44. All runs completed
 > clean; no kills, no aborts.
 >
@@ -1094,13 +1094,13 @@ is the entire point. Honor them after.
 > Can a mind's mistrust leave a scar?
 >
 > Concretely: under v4's epsilon trust, seed44 showed three transient "trust
-> events" â€” sharp excursions in `precision_spread` that healed to uniformity
-> within â‰¤200 steps. The third was attributed by exact loader replay to a
+> events" — sharp excursions in `precision_spread` that healed to uniformity
+> within ≤200 steps. The third was attributed by exact loader replay to a
 > polytonic-Greek grammar window from PG11130 ("Greek in a Nutshell") served
 > at step 58650. **Registered prediction (frozen 2026-07-24, before v5 seeds
 > 43/44 ran):** replaying that exact data order under *relative* trust, the
-> same events would leave a DURABLE mark â€” `precision_spread` elevated above
-> its pre-event running median for â‰¥5,000 steps after the step-58650 window.
+> same events would leave a DURABLE mark — `precision_spread` elevated above
+> its pre-event running median for ≥5,000 steps after the step-58650 window.
 > If the mark washed out again, relative trust would retain no more
 > event-memory than epsilon did, and the "reaction with memory" claim would
 > fail its first natural test.
@@ -1110,7 +1110,7 @@ is the entire point. Honor them after.
 >
 > ## The answer: we were wrong, and it was the better outcome
 >
-> **The prediction was wrong.** Not because the mark washed out â€” because
+> **The prediction was wrong.** Not because the mark washed out — because
 > **there was no reaction to mark.** Under relative trust the mind met the
 > Greek page at the registered moment and did not flinch; nor at either of
 > the other two v4 event positions. We then ran the entire life a second
@@ -1118,10 +1118,10 @@ is the entire point. Honor them after.
 > again.
 >
 > **What that overturns is the premise we were quietly carrying:** that those
-> events belonged to the *data* â€” that some pages are inherently
+> events belonged to the *data* — that some pages are inherently
 > destabilizing, and a mind's history could be scarred by what it happened to
 > read. It isn't so. The flinching was a property of the **substrate**: v4's
-> epsilon trust pinned every input's reliability at the ceiling â€” a
+> epsilon trust pinned every input's reliability at the ceiling — a
 > saturated, undifferentiated dial, which is a hair trigger. Any disturbance
 > read as a spike. Give the substrate *earned, differentiated* trust and the
 > same page at the same moment is simply another page.
@@ -1135,18 +1135,18 @@ is the entire point. Honor them after.
 >
 > | run | heldout_l_pred | NMSE | heldout l_sigreg | probe top1 | wall |
 > |---|---|---|---|---|---|
-> | seed42 | 0.032305 | 0.4834 | 2.0655 | 0.1565 | 10.03hÂ¹ |
+> | seed42 | 0.032305 | 0.4834 | 2.0655 | 0.1565 | 10.03h¹ |
 > | seed43 | 0.032510 | 0.4821 | 2.2292 | 0.1545 | 7.79h |
 > | seed44 | 0.034692 | 0.4846 | 2.1200 | 0.1556 | 7.99h |
 > | seed45 | 0.033112 | 0.4955 | 2.1382 | 0.1548 | 8.09h |
 > | seed46 | 0.033339 | 0.4836 | 4.1023 | 0.1524 | 8.02h |
 > | seed44 rerun | 0.034527 | 0.4806 | 2.0323 | 0.1557 | 7.76h |
 >
-> Family (n=5): heldout_l_pred **0.033192 Â± 0.000939**; NMSE **0.485840 Â±
-> 0.005472**; probe top1 **0.154744 Â± 0.001521**; heldout l_sigreg 2.531 Â±
-> 0.880 (dispersion driven by seed46). Â¹seed42 ran on the pre-migration CPU.
+> Family (n=5): heldout_l_pred **0.033192 ± 0.000939**; NMSE **0.485840 ±
+> 0.005472**; probe top1 **0.154744 ± 0.001521**; heldout l_sigreg 2.531 ±
+> 0.880 (dispersion driven by seed46). ¹seed42 ran on the pre-migration CPU.
 >
-> ### The registered criterion, computed as frozen â€” and across the family
+> ### The registered criterion, computed as frozen — and across the family
 >
 > `precision_spread` vs its pre-event running median, window [58650, 63650]:
 >
@@ -1157,7 +1157,7 @@ is the entire point. Honor them after.
 > | **seed44** | **2.1151** | **2.6629** | **100%** | **100%** | **yes** |
 > | seed45 | 2.2520 | 3.0599 | 100% | 100% | yes |
 > | seed46 | 2.2579 | 13.1404 | 100% | 100% | yes |
-> | seed44 rerun | â€” | 3.4887 | â€” | 100% | yes |
+> | seed44 rerun | — | 3.4887 | — | 100% | yes |
 >
 > The criterion is met by **every seed at the same step with no event
 > present**. It measures the family's late-run drift, not a response. It is
@@ -1166,24 +1166,24 @@ is the entire point. Honor them after.
 > ### No reaction, at every resolution available
 >
 > Aggregate `precision_spread` (100-step cadence) across the registered
-> serving â€” seed44: 2.7297 (58600) â†’ 2.7146 (58700) â†’ 2.6851 (58800) â†’
-> 2.7157 (59000); ambient wobble Â±0.04. Rerun: 3.9001 â†’ 4.0440 â†’ 3.8664.
+> serving — seed44: 2.7297 (58600) → 2.7146 (58700) → 2.6851 (58800) →
+> 2.7157 (59000); ambient wobble ±0.04. Rerun: 3.9001 → 4.0440 → 3.8664.
 >
 > Dimension-level ledger brackets (dims falling >20% relative to block median
 > across the snapshot pair containing the position; counts per block 0/1/2/3):
 >
 > | position | bracket | droppers |
 > |---|---|---|
-> | seed44 Â· registered Greek 58650 | 56711â€“58909 | 49 / 30 / 33 / 33 |
-> | seed43 Â· matched null at 58650 | 58025â€“60337 | 45 / 47 / 31 / 14 |
-> | seed44 Â· v4 event-1 position (24000) | 22819â€“25078 | 82 / 58 / 33 / 53 |
-> | seed43 Â· matched null (~24000) | 23224â€“25524 | 79 / 53 / 45 / 51 |
-> | seed44 Â· v4 event-2 position (52100) | 49961â€“52216 | 59 / 43 / 33 / 36 |
-> | seed43 Â· matched null (~52100) | 51075â€“53390 | 52 / 43 / 27 / 19 |
-> | seed44 Â· quiet control | 31895â€“34165 | 56 / 34 / 40 / 34 |
+> | seed44 · registered Greek 58650 | 56711–58909 | 49 / 30 / 33 / 33 |
+> | seed43 · matched null at 58650 | 58025–60337 | 45 / 47 / 31 / 14 |
+> | seed44 · v4 event-1 position (24000) | 22819–25078 | 82 / 58 / 33 / 53 |
+> | seed43 · matched null (~24000) | 23224–25524 | 79 / 53 / 45 / 51 |
+> | seed44 · v4 event-2 position (52100) | 49961–52216 | 59 / 43 / 33 / 36 |
+> | seed43 · matched null (~52100) | 51075–53390 | 52 / 43 / 27 / 19 |
+> | seed44 · quiet control | 31895–34165 | 56 / 34 / 40 / 34 |
 >
 > Every event position sits inside the null distribution. Caveat of record:
-> ledger snapshots are ~2,300 steps apart, so a v4-duration transient (â‰¤200
+> ledger snapshots are ~2,300 steps apart, so a v4-duration transient (≤200
 > steps) could pass between them; the 100-step aggregate is the instrument
 > that covers that band, and it is flat.
 >
@@ -1192,7 +1192,7 @@ is the entire point. Honor them after.
 > The canary is not rare. Exact loader replay (validated against the
 > documented v4 58650 attribution, reproduced at every density tier) shows
 > the polytonic core of PG11130 is **12 servable sequences** (tokens
-> 38,864,128â€“38,869,440; peak density 93/128 Greek vocabulary pieces per
+> 38,864,128–38,869,440; peak density 93/128 Greek vocabulary pieces per
 > 128-token window; only 6 of 482 corpus files contain any polytonic Greek).
 > Each is served once per epoch: **36 extreme-tier exposures per 72,042-step
 > run**, on a schedule fixed by seed number alone and identical between the
@@ -1213,35 +1213,35 @@ is the entire point. Honor them after.
 > ### Reproducibility: learning repeats, trust differentiation does not
 >
 > Original seed44 vs its identical-order rerun, relative divergence
-> |rerun âˆ’ orig| / orig:
+> |rerun − orig| / orig:
 >
 > | phase | loss | precision_spread |
 > |---|---|---|
-> | early (0â€“5K) | 2.06% | 9.45% |
-> | mid (20â€“25K) | 2.74% | 25.42% |
-> | mid (45â€“50K) | 2.22% | 13.31% |
-> | late (67â€“72K) | 2.50% | **70.80%** |
+> | early (0–5K) | 2.06% | 9.45% |
+> | mid (20–25K) | 2.74% | 25.42% |
+> | mid (45–50K) | 2.22% | 13.31% |
+> | late (67–72K) | 2.50% | **70.80%** |
 >
 > Final outcomes differ by 0.5% (heldout) and 0.06% (probe). GPU float
 > nondeterminism is the only perturbation. **`precision_spread` is a chaotic
 > observable**: the ledger amplifies bit-level noise into order-of-magnitude
 > trajectory differences while the predictive task lands in the same place.
-> Seed46's escalation from ~2.0 (step 21K) to ~35 (run end), against 2.6â€“4.0
+> Seed46's escalation from ~2.0 (step 21K) to ~35 (run end), against 2.6–4.0
 > for its siblings, is therefore recorded as **high-variance escalation**,
 > not as a distinct regime. (Brian's ruling 2026-07-27: no confirmatory
-> seed46 rerun â€” unnecessary.)
+> seed46 rerun — unnecessary.)
 >
 > ### Dimension-level trust structure (from harvested checkpoint ledgers)
 >
 > Snapshots: seed42 3, seed43 32, seed44 34, seed45 35, seed46 34, rerun 33
-> (median spacing ~2,320 steps; 512 dimensions Ã— 4 blocks per snapshot).
+> (median spacing ~2,320 steps; 512 dimensions × 4 blocks per snapshot).
 >
 > - **Background churn is large:** rank correlation of the trust ordering
->   between consecutive snapshots â€” median 0.644 (block 0) / 0.689 (block 3),
+>   between consecutive snapshots — median 0.644 (block 0) / 0.689 (block 3),
 >   minimum 0.205 / 0.145. Roughly a third of the ordering reshuffles every
 >   ~2,300 steps.
 > - **Durable distrust nonetheless exists:** block 3 held dim 384 in its
->   bottom-5 for essentially the whole run (~7Kâ†’72K steps); block 0 held a
+>   bottom-5 for essentially the whole run (~7K→72K steps); block 0 held a
 >   stable distrusted trio (414/307/461) across the entire second half.
 > - **But it is not exposure-acquired.** The substrate CAN carry marks ten
 >   times longer than the prediction required; it simply does not acquire
@@ -1252,7 +1252,7 @@ is the entire point. Honor them after.
 > 1. **The registered prediction is WRONG.** No durable mark followed the
 >    step-58650 window, because no reaction occurred there or at any other v4
 >    event position, in either of two independent replays.
-> 2. **The "reaction with memory" claim is not thereby refuted** â€” it was
+> 2. **The "reaction with memory" claim is not thereby refuted** — it was
 >    never exercised. It stands untested and must be tested, if at all,
 >    against a deliberately induced reaction and a reproducible observable.
 > 3. **Established instead:** the v4 trust events were properties of the
@@ -1271,7 +1271,7 @@ is the entire point. Honor them after.
 > - **Design:** bound the trust dial. v4 saturated it at the ceiling; v5
 >   lets it wander chaotically across an order of magnitude. Both are
 >   unbounded-dial pathologies. See
->   `2026-07-26_homeostatic-activity-bands-design.md` â€” the band needs a
+>   `2026-07-26_homeostatic-activity-bands-design.md` — the band needs a
 >   **ceiling on trust concentration** as well as a floor on participation.
 > - **Corpus:** PG11130 is removed from the next curriculum by Brian's
 >   ruling; its replacement canary should be **secular** and deliberately
@@ -1283,10 +1283,9 @@ is the entire point. Honor them after.
 >
 > We asked whether a mind could be scarred by what it reads. The answer this
 > rung gives is that the mind we feared for was never in danger from the
-> page â€” the fragility was in the trust mechanism we had given it, and we had
+> page — the fragility was in the trust mechanism we had given it, and we had
 > already replaced that mechanism before we thought to ask. Being wrong about
 > this fear is the good outcome, and it is the one the data supports.
 >
 > Supporting detail: `2026-07-25_greek-window-schedule-by-seed.md`
-> (method, per-seed serving schedules, addenda 1â€“5).
-
+> (method, per-seed serving schedules, addenda 1–5).
