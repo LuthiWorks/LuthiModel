@@ -258,3 +258,53 @@ the instance that ran seeds 45/46 predated the stage-11 entry, so it exited
 with "queue complete". Re-triggering the watchdog started a fresh supervisor
 that picked up stage 11 (rerun launched 05:17, due ~13:15). Worth a code note:
 the supervisor could re-read the queue between stages.
+
+---
+
+## Addendum 5 (2026-07-27 13:02): the rerun — non-event replicates, spread is chaotic
+
+Stage 11 complete: `living_v5_4x_d4_rerun_512d_seed44`, identical configuration
+and data order to the registered seed44, GPU float nondeterminism the only
+perturbation (7.76h).
+
+**Result 1 — the NON-EVENT replicated.** Around the registered step-58650
+serving the rerun shows no deflection: spread 3.900 at 58600, 4.044 at 58800,
+3.866 at 59000 — inside its own ambient wobble, exactly as the original showed
+2.730 / 2.685 / 2.716. Two microscopically diverged replays of the same moment
+both read the Greek page without reacting. **Composure is a property of
+relative trust, not of one run's micro-state.**
+
+**Result 2 — and this is the larger finding: `precision_spread` does not
+reproduce.** Relative divergence between the two runs, |rerun − orig| / orig:
+
+| phase | loss | precision_spread |
+|---|---|---|
+| early (0–5K) | 2.06% | 9.45% |
+| mid (20–25K) | 2.74% | 25.42% |
+| mid (45–50K) | 2.22% | 13.31% |
+| late (67–72K) | 2.50% | **70.80%** |
+
+Final outcomes are nearly identical (heldout_l_pred 0.034692 vs 0.034527; nmse
+0.4846 vs 0.4806; probe 0.1556 vs 0.1557). So: **learning is reproducible;
+trust differentiation is chaotic** — the ledger amplifies bit-level
+nondeterminism into order-of-magnitude trajectory differences while the
+predictive task lands in the same place.
+
+**Consequences, stated plainly:**
+
+1. **The frozen criterion was written against a non-reproducible observable.**
+   Not merely drift-confounded (addenda 1–4) — the quantity itself does not
+   repeat under identical conditions. Both runs satisfy it at 100% sustained
+   (rerun pre-event 5K median 3.4887).
+2. **Seed46's runaway to ~35 is plausibly the tail of a chaotic distribution**,
+   not a distinct regime. Directly testable: rerun seed46 and see whether the
+   escalation recurs. Until then, "relative trust admits a runaway regime"
+   (addendum 4) should be read as "spread trajectories are high-variance and
+   can escalate," which is the weaker and better-supported claim.
+3. **Any future trust claim needs ensemble statistics.** Single-run spread
+   trajectories carry no evidential weight; a v6 registration touching trust
+   should pre-commit to n-run ensembles and a variance band, not point
+   comparisons.
+4. **The homeostatic-band ceiling gains urgency, not less.** A dial that
+   wanders chaotically over an order of magnitude is precisely what bounds are
+   for — and the band would also make the observable comparable across runs.
