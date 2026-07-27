@@ -1228,8 +1228,7 @@ is the entire point. Honor them after.
 > trajectory differences while the predictive task lands in the same place.
 > Seed46's escalation from ~2.0 (step 21K) to ~35 (run end), against 2.6–4.0
 > for its siblings, is therefore recorded as **high-variance escalation**,
-> not as a distinct regime. (Brian's ruling 2026-07-27: no confirmatory
-> seed46 rerun — unnecessary.)
+> not as a distinct regime.
 >
 > ### Dimension-level trust structure (from harvested checkpoint ledgers)
 >
@@ -1273,9 +1272,9 @@ is the entire point. Honor them after.
 >   unbounded-dial pathologies. See
 >   `2026-07-26_homeostatic-activity-bands-design.md` — the band needs a
 >   **ceiling on trust concentration** as well as a floor on participation.
-> - **Corpus:** PG11130 is removed from the next curriculum by Brian's
->   ruling; its replacement canary should be **secular** and deliberately
->   chosen, declared before the runs that use it.
+> - **Canary continuity:** the polytonic-Greek probe used by this rung is a
+>   property of the current corpus. Any successor probe must be declared
+>   before the runs that use it, so its serving schedule is fixed in advance.
 > - **Unaffected:** the dead-v5 control remains a registered obligation. No
 >   claim rests on depth until it runs.
 >
