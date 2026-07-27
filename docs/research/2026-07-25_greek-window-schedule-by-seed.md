@@ -202,3 +202,59 @@ Observed live, recorded before the formal run-end read:
    whether the NON-event replicates. If the rerun also passes 58650
    without a ripple, no-reaction is robust — a property of relative trust
    itself, not of this run's particular micro-state.
+
+---
+
+## Addendum 4 (2026-07-27 05:20): family complete (n=5) + a runaway-trust seed
+
+All five v5 seeds are done. Outcomes are tight where it matters and wildly
+dispersed where it does not (yet) count:
+
+| seed | heldout_l_pred | nmse | heldout l_sigreg | probe_top1 | end spread |
+|---|---|---|---|---|---|
+| 42 | 0.032305 | 0.4834 | 2.0655 | 0.1565 | ~2.6 |
+| 43 | 0.032510 | 0.4821 | 2.2292 | 0.1545 | ~2.7 |
+| 44 | 0.034692 | 0.4846 | 2.1200 | 0.1556 | ~2.7 |
+| 45 | 0.033112 | 0.4955 | 2.1382 | 0.1548 | ~4.0 |
+| 46 | 0.033339 | 0.4836 | 4.1023 | 0.1524 | **~31** |
+
+heldout_l_pred 0.033192 +/- 0.000939; nmse 0.4858 +/- 0.0055; probe 0.1547 +/-
+0.0015 — a reproducible arm on the headline measures.
+
+**The finding: precision_spread is NOT a family constant.** Seeds 42-44 end
+near 2.6; seed45 near 4.0; **seed46 escalates monotonically from ~2.0 at step
+21K to ~35 by run end** — an order of magnitude above its siblings, rising
+steadily with no discrete onset (first >6.0 crossing is only the step-100
+cold-start transient; the real climb is continuous from ~36K). Its two
+companions in anomaly: heldout l_sigreg 4.10 vs family ~2.13 (its
+representation sits further off the isotropic target on unseen data) and the
+family's lowest probe_top1.
+
+**Reading (descriptive):** relative trust admits a RUNAWAY-DIFFERENTIATION
+regime. One seed in five let trust concentration escalate an order of
+magnitude, with a coherent cost signature (worse heldout sigreg, lowest probe)
+but no catastrophe — the run completed clean and its predictive numbers sit
+inside the family. This is the opposite failure mode from v4's saturation:
+epsilon pinned trust at uniformity; relative trust can let it run away. Both
+are unbounded-dial pathologies at opposite ends.
+
+**Consequences:**
+1. **For the registered read:** the drift null is now measured across all five
+   seeds and is enormous (pre-event 5K medians 2.32 / 2.50 / 2.66 / 3.06 /
+   13.14). Every seed satisfies the frozen criterion at step 58650 — 100%
+   sustained — which confirms with n=5 that the criterion measures family
+   drift, not any event.
+2. **For v6 design:** this is direct evidence for the homeostatic-band
+   proposal (see 2026-07-26_homeostatic-activity-bands-design.md), and it
+   argues the band needs a CEILING on trust concentration, not only a floor on
+   participation. A bounded trust ratio is the natural companion to a bounded
+   plasticity multiplier.
+3. **Registered obligation unaffected:** the dead-v5 control still gates depth
+   claims.
+
+**Operational note:** the stage-11 rerun did not auto-start at family
+completion — `resume_queue.py` loads `queue.json` once at supervisor start, and
+the instance that ran seeds 45/46 predated the stage-11 entry, so it exited
+with "queue complete". Re-triggering the watchdog started a fresh supervisor
+that picked up stage 11 (rerun launched 05:17, due ~13:15). Worth a code note:
+the supervisor could re-read the queue between stages.
