@@ -1272,9 +1272,17 @@ is the entire point. Honor them after.
 >   unbounded-dial pathologies. See
 >   `2026-07-26_homeostatic-activity-bands-design.md` — the band needs a
 >   **ceiling on trust concentration** as well as a floor on participation.
-> - **Canary continuity:** the polytonic-Greek probe used by this rung is a
->   property of the current corpus. Any successor probe must be declared
->   before the runs that use it, so its serving schedule is fixed in advance.
+> - **Found probes count as data (Brian's standard, 2026-07-27).** The
+>   polytonic-Greek probe was discovered after the fact, not planted, and its
+>   findings stand: in this project a post-hoc attribution is verifiable in a
+>   way it usually is not, because the loader is deterministic and any
+>   serving schedule can be recomputed and checked by anyone (the 58650
+>   attribution reproduced at every density tier). The discipline that
+>   remains is not pre-declaration but **chance accounting**: when a
+>   coincidence is offered as evidence, state how many opportunities existed
+>   — e.g. ~87 broad-tier servings per run make a +/-200-step coincidence
+>   ~40% likely for an arbitrary step, which is why v4 seed44's two
+>   unattributed events are recorded as suggestive rather than attributed.
 > - **Unaffected:** the dead-v5 control remains a registered obligation. No
 >   claim rests on depth until it runs.
 >
