@@ -105,6 +105,7 @@ class MultimodalPredictiveCodingLM(nn.Module):
         # Episode-store admission/retention fix (2026-07-27), opt-in per arm.
         adaptive_episodes: bool = False,
         adaptive_recall: bool = False,
+        homeostatic_band_enabled: bool = False,
         learning_gain_rise: float = 2.0,
         learning_gain_cap: float = 3.0,
         episode_recall_threshold: float = 0.5,
@@ -172,6 +173,7 @@ class MultimodalPredictiveCodingLM(nn.Module):
                 relative_trust=relative_trust,
                 adaptive_episodes=adaptive_episodes,
                 adaptive_recall=adaptive_recall,
+                homeostatic_band_enabled=homeostatic_band_enabled,
                 learning_gain_rise=learning_gain_rise,
                 learning_gain_cap=learning_gain_cap,
                 episode_recall_threshold=episode_recall_threshold,

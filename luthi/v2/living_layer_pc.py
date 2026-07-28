@@ -78,6 +78,19 @@ class PredictiveCodingLayer(nn.Module):
         eviction_alpha: float = 0.6,
         adaptive_recall: bool = False,
         recall_sigma: float = 2.0,
+        # --- homeostatic activity band (2026-07-27): the sparse gate's key ---
+        # Opt-in. Bounds are RELATIVE to the layer's own median activity, for
+        # the same reason episode admission is: absolute constants do not
+        # survive a signal that differs per block and decays over training.
+        homeostatic_band_enabled: bool = False,
+        band_decay: float = 1e-3,          # slow: ~1000-step timescale
+        band_warmup_steps: int = 200,
+        band_lo_frac: float = 0.25,        # under 25% of median activity = rut
+        band_hi_frac: float = 4.0,         # over 4x median = overactive
+        band_h_min: float = 0.5,           # damping floor: never silences
+        band_h_max: float = 3.0,           # boost ceiling: never unbounded
+        band_max_boost_frac: float = 0.05,  # <=5% of rows reopened at once
+        band_open_deficit: float = 0.5,    # gate-reopen threshold
         inference_steps_per_forward: int = 1,
         episode_recall_threshold: float = 0.5,
         learning_gain_enabled: bool = False,
@@ -166,6 +179,15 @@ class PredictiveCodingLayer(nn.Module):
         self.eviction_alpha = float(eviction_alpha)
         self.adaptive_recall = bool(adaptive_recall)
         self.recall_sigma = float(recall_sigma)
+        self.homeostatic_band_enabled = bool(homeostatic_band_enabled)
+        self.band_decay = float(band_decay)
+        self.band_warmup_steps = int(band_warmup_steps)
+        self.band_lo_frac = float(band_lo_frac)
+        self.band_hi_frac = float(band_hi_frac)
+        self.band_h_min = float(band_h_min)
+        self.band_h_max = float(band_h_max)
+        self.band_max_boost_frac = float(band_max_boost_frac)
+        self.band_open_deficit = float(band_open_deficit)
         # Step counter as a non-persistent attribute (not a buffer — we
         # don't checkpoint it; recovery from checkpoint resets warmup).
         self._sparse_step_count: int = 0
@@ -365,6 +387,18 @@ class PredictiveCodingLayer(nn.Module):
         )
         self.register_buffer(
             "recall_fires", torch.tensor(0, dtype=torch.long)
+        )
+        # Homeostatic band state: slow per-row activity estimate + counters.
+        self.register_buffer("act_mean", torch.zeros(out_features))
+        self.register_buffer("act_var", torch.zeros(out_features))
+        self.register_buffer(
+            "act_count", torch.tensor(0, dtype=torch.long)
+        )
+        self.register_buffer(
+            "band_boost_rows", torch.tensor(0, dtype=torch.long)
+        )
+        self.register_buffer(
+            "band_damp_rows", torch.tensor(0, dtype=torch.long)
         )
         # Mean input pattern at episode write time. Used by Salvatori-style
         # attractor consolidation (`consolidate_layer_attractor`) to re-
@@ -601,6 +635,89 @@ class PredictiveCodingLayer(nn.Module):
         else:
             idx = self._choose_eviction_slot(n, step)
         self._write_episode_slot(idx, context, salience, input_pattern, step)
+
+    def _apply_activity_band(
+        self, output: torch.Tensor, gate: torch.Tensor | None
+    ) -> torch.Tensor | None:
+        """Homeostatic activity band -- the key to the sparse gate's cage.
+
+        Biology's answer to chronic underactivity (synaptic scaling, intrinsic
+        plasticity): a unit that stops participating raises its own
+        excitability until it does again. The discriminating signal is NOT low
+        error -- a competent row also has low error. It is low *participation*:
+        a row whose output has stopped varying has stopped saying anything,
+        which is what a collapsed row looks like from the inside.
+
+        Every quantity here is RELATIVE to this layer's own activity
+        distribution. Absolute constants are what froze the episode store
+        (2026-07-27): the per-block signal levels differ ~4x and decay 70-90%
+        over a run, so any fixed number is either always-on or never-on.
+
+        Bounds, per Brian's requirement that a positive-feedback loop be
+        bounded at both ends:
+          * multiplier clamped to [band_h_min, band_h_max] -- a dead row can
+            never receive unbounded plasticity, an overactive one is damped
+            but never silenced;
+          * multiplier ONLY, never additive: with no error signal there is
+            nothing to amplify, so the band cannot manufacture drift;
+          * exact dead zone -- inside the band the multiplier is 1.0, so a
+            healthy layer is bit-identical to one with the band disabled;
+          * slow timescale (band_decay ~1e-3) so it cannot chase batch noise;
+          * warmup lockout until the activity estimate is seeded;
+          * rate limit: at most `band_max_boost_frac` of rows may be boosted
+            at once, so a global dip cannot reopen everything and undo the
+            gate's whole benefit.
+        Downstream, the existing metaplasticity dampener also limits any
+        boosted update, which is a second bound we get for free.
+        """
+        with torch.no_grad():
+            row_mean = output.detach().mean(dim=0).to(self.act_mean.dtype)
+            b = self.band_decay
+            self.act_mean.mul_(1 - b).add_(row_mean, alpha=b)
+            dev = (row_mean - self.act_mean) ** 2
+            self.act_var.mul_(1 - b).add_(dev, alpha=b)
+            self.act_count.add_(1)
+            if int(self.act_count.item()) < self.band_warmup_steps:
+                return gate
+
+            act = self.act_var.clamp(min=0).sqrt()
+            ref = act.median()
+            if not torch.isfinite(ref) or float(ref) <= 0:
+                return gate
+
+            lo = self.band_lo_frac * ref
+            hi = self.band_hi_frac * ref
+            deficit = ((lo - act) / lo.clamp(min=1e-12)).clamp(0.0, 1.0)
+            excess = ((act - hi) / hi.clamp(min=1e-12)).clamp(0.0, 1.0)
+
+            # Rate limit: only the most-deprived rows get reopened.
+            max_boost = max(1, int(self.band_max_boost_frac * act.numel()))
+            boosted = deficit > 0
+            if int(boosted.sum().item()) > max_boost:
+                keep = torch.topk(deficit, max_boost).indices
+                mask = torch.zeros_like(deficit, dtype=torch.bool)
+                mask[keep] = True
+                deficit = torch.where(mask, deficit, torch.zeros_like(deficit))
+
+            h = 1.0 + (self.band_h_max - 1.0) * deficit \
+                    - (1.0 - self.band_h_min) * excess
+            h = h.clamp(self.band_h_min, self.band_h_max)
+
+            self.band_boost_rows.fill_(int((deficit > 0).sum().item()))
+            self.band_damp_rows.fill_(int((excess > 0).sum().item()))
+
+            if gate is None:
+                return h.to(self.weight.dtype)
+            # The KEY: a row deprived past `band_open_deficit` has its gate
+            # forced open. Without this the band can only scale an update the
+            # gate has already zeroed -- i.e. do nothing, which is precisely
+            # the trap it exists to prevent.
+            opened = torch.where(
+                deficit > self.band_open_deficit,
+                torch.ones_like(gate),
+                gate,
+            )
+            return (opened * h.to(gate.dtype)).to(self.weight.dtype)
 
     def _episode_store_stats(self) -> dict:
         """Diversity / turnover / admission-bar readings for the episode store.
@@ -879,6 +996,15 @@ class PredictiveCodingLayer(nn.Module):
                         dtype=self.weight.dtype
                     )
 
+                # Homeostatic activity band: the sparse gate's key. The gate
+                # silences rows with low error -- and a COLLAPSED row has low
+                # error, so the gate would freeze it there permanently. The
+                # band reopens rows that are quiet for the wrong reason.
+                # `sparse_gate` is a plain per-row multiplier in both the
+                # Python and C++ paths, so the band composes with it directly.
+                if self.homeostatic_band_enabled:
+                    sparse_gate = self._apply_activity_band(output, sparse_gate)
+
                 result = pc_self_modify(
                     self.weight, self.prediction, self.set_point,
                     self.momentum, self.update_ema, self.precision,
@@ -1099,6 +1225,13 @@ class PredictiveCodingLayer(nn.Module):
             # context_similarity 0.985, writes 0 after ~step 1000, and three
             # of four blocks storing nothing at all.
             **self._episode_store_stats(),
+            # Homeostatic band readings (observational only).
+            "band_boost_rows": int(self.band_boost_rows.item()),
+            "band_damp_rows": int(self.band_damp_rows.item()),
+            "act_median": (
+                float(self.act_var.clamp(min=0).sqrt().median().item())
+                if int(self.act_count.item()) else None
+            ),
             # Cumulative consolidation events (Brian's request 2026-07-18,
             # after forensically identifying a fire from its signature —
             # pred_frob step-jump + err_acc/update_ema flash with external
