@@ -77,3 +77,36 @@ Newest last.
 >   ("we'll stick with dead v5").
 
 ---
+
+---
+
+> **RULING (2026-07-27, Brian): v6 starts at 8 blocks.**
+>
+> v6 (the dormant-machinery bundle) will run at **d8** rather than the current
+> d4 — "that is where we are going to start with this." Supersedes the
+> 2026-07-26 sequence item that placed v6 at current scale (512d, d4).
+>
+> Consequences recorded, none of them blocking the ruling:
+>
+> 1. **The store fix comes first.** v6 includes attractor consolidation, which
+>    reads the episode store — and that store is a frozen fossil in every
+>    completed run (see `docs/research/2026-07-27_episode-store-frozen-defect.md`).
+>    Running v6 against it means the new machinery replays initialization-era
+>    snapshots for the whole family. Fix, verify against the note's four
+>    predictions, then start v6.
+> 2. **The dead control that gates depth claims becomes dead-d8.** The standing
+>    obligation is for a dead arm matched to the family making the claim. A
+>    dead-d4 control cannot license depth claims about a d8 family. Open
+>    question for the registry: whether the d4 families (v3/v4/v5) still owe
+>    their own dead-d4 control, or whether depth claims about them are simply
+>    retired unmade.
+> 3. **Attribution.** v6-at-d8 bundles machinery with a depth change; per ladder
+>    precedent that trade is acceptable if recorded, with single-lever
+>    follow-ups available if the bundle moves the picture.
+> 4. **Width is not yet ruled.** 512d x d8 or 768d x d8. Recommendation:
+>    **512d x d8**, keeping width for the later step so the scale-up remains a
+>    single clean variable — and roughly halving family cost (~16h/seed vs
+>    ~35h/seed, i.e. ~3.5 days vs ~7+ days for n=5).
+> 5. **Hardware.** A d8 family at either width is a substantially longer
+>    sustained GPU load than anything run so far, on the 15-year-old PSU
+>    already suspected in the 860's SATA failure.
