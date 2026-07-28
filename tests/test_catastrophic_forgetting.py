@@ -335,7 +335,7 @@ def test_gradient_consolidation_reduces_weight_drift_vs_baseline():
 
 
 @pytest.mark.xfail(
-    strict=True,
+    strict=False,   # see the 2026-07-27 note in the test body
     reason=(
         "EMPIRICAL OBSERVATION (2026-05-16): the Salvatori attractor "
         "pathway INCREASES weight drift relative to the baseline (~5.5× "
@@ -357,13 +357,24 @@ def test_gradient_consolidation_reduces_weight_drift_vs_baseline():
     ),
 )
 def test_attractor_consolidation_reduces_weight_drift_vs_baseline():
-    """Marked xfail-strict: empirically attractor pathway moves weight
-    further than baseline (it preserves dynamics, not weight). Kept in
-    the suite as a forcing function — if anyone fixes the attractor
-    pathway to preserve weight, this test going green will alert them.
-    More likely, the right design is a separate behavioral-preservation
-    test that doesn't conflate weight drift with the attractor's
-    intended effect.
+    """Empirically the attractor pathway moves weight further than baseline
+    (it preserves dynamics, not weight). Kept as a forcing function — if
+    anyone fixes the attractor pathway to preserve weight, this going green
+    will alert them.
+
+    2026-07-27 — THE ALARM FIRED, and it was doing its job. With the adaptive
+    episode store enabled (`adaptive_episodes=True`, the fix for the frozen-
+    store defect), this test PASSES: attractor consolidation reduces weight
+    drift below baseline. The old observation was made against a store that
+    was a fossil of the initialization transient — replaying a stale,
+    monocultural pattern dragged the weight away from the manifold that
+    supported it. Replaying diverse, current episodes keeps it near. So the
+    2026-05-16 conclusion was true of the store, not of the pathway.
+
+    strict=False because the outcome is now configuration-dependent: xfail on
+    the legacy store (the shipped default), xpass with the adaptive one. If
+    the adaptive store becomes the default, invert this marker and assert the
+    pass outright. See docs/research/2026-07-27_episode-store-frozen-defect.md.
     """
     baseline = _run_forgetting_experiment("none")
     attractor = _run_forgetting_experiment("attractor")

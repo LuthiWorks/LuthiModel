@@ -71,7 +71,9 @@ class PredictiveCodingLayer(nn.Module):
         adaptive_episodes: bool = False,
         salience_window_size: int = 512,
         salience_percentile: float = 0.995,
-        episode_warmup_steps: int = 5000,
+        # 0 = warm up on statistics alone (window fill). Non-zero adds an extra
+        # absolute lockout on top, for arms that want one.
+        episode_warmup_steps: int = 0,
         episode_age_tau: float = 24000.0,
         eviction_alpha: float = 0.6,
         adaptive_recall: bool = False,
@@ -494,10 +496,17 @@ class PredictiveCodingLayer(nn.Module):
                 self.recall_sim_mean.fill_(mean)
                 self.recall_sim_var.fill_(max(var, 0.0))
             if c < 64:
-                return None  # no distribution yet; do not blend on noise
-            bar = mean + self.recall_sigma * (max(var, 0.0) ** 0.5)
-            if bs <= bar or bs < self.episode_recall_threshold:
-                return None
+                # Cold start: fall back to the fixed gate rather than to
+                # silence. Same principle as admission warmup — a mechanism
+                # that quietly does nothing is worse than one using a cruder
+                # rule, and it is what made the store a fossil in the first
+                # place.
+                if best_sim < self.episode_recall_threshold:
+                    return None
+            else:
+                bar = mean + self.recall_sigma * (max(var, 0.0) ** 0.5)
+                if bs <= bar or bs < self.episode_recall_threshold:
+                    return None
         elif best_sim < self.episode_recall_threshold:
             return None
         if not frozen:
@@ -552,12 +561,28 @@ class PredictiveCodingLayer(nn.Module):
         if int(self.salience_window_filled.item()) < self.salience_window.numel():
             self.salience_window_filled.add_(1)
 
-        # Warmup lockout. The fossil stores were written during the
-        # initialization transient, when error was an order of magnitude above
-        # anything the run would see again; refusing to admit until the layer
-        # has settled is the direct fix for that.
+        # Warmup is STATISTICAL, not temporal (second pass, same day): the gate
+        # is "are there enough samples to compute a percentile yet?", which
+        # scales itself to the run instead of imposing a step count that is 7%
+        # of a 72K-step family and 100% of a 200-step experiment. Until the
+        # window fills, admission falls back to the legacy absolute rule, so
+        # the store is never inert — a mechanism that quietly does nothing
+        # while reporting healthy is the exact failure this fix exists to end.
+        #
+        # Episodes admitted during that window (including initialization-
+        # transient ones) are no longer permanent: age decay makes them
+        # evictable, which the old argmin-on-salience path could never do.
         filled = int(self.salience_window_filled.item())
-        if step < self.episode_warmup_steps or filled < self.salience_window.numel():
+        if filled < self.salience_window.numel() or step < self.episode_warmup_steps:
+            if salience < self.salience_threshold:
+                return
+            n = self.episode_count.item()
+            if n < self.num_episodes:
+                idx = n
+                self.episode_count.add_(1)
+            else:
+                idx = self._choose_eviction_slot(n, step)
+            self._write_episode_slot(idx, context, salience, input_pattern, step)
             return
 
         # NOTE: `salience_threshold` is deliberately NOT applied here. It is an

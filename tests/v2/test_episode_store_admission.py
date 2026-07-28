@@ -42,13 +42,29 @@ def _feed(layer, saliences, seed=0):
         layer._store_episode(ctx, float(s), pattern)
 
 
-def test_no_admission_during_warmup():
-    """The fossil stores were written during the initialization transient.
-    Nothing may be admitted before the layer has settled."""
-    layer = _layer()
-    _feed(layer, [10.0] * 30)
-    assert int(layer.episode_count.item()) == 0
-    assert int(layer.episode_writes.item()) == 0
+def test_warmup_uses_legacy_admission_so_the_store_is_never_inert():
+    """Warmup is statistical (window fill), not a step count. Before there are
+    enough samples to compute a percentile, admission falls back to the legacy
+    absolute rule -- a mechanism that quietly stores nothing while reporting
+    healthy is the failure this fix exists to end, and a step-count lockout
+    would reproduce it in every short run."""
+    layer = _layer(salience_threshold=0.0)
+    _feed(layer, [1.0] * 3)
+    assert int(layer.episode_count.item()) > 0
+    assert int(layer.episode_writes.item()) > 0
+
+
+def test_transient_episodes_are_not_permanent():
+    """Warmup admissions must not fossilize: age decay has to let them go."""
+    layer = _layer(salience_threshold=0.0, episode_age_tau=10.0)
+    _feed(layer, [5.0] * 8)                       # 'initialization transient'
+    transient = layer.episode_saliences.clone()
+    g = torch.Generator().manual_seed(21)
+    settled = [0.02 + 0.01 * torch.rand(1, generator=g).item() for _ in range(600)]
+    _feed(layer, settled, seed=22)
+    assert not torch.equal(transient, layer.episode_saliences), (
+        "transient-era episodes were never recycled -- the fossil is back"
+    )
 
 
 def test_admits_after_warmup_on_relative_bar():
