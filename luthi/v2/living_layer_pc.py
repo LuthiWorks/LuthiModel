@@ -61,6 +61,21 @@ class PredictiveCodingLayer(nn.Module):
         consolidation_attractor_passes: int = 1,
         sparse_threshold: float = 0.0,
         sparse_warmup_steps: int = 500,
+        # --- episode-store admission / retention (2026-07-27 defect fix) ---
+        # Admission is a trailing percentile of this layer's own salience
+        # distribution; `salience_threshold` is kept as a floor only.
+        # OPT-IN, like every other machinery change on this ladder
+        # (relative_trust, taper, sigreg): default False preserves the exact
+        # pre-2026-07-27 behaviour, so no completed family's configuration
+        # silently changes meaning. v6 arms turn these on deliberately.
+        adaptive_episodes: bool = False,
+        salience_window_size: int = 512,
+        salience_percentile: float = 0.995,
+        episode_warmup_steps: int = 5000,
+        episode_age_tau: float = 24000.0,
+        eviction_alpha: float = 0.6,
+        adaptive_recall: bool = False,
+        recall_sigma: float = 2.0,
         inference_steps_per_forward: int = 1,
         episode_recall_threshold: float = 0.5,
         learning_gain_enabled: bool = False,
@@ -139,6 +154,16 @@ class PredictiveCodingLayer(nn.Module):
         # grow). After warmup_steps the gate engages.
         self.sparse_threshold = float(sparse_threshold)
         self.sparse_warmup_steps = int(sparse_warmup_steps)
+        # Episode-store admission / retention (2026-07-27). Defaults ON: the
+        # previous behaviour is a confirmed defect, not a baseline worth
+        # preserving. adaptive_episodes=False restores it exactly for A/B work.
+        self.adaptive_episodes = bool(adaptive_episodes)
+        self.salience_percentile = float(salience_percentile)
+        self.episode_warmup_steps = int(episode_warmup_steps)
+        self.episode_age_tau = float(episode_age_tau)
+        self.eviction_alpha = float(eviction_alpha)
+        self.adaptive_recall = bool(adaptive_recall)
+        self.recall_sigma = float(recall_sigma)
         # Step counter as a non-persistent attribute (not a buffer — we
         # don't checkpoint it; recovery from checkpoint resets warmup).
         self._sparse_step_count: int = 0
@@ -294,6 +319,51 @@ class PredictiveCodingLayer(nn.Module):
         self.register_buffer(
             "episode_count", torch.tensor(0, dtype=torch.long)
         )
+        # --- Anti-fossil episode machinery (2026-07-27) ---
+        # Checkpoint forensics on the completed v5 family found every store
+        # frozen since ~step 1000: a single global salience_threshold cannot
+        # track a signal whose per-block median is 0.001-0.004 and which
+        # decays 70-90% over training, so the slots written during the
+        # initialization transient were never beatable again. Blocks 0-2 never
+        # admitted anything at all. See
+        # docs/research/2026-07-27_episode-store-frozen-defect.md.
+        #
+        # Write step per slot, for age decay in eviction. -1 = never written.
+        self.register_buffer(
+            "episode_steps",
+            torch.full((num_episodes,), -1, dtype=torch.long),
+        )
+        # Ring buffer of recent saliences -> the per-block admission bar is a
+        # trailing percentile of this layer's OWN distribution, not a constant.
+        self.register_buffer(
+            "salience_window", torch.zeros(salience_window_size)
+        )
+        self.register_buffer(
+            "salience_window_pos", torch.tensor(0, dtype=torch.long)
+        )
+        self.register_buffer(
+            "salience_window_filled", torch.tensor(0, dtype=torch.long)
+        )
+        # Global step counter for the store (persistent: age decay and warmup
+        # must survive resume, unlike the sparse-gate warmup counter).
+        self.register_buffer(
+            "episode_step_counter", torch.tensor(0, dtype=torch.long)
+        )
+        # Adaptive recall: EMA mean/var of the best-match similarity, so recall
+        # fires on genuine recognition rather than always. A fixed 0.5 against
+        # observed similarities of >0.9 meant the blend was applied every step.
+        self.register_buffer("recall_sim_mean", torch.tensor(0.0))
+        self.register_buffer("recall_sim_var", torch.tensor(0.0))
+        self.register_buffer(
+            "recall_sim_count", torch.tensor(0, dtype=torch.long)
+        )
+        # Observational counters (never enter any loss).
+        self.register_buffer(
+            "episode_writes", torch.tensor(0, dtype=torch.long)
+        )
+        self.register_buffer(
+            "recall_fires", torch.tensor(0, dtype=torch.long)
+        )
         # Mean input pattern at episode write time. Used by Salvatori-style
         # attractor consolidation (`consolidate_layer_attractor`) to re-
         # present stored input through the layer's PC dynamics so the
@@ -400,8 +470,38 @@ class PredictiveCodingLayer(nn.Module):
         sims = torch.mm(stored, context.unsqueeze(-1)).squeeze(-1)
         best_idx = sims.argmax()
         best_sim = sims[best_idx]
-        if best_sim < self.episode_recall_threshold:
+        # The frozen re-encode path calls this too, and it must mutate NOTHING
+        # (tests/test_mode_matrix.py::TestFrozenMutatesNothing). Statistics and
+        # counters are therefore skipped while frozen; the gate still applies.
+        frozen = getattr(self, "_plasticity_frozen", False)
+        if self.adaptive_recall:
+            # Recall on genuine recognition: the best match must stand out
+            # from this layer's own recent match distribution. A fixed 0.5
+            # against observed similarities above 0.9 fired every single step,
+            # blending a stored weight-delta into every forward pass.
+            c = int(self.recall_sim_count.item())
+            mean = float(self.recall_sim_mean.item())
+            var = float(self.recall_sim_var.item())
+            bs = float(best_sim.item())
+            # Welford update, done before the gate so the statistics track the
+            # full distribution rather than only the firing tail.
+            c += 1
+            delta = bs - mean
+            mean += delta / c
+            var += (delta * (bs - mean) - var) / c if c > 1 else 0.0
+            if not frozen:
+                self.recall_sim_count.fill_(c)
+                self.recall_sim_mean.fill_(mean)
+                self.recall_sim_var.fill_(max(var, 0.0))
+            if c < 64:
+                return None  # no distribution yet; do not blend on noise
+            bar = mean + self.recall_sigma * (max(var, 0.0) ** 0.5)
+            if bs <= bar or bs < self.episode_recall_threshold:
+                return None
+        elif best_sim < self.episode_recall_threshold:
             return None
+        if not frozen:
+            self.recall_fires.add_(1)
         if self.episode_values.dtype == torch.int8:
             recalled = (
                 self.episode_values[best_idx].to(self.weight.dtype)
@@ -425,17 +525,134 @@ class PredictiveCodingLayer(nn.Module):
         consolidation. The weight snapshot, context, and salience are
         also written as before.
         """
-        if salience < self.salience_threshold:
+        if not self.adaptive_episodes:
+            # Legacy path, kept for A/B against the pre-2026-07-27 behaviour.
+            if salience < self.salience_threshold:
+                return
+            n = self.episode_count.item()
+            if n < self.num_episodes:
+                idx = n
+                self.episode_count.add_(1)
+            else:
+                min_idx = self.episode_saliences[:n].argmin()
+                if salience <= self.episode_saliences[min_idx]:
+                    return
+                idx = min_idx.item()
+            self._write_episode_slot(idx, context, salience, input_pattern)
             return
+
+        step = int(self.episode_step_counter.item())
+        self.episode_step_counter.add_(1)
+
+        # Every step feeds the trailing window, admitted or not: the bar must
+        # track the layer's ordinary level, which decays hard over training.
+        pos = int(self.salience_window_pos.item())
+        self.salience_window[pos] = salience
+        self.salience_window_pos.fill_((pos + 1) % self.salience_window.numel())
+        if int(self.salience_window_filled.item()) < self.salience_window.numel():
+            self.salience_window_filled.add_(1)
+
+        # Warmup lockout. The fossil stores were written during the
+        # initialization transient, when error was an order of magnitude above
+        # anything the run would see again; refusing to admit until the layer
+        # has settled is the direct fix for that.
+        filled = int(self.salience_window_filled.item())
+        if step < self.episode_warmup_steps or filled < self.salience_window.numel():
+            return
+
+        # NOTE: `salience_threshold` is deliberately NOT applied here. It is an
+        # absolute constant (default 0.1) and the measured per-block salience
+        # medians are 0.001-0.004 — applying it would make this whole path
+        # inert, which is the defect being fixed. It remains in force on the
+        # legacy path above.
+        bar = torch.quantile(self.salience_window, self.salience_percentile)
+        if salience <= float(bar):
+            return
+
         n = self.episode_count.item()
         if n < self.num_episodes:
             idx = n
             self.episode_count.add_(1)
         else:
-            min_idx = self.episode_saliences[:n].argmin()
-            if salience <= self.episode_saliences[min_idx]:
-                return
-            idx = min_idx.item()
+            idx = self._choose_eviction_slot(n, step)
+        self._write_episode_slot(idx, context, salience, input_pattern, step)
+
+    def _episode_store_stats(self) -> dict:
+        """Diversity / turnover / admission-bar readings for the episode store.
+
+        `episode_context_similarity` is the mean pairwise cosine across stored
+        contexts (contexts are stored unit-normalized). Read it against a
+        measured baseline, never against 1.0: the pre-fix v5 family sat at
+        0.985 with no loss event anywhere in the run.
+        """
+        n = int(self.episode_count.item())
+        out = {
+            "episode_writes": int(self.episode_writes.item()),
+            "recall_fires": int(self.recall_fires.item()),
+            "episode_salience_floor": (
+                float(self.episode_saliences[:n].min().item()) if n else None
+            ),
+            "episode_admission_bar": None,
+            "episode_context_similarity": None,
+            "episode_age_span": None,
+        }
+        if self.adaptive_episodes:
+            filled = int(self.salience_window_filled.item())
+            if filled >= self.salience_window.numel():
+                out["episode_admission_bar"] = float(
+                    torch.quantile(self.salience_window, self.salience_percentile)
+                )
+        if n > 1:
+            c = self.episode_contexts[:n].float()
+            c = c / c.norm(dim=1, keepdim=True).clamp(min=1e-8)
+            sim = c @ c.T
+            iu = torch.triu_indices(n, n, offset=1, device=sim.device)
+            out["episode_context_similarity"] = float(sim[iu[0], iu[1]].mean())
+            written = self.episode_steps[:n]
+            live = written[written >= 0]
+            if live.numel() > 1:
+                out["episode_age_span"] = int((live.max() - live.min()).item())
+        return out
+
+    def _effective_priority(self, n: int, step: int) -> torch.Tensor:
+        """Stored salience discounted by age. Without the age term any
+        first-mover monopoly is permanent by construction — which is exactly
+        what the v5 checkpoints show."""
+        sal = self.episode_saliences[:n].clamp(min=1e-12)
+        written = self.episode_steps[:n]
+        age = (step - written).clamp(min=0).to(sal.dtype)
+        never = written < 0
+        decay = torch.exp(-age / max(self.episode_age_tau, 1e-6))
+        eff = sal * decay
+        # Slots written before this mechanism existed (resumed checkpoints)
+        # carry no timestamp; treat them as maximally old so they are the
+        # first to be recycled rather than immortal.
+        eff = torch.where(never, torch.full_like(eff, 1e-12), eff)
+        return eff
+
+    def _choose_eviction_slot(self, n: int, step: int) -> int:
+        """Stochastic eviction over inverse effective priority (PER's
+        interpolation between greedy and uniform, alpha=0.6 by default).
+        Hard argmin is degenerate here: the stored saliences sit within 2-6%
+        of one another, so it was tie-breaking arbitrarily anyway, with no
+        diversity guarantee in exchange."""
+        eff = self._effective_priority(n, step)
+        if self.eviction_alpha <= 0.0:
+            return int(eff.argmin().item())
+        weights = eff.clamp(min=1e-12).pow(-self.eviction_alpha)
+        total = float(weights.sum())
+        if not (total > 0.0) or not torch.isfinite(weights).all():
+            return int(eff.argmin().item())
+        return int(torch.multinomial(weights / weights.sum(), 1).item())
+
+    def _write_episode_slot(
+        self,
+        idx: int,
+        context: torch.Tensor,
+        salience: float,
+        input_pattern: torch.Tensor,
+        step: int | None = None,
+    ) -> None:
         self.episode_contexts[idx] = context
         if self.episode_values.dtype == torch.int8:
             snapshot = self.weight.detach()
@@ -453,6 +670,9 @@ class PredictiveCodingLayer(nn.Module):
             self.episode_inputs.dtype
         )
         self.episode_saliences[idx] = salience
+        if step is not None:
+            self.episode_steps[idx] = step
+        self.episode_writes.add_(1)
 
     # ------------------------------------------------------------------
     # Forward pass
@@ -848,6 +1068,12 @@ class PredictiveCodingLayer(nn.Module):
             "error_acc_mean": self.error_acc.mean().item(),
             "error_acc_max": self.error_acc.max().item(),
             "episodes_stored": self.episode_count.item(),
+            # Episode-store health (2026-07-27). Observational only — none of
+            # these enter any loss, so there is nothing to Goodhart against.
+            # Baselines measured on the v5 family BEFORE the fix:
+            # context_similarity 0.985, writes 0 after ~step 1000, and three
+            # of four blocks storing nothing at all.
+            **self._episode_store_stats(),
             # Cumulative consolidation events (Brian's request 2026-07-18,
             # after forensically identifying a fire from its signature —
             # pred_frob step-jump + err_acc/update_ema flash with external

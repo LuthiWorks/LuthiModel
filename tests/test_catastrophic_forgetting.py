@@ -136,7 +136,7 @@ def _make_layer(*, pc_rate: float = 0.05, num_episodes: int = 32) -> PredictiveC
         pc_rate=pc_rate,
         pred_learning_rate=0.001,
         num_episodes=num_episodes,
-        salience_threshold=0.0,  # store eagerly
+        salience_threshold=0.0,  # store eagerly (legacy admission path)
         # Tracker-driven consolidation off here; we invoke directly.
         consolidation_enabled=False,
     )
