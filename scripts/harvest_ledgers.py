@@ -60,10 +60,27 @@ while time.time() < t_end:
                 # blocks.N.living_ffn.precision
                 state = ck.get("online_state_dict") or {}
                 step = ck.get("global_step") or ck.get("step")
+                # Capture every per-dimension living buffer, not just trust.
+                # Lesson from 2026-07-27: harvesting `precision` alone left us
+                # able to see WHEN dimensions were abandoned but not whether
+                # their updates died first -- and the rolling checkpoints that
+                # held the answer had already rotated away. Cheap to take,
+                # impossible to recover later.
+                WANT = (".precision", ".error_acc", ".plasticity",
+                        ".episode_saliences", ".episode_contexts",
+                        ".episode_steps", ".episode_count")
                 ledgers = {k: v.detach().clone().float() for k, v in state.items()
-                           if hasattr(v, "detach") and k.endswith(".precision")}
+                           if hasattr(v, "detach") and k.endswith(WANT)}
+                # [out, in] buffers reduced to per-input-dimension summaries so
+                # the snapshot stays small while keeping the signal we needed.
+                for k, v in state.items():
+                    if (hasattr(v, "detach") and v.dim() == 2
+                            and k.endswith((".update_ema", ".momentum"))):
+                        ledgers[k + "__col_mean"] = (
+                            v.detach().float().abs().mean(dim=0)
+                        )
                 if not ledgers:
-                    raise RuntimeError("no precision buffers in online_state_dict")
+                    raise RuntimeError("no living buffers in online_state_dict")
                 if step is None:
                     step = int(mt)
                 out_path = os.path.join(out, f"ledger_step_{int(step):08d}.pt")

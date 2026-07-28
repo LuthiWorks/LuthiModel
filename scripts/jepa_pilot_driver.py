@@ -130,6 +130,15 @@ STAGES: dict[int, list[tuple[str, int]]] = {
     # the dead_4x_d4 control in the SCHEDULE only; that control remains
     # a registered obligation (deferred; no depth claims until it runs).
     11: [("living_v5_4x_d4_rerun", 512)],
+    # VALIDATION PROBE (2026-07-27, not a registered family): v5's exact
+    # configuration plus the episode-store admission fix and the homeostatic
+    # band. Short run, one seed. Its only purpose is to check the four
+    # predictions in docs/research/2026-07-27_episode-store-frozen-defect.md
+    # against real training before v6 commits to a multi-day family -- the
+    # fix is unit-tested but has never run at scale, and the defect it
+    # repairs was invisible to every counter for five whole families.
+    # Distinct arm name so its artifacts can never pool with a family.
+    12: [("probe_storefix", 512)],
 }
 
 # Per-arm model configuration -- single source of truth, shared with
@@ -205,6 +214,19 @@ ARM_TAPER["living_v5_4x_d4_rerun"] = ARM_TAPER["living_v5_4x_d4"]
 ARM_FILELIST["living_v5_4x_d4_rerun"] = ARM_FILELIST["living_v5_4x_d4"]
 ARM_SIGREG["living_v5_4x_d4_rerun"] = ARM_SIGREG["living_v5_4x_d4"]
 ARM_COSINE["living_v5_4x_d4_rerun"] = ARM_COSINE["living_v5_4x_d4"]
+# Validation probe: v5 + the 2026-07-27 store fix + the homeostatic band.
+# Identical to v5 in every other respect, so any change in store behaviour is
+# attributable to the two flags and comparable to the measured v5 baselines.
+ARM_CONFIGS["probe_storefix"] = dict(
+    ARM_CONFIGS["living_v5_4x_d4"],
+    adaptive_episodes=True,
+    adaptive_recall=True,
+    homeostatic_band_enabled=True,
+)
+ARM_TAPER["probe_storefix"] = ARM_TAPER["living_v5_4x_d4"]
+ARM_FILELIST["probe_storefix"] = ARM_FILELIST["living_v5_4x_d4"]
+ARM_SIGREG["probe_storefix"] = ARM_SIGREG["living_v5_4x_d4"]
+ARM_COSINE["probe_storefix"] = ARM_COSINE["living_v5_4x_d4"]
 
 
 def _device() -> torch.device:

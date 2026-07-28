@@ -987,6 +987,22 @@ class JEPATrainer:
                     "prediction_norm": a.get("prediction_norm"),
                     "error_acc_mean": a.get("error_acc_mean"),
                     "consolidation_fires": a.get("consolidation_fires"),
+                    # Episode-store health (2026-07-27). Emitted so a family
+                    # running the admission fix is not blind to the mechanism
+                    # it just changed -- the pre-fix store was frozen since
+                    # ~step 1000 in every v5 run while every counter read
+                    # healthy. Baselines measured pre-fix: context similarity
+                    # 0.985, zero writes after warmup, three of four blocks
+                    # storing nothing at all.
+                    "episodes_stored": a.get("episodes_stored"),
+                    "episode_writes": a.get("episode_writes"),
+                    "recall_fires": a.get("recall_fires"),
+                    "episode_context_similarity": a.get("episode_context_similarity"),
+                    "episode_salience_floor": a.get("episode_salience_floor"),
+                    "episode_admission_bar": a.get("episode_admission_bar"),
+                    "episode_age_span": a.get("episode_age_span"),
+                    "band_boost_rows": a.get("band_boost_rows"),
+                    "band_damp_rows": a.get("band_damp_rows"),
                 }
                 for a in aliveness
             ]
