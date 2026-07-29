@@ -280,6 +280,7 @@ class MultimodalPredictiveCodingLM(nn.Module):
         image: torch.Tensor | None = None,
         vision_tokens: torch.Tensor | None = None,
         causal: bool = False,
+        collect_block_latents: bool = False,
     ) -> dict:
         """Encode multimodal input through the shared PC trunk and return
         per-modality latent streams.
@@ -320,8 +321,18 @@ class MultimodalPredictiveCodingLM(nn.Module):
         h, spans = self._concatenate_modalities(vision_emb, audio_emb, text_emb)
 
         # Phase 1: bottom-up forward through PC blocks.
+        # Per-block latents are captured on request (deep cadence only) so the
+        # runner can compute effective rank PER BLOCK. External review
+        # 2026-07-28, instrument #5: the kill criteria read a pooled rank, and
+        # a trunk where one block collapses while another compensates looks
+        # healthy pooled. Validated by the 2026-07-27 seed46 forensics -- its
+        # blocks 1 and 2 abandoned 10-13% of their input dimensions while
+        # block 0 was untouched, which a pooled measure would have hidden.
+        block_latents: list[torch.Tensor] = []
         for block in self.blocks:
             h = block(h, causal=causal)
+            if collect_block_latents:
+                block_latents.append(h.detach())
 
         # Phase 2: top-down backward sweep (PC).
         if self.training and self.backward_pass_enabled:
@@ -331,11 +342,14 @@ class MultimodalPredictiveCodingLM(nn.Module):
                     signal = self.blocks[i].top_down_pass(signal)
 
         per_modality = {name: h[:, span, :] for name, span in spans.items()}
-        return {
+        out = {
             "latents": h,
             "spans": spans,
             "per_modality": per_modality,
         }
+        if collect_block_latents:
+            out["block_latents"] = block_latents
+        return out
 
     def forward(
         self,

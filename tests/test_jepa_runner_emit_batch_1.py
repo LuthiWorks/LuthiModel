@@ -281,8 +281,8 @@ class TestInjectedNaNSetsNonfinite:
             # exercised).
             original = trainer.loss_module.compute_modality_loss
 
-            def _nan_loss(modality, batch):
-                result = original(modality, batch)
+            def _nan_loss(modality, batch, **kwargs):
+                result = original(modality, batch, **kwargs)
                 # Replace with a NaN loss that's still on the same graph
                 # so backward() runs and populates .grad attrs (which
                 # then carry NaN through the chain).
@@ -306,8 +306,8 @@ class TestInjectedNaNSetsNonfinite:
 
             original = trainer.loss_module.compute_modality_loss
 
-            def _nan_loss(modality, batch):
-                result = original(modality, batch)
+            def _nan_loss(modality, batch, **kwargs):
+                result = original(modality, batch, **kwargs)
                 result["loss"] = result["loss"] * float("nan")
                 return result
 

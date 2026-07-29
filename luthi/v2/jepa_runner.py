@@ -540,6 +540,18 @@ def _substrate_health_metrics(aliveness: list[dict]) -> dict:
     }
 
 
+def _effective_rank(latents: torch.Tensor) -> float:
+    """exp(spectral entropy) of the latent covariance -- how many dimensions
+    are actually carrying variance."""
+    flat = latents.detach().float().reshape(-1, latents.shape[-1])
+    flat = flat - flat.mean(dim=0, keepdim=True)
+    n = flat.shape[0]
+    cov = (flat.t() @ flat) / max(n - 1, 1)
+    sv = torch.linalg.svdvals(cov).clamp(min=1e-12)
+    p = sv / sv.sum()
+    return float(math.exp(float(-(p * torch.log(p.clamp(min=1e-12))).sum().item())))
+
+
 def _deep_collapse_metrics(online_context_latents: torch.Tensor) -> dict:
     """v0.5 §5 deep metrics, per modality.
 
@@ -792,6 +804,7 @@ class JEPATrainer:
 
     def train_step(
         self, modality: str, batch: dict, *, will_log: bool = False,
+        will_deep: bool = False,
     ) -> dict:
         """One per-modality training step.
 
@@ -819,7 +832,9 @@ class JEPATrainer:
         # PC top-down sweep to run on the online encoder.
         self.loss_module.online_encoder.train()
 
-        result = self.loss_module.compute_modality_loss(modality, batch)
+        result = self.loss_module.compute_modality_loss(
+            modality, batch, collect_block_latents=will_deep,
+        )
         loss: torch.Tensor = result["loss"]
 
         self.optimizer.zero_grad(set_to_none=True)
@@ -973,6 +988,17 @@ class JEPATrainer:
             record["deep"] = deep_m
             self.history.push(modality, deep_m)
 
+            # Per-block effective rank (external review 2026-07-28). Computed
+            # only at deep cadence, and only from latents the encode already
+            # produced -- a pooled rank cannot see one block collapsing while
+            # another compensates.
+            block_ranks: list[float] = []
+            for bl in (raw.get("block_latents") or []):
+                try:
+                    block_ranks.append(_effective_rank(bl))
+                except Exception:  # noqa: BLE001 -- diagnostics never kill a run
+                    block_ranks.append(float("nan"))
+
             # EMIT_BATCH_1 §2: per-block substrate detail (deep cadence
             # only, to bound payload). LuthiScope renders this as a
             # blocks-x-time heatmap so a single drifting block surfaces
@@ -1003,8 +1029,11 @@ class JEPATrainer:
                     "episode_age_span": a.get("episode_age_span"),
                     "band_boost_rows": a.get("band_boost_rows"),
                     "band_damp_rows": a.get("band_damp_rows"),
+                    # External review 2026-07-28, instrument #5.
+                    "weight_pred_cosine": a.get("weight_pred_cosine"),
+                    "effective_rank": block_ranks[i] if i < len(block_ranks) else None,
                 }
-                for a in aliveness
+                for i, a in enumerate(aliveness)
             ]
 
         # Pilot-set state advancement -- runs whenever at least one
@@ -1926,7 +1955,9 @@ class JEPATrainer:
                 )
                 will_log = light_due or deep_due
 
-                step_out = self.train_step(modality, batch, will_log=will_log)
+                step_out = self.train_step(
+                    modality, batch, will_log=will_log, will_deep=deep_due,
+                )
                 # train_step has already advanced both self.global_step
                 # and self.modality_step[modality] -- do NOT increment
                 # again here (4.8 review 2026-06-06 item A).

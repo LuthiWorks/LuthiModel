@@ -1270,6 +1270,19 @@ class PredictiveCodingLayer(nn.Module):
             # Homeostatic band readings (observational only).
             "band_boost_rows": int(self.band_boost_rows.item()),
             "band_damp_rows": int(self.band_damp_rows.item()),
+            # cos(vec(W), vec(P)) -- external review 2026-07-28, instrument #5.
+            # W and P currently receive the SAME outer-product form
+            # (outer(output_mean, error_at_input), pc_ops.py steps d and i),
+            # differing only in precision weighting and rate. If this cosine
+            # runs high, they are a fast copy and a slow copy rather than a
+            # recognition/generative pair, and the proposed W-update change
+            # has something to fix. If it is flat and low, it does not.
+            "weight_pred_cosine": float(
+                torch.nn.functional.cosine_similarity(
+                    self.weight.detach().reshape(1, -1).float(),
+                    self.prediction.detach().reshape(1, -1).float(),
+                ).item()
+            ),
             "act_median": (
                 float(self.act_var.clamp(min=0).sqrt().median().item())
                 if int(self.act_count.item()) else None

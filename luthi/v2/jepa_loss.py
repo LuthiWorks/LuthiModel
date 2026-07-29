@@ -219,6 +219,7 @@ class JEPALoss(nn.Module):
         self,
         modality: str,
         modality_inputs: dict,
+        collect_block_latents: bool = False,
     ) -> dict:
         """Compute the LeJEPA-style loss for one modality's batch.
 
@@ -299,6 +300,7 @@ class JEPALoss(nn.Module):
         # ---- Online forward on context tokens (gradients flow) ----
         online_result = self.online_encoder.encode(
             **online_inputs, causal=False,
+            collect_block_latents=collect_block_latents,
         )
         online_context_latents = online_result["per_modality"][modality]
         # [B, ctx_len, D]
@@ -355,6 +357,7 @@ class JEPALoss(nn.Module):
             "l_sigreg": l_sigreg.detach(),
             "online_std": online_per_dim_std.detach(),
             "online_context_latents": online_context_latents.detach(),
+            "block_latents": online_result.get("block_latents"),
             "target_latents": target_full_latents.detach(),
             "predicted_target": predicted_target.detach(),
             "ctx_len": ctx_len,
