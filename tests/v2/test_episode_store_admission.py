@@ -29,6 +29,8 @@ def _layer(**kw):
     kw.setdefault("salience_window_size", 32)
     kw.setdefault("episode_warmup_steps", 32)
     kw.setdefault("episode_age_tau", 200.0)
+    kw.setdefault("refractory_calls", 5)      # tiny, so short tests can write
+    kw.setdefault("surprise_decay", 0.2)      # fast, so the baseline settles
     return PredictiveCodingLayer(**kw)
 
 
@@ -99,6 +101,34 @@ def test_store_does_not_freeze_under_decaying_salience():
     assert int(layer.episode_writes.item()) > writes_after_early, (
         "store froze: no episode admitted once salience decayed"
     )
+
+
+def test_ordinary_wobble_is_not_admitted():
+    """THE PROBE FAILURE, pinned. A trailing percentile has no notion of
+    scale: real salience wobbles ~1.5% within a window, p99.5 sits a hair
+    above the median, and local drift clears it -- 85% of calls admitted,
+    store filled with consecutive steps, similarity 1.0000. Admission must
+    key on surprise relative to how much this layer ordinarily varies."""
+    layer = _layer(refractory_calls=0)
+    g = torch.Generator().manual_seed(31)
+    # 1.5% wobble on a slowly rising baseline -- exactly the probe's regime
+    series = [0.00185 * (1 + 0.015 * torch.rand(1, generator=g).item()
+                         + 0.02 * i / 400) for i in range(400)]
+    _feed(layer, series)
+    rate = int(layer.episode_writes.item()) / len(series)
+    assert rate < 0.10, f"admitted {rate:.0%} of ordinary wobble (probe hit 85%)"
+
+
+def test_refractory_prevents_consecutive_writes():
+    """Diversity in time is a precondition for diversity in content: the
+    probe's store held steps 39985, 39986, 39987... hence similarity 1.0."""
+    layer = _layer(refractory_calls=20)
+    _feed(layer, [0.01] * 64)
+    _feed(layer, [9.0] * 40, seed=9)          # sustained huge salience
+    steps = layer.episode_steps[layer.episode_steps >= 0].tolist()
+    steps.sort()
+    gaps = [b - a for a, b in zip(steps, steps[1:])]
+    assert all(g >= 20 for g in gaps), f"writes closer than refractory: {gaps}"
 
 
 def test_age_decay_makes_stale_slots_evictable():

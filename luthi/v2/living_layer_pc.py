@@ -71,6 +71,17 @@ class PredictiveCodingLayer(nn.Module):
         adaptive_episodes: bool = False,
         salience_window_size: int = 512,
         salience_percentile: float = 0.995,
+        # Admission v2 (2026-07-28, after the validation probe): a trailing
+        # percentile has no notion of SCALE. Measured salience varies ~1.5%
+        # within a window, so p99.5 sits a hair above the median and any local
+        # drift clears it -- the probe admitted 85% of calls and filled the
+        # store with consecutive steps (similarity 1.0000). Admission is now
+        # detrended surprise against the layer's own local baseline, plus a
+        # refractory period as a structural bound on rate and on temporal
+        # clustering.
+        surprise_k: float = 3.0,          # deviations above local baseline
+        surprise_decay: float = 0.01,     # baseline/scale EMA rate
+        refractory_calls: int = 250,      # hard floor on write spacing
         # 0 = warm up on statistics alone (window fill). Non-zero adds an extra
         # absolute lockout on top, for arms that want one.
         episode_warmup_steps: int = 0,
@@ -174,6 +185,9 @@ class PredictiveCodingLayer(nn.Module):
         # preserving. adaptive_episodes=False restores it exactly for A/B work.
         self.adaptive_episodes = bool(adaptive_episodes)
         self.salience_percentile = float(salience_percentile)
+        self.surprise_k = float(surprise_k)
+        self.surprise_decay = float(surprise_decay)
+        self.refractory_calls = int(refractory_calls)
         self.episode_warmup_steps = int(episode_warmup_steps)
         self.episode_age_tau = float(episode_age_tau)
         self.eviction_alpha = float(eviction_alpha)
@@ -372,6 +386,13 @@ class PredictiveCodingLayer(nn.Module):
         # must survive resume, unlike the sparse-gate warmup counter).
         self.register_buffer(
             "episode_step_counter", torch.tensor(0, dtype=torch.long)
+        )
+        # Local baseline and scale for detrended-surprise admission, plus the
+        # last write step for the refractory bound.
+        self.register_buffer("salience_level", torch.tensor(0.0))
+        self.register_buffer("salience_dev", torch.tensor(0.0))
+        self.register_buffer(
+            "last_write_step", torch.tensor(-10**9, dtype=torch.long)
         )
         # Adaptive recall: EMA mean/var of the best-match similarity, so recall
         # fires on genuine recognition rather than always. A fixed 0.5 against
@@ -624,8 +645,27 @@ class PredictiveCodingLayer(nn.Module):
         # medians are 0.001-0.004 — applying it would make this whole path
         # inert, which is the defect being fixed. It remains in force on the
         # legacy path above.
-        bar = torch.quantile(self.salience_window, self.salience_percentile)
-        if salience <= float(bar):
+        #
+        # Detrended surprise (v2). Test against the PREVIOUS baseline, then
+        # update it: folding the current sample in first would let a spike
+        # partly mask itself. `salience_dev` is a mean-absolute-deviation
+        # tracker, so the bar scales with however much this layer's salience
+        # ordinarily wobbles -- the failure the percentile rule could not see.
+        level = float(self.salience_level.item())
+        dev = float(self.salience_dev.item())
+        surprising = (salience - level) > self.surprise_k * max(dev, 1e-12)
+        b = self.surprise_decay
+        self.salience_level.fill_(level + b * (salience - level))
+        self.salience_dev.fill_(dev + b * (abs(salience - level) - dev))
+
+        # Refractory period: a structural bound on both write rate and
+        # temporal clustering. The probe's store held consecutive steps
+        # (39985, 39986, 39987...) which is exactly how a store of 64 slots
+        # ends up at similarity 1.0000 -- diversity in time is a
+        # precondition for diversity in content.
+        if step - int(self.last_write_step.item()) < self.refractory_calls:
+            return
+        if not surprising:
             return
 
         n = self.episode_count.item()
@@ -739,11 +779,12 @@ class PredictiveCodingLayer(nn.Module):
             "episode_age_span": None,
         }
         if self.adaptive_episodes:
-            filled = int(self.salience_window_filled.item())
-            if filled >= self.salience_window.numel():
-                out["episode_admission_bar"] = float(
-                    torch.quantile(self.salience_window, self.salience_percentile)
-                )
+            out["episode_admission_bar"] = float(
+                self.salience_level.item()
+                + self.surprise_k * self.salience_dev.item()
+            )
+            out["salience_level"] = float(self.salience_level.item())
+            out["salience_dev"] = float(self.salience_dev.item())
         if n > 1:
             c = self.episode_contexts[:n].float()
             c = c / c.norm(dim=1, keepdim=True).clamp(min=1e-8)
@@ -814,6 +855,7 @@ class PredictiveCodingLayer(nn.Module):
         self.episode_saliences[idx] = salience
         if step is not None:
             self.episode_steps[idx] = step
+            self.last_write_step.fill_(step)
         self.episode_writes.add_(1)
 
     # ------------------------------------------------------------------
