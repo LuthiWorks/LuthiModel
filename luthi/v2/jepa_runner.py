@@ -471,13 +471,36 @@ def _light_collapse_metrics(
     # collapsing to identity / target-copy is the failure mode.
     if predicted_target is not None:
         target_block = target_latents[:, ctx_len:, :].detach().float()
-        cos_pred = F.cosine_similarity(
-            predicted_target.detach().float(),
-            target_block,
-            dim=-1,
-        )  # [B, tgt_len]
+        pred_f = predicted_target.detach().float()
+        cos_pred = F.cosine_similarity(pred_f, target_block, dim=-1)  # [B, tgt_len]
         metrics["predictor_trivial_cosine_mean"] = float(cos_pred.mean().item())
         metrics["predictor_trivial_cosine_std"] = float(cos_pred.std().item())
+
+        # MEAN-CENTERED cosine (external review 2026-07-28, item 0.1). The
+        # raw cosine read 0.9299 at step 100 and crossed the 0.99 kill
+        # threshold 14 minutes in -- which is either a predictor solving the
+        # task almost immediately or a shared offset dominating both vectors.
+        # Subtracting the per-dimension batch mean from both sides answers it:
+        # if the centered cosine is near zero late in training, kill-5 has
+        # never fired on signal and the raw number was measuring the offset.
+        pf = pred_f.reshape(-1, pred_f.shape[-1])
+        tb = target_block.reshape(-1, target_block.shape[-1])
+        cos_centered = F.cosine_similarity(
+            pf - pf.mean(dim=0, keepdim=True),
+            tb - tb.mean(dim=0, keepdim=True),
+            dim=-1,
+        )
+        metrics["predictor_cosine_centered_mean"] = float(cos_centered.mean().item())
+
+        # Offset dominance: ||mean(latents)|| / mean||latents||. Near 1 means
+        # a common offset dominates the representation and every uncentered
+        # angular measure over it is reporting that offset.
+        for name, t in (("target", tb), ("predicted", pf)):
+            mean_norm = float(t.mean(dim=0).norm().item())
+            norm_mean = float(t.norm(dim=-1).mean().item())
+            metrics[f"offset_dominance_{name}"] = (
+                mean_norm / norm_mean if norm_mean > 0 else float("nan")
+            )
         # Predictor-output std as an independent collapse signal.
         pred_std = predicted_target.detach().float().std(dim=(0, 1))
         metrics["predictor_output_std_p50"] = _percentile(pred_std, 0.50)

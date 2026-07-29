@@ -141,6 +141,9 @@ def _pc_self_modify_python(
     precision_max: float,
     prediction_clamp: float,
     relative_trust: bool = False,
+    drive_normalize: bool = False,
+    error_rms: torch.Tensor | None = None,
+    drive_rms_decay: float = 0.01,
     sparse_gate: torch.Tensor | None = None,
     learning_gain_enabled: bool = False,
     learning_gain_progress: float = 0.0,
@@ -177,6 +180,28 @@ def _pc_self_modify_python(
     predicted_input = output_mean @ prediction    # [in]
     pred_error = actual_input - predicted_input   # [in]
 
+    # Drive normalization (external review 2026-07-28, item 1.1). delta_w is
+    # driven by raw reconstruction error, which any layer that is learning
+    # drives toward zero -- so the living channel is self-extinguishing by
+    # construction: the better the model gets, the less alive the substrate.
+    # Measured: update_ema fell 9.5e-5 -> 5.3e-9 monotonically and was still
+    # falling at step 72,000; err_acc fell 45x.
+    #
+    # Dividing by a running RMS makes the drive respond to RELATIVE surprise,
+    # so the channel stays alive at any error scale. Same lesson as the
+    # 2026-07-21 precision finding one level up: absolute magnitude was the
+    # destroyer there too.
+    #
+    # Applied ONLY to the delta_w path. Precision still EMAs toward 1/err^2 on
+    # the raw error (it is an estimate of actual noise), the prediction matrix
+    # still learns from raw error (it is a generative model of the real input),
+    # and the returned pred_error stays raw so the top-down sweep is unchanged.
+    drive_error = pred_error
+    if drive_normalize and error_rms is not None:
+        rms_now = pred_error.detach().pow(2).mean().sqrt()
+        error_rms.mul_(1.0 - drive_rms_decay).add_(rms_now, alpha=drive_rms_decay)
+        drive_error = pred_error / error_rms.clamp(min=1e-12)
+
     # b/c. Precision-weighted error, clamped per-input.
     #    The clamp mirrors v1's `apply_error` clamp on the local update
     #    (living_layer.py:531) and prevents the runaway weight growth
@@ -198,9 +223,9 @@ def _pc_self_modify_python(
         trust = (precision / precision.median().clamp(min=1e-12)).clamp(
             precision_min, precision_max
         )
-        weighted_error = (pred_error * trust).clamp(-1.0, 1.0)  # [in]
+        weighted_error = (drive_error * trust).clamp(-1.0, 1.0)  # [in]
     else:
-        weighted_error = (pred_error * precision).clamp(-1.0, 1.0)  # [in]
+        weighted_error = (drive_error * precision).clamp(-1.0, 1.0)  # [in]
 
     # d. Weight delta — outer product of output_mean and weighted error,
     #    scaled by per-input plasticity and the global PC rate.
@@ -357,6 +382,9 @@ def pc_self_modify(
     precision_max: float,
     prediction_clamp: float,
     relative_trust: bool = False,
+    drive_normalize: bool = False,
+    error_rms: torch.Tensor | None = None,
+    drive_rms_decay: float = 0.01,
     sparse_gate: torch.Tensor | None = None,
     learning_gain_enabled: bool = False,
     learning_gain_progress: float = 0.0,
@@ -389,7 +417,12 @@ def pc_self_modify(
     # step 7, verified by tests/test_pc_ops_gain_parity.py), so the gain runs
     # on the fast path too. When C++ is loaded it handles every case; the
     # Python fallback covers hosts without a compiler.
-    if _use_cpp:
+    # Drive normalization (item 1.1) exists only in the Python reference for
+    # now, so requesting it forces the Python path rather than silently
+    # running unnormalized in C++ -- a flag that appears to be on while the
+    # fast path ignores it is exactly the silent-success failure this project
+    # keeps finding. Port to csrc/pc_ops.cpp before any long normalized run.
+    if _use_cpp and not drive_normalize:
         salience_tensor, pred_error, applied_change = _cpp_ops.pc_self_modify(
             weight, prediction, set_point, momentum, update_ema,
             precision, error_acc, plasticity, x_flat, output,
@@ -415,6 +448,9 @@ def pc_self_modify(
         set_point_adapt_rate, momentum_decay, update_ema_decay,
         precision_ema_decay, precision_min, precision_max,
         prediction_clamp, relative_trust=relative_trust,
+        drive_normalize=drive_normalize,
+        error_rms=error_rms,
+        drive_rms_decay=drive_rms_decay,
         sparse_gate=sparse_gate,
         learning_gain_enabled=learning_gain_enabled,
         learning_gain_progress=learning_gain_progress,

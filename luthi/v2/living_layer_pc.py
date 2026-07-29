@@ -93,6 +93,12 @@ class PredictiveCodingLayer(nn.Module):
         # Opt-in. Bounds are RELATIVE to the layer's own median activity, for
         # the same reason episode admission is: absolute constants do not
         # survive a signal that differs per block and decays over training.
+        # Drive normalization (external review 2026-07-28, item 1.1): divide
+        # the PC error by its running RMS before it enters delta_w, so the
+        # living channel responds to relative surprise instead of absolute
+        # error and does not extinguish itself as the model improves. Opt-in.
+        drive_normalize: bool = False,
+        drive_rms_decay: float = 0.01,
         homeostatic_band_enabled: bool = False,
         band_decay: float = 1e-3,          # slow: ~1000-step timescale
         band_warmup_steps: int = 200,
@@ -193,6 +199,8 @@ class PredictiveCodingLayer(nn.Module):
         self.eviction_alpha = float(eviction_alpha)
         self.adaptive_recall = bool(adaptive_recall)
         self.recall_sigma = float(recall_sigma)
+        self.drive_normalize = bool(drive_normalize)
+        self.drive_rms_decay = float(drive_rms_decay)
         self.homeostatic_band_enabled = bool(homeostatic_band_enabled)
         self.band_decay = float(band_decay)
         self.band_warmup_steps = int(band_warmup_steps)
@@ -410,6 +418,8 @@ class PredictiveCodingLayer(nn.Module):
             "recall_fires", torch.tensor(0, dtype=torch.long)
         )
         # Homeostatic band state: slow per-row activity estimate + counters.
+        # Running RMS of the PC error, for drive normalization (item 1.1).
+        self.register_buffer("error_rms", torch.tensor(0.0))
         self.register_buffer("act_mean", torch.zeros(out_features))
         self.register_buffer("act_var", torch.zeros(out_features))
         self.register_buffer(
@@ -1065,6 +1075,9 @@ class PredictiveCodingLayer(nn.Module):
                     self.precision_min, self.precision_max,
                     self.prediction_clamp,
                     relative_trust=self.relative_trust,
+                    drive_normalize=self.drive_normalize,
+                    error_rms=self.error_rms,
+                    drive_rms_decay=self.drive_rms_decay,
                     sparse_gate=sparse_gate,
                     learning_gain_enabled=self.learning_gain_enabled,
                     learning_gain_progress=gain_progress,
@@ -1277,6 +1290,23 @@ class PredictiveCodingLayer(nn.Module):
             # runs high, they are a fast copy and a slow copy rather than a
             # recognition/generative pair, and the proposed W-update change
             # has something to fix. If it is flat and low, it does not.
+            # Weight magnitude (external review 2026-07-28, item 0.5): decides
+            # whether an update of 5.3e-9 is ~1.4 ULP (arithmetically dead --
+            # the update is being lost to float rounding) or ~44 ULP (small
+            # but real). Without the scale, "update_ema fell 5 orders of
+            # magnitude" cannot be interpreted at all.
+            "weight_abs_mean": float(self.weight.detach().abs().mean().item()),
+            "error_rms": float(self.error_rms.item()),
+            "weight_ulp_ratio": float(
+                self.update_ema.detach().mean().item()
+                / max(
+                    float(
+                        torch.finfo(self.weight.dtype).eps
+                        * self.weight.detach().abs().mean().item()
+                    ),
+                    1e-45,
+                )
+            ),
             "weight_pred_cosine": float(
                 torch.nn.functional.cosine_similarity(
                     self.weight.detach().reshape(1, -1).float(),
