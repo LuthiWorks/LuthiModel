@@ -79,8 +79,9 @@ class PredictiveCodingLayer(nn.Module):
         # detrended surprise against the layer's own local baseline, plus a
         # refractory period as a structural bound on rate and on temporal
         # clustering.
-        surprise_k: float = 3.0,          # deviations above local baseline
+        surprise_k: float = 3.0,          # deviations above the local forecast
         surprise_decay: float = 0.01,     # baseline/scale EMA rate
+        surprise_drift_gain: float = 0.1,  # Holt trend gain; 0 = untrended
         refractory_calls: int = 250,      # hard floor on write spacing
         # 0 = warm up on statistics alone (window fill). Non-zero adds an extra
         # absolute lockout on top, for arms that want one.
@@ -193,6 +194,7 @@ class PredictiveCodingLayer(nn.Module):
         self.salience_percentile = float(salience_percentile)
         self.surprise_k = float(surprise_k)
         self.surprise_decay = float(surprise_decay)
+        self.surprise_drift_gain = float(surprise_drift_gain)
         self.refractory_calls = int(refractory_calls)
         self.episode_warmup_steps = int(episode_warmup_steps)
         self.episode_age_tau = float(episode_age_tau)
@@ -398,6 +400,7 @@ class PredictiveCodingLayer(nn.Module):
         # Local baseline and scale for detrended-surprise admission, plus the
         # last write step for the refractory bound.
         self.register_buffer("salience_level", torch.tensor(0.0))
+        self.register_buffer("salience_drift", torch.tensor(0.0))
         self.register_buffer("salience_dev", torch.tensor(0.0))
         self.register_buffer(
             "last_write_step", torch.tensor(-10**9, dtype=torch.long)
@@ -661,12 +664,27 @@ class PredictiveCodingLayer(nn.Module):
         # partly mask itself. `salience_dev` is a mean-absolute-deviation
         # tracker, so the bar scales with however much this layer's salience
         # ordinarily wobbles -- the failure the percentile rule could not see.
+        # Drift-corrected surprise (v3). v2 compared salience against a plain
+        # EMA, which on a DECAYING series always sits above the current value
+        # -- so nothing was ever surprising and every block froze after warmup
+        # (measured: 1 write per block in 3,000 steps). v1's percentile failed
+        # the mirror-image way on locally RISING series. Both were untrended.
+        #
+        # Holt's linear method: carry a drift term so the baseline forecasts
+        # where the signal is heading, and score the residual against that
+        # forecast. A smooth trend in either direction produces no residual;
+        # only a departure from the trend does.
         level = float(self.salience_level.item())
+        drift = float(self.salience_drift.item())
         dev = float(self.salience_dev.item())
-        surprising = (salience - level) > self.surprise_k * max(dev, 1e-12)
+        forecast = level + drift
+        resid = salience - forecast
+        surprising = resid > self.surprise_k * max(dev, 1e-12)
         b = self.surprise_decay
-        self.salience_level.fill_(level + b * (salience - level))
-        self.salience_dev.fill_(dev + b * (abs(salience - level) - dev))
+        new_level = forecast + b * resid
+        self.salience_drift.fill_(drift + b * self.surprise_drift_gain * resid)
+        self.salience_level.fill_(new_level)
+        self.salience_dev.fill_(dev + b * (abs(resid) - dev))
 
         # Refractory period: a structural bound on both write rate and
         # temporal clustering. The probe's store held consecutive steps

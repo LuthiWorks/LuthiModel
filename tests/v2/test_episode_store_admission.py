@@ -119,6 +119,34 @@ def test_ordinary_wobble_is_not_admitted():
     assert rate < 0.10, f"admitted {rate:.0%} of ordinary wobble (probe hit 85%)"
 
 
+def test_admits_on_a_decaying_signal_with_spikes():
+    """BOTH previous rules died here, in mirror-image ways.
+
+    v1 (trailing percentile) admitted 85% of calls, because a locally RISING
+    series always clears its own recent maximum. v2 (surprise over a plain
+    EMA) admitted essentially nothing -- 1 write per block in 3,000 real
+    steps -- because on a DECAYING series the EMA baseline always sits above
+    the current value, so the residual is negative and nothing is ever
+    surprising. Real salience decays 45x over a run, so v2's regime is the
+    one production actually lives in.
+
+    Drift correction is what makes both cases behave: a smooth trend in
+    either direction produces no residual, and only a departure from the
+    trend does."""
+    layer = _layer(refractory_calls=10, surprise_decay=0.1)
+    g = torch.Generator().manual_seed(41)
+    series = []
+    for i in range(600):
+        base = 0.05 * (0.995 ** i)                     # steady 95% decay
+        noise = 1.0 + 0.02 * torch.rand(1, generator=g).item()
+        spike = 3.0 if i in (300, 420, 500) else 1.0   # three genuine events
+        series.append(base * noise * spike)
+    _feed(layer, series)
+    writes = int(layer.episode_writes.item())
+    assert writes > 0, "froze on a decaying signal (the v2 failure)"
+    assert writes < 60, f"admitted {writes}/600 -- thrashing (the v1 failure)"
+
+
 def test_refractory_prevents_consecutive_writes():
     """Diversity in time is a precondition for diversity in content: the
     probe's store held steps 39985, 39986, 39987... hence similarity 1.0."""
