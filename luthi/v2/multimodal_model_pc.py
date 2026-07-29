@@ -418,6 +418,32 @@ class MultimodalPredictiveCodingLM(nn.Module):
             if hasattr(block.living_ffn, "clear_forward_cache"):
                 block.living_ffn.clear_forward_cache()
 
+    def norm_gain_summary(self) -> dict[str, float]:
+        """Scale knobs on the trunk's residual stream.
+
+        External review 2026-07-29 flagged `final_norm.weight` as the free
+        512-parameter gain that lets the objective shrink the representation.
+        That is misidentified for the JEPA path: `final_norm` is only applied in
+        the LM-style `forward()`, never in `encode()`. But the phenomenon is
+        real -- nothing constrains latent scale -- and the knobs that DO sit on
+        the encode path are the per-block LayerNorm gains. Logged so a
+        shrinking representation is attributable rather than merely visible.
+        """
+        gains = [
+            m.weight.detach().abs()
+            for name, m in self.named_modules()
+            if isinstance(m, nn.LayerNorm)
+            and m.weight is not None
+            and not name.startswith("final_norm")
+        ]
+        if not gains:
+            return {}
+        allg = torch.cat([g.reshape(-1) for g in gains])
+        return {
+            "trunk_norm_gain_median": float(allg.median().item()),
+            "trunk_norm_gain_min": float(allg.min().item()),
+        }
+
     def aliveness_report(self) -> list[dict[str, float]]:
         """Per-block aliveness diagnostics (PC layer + episode store stats)."""
         return [block.aliveness() for block in self.blocks]

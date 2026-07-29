@@ -169,11 +169,18 @@ class JEPALoss(nn.Module):
         context_fraction: float = DEFAULT_CONTEXT_FRACTION,
         predictor_n_layers: int = 2,
         predictor_n_heads: int | None = None,
+        # Objective fixes, 2026-07-29 (see the projection-head comment and
+        # l_pred below). Defaults are the FIXED behaviour: leaving a verified
+        # defect as the default is worse than breaking comparability with runs
+        # that were produced under it.
+        sigreg_projection: str = "linear",
+        detach_target: bool = True,
     ):
         super().__init__()
         self.online_encoder = online_encoder
         self.sigreg_lambd = sigreg_lambd
         self.context_fraction = context_fraction
+        self.detach_target = bool(detach_target)
 
         d_model = online_encoder.d_model
         n_heads = predictor_n_heads if predictor_n_heads is not None else online_encoder.n_heads
@@ -192,16 +199,47 @@ class JEPALoss(nn.Module):
             max_target_len=max_target_len,
         )
 
-        # Per-modality projection heads (Linear -> BN). The encoder's
-        # final LayerNorm in the trunk would wash out the distribution
-        # SIGReg shapes -- the BN-projected head is what SIGReg runs on.
-        self.projection_heads = nn.ModuleDict({
-            modality: nn.Sequential(
-                nn.Linear(d_model, d_model),
-                nn.BatchNorm1d(d_model),
-            )
-            for modality in MODALITIES
-        })
+        # Per-modality projection heads feeding SIGReg.
+        #
+        # DEFECT FIXED 2026-07-29 (external review, verified independently
+        # against this repo's own SIGReg): the head used to be
+        # Linear -> BatchNorm1d, and the docstring reasoning was inverted.
+        # BatchNorm subtracts the batch mean and divides by the batch std --
+        # precisely the two quantities SIGReg exists to constrain. Feeding it
+        # pre-standardized input hands it a solved problem, so the constraint
+        # stops binding on the encoder.
+        #
+        # Measured with this SIGReg: a 100x uniform shrink of the latents moves
+        # the BN-fed statistic by 3.7% (0.566 -> 0.545) while the un-normalized
+        # statistic moves 820x (0.86 -> 706). Sweeping the fraction of latent
+        # norm sitting in a batch-constant direction from 0 to 0.995 moves the
+        # BN-fed statistic by 0.7% and the un-normalized one from 1.0 to 2111.
+        # Meanwhile l_pred falls quadratically with that shrink, so shrinking
+        # was a free win: at mean_frac 0.92 the simulation gives std_p50 0.2826
+        # and the real v5 runs ended at 0.2835.
+        #
+        # "linear" (default now) = LeJEPA's contract: SIGReg sees the
+        # distribution it is meant to shape. "linear_bn" preserves the old
+        # behaviour for A/B only. "none" runs SIGReg on the trunk latents
+        # directly.
+        self.sigreg_projection = sigreg_projection
+        heads: dict[str, nn.Module] = {}
+        for modality in MODALITIES:
+            if sigreg_projection == "linear_bn":
+                heads[modality] = nn.Sequential(
+                    nn.Linear(d_model, d_model),
+                    nn.BatchNorm1d(d_model),
+                )
+            elif sigreg_projection == "linear":
+                heads[modality] = nn.Linear(d_model, d_model)
+            elif sigreg_projection == "none":
+                heads[modality] = nn.Identity()
+            else:
+                raise ValueError(
+                    "sigreg_projection must be 'linear', 'linear_bn' or "
+                    f"'none'; got {sigreg_projection!r}"
+                )
+        self.projection_heads = nn.ModuleDict(heads)
 
         # SIGReg: stateless except for fixed quadrature buffers, so a
         # single instance is shared across modalities. Per-modality
@@ -329,7 +367,16 @@ class JEPALoss(nn.Module):
         # [B, tgt_len, D]
 
         # ---- L_pred: MSE (LeWM default) ----
-        l_pred = (predicted_target - target_block).pow(2).mean()
+        # Target detached by default as of 2026-07-29. With the target on the
+        # graph, the loss can be reduced by shrinking the TARGET rather than by
+        # improving the prediction -- and with BN neutering SIGReg there was
+        # nothing opposing that. The predictor should chase the target, not
+        # shrink it. Three anti-collapse mechanisms had been removed in
+        # sequence (EMA twin, stop-gradient, variance term) leaving none.
+        target_for_loss = (
+            target_block.detach() if self.detach_target else target_block
+        )
+        l_pred = (predicted_target - target_for_loss).pow(2).mean()
 
         # ---- SIGReg: per-modality projection -> standardized -> SIGReg ----
         # Project the full-sequence target latents through this

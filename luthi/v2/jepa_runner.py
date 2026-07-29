@@ -958,6 +958,14 @@ class JEPATrainer:
             "grad_norm": self._last_grad_norm,
             "nonfinite": self._last_nonfinite,
             "taper_scale": self._current_taper_scale,
+            # Scale knobs on the residual stream (review 2026-07-29): a
+            # representation that shrinks to cheapen l_pred should be
+            # attributable, not just visible.
+            **(
+                self.loss_module.online_encoder.norm_gain_summary()
+                if hasattr(self.loss_module.online_encoder, "norm_gain_summary")
+                else {}
+            ),
             "lr": (
                 self.optimizer.param_groups[0]["lr"]
                 if self.optimizer.param_groups
