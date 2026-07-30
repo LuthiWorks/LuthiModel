@@ -150,6 +150,10 @@ STAGES: dict[int, list[tuple[str, int]]] = {
     # was registered to start at). Full length -- the extinction question is
     # what this run exists to answer and 4,000 steps provably cannot.
     14: [("probe_surprise_d8", 512)],
+    # SIGREG PROJECTION TEST (2026-07-30): stage 14 with sigreg_projection
+    # "none" instead of "linear". One variable. Readout is offset dominance,
+    # NOT capability -- the carried-over clip independently kills capability.
+    15: [("probe_surprise_d8_noproj", 512)],
 }
 
 # Per-arm model configuration -- single source of truth, shared with
@@ -296,7 +300,33 @@ ARM_CONFIGS["probe_surprise_d8"] = dict(
 #
 # Depth-4 arms keep grad_clip_norm=0.0 (off), so every completed family stays
 # bit-identical and comparable.
-ARM_GRAD_CLIP: dict[str, float] = {"probe_surprise_d8": 1000.0}
+ARM_GRAD_CLIP: dict[str, float] = {
+    "probe_surprise_d8": 1000.0,
+    "probe_surprise_d8_noproj": 1000.0,
+}
+# Loss-side per-arm setting: the SIGReg projection head.
+#
+# `probe_surprise_d8_noproj` is `probe_surprise_d8` with sigreg_projection
+# switched from "linear" to "none", and NOTHING else changed -- same 8 blocks,
+# same clip of 1000, same seed discipline. It tests one hypothesis: that the
+# per-modality nn.Linear head's BIAS absorbs the batch-mean offset, presenting
+# SIGReg with centered latents while the trunk keeps the offset. That would be
+# structurally the same defect as the BatchNorm removed on 2026-07-28 -- a
+# learnable layer standing between SIGReg and the quantity it exists to
+# constrain. "none" is nn.Identity(), so SIGReg sees trunk latents directly.
+#
+# The clip of 1000 is deliberately CARRIED OVER rather than fixed first, so
+# this run differs from probe_surprise_d8_512d_seed96 by exactly one thing. It
+# is known to be too aggressive (43% of steps clipped) and to kill capability
+# on its own -- see the pre-registered readout note in
+# docs/research/2026-07-30_sigreg-projection-hypothesis.md for why capability
+# metrics therefore CANNOT be read from this run either way.
+ARM_SIGREG_PROJ: dict[str, str] = {"probe_surprise_d8_noproj": "none"}
+ARM_CONFIGS["probe_surprise_d8_noproj"] = dict(ARM_CONFIGS["probe_surprise_d8"])
+ARM_TAPER["probe_surprise_d8_noproj"] = ARM_TAPER["living_v5_4x_d4"]
+ARM_FILELIST["probe_surprise_d8_noproj"] = ARM_FILELIST["living_v5_4x_d4"]
+ARM_SIGREG["probe_surprise_d8_noproj"] = ARM_SIGREG["living_v5_4x_d4"]
+ARM_COSINE["probe_surprise_d8_noproj"] = ARM_COSINE["living_v5_4x_d4"]
 ARM_TAPER["probe_surprise_d8"] = ARM_TAPER["living_v5_4x_d4"]
 ARM_FILELIST["probe_surprise_d8"] = ARM_FILELIST["living_v5_4x_d4"]
 ARM_SIGREG["probe_surprise_d8"] = ARM_SIGREG["living_v5_4x_d4"]
@@ -439,6 +469,7 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
     loss_module = JEPALoss(
         online_encoder=model,
         sigreg_lambd=ARM_SIGREG.get(arm, SIGREG_LAMBD),
+        sigreg_projection=ARM_SIGREG_PROJ.get(arm, "linear"),
     ).to(device)
 
     # Cosine LR needs the planned run length. tokens_per_pass is
