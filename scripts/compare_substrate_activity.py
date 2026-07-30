@@ -56,6 +56,25 @@ def summarize(run: str) -> None:
               f"{ue_m / max(w_m, 1e-30):9.2e} {pm:9.4f} {p5:9.4f} {p95:9.4f} {n_ep:5d}")
     print("  (last column = episodes stored)")
 
+    # Surprise-drive readings, if this run had them. `duty` is the whole point:
+    # it separates "quiet because nothing is new" from "quiet because broken".
+    drive_prefixes = [p for p in prefixes if p + "drive_calls" in state]
+    if drive_prefixes:
+        print(f"  {'layer':<34} {'duty':>8} {'fires':>8} {'calls':>8} "
+              f"{'gain':>9} {'ref':>10} {'dev':>10}")
+        for p in drive_prefixes:
+            calls = float(state[p + "drive_calls"].item())
+            fires = float(state[p + "drive_fire_count"].item())
+            # Duty is over post-warmup calls; warmup holds gain at 1.0 for
+            # bit-identity with raw and is not counted as firing.
+            warm = 200.0
+            duty = fires / max(calls - warm, 1.0)
+            print(f"  {p[:-1]:<34} {duty:8.4f} {fires:8.0f} {calls:8.0f} "
+                  f"{float(state[p + 'drive_gain'].item()):9.4f} "
+                  f"{float(state[p + 'drive_ref'].item()):10.4e} "
+                  f"{float(state[p + 'drive_dev'].item()):10.4e}")
+        print("  (duty over post-warmup calls; warmup assumed 200)")
+
 
 def main() -> int:
     ap = argparse.ArgumentParser()
