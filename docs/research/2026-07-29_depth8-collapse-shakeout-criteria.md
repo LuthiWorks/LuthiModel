@@ -66,6 +66,48 @@ prompted this shakeout.
 "trending in the right direction so let it run." That is the asymmetry Brian
 asked for.
 
+## AMENDMENT, registered at step 200 of the run — blind to the outcome
+
+**My criteria above have a hole, and it is visible at step 200, so it is being
+patched now rather than at the endpoint.** Registered at ~20:35, with 2,800 of
+3,000 steps still to run and the outcome unknown.
+
+Step 200 read: `std_p5` 0.3825, **`cos_pred` -0.0845**, `L_sigreg` 3031.9,
+**`L_pred` 19.59**.
+
+Condition 2 was written as `cos_pred <= 0.75`, on the assumption that the
+failure direction was *upward* — a representation dominated by one direction
+drives the cosine toward 1.0. A cosine of **-0.08** satisfies that condition and
+is plainly not healthy: the predictor's output has become uncorrelated with its
+target, and `L_pred` has gone from 0.098 to 19.59, roughly 25x the depth-4 band
+at the same step (0.73-0.82). As written, my criteria would have scored that as a
+PASS on condition 2. That is a one-sided bound on a two-sided quantity, and it is
+my error.
+
+Two conditions added. Both must hold at step 3000, on the same all-must-pass
+basis as the original four:
+
+5. `cos_pred` >= 0.40 — a lower bound as well as an upper one. Depth-4 sits at
+   0.57-0.69 throughout; below 0.40 the predictor is not tracking its target.
+6. `L_pred` <= 4.0 — roughly 5x the depth-4 band at step 3000 (0.67-1.18),
+   generous headroom for depth while still excluding a 20x explosion.
+
+**What this failure mode would mean, if it persists.** It is not collapse. It is
+the opposite: SIGReg winning outright. The anti-collapse term is pushing latent
+variance up (`std_p5` 0.09 -> 0.38) while the prediction term loses the target
+entirely. At eight blocks the two halves of the objective appear to be fighting
+rather than cooperating, with the regularizer dominating. If that is where step
+3000 lands, the suspect list below reorders: **SIGReg weight (currently 0.2)
+moves to first**, ahead of `mu_pc_exponent`, because an over-strong regularizer
+at depth is a more direct explanation than a rate-scaling mismatch. Both remain
+candidates and they are not mutually exclusive — an over-strong penalty and a
+mis-scaled rate would compound.
+
+Step 200 is still deep in the initial transient, and the depth-4 runs also moved
+a long way between 200 and 1000. **This amendment is not a call on the outcome.**
+It is a correction to an instrument, made while the answer is still unknown,
+because a criterion patched after seeing the endpoint is worth nothing.
+
 ## On FAIL, the first suspects in order
 
 1. **`mu_pc_exponent`** (currently 0.25, inherited unchanged from the depth-4
