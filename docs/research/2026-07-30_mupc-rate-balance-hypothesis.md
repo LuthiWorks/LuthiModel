@@ -181,3 +181,54 @@ If power=-1 improves things, that supports "more block signal helps" and points
 at the constant-component account — it does not confirm it. If it also makes
 things worse, then both directions hurt, the axis is not monotonic, and the
 whole rate-scaling family is the wrong lever.
+
+---
+
+# VERDICT, stage 17 (power=+1): REFUTED
+
+**Time:** ~04:30. Scored on the registered primary metric.
+
+| | within-batch pairwise cosine |
+|---|---|
+| depth 4 (healthy) | 0.0231 |
+| d8 muPC off | 0.0111 |
+| d8 power 0 (unbalanced control) | 0.9704 |
+| **d8 power +1 (attenuate)** | **0.9807** |
+| registered CONFIRMED | <= 0.30 |
+| registered REFUTED | >= 0.70 |
+
+**REFUTED at 0.9807**, and marginally worse than the control it was meant to
+improve on. The two-speed-imbalance mechanism is wrong: matching the PC rate to
+the backprop attenuation does not prevent the collapse, it deepens it slightly.
+
+## Note on the interim readings
+
+This run's intermediate windows swung twice and I reported both swings. At ~1000
+steps the test looked clearly worse than control (offset dominance 0.83 vs 0.57);
+at ~2000 the most recent five records reversed it (0.50 vs 0.77); the endpoint
+landed at refuted anyway. None of the interim reads predicted the verdict, and
+two of them pointed in opposite directions.
+
+The registered metric at the final checkpoint was the only reading that
+mattered, which is the entire reason it was registered. Recorded here because it
+is the same failure mode as reading a point-in-time `update_ema` on a gated
+drive -- a trap this project documented on 2026-07-29 and which I then walked
+into conversationally the next night.
+
+## What survives
+
+`residual_scale` remains the only structural difference that separates a healthy
+depth-8 trunk from a collapsed one, and PC-rate scaling in EITHER direction
+fails to fix it (power=+1 refuted here; power=-1 in stage 18). The three-point
+ordering that motivated the opposite-direction test still stands as data:
+
+| residual_scale | PC factor | offset dominance |
+|---|---|---|
+| 1.0 | 1.0 | 0.21 |
+| 0.595 | 1.0 | 0.57 |
+| 0.595 | 0.595 | 0.83 |
+
+But the endpoint metric is what decides, and by that measure power=+1 and
+power=0 are indistinguishable (0.9807 vs 0.9704) while muPC-off is a different
+regime entirely (0.0111). That pattern says the PC rate is not the axis at all
+-- `residual_scale` is.
