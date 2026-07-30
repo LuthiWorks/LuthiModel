@@ -404,10 +404,36 @@ class JEPALoss(nn.Module):
         )
         l_pred = (predicted_target - target_for_loss).pow(2).mean()
 
-        # ---- SIGReg: per-modality projection -> standardized -> SIGReg ----
-        # Project the full-sequence target latents through this
-        # modality's Linear -> BN head. BN standardizes per channel
-        # across the (B * seq_len) sample dimension.
+        # ---- SIGReg: per-modality projection -> SIGReg ----
+        # Project the full-sequence target latents through this modality's
+        # head (default "linear" since 2026-07-28; "linear_bn" and "none" are
+        # the A/B alternatives).
+        #
+        # KNOWN PROPERTY, measured 2026-07-30: the Linear head **absorbs
+        # scale**. SIGReg is applied to `projected`, while the `online_std`
+        # diagnostic below is computed on the raw trunk latents, so the two
+        # measure different spaces and can disagree by the head's gain.
+        # Measured singular-value means of the text head: 0.552 at depth 4,
+        # 0.423 at depth 8. That accounts exactly for the otherwise puzzling
+        # observation that a depth-8 run sat at trunk std_p5 ~3.0 while
+        # L_sigreg read a quiet 10-26: 3.0 * 0.42 ~ 1.27, near SIGReg's unit
+        # target. The trunk was running 3x hot and the head normalized it away
+        # before SIGReg looked.
+        #
+        # This is the third degree of freedom by which a learnable layer sits
+        # between SIGReg and the trunk. The first (BatchNorm) subtracted mean
+        # and divided by std unconditionally and was removed 2026-07-28. The
+        # second (the Linear's bias, hypothesized to absorb the batch-mean
+        # offset) was tested directly with sigreg_projection="none" and
+        # REFUTED -- offset dominance barely moved. This third one, scale
+        # absorption by the weight matrix, is confirmed by the singular values
+        # above.
+        #
+        # Not currently treated as a defect: depth 4 runs at 0.552 and is
+        # healthy, and NMSE is scale-free so capability is unaffected. It does
+        # mean trunk scale can drift without SIGReg objecting, so `std_p5`
+        # deserves watching for runaway on long runs. See
+        # docs/research/2026-07-30_mupc-verdict.md.
         flat = target_full_latents.reshape(-1, d_model)
         # BatchNorm1d expects (N, C); flat is (B * seq_len, D).
         projected = self.projection_heads[modality](flat)

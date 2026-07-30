@@ -849,6 +849,7 @@ class JEPATrainer:
         # the diagnostics record carries them as-is, surfacing the
         # "no signal yet" case explicitly.
         self._last_grad_norm: float = float("nan")
+        self._last_grad_norm_postclip: Optional[float] = None
         self._last_nonfinite: bool = False
 
         # Archive run config (Gate 5).
@@ -923,11 +924,22 @@ class JEPATrainer:
         # they update through the PC mechanism, not autograd, and clipping them
         # would silently alter the substrate this project is trying to measure.
         clip = float(self.config.grad_clip_norm or 0.0)
+        pre_clip_norm: Optional[float] = None
         if clip > 0.0:
-            torch.nn.utils.clip_grad_norm_(
-                [p for g in self.optimizer.param_groups
-                 for p in g["params"] if p.grad is not None],
-                clip,
+            # clip_grad_norm_ returns the PRE-clip total norm. Capturing it is
+            # not optional: clipping mutates grads in place, so the norm
+            # computed below is the POST-clip value and saturates at `clip`.
+            # That silently destroys the diagnostic that found the depth-8
+            # defect in the first place -- grad_norm median 829 vs 28 was the
+            # whole lead, and a clipped run cannot report a number above the
+            # ceiling. Regression introduced 2026-07-29, caught the same night
+            # when a clipped run's grad_norm max read exactly 1000.0000.
+            pre_clip_norm = float(
+                torch.nn.utils.clip_grad_norm_(
+                    [p for g in self.optimizer.param_groups
+                     for p in g["params"] if p.grad is not None],
+                    clip,
+                )
             )
 
         # EMIT_BATCH_1 §3: gradient norm + non-finite guard, gated to
@@ -951,6 +963,16 @@ class JEPATrainer:
                     total_sq += float(gr.norm().item()) ** 2
             self._last_grad_norm = total_sq ** 0.5
             self._last_nonfinite = nonfinite
+            # Report the pre-clip norm when clipping is on. Without this,
+            # `grad_norm` on a clipped run is bounded by the clip and carries no
+            # information about the magnitude that was actually produced.
+            # `grad_norm_postclip` is kept alongside so clip engagement stays
+            # visible: pre > post means this step was clipped.
+            self._last_grad_norm_postclip = (
+                self._last_grad_norm if pre_clip_norm is not None else None
+            )
+            if pre_clip_norm is not None:
+                self._last_grad_norm = pre_clip_norm
 
         sched = self.config.lr_schedule
         if sched.enabled:
@@ -1023,6 +1045,7 @@ class JEPATrainer:
             # without train_step having run with will_log=True, the
             # NaN/False sentinels from __init__ are emitted as-is.
             "grad_norm": self._last_grad_norm,
+            "grad_norm_postclip": self._last_grad_norm_postclip,
             "nonfinite": self._last_nonfinite,
             "taper_scale": self._current_taper_scale,
             # Scale knobs on the residual stream (review 2026-07-29): a

@@ -524,7 +524,10 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
         data_loader=loader,
         config=RunnerConfig(
             sampler=sampler_cfg,
-            checkpoint=CheckpointConfig(rolling_slots=3),
+            checkpoint=CheckpointConfig(
+                interval_seconds=args.checkpoint_interval,
+                rolling_slots=args.checkpoint_slots,
+            ),
             logging=LoggingConfig(heldout_eval_batches=args.heldout_batches),
             kill_criteria=KillCriteriaConfig(
                 warmup_batches=args.kill_warmup,
@@ -715,6 +718,23 @@ def main() -> int:
                    type=int, default=32)
     p.add_argument("--kill-warmup", dest="kill_warmup",
                    type=int, default=5000)
+    # Checkpoint retention. Defaults preserve the previous behaviour exactly
+    # (900s / 3 slots) so nothing already registered changes.
+    #
+    # For a long run those defaults are a trap: at 1.43 GB per checkpoint and
+    # 900s spacing, an 18-hour run writes 72 checkpoints and keeps the last 3
+    # -- the final 45 minutes. Every diagnostic that found the 2026-07-29/30
+    # depth-8 defect came off checkpoints (per-block offset dominance, the
+    # update_ema trajectory, the input-sensitivity test), and all of them
+    # compared EARLY against LATE. Spread matters more than density; hourly
+    # coverage of the whole run beats 15-minute coverage of the last 5% of it.
+    #
+    # Suggested for the 18h depth-8 run: --checkpoint-interval 3600
+    # --checkpoint-slots 20 (~29 GB, full-run hourly coverage).
+    p.add_argument("--checkpoint-interval", dest="checkpoint_interval",
+                   type=int, default=900)
+    p.add_argument("--checkpoint-slots", dest="checkpoint_slots",
+                   type=int, default=3)
     p.add_argument("--max-batches-per-epoch", dest="max_batches_per_epoch",
                    type=int, default=-1)
     p.add_argument("--n-seeds", dest="n_seeds", type=int, default=len(SEEDS))
