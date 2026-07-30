@@ -158,6 +158,12 @@ STAGES: dict[int, list[tuple[str, int]]] = {
     # Primary readout is within-batch pairwise cosine measured post-hoc, NOT
     # capability -- the carried-over clip independently kills capability.
     16: [("probe_surprise_d8_nomupc", 512)],
+    # muPC RATE-BALANCE TEST (2026-07-30): muPC back ON at its normal
+    # exponent, with the PC rates scaled by residual_scale so both halves of
+    # the two-speed system are attenuated together. Tests whether depth-scale
+    # control and no-collapse can be had at the same time. One variable
+    # against stage 14.
+    17: [("probe_surprise_d8_balanced", 512)],
 }
 
 # Per-arm model configuration -- single source of truth, shared with
@@ -326,6 +332,24 @@ ARM_GRAD_CLIP: dict[str, float] = {
 # docs/research/2026-07-30_sigreg-projection-hypothesis.md for why capability
 # metrics therefore CANNOT be read from this run either way.
 ARM_SIGREG_PROJ: dict[str, str] = {"probe_surprise_d8_noproj": "none"}
+# `probe_surprise_d8_balanced` is `probe_surprise_d8` (muPC ON, exponent 0.25)
+# plus mu_pc_balance_rates. One variable against stage 14, which collapsed.
+#
+# Why this and not "muPC off": the depth ladder shows muPC's attenuation is
+# doing real work -- activation growth first-to-last block is flat at ~1.14
+# from 4 blocks to 36 with muPC, and climbs 1.47 -> 3.92 without it over the
+# same range. Disabling muPC trades a depth-8 collapse for unbounded growth at
+# production depth (36 blocks). Balancing keeps the attenuation and removes the
+# imbalance it creates.
+ARM_CONFIGS["probe_surprise_d8_balanced"] = dict(
+    ARM_CONFIGS["probe_surprise_d8"],
+    mu_pc_balance_rates=True,
+)
+ARM_GRAD_CLIP["probe_surprise_d8_balanced"] = 1000.0
+ARM_TAPER["probe_surprise_d8_balanced"] = ARM_TAPER["living_v5_4x_d4"]
+ARM_FILELIST["probe_surprise_d8_balanced"] = ARM_FILELIST["living_v5_4x_d4"]
+ARM_SIGREG["probe_surprise_d8_balanced"] = ARM_SIGREG["living_v5_4x_d4"]
+ARM_COSINE["probe_surprise_d8_balanced"] = ARM_COSINE["living_v5_4x_d4"]
 # `probe_surprise_d8_nomupc` is `probe_surprise_d8` with mu_pc_enabled False and
 # NOTHING else changed -- same 8 blocks, same clip of 1000, same "linear"
 # projection (the "none" variant was refuted 2026-07-30 and made prediction

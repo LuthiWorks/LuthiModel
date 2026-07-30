@@ -54,6 +54,7 @@ class PredictiveCodingBlock(nn.Module):
         consolidation_attractor_passes: int = 1,
         mu_pc_enabled: bool = False,
         mu_pc_exponent: float = 0.5,
+        mu_pc_balance_rates: bool = False,
         n_blocks_total: int = 1,
         buffer_dtypes: dict[str, torch.dtype] | None = None,
         dead_ffn: bool = False,
@@ -109,6 +110,48 @@ class PredictiveCodingBlock(nn.Module):
             self.residual_scale = 1.0 / (n_blocks_total ** self.mu_pc_exponent)
         else:
             self.residual_scale = 1.0
+
+        # muPC rate balancing (2026-07-30). `residual_scale` multiplies this
+        # block's output into the residual stream:
+        #     x = x + residual_scale * attn_out
+        #     x = x + residual_scale * ffn_out
+        # so by the chain rule every BACKPROP-trained parameter in the block
+        # (attention, up/down projections) receives a gradient scaled by
+        # `residual_scale`. The living FFN does NOT: it self-modifies locally
+        # inside the forward pass, from its own input and output, before that
+        # multiplication is applied. Its update magnitude is set by `pc_rate`
+        # alone and is completely unaffected.
+        #
+        # muPC (Innocenti et al. 2025) is derived for a network that is PC
+        # THROUGHOUT, where the residual scaling and init scaling together give
+        # depth-independent dynamics because everything scales together. This
+        # trunk is a hybrid -- backprop attention, local-PC FFN -- so applying
+        # muPC's attenuation scales one half of a two-speed system and leaves
+        # the other at full rate. The deeper the trunk, the smaller
+        # `residual_scale`, and the more the local PC substrate overpowers the
+        # global objective.
+        #
+        # Measured consequences at 2026-07-30, all consistent with this:
+        #   * depth 8 with muPC (s=0.5946) collapses in training to
+        #     within-batch cosine 0.970 -- the encoder stops distinguishing
+        #     its inputs;
+        #   * the same arm with muPC off (s=1.0) trains to 0.0111;
+        #   * depth 4 (s=0.7071) is healthy -- the imbalance is mild;
+        #   * the collapse is total at BLOCK 0, because block 0's backprop path
+        #     is attenuated exactly like every other block's.
+        #
+        # `mu_pc_balance_rates` scales the PC rates by the same factor, so both
+        # halves are attenuated equally and the two-speed balance is preserved
+        # at any depth. That keeps muPC's depth-scale control -- which the
+        # depth ladder shows is real and which disabling muPC surrenders
+        # (activation growth 1.14 flat with muPC vs 3.92 without, at 36
+        # blocks) -- without the imbalance that causes the collapse.
+        #
+        # Default False: bit-identical to every run before this date.
+        self._mu_pc_rate_factor = (
+            self.residual_scale if (mu_pc_enabled and mu_pc_balance_rates)
+            else 1.0
+        )
         self._n_blocks_total = n_blocks_total
 
         self.norm1 = nn.LayerNorm(d_model)
@@ -148,8 +191,10 @@ class PredictiveCodingBlock(nn.Module):
         else:
             self.living_ffn = PredictiveCodingLayer(
                 inner_dim, inner_dim,
-                pc_rate=pc_rate,
-                pred_learning_rate=pred_learning_rate,
+                pc_rate=pc_rate * self._mu_pc_rate_factor,
+                pred_learning_rate=(
+                    pred_learning_rate * self._mu_pc_rate_factor
+                ),
                 homeostatic_decay=homeostatic_decay,
                 set_point_adapt_rate=set_point_adapt_rate,
                 num_episodes=num_episodes,

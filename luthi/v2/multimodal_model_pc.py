@@ -80,6 +80,7 @@ class MultimodalPredictiveCodingLM(nn.Module):
         consolidation_attractor_passes: int = 1,
         mu_pc_enabled: bool = False,
         mu_pc_exponent: float = 0.5,
+        mu_pc_balance_rates: bool = False,
         backward_pass_enabled: bool = True,
         buffer_dtypes: dict[str, torch.dtype] | None = None,
         # Multimodal parameters
@@ -167,6 +168,7 @@ class MultimodalPredictiveCodingLM(nn.Module):
                 consolidation_attractor_passes=consolidation_attractor_passes,
                 mu_pc_enabled=mu_pc_enabled,
                 mu_pc_exponent=mu_pc_exponent,
+                mu_pc_balance_rates=mu_pc_balance_rates,
                 n_blocks_total=n_blocks,
                 buffer_dtypes=buffer_dtypes,
                 dead_ffn=dead_ffn,
