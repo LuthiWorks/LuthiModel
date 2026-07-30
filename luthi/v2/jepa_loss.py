@@ -13,16 +13,42 @@ Components
   online encoder run on the full sequence, with gradients flowing
   through both forward passes (LeWM is fully end-to-end).
 - L_pred = MSE between predictor output and the target-block
-  embeddings. The L1+MAD reasoning we carried from V-JEPA was a
-  V-JEPA anti-collapse argument; SIGReg now does the anti-collapse
-  work, so MSE is the simpler, LeWM-default choice.
-- Per-modality projection head (Linear -> BatchNorm1d) on the
-  encoder output before SIGReg. SIGReg targets N(0, 1); BN does
-  the standardization. The encoder's final LayerNorm in our trunk
-  would wash out the distribution SIGReg shapes, so SIGReg must
-  run on the BN-projected head, NOT on the LayerNorm'd trunk
-  output. Per-modality heads preserve the F1/F2 single-modality-
-  collapse protection per-modality VICReg gave us.
+  embeddings, with the target DETACHED (`detach_target=True`,
+  default since 2026-07-28). The L1+MAD reasoning we carried from
+  V-JEPA was a V-JEPA anti-collapse argument; SIGReg does the
+  anti-collapse work, so MSE is the simpler, LeWM-default choice.
+- Per-modality projection head, `sigreg_projection="linear"` by
+  default since 2026-07-28.
+
+  CORRECTED 2026-07-28 -- the paragraph that stood here was
+  backwards, and it cost the v5 family. It read: "Linear ->
+  BatchNorm1d ... SIGReg targets N(0, 1); BN does the
+  standardization ... so SIGReg must run on the BN-projected head."
+  That is exactly wrong. BatchNorm subtracts the batch mean and
+  divides by the batch std -- the two quantities SIGReg exists to
+  constrain. Pre-standardizing its input hands it a solved problem,
+  so the anti-collapse term stops binding on the encoder at all.
+
+  Measured with this repo's own SIGReg, not a reimplementation:
+  under a 100x uniform shrink, SIGReg on raw latents goes 0.86 ->
+  706 (fights it) while SIGReg after BN goes 0.566 -> 0.545, a 3.7%
+  move (blind). Under an offset fraction sweep 0 -> 0.995, raw goes
+  1.0 -> 2111 and post-BN goes 0.563 -> 0.567, a 0.7% move (blind).
+  Meanwhile L_pred was scale-sensitive MSE against a NON-detached
+  target, so shrinking the representation reduced the loss
+  quadratically at no cost. Three independent measurements put the
+  v5 representation at ~92-95% a single batch-constant direction.
+
+  "linear_bn" retains the old behaviour for A/B; "none" runs SIGReg
+  on trunk latents directly. Per-modality heads still preserve the
+  F1/F2 single-modality-collapse protection per-modality VICReg
+  gave us.
+
+  Note on the retired claim about the trunk's final LayerNorm:
+  `final_norm` is applied only in the LM-style `forward()`, never in
+  `encode()`, so the JEPA objective never sees it. The unconstrained
+  scale lives in the trunk's per-block LayerNorm gains, which
+  `norm_gain_summary()` now logs.
 - Per-modality SIGReg statistic, added to L_pred with lambda=0.1
   (LeWM default). One SIGReg module shared across modalities (it
   is stateless except for fixed quadrature buffers); per-modality

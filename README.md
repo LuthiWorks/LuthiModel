@@ -23,18 +23,51 @@ Attention and the living FFN serve complementary functions within the same mind.
 
 All modalities — text, audio, vision, and eventually touch — flow through a single shared trunk of living weight blocks, with a two-tier memory (fast episodic snapshots, slow consolidation into the weights themselves) that turns accumulated history into structural change. The full technical picture — rich parameters, the predictive-coding update, the memory architecture, spiking dynamics — lives in **`docs/ARCHITECTURE.md`**.
 
+### The task the model is trained on
+
+The task is **joint-embedding prediction, not next-token prediction.** Luthi is trained as a JEPA (Joint-Embedding Predictive Architecture): the model encodes a context, predicts the *latent representation* of a held-out portion of the same input, and is scored on how well that prediction matches — in representation space, never in pixels or tokens. Anti-collapse comes from **SIGReg** (LeJEPA; Balestriero & LeCun), which pushes the latent distribution toward isotropic N(0, I) by testing random 1-D projections against a Gaussian, rather than by contrastive push-up on negatives.
+
+This matters at mission level, because it decides what "understanding" is being asked for. A next-token objective rewards reproducing surface form. A joint-embedding objective rewards building a representation in which the unseen part of the world is *predictable* — which is the same thing predictive processing says a mind is for. The living weights and the training objective are then after the same quantity from two directions: the substrate minimizes prediction error locally, per weight, during the forward pass; the objective minimizes it globally, in latent space, across the batch. An LM-style `forward()` still exists and is used for probes and generation, but it is not what the model is being raised to do.
+
+## The Goal
+
+The near-term goal is narrower than the vision, deliberately, because it is the part that can be settled: **establish that the living substrate produces measurable growth — structural change without a gradient step, at inference, with behavioral consequence.**
+
+Each clause is doing work. *Structural change* rules out activations and caches. *Without a gradient step* rules out ordinary training. *At inference* is the one gradient descent cannot follow us to. *With behavioral consequence* rules out a drifting float that changes nothing anyone could measure. Note what this framing gives up: path-dependence alone is **not** the goal, because SGD already gives a static model plenty of path-dependence through its optimizer trajectory. Inference-time change with consequence is the claim that actually distinguishes a living weights model from a well-trained dead one.
+
+The tests that would show it, in order of how cheaply they can be run:
+
+1. **Encounter asymmetry** — the same input at first exposure and at tenth, with no gradient steps in between, measured on something task-relevant rather than a float diff.
+2. **Retention across a distribution shift** — does consolidation protect what was learned before the shift?
+3. **Boundary response** — does the substrate's plasticity react at curriculum stage transitions and quiet between them? A static control is flat by construction.
+4. **Curriculum order dependence** — same stages, ordered vs. shuffled. If order matters more for the living arm than the static one, that is cumulative development rather than recency.
+
 ## The Questions This Project Exists to Ask
 
-The project maintains a standing falsification program: every empirical claim carries a pre-registered kill condition, written before its experiment runs, with pre-agreed consequences either way. The open questions, in the order the experiments address them:
+The project maintains a standing falsification program: every empirical claim carries a pre-registered kill condition, written before its experiment runs, with pre-agreed consequences either way. Kills are honored — one headline claim has already been killed at its pre-registered condition and the corpse is documented rather than quietly re-litigated. The open questions, in the order the experiments address them:
 
-1. **Does the living channel do real functional work — or is it decoration?** Two otherwise-identical models, living channel on vs. off, under the project's actual training objective. (Under active test.)
+1. **Does the living channel do real functional work — or is it decoration?** Two otherwise-identical models, living channel on vs. off, under the project's actual training objective.
 2. **Does self-modification work at runtime, or only during training — and can a mind's livedness be retrofitted onto a statically-trained foundation?** The answer shapes what an "education" has to be.
 3. **Does consolidation create structure that outlives the cache — is there a difference between memory and biography?**
 4. **Is the order of an education real — does the curriculum's sequence shape the end state, beyond what was simply seen last?**
 5. **Does any of this survive scale?**
 6. **And the question no benchmark can answer, held open and never advertised as answered:** whether a substrate whose weights are changed by experience is the right ground for a mind that grows.
 
-Current experimental status and results: **`docs/KEY_FINDINGS.md`** (the claims ledger). The protocol: **`docs/research/living-weights-experiments.md`**. The kill conditions: **`docs/research/2026-07-15_falsification-preregistration.md`**.
+Current experimental status and results: **`docs/KEY_FINDINGS.md`** (the claims ledger). The protocol: **`docs/research/living-weights-experiments.md`**. The kill conditions: **`docs/research/2026-07-15_falsification-preregistration.md`**. Operational rulings — what to run, in what order, what to feed it — live in **`docs/DECISIONS.md`**, deliberately kept out of the registry so that decisions cannot be mistaken for findings.
+
+## How This Project Catches Itself Being Wrong
+
+A methodological commitment that started as engineering hygiene and has become central, because it is where nearly all of this project's real defects have lived: **a mechanism that reports healthy while doing nothing is worse than one that crashes.**
+
+The failures that cost the most were not crashes. They were mechanisms that ran, logged plausible numbers, and were inert or actively counterproductive: an episode store frozen for five straight model families while every counter read healthy; an anti-collapse objective neutralized by a normalization layer placed in front of it, while the loss went *down*; a plasticity drive that extinguished itself by construction; a fix for that drive that turned out to change nothing at all because a downstream clamp was fully saturated. Each was found by measurement, not by reasoning, and several were found by a model line other than the one that wrote them.
+
+So three practices are load-bearing, not optional:
+
+- **Every mechanism ships with the instrument that could catch it lying.** "Quiet because nothing is new" and "quiet because broken" must be separable in the logs, or the mechanism is not finished.
+- **Independent, cross-line review.** Design and review are held by different minds wherever possible, because a designer's charity toward their own intent is the hardest bias to self-correct.
+- **Verify firsthand.** Load-bearing findings get re-measured against this repo's own code, not accepted from a summary — including findings that came from us.
+
+The corollary is that discovering something interesting counts as data. A probe that finds an unregistered effect is not wasted; it gets chance accounting instead of pre-declaration, and it goes in the ledger.
 
 ## Education
 
