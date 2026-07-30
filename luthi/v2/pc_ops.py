@@ -151,6 +151,7 @@ def _pc_self_modify_python(
     drive_calls: torch.Tensor | None = None,
     drive_gain_out: torch.Tensor | None = None,
     drive_fire_count: torch.Tensor | None = None,
+    drive_gain_sum: torch.Tensor | None = None,
     drive_decay: float = 0.01,
     drive_drift_gain: float = 0.1,
     drive_surprise_k: float = 3.0,
@@ -331,9 +332,17 @@ def _pc_self_modify_python(
         # baseline trickle. Measured 1.0000 on stationary input at floor=0.05
         # before this.
         if drive_fire_count is not None and not warm:
-            drive_fire_count.add_(
-                (gain > drive_gain_floor).to(drive_fire_count.dtype).reshape(())
-            )
+            fired = (gain > drive_gain_floor).reshape(())
+            drive_fire_count.add_(fired.to(drive_fire_count.dtype))
+            # Accumulate gain magnitude on firing calls only, so
+            # mean-gain-when-firing is recoverable independently of how often
+            # it fires. Extinction by "fires rarely" and extinction by "fires
+            # feebly" are different diagnoses with different fixes.
+            if drive_gain_sum is not None:
+                drive_gain_sum.add_(
+                    torch.where(fired, gain.reshape(()),
+                                torch.zeros_like(gain.reshape(())))
+                )
 
     # b/c. Precision-weighted error, clamped per-input.
     #    The clamp mirrors v1's `apply_error` clamp on the local update
@@ -525,6 +534,7 @@ def pc_self_modify(
     drive_calls: torch.Tensor | None = None,
     drive_gain_out: torch.Tensor | None = None,
     drive_fire_count: torch.Tensor | None = None,
+    drive_gain_sum: torch.Tensor | None = None,
     drive_decay: float = 0.01,
     drive_drift_gain: float = 0.1,
     drive_surprise_k: float = 3.0,
@@ -616,6 +626,7 @@ def pc_self_modify(
         drive_calls=drive_calls,
         drive_gain_out=drive_gain_out,
         drive_fire_count=drive_fire_count,
+        drive_gain_sum=drive_gain_sum,
         drive_decay=drive_decay,
         drive_drift_gain=drive_drift_gain,
         drive_surprise_k=drive_surprise_k,

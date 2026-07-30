@@ -1074,6 +1074,13 @@ class JEPATrainer:
                     "drive_ref": a.get("drive_ref"),
                     "drive_dev": a.get("drive_dev"),
                     "drive_duty": a.get("drive_duty"),
+                    # Cumulative counters, so differencing two records gives the
+                    # per-interval firing rate and per-interval mean gain
+                    # separately -- the two extinction modes. Emitted from the
+                    # first long run rather than reconstructed afterwards.
+                    "drive_gain_mean_fired": a.get("drive_gain_mean_fired"),
+                    "drive_fires": a.get("drive_fires"),
+                    "drive_calls": a.get("drive_calls"),
                 }
                 for i, a in enumerate(aliveness)
             ]

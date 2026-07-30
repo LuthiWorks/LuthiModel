@@ -306,7 +306,54 @@ class TestInstrumentation:
         for _ in range(50):
             layer(torch.randn(4, 16))
         stats = layer.aliveness()
-        for key in ("drive_gain", "drive_ref", "drive_dev", "drive_duty"):
+        for key in ("drive_gain", "drive_ref", "drive_dev", "drive_duty",
+                    "drive_gain_mean_fired", "drive_fires", "drive_calls"):
             assert key in stats, key
             assert isinstance(stats[key], float)
         assert 0.0 <= stats["drive_duty"] <= 1.0
+
+    def test_mean_gain_when_firing_is_recoverable(self):
+        """Separates 'fires rarely' from 'fires feebly'.
+
+        The mean must be taken over FIRING calls only. Averaged over all calls
+        it would be dominated by the ~98% of zeros and would track duty rather
+        than magnitude, collapsing the two extinction modes back together.
+        """
+        torch.manual_seed(0)
+        layer = _surprise_layer(drive_warmup_calls=50)
+        for i in range(400):
+            torch.manual_seed(8000 + i)
+            layer(torch.randn(4, 16) * (1.0 if i < 200 else 7.0))
+        stats = layer.aliveness()
+        fires = stats["drive_fires"]
+        assert fires > 0, "expected the shift to produce firings"
+        mean_fired = stats["drive_gain_mean_fired"]
+        # Every firing call has gain > floor, so the mean over firings must too.
+        assert mean_fired > layer.drive_gain_floor, mean_fired
+        assert mean_fired <= layer.drive_gain_max
+        # And it must NOT equal the all-calls mean, which the zeros would drag
+        # far below it.
+        all_calls_mean = float(layer.drive_gain_sum.item()) / stats["drive_calls"]
+        assert mean_fired > all_calls_mean * 2, (mean_fired, all_calls_mean)
+
+    def test_gain_sum_untouched_in_raw_mode(self):
+        torch.manual_seed(0)
+        layer = _layer()
+        for _ in range(20):
+            layer(torch.randn(4, 16))
+        assert float(layer.drive_gain_sum.item()) == 0.0
+
+    def test_gain_sum_frozen_path_safe(self):
+        torch.manual_seed(0)
+        layer = _surprise_layer(drive_warmup_calls=20)
+        for i in range(200):
+            torch.manual_seed(9000 + i)
+            layer(torch.randn(4, 16) * (1.0 if i < 100 else 7.0))
+        before = float(layer.drive_gain_sum.item())
+        layer._plasticity_frozen = True
+        try:
+            for _ in range(10):
+                layer(torch.randn(4, 16) * 50.0)
+        finally:
+            layer._plasticity_frozen = False
+        assert float(layer.drive_gain_sum.item()) == before

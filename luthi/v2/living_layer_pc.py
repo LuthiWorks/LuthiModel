@@ -479,6 +479,14 @@ class PredictiveCodingLayer(nn.Module):
         self.register_buffer(
             "drive_fire_count", torch.tensor(0, dtype=torch.long)
         )
+        # Sum of gain over firing calls only. With drive_fire_count this gives
+        # mean-gain-when-firing, and differencing two logged records gives the
+        # per-interval value. That separates the two ways a gated drive can die
+        # -- firing LESS OFTEN vs firing WEAKER -- which a cumulative duty
+        # cycle alone cannot distinguish, and which is exactly the question a
+        # full-length run exists to answer. Added 2026-07-29 before the 3-epoch
+        # run rather than after, because the alternative is running it twice.
+        self.register_buffer("drive_gain_sum", torch.tensor(0.0))
         self.register_buffer("act_mean", torch.zeros(out_features))
         self.register_buffer("act_var", torch.zeros(out_features))
         self.register_buffer(
@@ -1159,6 +1167,7 @@ class PredictiveCodingLayer(nn.Module):
                     drive_calls=self.drive_calls,
                     drive_gain_out=self.drive_gain,
                     drive_fire_count=self.drive_fire_count,
+                    drive_gain_sum=self.drive_gain_sum,
                     drive_decay=self.drive_decay,
                     drive_drift_gain=self.drive_drift_gain,
                     drive_surprise_k=self.drive_surprise_k,
@@ -1402,6 +1411,20 @@ class PredictiveCodingLayer(nn.Module):
                     1.0,
                 )
             ),
+            # Mean gain over FIRING calls only. Read with drive_duty this
+            # separates the two ways a gated drive can die: falling duty at
+            # steady mean gain = firing less often; steady duty at falling mean
+            # gain = firing more feebly. Different diagnoses, different fixes.
+            # `drive_gain` alone cannot distinguish them -- as a point sample at
+            # ~2% duty it read 0.0000 at every deep record of the first probes.
+            # Both counters are cumulative, so differencing two logged records
+            # gives the per-interval value.
+            "drive_gain_mean_fired": (
+                float(self.drive_gain_sum.item())
+                / max(float(self.drive_fire_count.item()), 1.0)
+            ),
+            "drive_fires": float(self.drive_fire_count.item()),
+            "drive_calls": float(self.drive_calls.item()),
             "weight_ulp_ratio": float(
                 self.update_ema.detach().mean().item()
                 / max(

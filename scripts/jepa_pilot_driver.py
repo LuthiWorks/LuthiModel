@@ -146,6 +146,10 @@ STAGES: dict[int, list[tuple[str, int]]] = {
     # was invisible for five families because "quiet because familiar" and
     # "quiet because broken" were not separable. Read drive_duty first.
     13: [("probe_surprise", 512)],
+    # SURPRISE DRIVE AT DEPTH 8 (2026-07-29, Brian's call; also the depth v6
+    # was registered to start at). Full length -- the extinction question is
+    # what this run exists to answer and 4,000 steps provably cannot.
+    14: [("probe_surprise_d8", 512)],
 }
 
 # Per-arm model configuration -- single source of truth, shared with
@@ -262,6 +266,25 @@ ARM_TAPER["probe_surprise"] = ARM_TAPER["living_v5_4x_d4"]
 ARM_FILELIST["probe_surprise"] = ARM_FILELIST["living_v5_4x_d4"]
 ARM_SIGREG["probe_surprise"] = ARM_SIGREG["living_v5_4x_d4"]
 ARM_COSINE["probe_surprise"] = ARM_COSINE["living_v5_4x_d4"]
+# The 8-block depth arm (Brian's call 2026-07-29, and the depth v6 was already
+# registered to start at): probe_surprise at n_blocks=8. Everything else held
+# identical to the 4-block probe so depth is the only difference against it.
+#
+# muPC note: mu_pc_exponent stays at 0.25, inherited from the d4 arms. muPC
+# exists precisely so depth does not need per-depth rate retuning, so 0.25 is
+# the right thing to carry forward rather than re-tune by hand -- but this is
+# the first time that claim gets tested at 8 blocks in this project, and it is
+# a claim, not a guarantee. If the deep blocks show a systematically different
+# firing rate or a rate/stability problem the shallow ones do not, the exponent
+# is the first suspect.
+ARM_CONFIGS["probe_surprise_d8"] = dict(
+    ARM_CONFIGS["probe_surprise"],
+    n_blocks=8,
+)
+ARM_TAPER["probe_surprise_d8"] = ARM_TAPER["living_v5_4x_d4"]
+ARM_FILELIST["probe_surprise_d8"] = ARM_FILELIST["living_v5_4x_d4"]
+ARM_SIGREG["probe_surprise_d8"] = ARM_SIGREG["living_v5_4x_d4"]
+ARM_COSINE["probe_surprise_d8"] = ARM_COSINE["living_v5_4x_d4"]
 
 
 def _device() -> torch.device:
