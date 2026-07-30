@@ -1063,6 +1063,17 @@ class JEPATrainer:
                     # External review 2026-07-28, instrument #5.
                     "weight_pred_cosine": a.get("weight_pred_cosine"),
                     "effective_rank": block_ranks[i] if i < len(block_ranks) else None,
+                    # Surprise-drive readings (2026-07-29). `drive_duty` is the
+                    # instrument that makes "quiet because familiar" separable
+                    # from "quiet because broken" -- the distinction the whole
+                    # drive fix turns on, and the one we could not make for the
+                    # first five families. Emit it even in raw mode, where it
+                    # reads 0/0: a flat zero next to a live `update_ema` is
+                    # itself the signal that no surprise gating is running.
+                    "drive_gain": a.get("drive_gain"),
+                    "drive_ref": a.get("drive_ref"),
+                    "drive_dev": a.get("drive_dev"),
+                    "drive_duty": a.get("drive_duty"),
                 }
                 for i, a in enumerate(aliveness)
             ]

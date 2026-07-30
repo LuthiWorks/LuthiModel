@@ -139,6 +139,13 @@ STAGES: dict[int, list[tuple[str, int]]] = {
     # repairs was invisible to every counter for five whole families.
     # Distinct arm name so its artifacts can never pool with a family.
     12: [("probe_storefix", 512)],
+    # SURPRISE-DRIVE PROBE (2026-07-29, not a registered family): stage 12's
+    # configuration plus drive_mode="surprise". Same purpose and same
+    # discipline -- the drive fix is unit-tested (20 tests) but has never run on
+    # real corpus data, and the thing it repairs (a self-extinguishing drive)
+    # was invisible for five families because "quiet because familiar" and
+    # "quiet because broken" were not separable. Read drive_duty first.
+    13: [("probe_surprise", 512)],
 }
 
 # Per-arm model configuration -- single source of truth, shared with
@@ -227,6 +234,34 @@ ARM_TAPER["probe_storefix"] = ARM_TAPER["living_v5_4x_d4"]
 ARM_FILELIST["probe_storefix"] = ARM_FILELIST["living_v5_4x_d4"]
 ARM_SIGREG["probe_storefix"] = ARM_SIGREG["living_v5_4x_d4"]
 ARM_COSINE["probe_storefix"] = ARM_COSINE["living_v5_4x_d4"]
+# Surprise-drive probe (2026-07-29). probe_storefix + drive_mode="surprise".
+# ONE change against probe_storefix, so the drive is attributable: the store
+# fix, the band, and the fixed objective are all held constant and already
+# measured (probe_storefix_512d_seed45: NMSE 0.597, probe lift 4.67x over its
+# own shuffled floor, update_ema 2.6e-6..8.3e-6).
+#
+# `relative_trust` is already True here via the v5 base, which is what makes
+# surprise mode legal at all -- absolute precision weighting saturates the
+# +/-1 clamp at 100% and discards the drive magnitude (measured on the real
+# code path). That dependency is enforced by a raise in the layer, not
+# supplied silently, so this pairing is declared here where it can be
+# attributed rather than inherited from a default.
+#
+# What to read first in the log: substrate_blocks[*].drive_duty. It is 0.0000
+# on stationary input and on i.i.d. draws from a fixed distribution, and rises
+# only at a genuine shift in the error scale (unit-tested). So on real corpus
+# data a nonzero duty means the drive is finding structure the forecast did not
+# expect, and a flat zero means it is not -- the discriminator between "quiet
+# because familiar" and "quiet because broken" that the first five families
+# could not make.
+ARM_CONFIGS["probe_surprise"] = dict(
+    ARM_CONFIGS["probe_storefix"],
+    drive_mode="surprise",
+)
+ARM_TAPER["probe_surprise"] = ARM_TAPER["living_v5_4x_d4"]
+ARM_FILELIST["probe_surprise"] = ARM_FILELIST["living_v5_4x_d4"]
+ARM_SIGREG["probe_surprise"] = ARM_SIGREG["living_v5_4x_d4"]
+ARM_COSINE["probe_surprise"] = ARM_COSINE["living_v5_4x_d4"]
 
 
 def _device() -> torch.device:

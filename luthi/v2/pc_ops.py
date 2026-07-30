@@ -144,6 +144,20 @@ def _pc_self_modify_python(
     drive_normalize: bool = False,
     error_rms: torch.Tensor | None = None,
     drive_rms_decay: float = 0.01,
+    drive_mode: str = "raw",
+    drive_ref: torch.Tensor | None = None,
+    drive_ref_drift: torch.Tensor | None = None,
+    drive_dev: torch.Tensor | None = None,
+    drive_calls: torch.Tensor | None = None,
+    drive_gain_out: torch.Tensor | None = None,
+    drive_fire_count: torch.Tensor | None = None,
+    drive_decay: float = 0.01,
+    drive_drift_gain: float = 0.1,
+    drive_surprise_k: float = 3.0,
+    drive_gain_max: float = 4.0,
+    drive_gain_floor: float = 0.0,
+    drive_dev_floor_frac: float = 0.01,
+    drive_warmup_calls: int = 200,
     sparse_gate: torch.Tensor | None = None,
     learning_gain_enabled: bool = False,
     learning_gain_progress: float = 0.0,
@@ -196,11 +210,130 @@ def _pc_self_modify_python(
     # the raw error (it is an estimate of actual noise), the prediction matrix
     # still learns from raw error (it is a generative model of the real input),
     # and the returned pred_error stays raw so the top-down sweep is unchanged.
+    # ---------------------------------------------------------------------
+    # 2026-07-29 CORRECTION to the paragraph above. The `rms` mode below is a
+    # NO-OP in the production regime, and the reasoning that introduced it was
+    # incomplete. Step (b/c) computes
+    #     weighted_error = (drive_error * precision).clamp(-1.0, 1.0)
+    # and at production precision scales (~1.7e5 median, measured on
+    # probe_storefix_512d_seed45) that clamp is 100% saturated -- every single
+    # entry. Measured on the real code path with the layer's own stored episode
+    # inputs: raw pred_error (rms 0.23) gives frac|w|>=1 = 1.0000, and
+    # rms-normalized pred_error gives frac|w|>=1 = 1.0000 with a SIGN-IDENTICAL
+    # result. Dividing by a positive scalar cannot change a sign, so under
+    # absolute precision weighting the rms mode changes literally nothing.
+    #
+    # Two consequences worth stating plainly:
+    #   * The update in that regime is sign-based:
+    #     delta_w = outer(output_mean, sign(pred_error)) * plasticity * pc_rate.
+    #     Precision contributes nothing; the clamp has eaten it.
+    #   * Any bounded drive is incompatible with absolute-precision weighting.
+    #     Making the drive scale-free is necessary but NOT sufficient -- the
+    #     trust term has to be bounded too, or the clamp destroys the magnitude
+    #     structure the drive was fixed to preserve.
+    #
+    # Hence `surprise` mode requires `relative_trust`, enforced below rather
+    # than silently supplied. See docs/research/2026-07-29_the-drive-fix.md.
+    # ---------------------------------------------------------------------
+    #
+    # `surprise` mode: the drive is normalized EXCESS error -- how much worse
+    # than expected this input was, in units of the layer's own recent
+    # deviation. Holt's linear method (level + drift + mean abs deviation),
+    # the same estimator the episode-store admission rule v3 uses, and for the
+    # same reason: a plain EMA without a trend term froze on a decaying signal.
+    #
+    #     forecast = level + drift          expected error scale
+    #     resid    = rms_now - forecast     excess over expectation
+    #     gain     = clamp((resid - k*dev) / dev, floor, max)
+    #     drive    = pred_error / forecast * gain
+    #
+    # `k` is a THRESHOLD in deviations, not a divisor. That distinction is the
+    # whole gate: an unbiased forecast has resid > 0 on half of all calls by
+    # symmetry, so `gain = resid / (k*dev)` fires at ~50% duty on pure noise --
+    # measured exactly 0.500 on stationary input, which is a drive responding to
+    # noise rather than to novelty. Requiring resid to clear k deviations before
+    # any gain applies is the same test the episode-store admission rule v3
+    # uses, with the same default (k=3), and for the same reason.
+    #
+    # Properties, which are the point:
+    #   * Uniform improvement: forecast tracks rms_now down together, so the
+    #     ratio stays O(1). The channel does not self-extinguish with scale.
+    #   * Familiar input: rms_now ~ forecast, resid ~ 0, gain ~ 0. Quiet.
+    #   * Novel input: resid large, gain up to gain_max on an O(1)-normalized
+    #     error. Full dynamic range available at ANY absolute error scale --
+    #     which is exactly what raw error cannot do once it has shrunk.
+    #
+    # "Quiet when familiar" is intended, not a regression to the dead regime.
+    # The difference from dead: a dead drive cannot respond to novelty because
+    # its magnitude is gone; this one is quiet but retains full range. That
+    # distinction is only credible if it is observable, so `drive_gain_out` and
+    # `drive_fire_count` are emitted per layer -- the discriminator the
+    # 2026-07-29 review asked for.
     drive_error = pred_error
-    if drive_normalize and error_rms is not None:
+    mode = drive_mode
+    if mode == "raw" and drive_normalize:
+        mode = "rms"  # back-compat for the 2026-07-28 flag
+    if mode == "rms" and error_rms is not None:
         rms_now = pred_error.detach().pow(2).mean().sqrt()
         error_rms.mul_(1.0 - drive_rms_decay).add_(rms_now, alpha=drive_rms_decay)
         drive_error = pred_error / error_rms.clamp(min=1e-12)
+    elif mode == "surprise" and drive_ref is not None:
+        if not relative_trust:
+            raise ValueError(
+                "drive_mode='surprise' requires relative_trust=True. Absolute "
+                "precision weighting saturates the +/-1 clamp at 100% in the "
+                "production regime (measured), which discards the drive's "
+                "magnitude and reduces the update to sign(pred_error) -- "
+                "defeating the entire point of a surprise drive. This is "
+                "raised rather than silently enabling relative trust, because "
+                "a mechanism dependency belongs in the arm config where it can "
+                "be attributed, not hidden in a default."
+            )
+        rms_now = pred_error.detach().pow(2).mean().sqrt()
+        forecast = (drive_ref + drive_ref_drift).clamp(min=0.0)
+        resid = rms_now - forecast
+        b = drive_decay
+        # Holt update. Order matters: forecast is built from the OLD level and
+        # drift before either is advanced.
+        drive_ref.copy_(forecast + b * resid)
+        drive_ref_drift.copy_(drive_ref_drift + b * drive_drift_gain * resid)
+        drive_dev.copy_(drive_dev + b * (resid.abs() - drive_dev))
+        warm = int(drive_calls.item()) < drive_warmup_calls
+        drive_calls.add_(1)
+        if warm:
+            # Statistical warmup: behave EXACTLY like raw while the estimator
+            # converges. Same discipline as the episode-store fix -- a new
+            # mechanism must never be inert (or wild) before it has data.
+            gain = torch.ones_like(drive_ref)
+            drive_error = pred_error
+        else:
+            # Floor dev relative to the level: on very stationary data dev can
+            # collapse and make trivial residuals look infinitely surprising.
+            dev_eff = torch.maximum(
+                drive_dev, drive_dev_floor_frac * forecast
+            ).clamp(min=1e-12)
+            gain = (
+                (resid - drive_surprise_k * dev_eff) / dev_eff
+            ).clamp(drive_gain_floor, drive_gain_max)
+            drive_error = (
+                pred_error / forecast.clamp(min=1e-12).to(pred_error.dtype)
+            ) * gain.to(pred_error.dtype)
+        if drive_gain_out is not None:
+            drive_gain_out.copy_(gain.detach().reshape(()))
+        # Count fires only POST-warmup. Warmup holds gain at 1.0 to stay
+        # bit-identical to raw, so counting those calls would report a duty
+        # cycle of exactly warmup/total and hide the real signal underneath --
+        # measured 0.0833 = 50/600 in all three test regimes, including a
+        # regime with 19 genuine fires, before this guard.
+        # Threshold is the FLOOR, not zero: with drive_gain_floor > 0 the gain
+        # never reaches zero, so `gain > 0` would report duty 1.0 always and the
+        # instrument would go blind exactly when a run chooses to keep a
+        # baseline trickle. Measured 1.0000 on stationary input at floor=0.05
+        # before this.
+        if drive_fire_count is not None and not warm:
+            drive_fire_count.add_(
+                (gain > drive_gain_floor).to(drive_fire_count.dtype).reshape(())
+            )
 
     # b/c. Precision-weighted error, clamped per-input.
     #    The clamp mirrors v1's `apply_error` clamp on the local update
@@ -385,6 +518,20 @@ def pc_self_modify(
     drive_normalize: bool = False,
     error_rms: torch.Tensor | None = None,
     drive_rms_decay: float = 0.01,
+    drive_mode: str = "raw",
+    drive_ref: torch.Tensor | None = None,
+    drive_ref_drift: torch.Tensor | None = None,
+    drive_dev: torch.Tensor | None = None,
+    drive_calls: torch.Tensor | None = None,
+    drive_gain_out: torch.Tensor | None = None,
+    drive_fire_count: torch.Tensor | None = None,
+    drive_decay: float = 0.01,
+    drive_drift_gain: float = 0.1,
+    drive_surprise_k: float = 3.0,
+    drive_gain_max: float = 4.0,
+    drive_gain_floor: float = 0.0,
+    drive_dev_floor_frac: float = 0.01,
+    drive_warmup_calls: int = 200,
     sparse_gate: torch.Tensor | None = None,
     learning_gain_enabled: bool = False,
     learning_gain_progress: float = 0.0,
@@ -417,12 +564,23 @@ def pc_self_modify(
     # step 7, verified by tests/test_pc_ops_gain_parity.py), so the gain runs
     # on the fast path too. When C++ is loaded it handles every case; the
     # Python fallback covers hosts without a compiler.
-    # Drive normalization (item 1.1) exists only in the Python reference for
-    # now, so requesting it forces the Python path rather than silently
-    # running unnormalized in C++ -- a flag that appears to be on while the
-    # fast path ignores it is exactly the silent-success failure this project
-    # keeps finding. Port to csrc/pc_ops.cpp before any long normalized run.
-    if _use_cpp and not drive_normalize:
+    # Drive normalization (item 1.1) and the surprise drive (2026-07-29) exist
+    # only in the Python reference for now, so requesting either forces the
+    # Python path rather than silently running unmodified in C++ -- a flag that
+    # appears to be on while the fast path ignores it is exactly the
+    # silent-success failure this project keeps finding.
+    #
+    # Measured cost of that fallback, 2026-07-29, 2048x2048 layer, batch 32:
+    # DirectML 4.34 ms/call (C++) vs 5.04 ms/call (Python surprise) = 1.16x;
+    # CPU 24.87 vs 25.68 ms = 1.03x. The module docstring's "~50x slower"
+    # dates from 2026-05-10 and does NOT apply to this path -- it is not a
+    # reason to defer a run. Porting to csrc/pc_ops.cpp is still worth doing,
+    # but as an optimization, not a prerequisite.
+    #
+    # Note for whoever ports it: `precision.median()` in the relative-trust
+    # branch has no DML kernel and silently falls back to CPU every call. That
+    # applies to the whole v5 family too, not just this path.
+    if _use_cpp and not drive_normalize and drive_mode == "raw":
         salience_tensor, pred_error, applied_change = _cpp_ops.pc_self_modify(
             weight, prediction, set_point, momentum, update_ema,
             precision, error_acc, plasticity, x_flat, output,
@@ -451,6 +609,20 @@ def pc_self_modify(
         drive_normalize=drive_normalize,
         error_rms=error_rms,
         drive_rms_decay=drive_rms_decay,
+        drive_mode=drive_mode,
+        drive_ref=drive_ref,
+        drive_ref_drift=drive_ref_drift,
+        drive_dev=drive_dev,
+        drive_calls=drive_calls,
+        drive_gain_out=drive_gain_out,
+        drive_fire_count=drive_fire_count,
+        drive_decay=drive_decay,
+        drive_drift_gain=drive_drift_gain,
+        drive_surprise_k=drive_surprise_k,
+        drive_gain_max=drive_gain_max,
+        drive_gain_floor=drive_gain_floor,
+        drive_dev_floor_frac=drive_dev_floor_frac,
+        drive_warmup_calls=drive_warmup_calls,
         sparse_gate=sparse_gate,
         learning_gain_enabled=learning_gain_enabled,
         learning_gain_progress=learning_gain_progress,

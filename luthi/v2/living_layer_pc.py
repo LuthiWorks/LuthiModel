@@ -100,6 +100,28 @@ class PredictiveCodingLayer(nn.Module):
         # error and does not extinguish itself as the model improves. Opt-in.
         drive_normalize: bool = False,
         drive_rms_decay: float = 0.01,
+        # Surprise drive (2026-07-29). `drive_normalize` above turned out to be
+        # a no-op in the production regime -- the +/-1 clamp on
+        # (drive_error * precision) is 100% saturated at production precision
+        # scales, so dividing the error by a positive scalar changes nothing but
+        # arithmetic. See the correction block in pc_ops.py and
+        # docs/research/2026-07-29_the-drive-fix.md.
+        #
+        # "surprise" makes the drive normalized EXCESS error over a Holt
+        # forecast of the layer's own error scale: scale-free (does not
+        # extinguish as the model improves), quiet on familiar input, and full
+        # range on novel input. REQUIRES relative_trust -- absolute precision
+        # weighting saturates the clamp and discards the drive magnitude, which
+        # would defeat the mechanism. Enforced with a raise, not silently
+        # supplied. Opt-in; default "raw" is bit-identical to pre-2026-07-29.
+        drive_mode: str = "raw",           # "raw" | "rms" | "surprise"
+        drive_decay: float = 0.01,         # Holt level/dev rate (~100 calls)
+        drive_drift_gain: float = 0.1,     # trend term, as in admission v3
+        drive_surprise_k: float = 3.0,     # THRESHOLD in deviations, as admission v3
+        drive_gain_max: float = 4.0,
+        drive_gain_floor: float = 0.0,     # 0.0 = fully quiet when unsurprised
+        drive_dev_floor_frac: float = 0.01,
+        drive_warmup_calls: int = 200,     # behaves as "raw" until converged
         homeostatic_band_enabled: bool = False,
         band_decay: float = 1e-3,          # slow: ~1000-step timescale
         band_warmup_steps: int = 200,
@@ -203,6 +225,26 @@ class PredictiveCodingLayer(nn.Module):
         self.recall_sigma = float(recall_sigma)
         self.drive_normalize = bool(drive_normalize)
         self.drive_rms_decay = float(drive_rms_decay)
+        if drive_mode not in ("raw", "rms", "surprise"):
+            raise ValueError(
+                f"drive_mode must be 'raw', 'rms' or 'surprise'; got "
+                f"{drive_mode!r}"
+            )
+        if drive_mode == "surprise" and not relative_trust:
+            raise ValueError(
+                "drive_mode='surprise' requires relative_trust=True (absolute "
+                "precision weighting saturates the +/-1 clamp and discards the "
+                "drive magnitude). Set both on the arm config so the pairing is "
+                "attributable."
+            )
+        self.drive_mode = str(drive_mode)
+        self.drive_decay = float(drive_decay)
+        self.drive_drift_gain = float(drive_drift_gain)
+        self.drive_surprise_k = float(drive_surprise_k)
+        self.drive_gain_max = float(drive_gain_max)
+        self.drive_gain_floor = float(drive_gain_floor)
+        self.drive_dev_floor_frac = float(drive_dev_floor_frac)
+        self.drive_warmup_calls = int(drive_warmup_calls)
         self.homeostatic_band_enabled = bool(homeostatic_band_enabled)
         self.band_decay = float(band_decay)
         self.band_warmup_steps = int(band_warmup_steps)
@@ -423,6 +465,20 @@ class PredictiveCodingLayer(nn.Module):
         # Homeostatic band state: slow per-row activity estimate + counters.
         # Running RMS of the PC error, for drive normalization (item 1.1).
         self.register_buffer("error_rms", torch.tensor(0.0))
+        # Surprise-drive state (2026-07-29): Holt level + trend + mean abs
+        # deviation of the PC error scale, plus the observability the whole
+        # mechanism rests on. `drive_gain` is the last gain applied and
+        # `drive_fire_count` / `drive_calls` give the duty cycle -- without
+        # those two there is no way to tell "quiet because nothing is new" from
+        # "quiet because broken", which is the failure this fix exists to end.
+        self.register_buffer("drive_ref", torch.tensor(0.0))
+        self.register_buffer("drive_ref_drift", torch.tensor(0.0))
+        self.register_buffer("drive_dev", torch.tensor(0.0))
+        self.register_buffer("drive_calls", torch.tensor(0, dtype=torch.long))
+        self.register_buffer("drive_gain", torch.tensor(0.0))
+        self.register_buffer(
+            "drive_fire_count", torch.tensor(0, dtype=torch.long)
+        )
         self.register_buffer("act_mean", torch.zeros(out_features))
         self.register_buffer("act_var", torch.zeros(out_features))
         self.register_buffer(
@@ -1096,6 +1152,20 @@ class PredictiveCodingLayer(nn.Module):
                     drive_normalize=self.drive_normalize,
                     error_rms=self.error_rms,
                     drive_rms_decay=self.drive_rms_decay,
+                    drive_mode=self.drive_mode,
+                    drive_ref=self.drive_ref,
+                    drive_ref_drift=self.drive_ref_drift,
+                    drive_dev=self.drive_dev,
+                    drive_calls=self.drive_calls,
+                    drive_gain_out=self.drive_gain,
+                    drive_fire_count=self.drive_fire_count,
+                    drive_decay=self.drive_decay,
+                    drive_drift_gain=self.drive_drift_gain,
+                    drive_surprise_k=self.drive_surprise_k,
+                    drive_gain_max=self.drive_gain_max,
+                    drive_gain_floor=self.drive_gain_floor,
+                    drive_dev_floor_frac=self.drive_dev_floor_frac,
+                    drive_warmup_calls=self.drive_warmup_calls,
                     sparse_gate=sparse_gate,
                     learning_gain_enabled=self.learning_gain_enabled,
                     learning_gain_progress=gain_progress,
@@ -1315,6 +1385,23 @@ class PredictiveCodingLayer(nn.Module):
             # magnitude" cannot be interpreted at all.
             "weight_abs_mean": float(self.weight.detach().abs().mean().item()),
             "error_rms": float(self.error_rms.item()),
+            # Surprise-drive observability (2026-07-29). `drive_duty` is the
+            # discriminator: a surprise drive that is quiet because the data is
+            # familiar shows a LOW duty cycle with a healthy `drive_ref`, while
+            # a broken one shows duty 0 with `drive_ref` collapsed or `drive_dev`
+            # at its floor. Those two were indistinguishable before, which is
+            # how a self-extinguishing drive survived five families.
+            "drive_gain": float(self.drive_gain.item()),
+            "drive_ref": float(self.drive_ref.item()),
+            "drive_dev": float(self.drive_dev.item()),
+            "drive_duty": (
+                float(self.drive_fire_count.item())
+                / max(
+                    float(self.drive_calls.item())
+                    - float(self.drive_warmup_calls),
+                    1.0,
+                )
+            ),
             "weight_ulp_ratio": float(
                 self.update_ema.detach().mean().item()
                 / max(
