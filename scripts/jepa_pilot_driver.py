@@ -281,6 +281,22 @@ ARM_CONFIGS["probe_surprise_d8"] = dict(
     ARM_CONFIGS["probe_surprise"],
     n_blocks=8,
 )
+# Trainer-side (non-model) per-arm gradient clipping. Depth 8 diverged at step
+# ~2250 without it: grad_norm median 1065 vs 28.4 at depth 4, ~37x larger, at an
+# unchanged 3e-4 learning rate, and there was no clipping in the runner at all.
+#
+# Clip value 1000 is chosen against the measured distribution rather than the
+# conventional 1.0 -- gradients here are O(1e3) because the loss itself is
+# O(1e2) (SIGReg contributes hundreds), so clipping at 1.0 would reduce the
+# effective step ~1000x and stall learning. 1000 sits at roughly the depth-8
+# median, so typical steps pass close to untouched while the excursions that
+# preceded divergence (2158, 2941, 5555, 8645) are bounded. Deliberately
+# aggressive for a stability probe: over-damping shows up as poor learning,
+# which is a diagnosable failure, where divergence is not.
+#
+# Depth-4 arms keep grad_clip_norm=0.0 (off), so every completed family stays
+# bit-identical and comparable.
+ARM_GRAD_CLIP: dict[str, float] = {"probe_surprise_d8": 1000.0}
 ARM_TAPER["probe_surprise_d8"] = ARM_TAPER["living_v5_4x_d4"]
 ARM_FILELIST["probe_surprise_d8"] = ARM_FILELIST["living_v5_4x_d4"]
 ARM_SIGREG["probe_surprise_d8"] = ARM_SIGREG["living_v5_4x_d4"]
@@ -474,6 +490,7 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
             ),
             taper=TaperConfig(enabled=ARM_TAPER.get(arm, False)),
             lr_schedule=lr_schedule,
+            grad_clip_norm=ARM_GRAD_CLIP.get(arm, 0.0),
         ),
         run_dir=run_dir,
     )

@@ -67,6 +67,7 @@ import shutil
 import time
 from collections import deque
 from dataclasses import asdict, dataclass, field
+from statistics import median
 from pathlib import Path
 from typing import Optional, Protocol
 
@@ -296,6 +297,54 @@ class RunnerConfig:
     epoch: EpochConfig = field(default_factory=EpochConfig)
     taper: TaperConfig = field(default_factory=TaperConfig)
     lr_schedule: LRScheduleConfig = field(default_factory=LRScheduleConfig)
+    # Gradient clipping (2026-07-29). 0.0 = OFF, which is bit-identical to every
+    # run before this date -- deliberately, so the completed families stay
+    # comparable and any arm that clips has to declare it.
+    #
+    # Added after the depth-8 shakeout diverged at step ~2250. Measured cause:
+    # grad_norm median 1065 at 8 blocks vs 28.4 at 4 blocks -- ~37x larger --
+    # with the learning rate unchanged at 3e-4. There was no clipping anywhere
+    # in this runner; `grad_norm` had been logged every 100 steps since
+    # EMIT_BATCH_1 and never consumed by anything. Harmless at depth 4, fatal at
+    # depth 8. See docs/research/2026-07-29_depth8-shakeout-verdict.md.
+    grad_clip_norm: float = 0.0
+    # Absolute divergence guard (2026-07-29). Unlike every criterion in
+    # KillCriteriaConfig this is NOT gated on warmup_batches, and that is the
+    # entire point. warmup_batches is 5000 while every probe today ran 3000-4000
+    # steps, so no kill criterion could fire in any of them -- and the diverged
+    # depth-8 run reported `outcome: completed, admissible: True` with heldout
+    # NMSE 5.675 against a healthy ~0.57. An aggregate would have eaten it as a
+    # valid data point.
+    #
+    # The existing criteria are all RELATIVE and warmup-gated, which is correct
+    # for detecting subtle collapse and useless for catching a run that has
+    # already destroyed itself. This is the absolute floor: NMSE is prediction
+    # error normalized by target variance, so 1.0 means "no better than
+    # predicting the mean" and anything above 2.0 is a broken model, at any
+    # step, at any scale, under any objective. On by default because it can
+    # only fire on a run that is already lost.
+    divergence_nmse_max: float = 2.0
+    # Fast per-step companion to the NMSE guard above. `evaluate_heldout` runs
+    # only at epoch end -- at depth 8 that is a check every ~6 hours, far too
+    # slow for a divergence that began at step 2250. This watches the training
+    # loss instead, which is free.
+    #
+    # The baseline is the median of the first `divergence_baseline_points`
+    # logged losses and is then FROZEN. It must not be a rolling median: as a
+    # run diverges, a rolling statistic rises with it and masks the very thing
+    # it is watching for -- the same positive-feedback bug the consolidation
+    # trigger had before its 2026-05-10 fix.
+    #
+    # Thresholds chosen from a sweep over six healthy runs (probe_surprise
+    # seeds 45/46, probe_storefix seeds 44/45, living_v5 seeds 44/46) and the
+    # diverged depth-8 run. Healthy peak/baseline: 0.6x - 1.7x. Diverged peak:
+    # 69.3x. At mult=10 with 3 sustained points there were ZERO false positives
+    # on all six healthy runs and the diverged run tripped ~300 steps after
+    # onset. Requiring sustained elevation is what makes single-point loss
+    # spikes -- which healthy runs do have -- non-triggering.
+    divergence_loss_mult: float = 10.0
+    divergence_baseline_points: int = 10
+    divergence_sustained_points: int = 3
 
 
 # ---------------------------------------------------------------------------
@@ -755,6 +804,10 @@ class JEPATrainer:
         # time sustained descent is observed; checkpointed so a resumed
         # run doesn't re-arm the kill against its own later plateau.
         self._kill7_descent_established: bool = False
+        # Divergence guard state (2026-07-29). Frozen baseline, never rolling.
+        self._div_losses: list[float] = []
+        self._div_baseline: Optional[float] = None
+        self._div_run: int = 0
         # Kill-5 solved-not-copying log throttle (2026-07-17 amendment):
         # per-modality, log the healthy cosine crossing once, not per step.
         self._kill5_solved_logged: set[str] = set()
@@ -862,6 +915,20 @@ class JEPATrainer:
 
         self.optimizer.zero_grad(set_to_none=True)
         loss.backward()
+
+        # Gradient clipping, every step (not gated to logging steps -- a spike
+        # that lands between log points is exactly the one that diverges). Scope
+        # matches the grad-norm computation below: optimizer.param_groups, i.e.
+        # the backprop-trained params. Living-weight buffers are untouched --
+        # they update through the PC mechanism, not autograd, and clipping them
+        # would silently alter the substrate this project is trying to measure.
+        clip = float(self.config.grad_clip_norm or 0.0)
+        if clip > 0.0:
+            torch.nn.utils.clip_grad_norm_(
+                [p for g in self.optimizer.param_groups
+                 for p in g["params"] if p.grad is not None],
+                clip,
+            )
 
         # EMIT_BATCH_1 §3: gradient norm + non-finite guard, gated to
         # logging steps. Read-only over grads -- compute the norm,
@@ -1959,6 +2026,83 @@ class JEPATrainer:
                 )
         return results
 
+    def _check_loss_divergence(self, loss: float) -> Optional[str]:
+        """Fast per-log-point divergence guard on the training loss.
+
+        Call once per logged step. Returns a reason string when the loss has
+        stayed above ``divergence_loss_mult`` x the frozen baseline for
+        ``divergence_sustained_points`` consecutive calls.
+
+        Not warmup-gated, and the baseline is frozen rather than rolling -- see
+        the config comments for why a rolling statistic cannot do this job.
+        """
+        mult = float(self.config.divergence_loss_mult or 0.0)
+        if mult <= 0.0:
+            return None
+        if not math.isfinite(loss):
+            return f"divergence:loss_nonfinite@{self.global_step}"
+        if self._div_baseline is None:
+            self._div_losses.append(loss)
+            if len(self._div_losses) < int(self.config.divergence_baseline_points):
+                return None
+            base = float(median(self._div_losses))
+            # A non-positive baseline would make the ratio meaningless; leave the
+            # guard disarmed rather than trip on everything or nothing silently.
+            if base <= 0.0:
+                logger.warning(
+                    "divergence guard disarmed: baseline median is %.6g", base
+                )
+                self._div_baseline = -1.0
+                return None
+            self._div_baseline = base
+            logger.info(
+                "divergence guard armed: baseline %.6g, trips above %.6g "
+                "sustained for %d log points",
+                base, base * mult, int(self.config.divergence_sustained_points),
+            )
+            return None
+        if self._div_baseline < 0.0:
+            return None
+        if loss > mult * self._div_baseline:
+            self._div_run += 1
+        else:
+            self._div_run = 0
+        if self._div_run >= int(self.config.divergence_sustained_points):
+            return (
+                f"divergence:loss={loss:.4g}>{mult:.1f}x"
+                f"baseline({self._div_baseline:.4g})@{self.global_step}"
+            )
+        return None
+
+    def _check_divergence(self, heldout: dict) -> Optional[str]:
+        """Absolute, warmup-independent divergence guard.
+
+        Returns a reason string if any modality's held-out NMSE has exceeded
+        ``divergence_nmse_max``, else None.
+
+        Deliberately NOT part of ``_check_kill_criteria``: every criterion there
+        is relative to a baseline and gated behind ``warmup_batches`` (5000),
+        which is why the 2026-07-29 depth-8 run diverged to NMSE 5.675 and still
+        reported ``outcome: completed, admissible: True``. NMSE is prediction
+        error over target variance, so 1.0 is "no better than predicting the
+        mean". A model above 2.0 is broken regardless of step, scale, depth or
+        objective, and there is no baseline to establish first.
+        """
+        limit = float(self.config.divergence_nmse_max or 0.0)
+        if limit <= 0.0:
+            return None
+        for modality, r in (heldout or {}).items():
+            nmse = r.get("nmse_mean")
+            if nmse is None:
+                continue
+            if not math.isfinite(float(nmse)):
+                return f"divergence:{modality}:nmse_nonfinite"
+            if float(nmse) > limit:
+                return (
+                    f"divergence:{modality}:nmse={float(nmse):.4f}>{limit:.2f}"
+                )
+        return None
+
     # -- Main loop --
 
     def run(self) -> str:
@@ -2024,6 +2168,17 @@ class JEPATrainer:
                     )
                     self._human_log_line(record)
 
+                    # Fast divergence guard, on the same cadence as logging so
+                    # the baseline is built from the same series a human reads.
+                    # Checked BEFORE the periodic kill criteria because those are
+                    # warmup-gated and this is not -- and a run that has already
+                    # blown up should not have to wait 5000 batches to be told.
+                    div_loss = self._check_loss_divergence(step_out["loss"])
+                    if div_loss is not None:
+                        logger.error("DIVERGENCE GUARD TRIPPED: %s", div_loss)
+                        self._checkpoint(reason=f"kill:{div_loss}")
+                        return f"killed:{div_loss}"
+
                 # Checkpoint.
                 self._checkpoint_if_due()
 
@@ -2054,7 +2209,12 @@ class JEPATrainer:
 
             # Held-out eval (2026-07-15): the pre-registered criteria read
             # these numbers; training-time diagnostics can't substitute.
-            self.evaluate_heldout()
+            heldout = self.evaluate_heldout()
+            div = self._check_divergence(heldout)
+            if div is not None:
+                logger.error("DIVERGENCE GUARD TRIPPED: %s", div)
+                self._checkpoint(reason=f"kill:{div}")
+                return f"killed:{div}"
 
             # Abort/continue gate at end of epoch 1 (v0.5 §3, §10.4).
             self.epoch += 1
