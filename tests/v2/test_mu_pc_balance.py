@@ -28,16 +28,37 @@ class TestRateFactor:
         b = _block(mu_pc_enabled=True, mu_pc_exponent=0.25, n_blocks_total=8)
         assert b._mu_pc_rate_factor == 1.0
 
+    def test_negative_power_amplifies(self):
+        """power=-1 is the opposite adjustment: amplify the PC rates by 1/s.
+
+        Registered after power=+1 (attenuate) made the collapse worse -- offset
+        dominance 0.5657 -> 0.8277. The three-point ordering showed total
+        attenuation, not the PC/backprop ratio, tracks the offset, so the
+        opposite direction is the one the data points at.
+        """
+        b = _block(mu_pc_enabled=True, mu_pc_exponent=0.25, n_blocks_total=8,
+                   mu_pc_rate_power=-1.0, pc_rate=0.001)
+        assert b._mu_pc_rate_factor == pytest.approx(1.0 / b.residual_scale)
+        assert b._mu_pc_rate_factor > 1.0
+        assert b.living_ffn.pc_rate == pytest.approx(0.001 / b.residual_scale)
+
+    def test_powers_are_symmetric_about_off(self):
+        lo = _block(mu_pc_enabled=True, mu_pc_exponent=0.25, n_blocks_total=8,
+                    mu_pc_rate_power=1.0)
+        hi = _block(mu_pc_enabled=True, mu_pc_exponent=0.25, n_blocks_total=8,
+                    mu_pc_rate_power=-1.0)
+        assert lo._mu_pc_rate_factor * hi._mu_pc_rate_factor == pytest.approx(1.0)
+
     def test_factor_matches_residual_scale_when_enabled(self):
         b = _block(mu_pc_enabled=True, mu_pc_exponent=0.25, n_blocks_total=8,
-                   mu_pc_balance_rates=True)
+                   mu_pc_rate_power=1.0)
         assert b._mu_pc_rate_factor == pytest.approx(b.residual_scale)
         assert b.residual_scale == pytest.approx(8 ** -0.25)
 
     def test_no_effect_when_mupc_disabled(self):
         """With muPC off there is no attenuation to balance against."""
         b = _block(mu_pc_enabled=False, n_blocks_total=8,
-                   mu_pc_balance_rates=True)
+                   mu_pc_rate_power=1.0)
         assert b.residual_scale == 1.0
         assert b._mu_pc_rate_factor == 1.0
 
@@ -47,7 +68,7 @@ class TestRateFactor:
                       pred_learning_rate=0.0001)
         bal = _block(mu_pc_enabled=True, mu_pc_exponent=0.25,
                      n_blocks_total=8, pc_rate=0.001,
-                     pred_learning_rate=0.0001, mu_pc_balance_rates=True)
+                     pred_learning_rate=0.0001, mu_pc_rate_power=1.0)
         s = bal.residual_scale
         assert base.living_ffn.pc_rate == pytest.approx(0.001)
         assert bal.living_ffn.pc_rate == pytest.approx(0.001 * s)
@@ -57,7 +78,7 @@ class TestRateFactor:
         rates = []
         for L in (4, 8, 36):
             b = _block(mu_pc_enabled=True, mu_pc_exponent=0.25,
-                       n_blocks_total=L, mu_pc_balance_rates=True)
+                       n_blocks_total=L, mu_pc_rate_power=1.0)
             rates.append(b.living_ffn.pc_rate)
         assert rates[0] > rates[1] > rates[2]
 
@@ -74,7 +95,7 @@ class TestBitIdentity:
     def test_forward_still_runs_with_balancing(self):
         torch.manual_seed(0)
         b = _block(mu_pc_enabled=True, mu_pc_exponent=0.25, n_blocks_total=8,
-                   mu_pc_balance_rates=True)
+                   mu_pc_rate_power=1.0)
         out = b(torch.randn(2, 6, 32))
         assert out.shape == (2, 6, 32)
         assert torch.isfinite(out).all()

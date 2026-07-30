@@ -108,3 +108,76 @@ glossary's "current decisive run" depth — before anything is claimed about 36.
 Generalizing from the depth I happened to test is the exact error that produced
 this document; the correction cost 4 minutes of probe time and would have cost
 18 hours of run time.
+
+---
+
+# Addendum: power=+1 REFUTED, and the opposite direction registered
+
+**Time:** ~04:00, with stage 17 still running. Registered before stage 18 runs.
+
+## Stage 17 (power=+1, attenuate) is failing
+
+Matched window, first 10 light records:
+
+| | offset dominance | centered cosine |
+|---|---|---|
+| muPC off | 0.2063 | 0.5990 |
+| power 0 (unbalanced control) | 0.5657 | 0.5087 |
+| **power +1 (attenuate)** | **0.8277** | **0.1121** |
+
+The fix made the thing it was fixing worse, on both measures.
+
+## The mechanism I proposed is refuted by the ordering
+
+My claim was that the **ratio** of PC rate to backprop attenuation drives the
+collapse. Three points kill it:
+
+| residual_scale | PC factor | PC/backprop ratio | offset dominance |
+|---|---|---|---|
+| 1.0 | 1.0 | 1.0 | 0.21 |
+| 0.595 | 1.0 | 1.68 | 0.57 |
+| 0.595 | 0.595 | 1.0 | **0.83** |
+
+Rows 1 and 3 have the **same ratio** and land at 0.21 versus 0.83. The ratio is
+not what drives it.
+
+What does order the three is **total attenuation**: damping either path worsens
+the offset, damping both is worst.
+
+## The account that fits, and its prediction
+
+A block computes `x = x_0 + s * sum(f)`, and the embedding `x_0` is **not**
+scaled by `s`. If `x_0` carries a batch-constant component — the positional
+embedding is identical across sequences by construction — then shrinking `s`
+raises that constant's share of the representation. Less signal from the blocks,
+same constant underneath.
+
+**Withdrawn:** I earlier "killed" the positional-embedding hypothesis by showing
+the pos/token norm ratio is 1.01 at both depths. That compares the size of the
+embedding *tables* and says nothing about whether the positional component is
+the batch-constant direction. It was not a valid test and I presented it as one.
+
+**Prediction for power=-1 (amplify PC rates by 1/s):** more learned,
+input-dependent structure per unit of attenuation should push offset dominance
+back down.
+
+- **CONFIRMED:** median offset dominance <= **0.40** on the matched window
+  (below the 0.5657 unbalanced control, moving toward muPC-off's 0.21).
+- **REFUTED:** >= **0.55** (no better than the unbalanced control).
+- **AMBIGUOUS:** 0.40 - 0.55 — treated as refuted.
+
+Secondary: within-batch pairwise cosine on the final checkpoint, same bounds as
+before (confirm <= 0.30, refute >= 0.70).
+
+## Honest note on what this experiment is
+
+This is a **directional probe**, not a mechanism test. Brian's instruction was
+to take the adjustment and go the same distance the other way, which is the
+right move when a signed intervention produces a signed result: it establishes
+whether the axis matters and which way it runs, without committing to a story
+about why.
+
+If power=-1 improves things, that supports "more block signal helps" and points
+at the constant-component account — it does not confirm it. If it also makes
+things worse, then both directions hurt, the axis is not monotonic, and the
+whole rate-scaling family is the wrong lever.

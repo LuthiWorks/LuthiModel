@@ -164,6 +164,9 @@ STAGES: dict[int, list[tuple[str, int]]] = {
     # control and no-collapse can be had at the same time. One variable
     # against stage 14.
     17: [("probe_surprise_d8_balanced", 512)],
+    # OPPOSITE-DIRECTION TEST (2026-07-30): PC rates amplified by
+    # 1/residual_scale. Same magnitude of adjustment as stage 17, opposite sign.
+    18: [("probe_surprise_d8_amplified", 512)],
 }
 
 # Per-arm model configuration -- single source of truth, shared with
@@ -343,8 +346,23 @@ ARM_SIGREG_PROJ: dict[str, str] = {"probe_surprise_d8_noproj": "none"}
 # imbalance it creates.
 ARM_CONFIGS["probe_surprise_d8_balanced"] = dict(
     ARM_CONFIGS["probe_surprise_d8"],
-    mu_pc_balance_rates=True,
+    mu_pc_rate_power=1.0,
 )
+# The OPPOSITE adjustment, same magnitude (Brian, 2026-07-30): amplify the PC
+# rates by 1/residual_scale instead of attenuating by residual_scale.
+# power=+1 made the collapse worse (offset dominance 0.5657 -> 0.8277), and the
+# three-point ordering showed TOTAL attenuation tracks the offset rather than
+# the PC/backprop ratio -- so more block signal, not less, is the direction the
+# data points at.
+ARM_CONFIGS["probe_surprise_d8_amplified"] = dict(
+    ARM_CONFIGS["probe_surprise_d8"],
+    mu_pc_rate_power=-1.0,
+)
+ARM_GRAD_CLIP["probe_surprise_d8_amplified"] = 1000.0
+ARM_TAPER["probe_surprise_d8_amplified"] = ARM_TAPER["living_v5_4x_d4"]
+ARM_FILELIST["probe_surprise_d8_amplified"] = ARM_FILELIST["living_v5_4x_d4"]
+ARM_SIGREG["probe_surprise_d8_amplified"] = ARM_SIGREG["living_v5_4x_d4"]
+ARM_COSINE["probe_surprise_d8_amplified"] = ARM_COSINE["living_v5_4x_d4"]
 ARM_GRAD_CLIP["probe_surprise_d8_balanced"] = 1000.0
 ARM_TAPER["probe_surprise_d8_balanced"] = ARM_TAPER["living_v5_4x_d4"]
 ARM_FILELIST["probe_surprise_d8_balanced"] = ARM_FILELIST["living_v5_4x_d4"]

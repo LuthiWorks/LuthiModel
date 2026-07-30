@@ -54,7 +54,7 @@ class PredictiveCodingBlock(nn.Module):
         consolidation_attractor_passes: int = 1,
         mu_pc_enabled: bool = False,
         mu_pc_exponent: float = 0.5,
-        mu_pc_balance_rates: bool = False,
+        mu_pc_rate_power: float = 0.0,
         n_blocks_total: int = 1,
         buffer_dtypes: dict[str, torch.dtype] | None = None,
         dead_ffn: bool = False,
@@ -140,16 +140,47 @@ class PredictiveCodingBlock(nn.Module):
         #   * the collapse is total at BLOCK 0, because block 0's backprop path
         #     is attenuated exactly like every other block's.
         #
-        # `mu_pc_balance_rates` scales the PC rates by the same factor, so both
-        # halves are attenuated equally and the two-speed balance is preserved
-        # at any depth. That keeps muPC's depth-scale control -- which the
-        # depth ladder shows is real and which disabling muPC surrenders
-        # (activation growth 1.14 flat with muPC vs 3.92 without, at 36
-        # blocks) -- without the imbalance that causes the collapse.
+        # `mu_pc_rate_power` scales the PC rates by
+        # `residual_scale ** mu_pc_rate_power`:
         #
-        # Default False: bit-identical to every run before this date.
+        #   power =  0.0  factor 1.0        OFF. Bit-identical to every run
+        #                                   before 2026-07-30.
+        #   power = +1.0  factor s          ATTENUATE, matching the backprop
+        #                                   path's gradient scaling.
+        #   power = -1.0  factor 1/s        AMPLIFY, compensating for it.
+        #
+        # MEASURED 2026-07-30, and it refuted the reasoning that motivated
+        # power=+1. The prediction was that matching the PC rate to the
+        # backprop attenuation would restore a two-speed balance and prevent
+        # the collapse. It made the collapse WORSE: offset dominance 0.5657
+        # unbalanced -> 0.8277 attenuated, centered cosine 0.5087 -> 0.1121.
+        #
+        # The three-point ordering rules out the ratio account entirely:
+        #
+        #   residual_scale  PC factor  offset dominance
+        #        1.0           1.0          0.21     (muPC off)
+        #        0.595         1.0          0.57     (power 0, unbalanced)
+        #        0.595         0.595        0.83     (power +1, attenuated)
+        #
+        # muPC-off and power=+1 have the SAME PC/backprop ratio and land at
+        # 0.21 vs 0.83, so the ratio is not what drives it. What orders these
+        # is TOTAL attenuation: damping either path worsens the offset and
+        # damping both is worst.
+        #
+        # That fits a different mechanism. The block computes
+        # `x = x_0 + s * sum(f)`, and the embedding `x_0` is NOT scaled by s.
+        # If x_0 carries a batch-constant component -- and the positional
+        # embedding is identical across sequences by construction -- then
+        # shrinking s raises that constant's share of the representation.
+        # Less signal from the blocks, the same constant underneath.
+        #
+        # power=-1 tests the prediction that account makes: amplifying the PC
+        # rate should give the blocks MORE learned, input-dependent structure
+        # per unit of attenuation, and drive offset dominance back down.
+        self.mu_pc_rate_power = float(mu_pc_rate_power)
         self._mu_pc_rate_factor = (
-            self.residual_scale if (mu_pc_enabled and mu_pc_balance_rates)
+            float(self.residual_scale ** self.mu_pc_rate_power)
+            if (mu_pc_enabled and self.mu_pc_rate_power != 0.0)
             else 1.0
         )
         self._n_blocks_total = n_blocks_total
