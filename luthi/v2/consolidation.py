@@ -34,12 +34,25 @@ The two pathways are additive, not mutually exclusive (`consolidation_style="bot
 runs both). Choice of which becomes the production default is an empirical
 question — Phase 3G has the validation ablation in the To-Do.
 
-The M4 STOP GATE: if consolidated layer's behavior on the episode's
-context is not measurably closer to the stored snapshot than a control
-without consolidation, v2 has no architectural novelty over a vanilla
-transformer + episode store and should be abandoned (per the brief).
-Refinement 4's bootstrap window prevents premature triggering before
-the model has any predictive structure to consolidate against.
+The M4 STOP GATE: if consolidation has no measurable effect on
+prediction quality post-replay, v2 has no architectural novelty over a
+vanilla transformer + episode store and should be abandoned (per the
+brief). Refinement 4's bootstrap window prevents premature triggering
+before the model has any predictive structure to consolidate against.
+
+Wording corrected 2026-07-29. This docstring previously stated the gate
+as "the consolidated layer's behavior on the episode's context is
+measurably closer to the stored snapshot than a control" -- the
+ML_GLOSSARY prediction-quality formulation above is the correct one, and
+the difference is not cosmetic. The closer-to-snapshot test only ever
+made sense for gradient-replay. Attractor consolidation moves weights
+*away* from the stored snapshots (measured: +3.6e-3 to +3.8e-3 relative
+across all six v5 runs) while reducing prediction error on the stored
+inputs by 12.9-16.1%, because it does not pull toward a past weight
+state -- it makes stored inputs fixed points of the layer's own
+dynamics. Read literally, the old wording would have failed the one
+pathway that demonstrably works. See
+docs/research/2026-07-29_m4-stop-gate-rerun.md.
 """
 
 from __future__ import annotations
