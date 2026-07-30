@@ -154,6 +154,10 @@ STAGES: dict[int, list[tuple[str, int]]] = {
     # "none" instead of "linear". One variable. Readout is offset dominance,
     # NOT capability -- the carried-over clip independently kills capability.
     15: [("probe_surprise_d8_noproj", 512)],
+    # muPC TEST (2026-07-30): stage 14 with mu_pc_enabled=False. One variable.
+    # Primary readout is within-batch pairwise cosine measured post-hoc, NOT
+    # capability -- the carried-over clip independently kills capability.
+    16: [("probe_surprise_d8_nomupc", 512)],
 }
 
 # Per-arm model configuration -- single source of truth, shared with
@@ -322,6 +326,27 @@ ARM_GRAD_CLIP: dict[str, float] = {
 # docs/research/2026-07-30_sigreg-projection-hypothesis.md for why capability
 # metrics therefore CANNOT be read from this run either way.
 ARM_SIGREG_PROJ: dict[str, str] = {"probe_surprise_d8_noproj": "none"}
+# `probe_surprise_d8_nomupc` is `probe_surprise_d8` with mu_pc_enabled False and
+# NOTHING else changed -- same 8 blocks, same clip of 1000, same "linear"
+# projection (the "none" variant was refuted 2026-07-30 and made prediction
+# 7.3x worse, so it is not carried forward).
+#
+# Disabling muPC changes two things at once, deliberately: residual_scale goes
+# 1/(8**0.25) = 0.5946 -> 1.0, and the depth-scaled init is skipped. They are
+# tested together because a clean result implicates muPC as a whole and a null
+# result exonerates it as a whole; separating them costs a second run and only
+# matters if the first one is positive. Init has already been shown to wash out
+# by step 3000 (block-0 q_proj std 0.0322 at d4 vs 0.0325 at d8), so the
+# residual scale is the live half.
+ARM_CONFIGS["probe_surprise_d8_nomupc"] = dict(
+    ARM_CONFIGS["probe_surprise_d8"],
+    mu_pc_enabled=False,
+)
+ARM_GRAD_CLIP["probe_surprise_d8_nomupc"] = 1000.0
+ARM_TAPER["probe_surprise_d8_nomupc"] = ARM_TAPER["living_v5_4x_d4"]
+ARM_FILELIST["probe_surprise_d8_nomupc"] = ARM_FILELIST["living_v5_4x_d4"]
+ARM_SIGREG["probe_surprise_d8_nomupc"] = ARM_SIGREG["living_v5_4x_d4"]
+ARM_COSINE["probe_surprise_d8_nomupc"] = ARM_COSINE["living_v5_4x_d4"]
 ARM_CONFIGS["probe_surprise_d8_noproj"] = dict(ARM_CONFIGS["probe_surprise_d8"])
 ARM_TAPER["probe_surprise_d8_noproj"] = ARM_TAPER["living_v5_4x_d4"]
 ARM_FILELIST["probe_surprise_d8_noproj"] = ARM_FILELIST["living_v5_4x_d4"]
