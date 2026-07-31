@@ -169,6 +169,8 @@ STAGES: dict[int, list[tuple[str, int]]] = {
     18: [("probe_surprise_d8_amplified", 512)],
     # DOUBLE THE AMPLIFICATION (2026-07-30): power -2, multiplier 2.829x.
     19: [("probe_surprise_d8_amp2", 512)],
+    # power=-4 + clip raised to 20000 (2026-07-30). PC multiplier == n_blocks.
+    20: [("probe_surprise_d8_amp4", 512)],
 }
 
 # Per-arm model configuration -- single source of truth, shared with
@@ -369,6 +371,32 @@ ARM_CONFIGS["probe_surprise_d8_amp2"] = dict(
     mu_pc_rate_power=-2.0,
 )
 ARM_GRAD_CLIP["probe_surprise_d8_amp2"] = 1000.0
+# power=-4 (Brian, 2026-07-30). A LANDMARK, not another rung: with exponent
+# 0.25, residual_scale**-4 == n_blocks exactly, at every depth (4x at L=4, 8x at
+# L=8, 36x at L=36). The attenuation and amplification cancel and PC rates end
+# up scaling LINEARLY WITH DEPTH.
+#
+# Clip raised 1000 -> 20000 in the same run, deliberately. At power=-2 the clip
+# engaged on 93% of steps with a gradient median of 3591, so the ladder had
+# stopped being a test of PC rates and become a test of the clip. Amplification
+# at 8x will push gradients higher still; leaving the clip at 1000 would make
+# this run uninterpretable. 20000 is a catastrophic-runaway backstop that should
+# not shape ordinary steps -- engagement rate will be reported, and if it binds
+# often the result is confounded and will be reported as such.
+#
+# TWO variables move here (power and clip). That breaks one-variable discipline
+# and is a deliberate trade: at power=-4 the old clip is not a control, it is a
+# different experiment. The divergence guards (loss-vs-frozen-baseline, held-out
+# NMSE) are the safety net that makes a loose clip affordable.
+ARM_CONFIGS["probe_surprise_d8_amp4"] = dict(
+    ARM_CONFIGS["probe_surprise_d8"],
+    mu_pc_rate_power=-4.0,
+)
+ARM_GRAD_CLIP["probe_surprise_d8_amp4"] = 20000.0
+ARM_TAPER["probe_surprise_d8_amp4"] = ARM_TAPER["living_v5_4x_d4"]
+ARM_FILELIST["probe_surprise_d8_amp4"] = ARM_FILELIST["living_v5_4x_d4"]
+ARM_SIGREG["probe_surprise_d8_amp4"] = ARM_SIGREG["living_v5_4x_d4"]
+ARM_COSINE["probe_surprise_d8_amp4"] = ARM_COSINE["living_v5_4x_d4"]
 ARM_TAPER["probe_surprise_d8_amp2"] = ARM_TAPER["living_v5_4x_d4"]
 ARM_FILELIST["probe_surprise_d8_amp2"] = ARM_FILELIST["living_v5_4x_d4"]
 ARM_SIGREG["probe_surprise_d8_amp2"] = ARM_SIGREG["living_v5_4x_d4"]

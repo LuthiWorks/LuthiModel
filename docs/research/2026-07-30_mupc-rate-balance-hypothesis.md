@@ -424,3 +424,69 @@ as simply disabling muPC. The scale-control-versus-collapse bind is NOT resolved
 2. Only then consider power=-3.
 3. The block-0 localization remains unstarted and remains the measurement most
    likely to explain WHY any of this works.
+
+---
+
+# Stage 20 (power=-4, clip 20000): registered before the run
+
+**Time:** ~06:40. Brian's instruction, chasing a hunch.
+**Run:** `probe_surprise_d8_amp4_512d_seed89`, 3000 steps, ~45 min.
+
+## power=-4 is a landmark, not another rung
+
+With `mu_pc_exponent = 0.25`, `residual_scale ** -4 == n_blocks` **exactly**, at
+every depth:
+
+| depth | residual_scale | PC multiplier at power=-4 |
+|---|---|---|
+| 4 | 0.7071 | 4.0 |
+| 8 | 0.5946 | 8.0 |
+| 12 | 0.5373 | 12.0 |
+| 36 | 0.4082 | 36.0 |
+
+The attenuation and the amplification cancel, leaving **PC rates that scale
+linearly with depth**. That is a principled setting rather than a tuned one, and
+it is a natural place for the axis to either resolve or stop.
+
+## Two variables move, deliberately
+
+Clip 1000 -> 20000 alongside power -2 -> -4. This breaks one-variable
+discipline on purpose: at power=-2 the clip already engaged on **93%** of steps
+at a gradient median of 3591, so it had stopped being a control and become the
+dominant term. Amplifying to 8x would leave it binding essentially always, and
+the run would measure the clip.
+
+20000 is intended as a catastrophic-runaway backstop that does not shape
+ordinary steps. **Engagement rate will be reported.** If it binds often, this
+run is confounded and will be reported as confounded rather than as a result.
+
+The divergence guards (loss vs frozen baseline; held-out NMSE > 2.0) are what
+make a loose clip affordable -- they did not exist two days ago.
+
+## Registered prediction
+
+Primary metric: within-batch pairwise cosine on the final checkpoint.
+
+Ladder so far: power 0 -> 0.9704, -1 -> 0.6384, -2 -> 0.4127.
+
+- **CONFIRMED (axis still paying):** <= **0.30**
+- **REFUTED (saturated or reversed):** >= **0.42** (no better than power=-2)
+- **AMBIGUOUS:** 0.30 - 0.42 — treated as refuted.
+
+Recorded separately: **<= 0.10 would put depth 8 within reach of the muPC-off
+regime** (0.0111) and depth 4 (0.0231). That would resolve the
+scale-control-versus-collapse bind and is the outcome that matters.
+
+## Capability warning, carried forward
+
+At power=-2 capability finally moved with geometry (NMSE 1.5054 -> 1.1742, lift
+1.03x -> 2.04x). The target is muPC-off's NMSE 0.5569 / lift 4.19x.
+
+**If the cosine improves again while NMSE regresses, the geometry gain is
+cosmetic** and will be reported as such. Registered in advance for the second
+time because it is the failure mode most likely to look like success.
+
+## No interim readings
+
+Unchanged: interim windows on these runs are three-for-three wrong. Endpoint
+only.
