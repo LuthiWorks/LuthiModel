@@ -360,3 +360,67 @@ Three for three, these runs' interim windows have pointed the wrong way --
 twice contradicting each other within one run, once predicting a null that the
 endpoint contradicted. No interim conclusions from this run. The endpoint metric
 is the result.
+
+---
+
+# VERDICT, stage 19 (power=-2): CONFIRMED
+
+**Time:** ~06:20. Scored on the registered primary metric.
+
+Registered: CONFIRMED <= 0.45, REFUTED >= 0.60, ambiguous assigned to refuted.
+**Result 0.4127 — CONFIRMED.**
+
+| power | multiplier | within-cos | NMSE | lift | grad median | clip engaged |
+|---|---|---|---|---|---|---|
+| depth 4 | - | 0.0231 | 0.5215 | 4.80x | 28 | 0% |
+| muPC off | - | 0.0111 | 0.5569 | 4.19x | 39 | 3% |
+| +1 | 0.595x | 0.9807 | 6.6805 | - | - | - |
+| 0 | 1.0x | 0.9704 | 1.5054 | 1.03x | 829 | 43% |
+| -1 | 1.682x | 0.6384 | 1.7070 | 1.35x | 2427 | 73% |
+| **-2** | **2.828x** | **0.4127** | **1.1742** | **2.04x** | **3591** | **93%** |
+
+Monotonic on the primary metric across four settings. And the registered
+capability WARNING did not fire: NMSE improved to 1.1742 (best of any muPC-on
+arm) and probe lift to 2.04x. Geometry and capability moved together this time,
+where at power=-1 they came apart.
+
+## The confound that stops this ladder here
+
+Clip engagement: 43% -> 73% -> **93%**. Gradient median: 829 -> 2427 -> **3591**,
+against a fixed clip of 1000.
+
+Amplifying the PC rates inflates gradients ~4.3x across the ladder, so this arm
+is no longer a clean test of PC-rate amplification -- it is a test of
+amplification PLUS a clip binding on nearly every step, at a clip value chosen
+for a different regime (2026-07-29, when the depth-8 gradient median was 829).
+
+**A power=-3 run would be almost entirely clip-dominated.** Running it would
+produce a number attributable to the clip, reported as a PC-rate result. That is
+the same confounding error this project has spent two days unwinding, so the
+ladder stops here until the clip is addressed.
+
+## Why the gradients grow, stated as a hypothesis and not a finding
+
+Higher `pc_rate` means the living FFN's weights change more per forward pass.
+The trunk's backprop gradient is computed against a substrate that is moving
+faster underneath it, which plausibly raises gradient magnitude. Not measured;
+recorded so it can be tested rather than assumed.
+
+## What is and is not established
+
+**Established:** PC-rate amplification monotonically improves depth-8 geometry
+across four settings, and at 2.83x it also improves capability. The axis Brian
+identified is real and was very nearly written off after stage 17.
+
+**Not established:** that it reaches a working model. Power=-2 is at NMSE 1.174
+and lift 2.04x against muPC-off's 0.557 and 4.19x and depth 4's 0.522 and 4.80x.
+It is the best muPC-ON configuration found and it is still roughly half as good
+as simply disabling muPC. The scale-control-versus-collapse bind is NOT resolved.
+
+**Next, in order:**
+1. Re-test the clip at this regime -- raise it to ~5000 (above the 3591 median)
+   or disable it, at power=-2, one variable. Until that runs, everything at
+   power<=-2 is confounded.
+2. Only then consider power=-3.
+3. The block-0 localization remains unstarted and remains the measurement most
+   likely to explain WHY any of this works.
