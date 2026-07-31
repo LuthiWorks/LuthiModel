@@ -297,3 +297,71 @@ grounded than most -- it follows from a chain-rule fact rather than a story, and
 it is the untested half of an intervention whose other half demonstrably worked.
 That is not evidence, and the last one also followed from an arithmetic identity
 and still failed.
+
+---
+
+# VERDICT, stage 23: MECHANISM CONFIRMED, INTERVENTION REFUTED
+
+**Time:** ~10:20. Both criteria were registered before the run; both scored.
+
+## Mechanism check: CONFIRMED
+
+| block 0 attn delta | |
+|---|---|
+| muPC off (healthy) | -0.316 |
+| power -4 (base) | +0.252 |
+| embedding-scaled (stage 22) | +0.146 |
+| **backprop-LR compensated** | **-0.1156** |
+
+**It crossed zero.** For the first time in any muPC-on configuration, block-0
+attention learned to OPPOSE the shared component instead of reinforcing it. The
+registration specified in advance that a smaller positive number would NOT pass
+-- stage 22 had already produced that -- and that only a sign change would
+confirm.
+
+So the diagnosis holds: **gradient attenuation is what makes block 0 learn the
+wrong sign.**
+
+## Primary metric: REFUTED
+
+NMSE 556.77, killed by the periodic divergence guard at 12 minutes.
+Registered CONFIRMED <= 0.70. Loss went 458 -> 85,000; gradient median 4,610,
+max 1.4e4 against a 20,000 clip, so clipping was not involved. Block 0's FFN
+immediately re-added what attention removed (+0.3578) and the trunk diverged.
+
+## What this establishes, and it is the useful part
+
+**The bind is mechanistic, not incidental.** muPC's attenuation of the trunk's
+effective learning rate is simultaneously:
+
+  * what keeps deep training stable, and
+  * what prevents block 0 from learning to strip the offset.
+
+Those are not two problems. They are one mechanism with two consequences, and
+this is the first run that demonstrates it rather than inferring it. Removing
+the attenuation fixes the sign and destroys stability, in the same run, at the
+same time.
+
+Every prior result is consistent with this reading:
+  * muPC off -- healthy block 0, unbounded activation growth (3.92x at 36 blocks)
+  * muPC on -- stable, block 0 learns the wrong sign, offset climbs to 0.99
+  * power -4 -- keeps attenuation, buys deep-block plasticity, strips late; best
+    compromise found (NMSE 0.8919) and still short of muPC-off's 0.5569
+
+## Next candidate, and it follows directly
+
+Compensation was applied to **all 64 block tensors at once**. But the offset only
+needs stripping ONCE, in block 0, and deeper blocks appear to need the
+attenuation for stability. **Compensating block 0 alone** -- or the first two --
+would give the sign flip where it is needed without un-damping the whole trunk.
+
+That is a one-line change to `_param_groups` and it is the natural reading of
+this result: the compensation was correct in kind and far too broad in scope.
+
+## Tally
+
+Seven mechanisms proposed across 2026-07-29 to 07-31. Six refuted outright.
+This one is the first to be **confirmed as a diagnosis while failing as a
+treatment** -- which is a more useful outcome than either a clean pass or a
+clean failure, because it converts the depth problem from "something is wrong
+in the trunk" into a named tradeoff with a measured mechanism on both sides.
