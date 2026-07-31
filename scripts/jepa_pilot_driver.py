@@ -179,6 +179,8 @@ STAGES: dict[int, list[tuple[str, int]]] = {
     # lr/residual_scale. The counterpart of mu_pc_rate_power for the backprop
     # side -- the half that owns block 0's canceller.
     23: [("probe_surprise_d8_bplr", 512)],
+    # BLOCK-0-ONLY compensation (2026-07-31): stage 23 confined to block 0.
+    24: [("probe_surprise_d8_bplr0", 512)],
 }
 
 # Per-arm model configuration -- single source of truth, shared with
@@ -346,7 +348,10 @@ ARM_GRAD_CLIP: dict[str, float] = {
 # on its own -- see the pre-registered readout note in
 # docs/research/2026-07-30_sigreg-projection-hypothesis.md for why capability
 # metrics therefore CANNOT be read from this run either way.
-ARM_BACKPROP_LR_COMPENSATE: dict[str, bool] = {"probe_surprise_d8_bplr": True}
+ARM_BACKPROP_LR_COMPENSATE: dict[str, int] = {
+    "probe_surprise_d8_bplr": -1,   # all blocks -- REFUTED 2026-07-31, diverged
+    "probe_surprise_d8_bplr0": 1,   # block 0 only
+}
 ARM_SIGREG_PROJ: dict[str, str] = {"probe_surprise_d8_noproj": "none"}
 # `probe_surprise_d8_balanced` is `probe_surprise_d8` (muPC ON, exponent 0.25)
 # plus mu_pc_balance_rates. One variable against stage 14, which collapsed.
@@ -425,6 +430,14 @@ ARM_GRAD_CLIP["probe_surprise_d8_embscale"] = 20000.0
 # parameters outside the trunk. One variable against stage 20.
 ARM_CONFIGS["probe_surprise_d8_bplr"] = dict(ARM_CONFIGS["probe_surprise_d8_amp4"])
 ARM_GRAD_CLIP["probe_surprise_d8_bplr"] = 20000.0
+# Block-0-ONLY backprop-LR compensation (2026-07-31). Identical to stage 23
+# except the boost is confined to block 0. One variable against stage 23.
+ARM_CONFIGS["probe_surprise_d8_bplr0"] = dict(ARM_CONFIGS["probe_surprise_d8_amp4"])
+ARM_GRAD_CLIP["probe_surprise_d8_bplr0"] = 20000.0
+ARM_TAPER["probe_surprise_d8_bplr0"] = ARM_TAPER["living_v5_4x_d4"]
+ARM_FILELIST["probe_surprise_d8_bplr0"] = ARM_FILELIST["living_v5_4x_d4"]
+ARM_SIGREG["probe_surprise_d8_bplr0"] = ARM_SIGREG["living_v5_4x_d4"]
+ARM_COSINE["probe_surprise_d8_bplr0"] = ARM_COSINE["living_v5_4x_d4"]
 ARM_TAPER["probe_surprise_d8_bplr"] = ARM_TAPER["living_v5_4x_d4"]
 ARM_FILELIST["probe_surprise_d8_bplr"] = ARM_FILELIST["living_v5_4x_d4"]
 ARM_SIGREG["probe_surprise_d8_bplr"] = ARM_SIGREG["living_v5_4x_d4"]
@@ -516,18 +529,33 @@ def _param_groups(loss_module, model, arm: str, base_lr: float):
     byte-identical to every prior run.
     """
     trainable = [p for p in loss_module.parameters() if p.requires_grad]
-    if not ARM_BACKPROP_LR_COMPENSATE.get(arm, False):
+    n_comp = int(ARM_BACKPROP_LR_COMPENSATE.get(arm, 0))
+    if n_comp == 0:
         return trainable
 
     rs = float(getattr(model.blocks[0], "residual_scale", 1.0))
     if rs >= 1.0:
         return trainable
 
-    block_ids = {id(p) for p in model.blocks.parameters() if p.requires_grad}
+    # SCOPE (2026-07-31). Stage 23 compensated ALL 64 block tensors and the
+    # trunk diverged (NMSE 556.77, killed at 12 min) -- while confirming the
+    # mechanism: block 0's attention delta crossed zero to -0.1156, the first
+    # negative value in any muPC-on run.
+    #
+    # So the compensation is correct in kind and was far too broad in scope. The
+    # offset needs stripping ONCE, in block 0; the deeper blocks appear to need
+    # the attenuation for stability, since that is what came apart. n_comp is
+    # the number of LEADING blocks to compensate; -1 means all (stage 23's
+    # behaviour, retained so the refuted setting stays reproducible).
+    targets = (list(model.blocks) if n_comp < 0
+               else list(model.blocks)[:n_comp])
+    block_ids = {id(p) for b in targets for p in b.parameters()
+                 if p.requires_grad}
     in_blocks = [p for p in trainable if id(p) in block_ids]
     rest = [p for p in trainable if id(p) not in block_ids]
     boosted = base_lr / rs
-    print(f"  [backprop-lr] {len(in_blocks)} block tensors at lr={boosted:.3e} "
+    print(f"  [backprop-lr] compensating {len(targets)} of {len(model.blocks)} "
+          f"blocks: {len(in_blocks)} tensors at lr={boosted:.3e} "
           f"(1/{rs:.4f} = {1/rs:.3f}x), {len(rest)} others at lr={base_lr:.3e}")
     return [
         {"params": in_blocks, "lr": boosted},

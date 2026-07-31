@@ -365,3 +365,51 @@ This one is the first to be **confirmed as a diagnosis while failing as a
 treatment** -- which is a more useful outcome than either a clean pass or a
 clean failure, because it converts the depth problem from "something is wrong
 in the trunk" into a named tradeoff with a measured mechanism on both sides.
+
+---
+
+# Stage 24 (block-0-only compensation): registered before the run
+
+**Time:** ~10:40. **Run:** `probe_surprise_d8_bplr0_512d_seed85`, 3000 steps.
+**One variable vs stage 23:** compensation confined to block 0 (8 tensors)
+instead of all eight blocks (64 tensors). Everything else identical.
+
+Stage 23 established both halves of the bind in a single run: compensating the
+trunk's attenuated gradient **flips block 0's sign** (attn delta +0.252 ->
+-0.1156, the first negative in any muPC-on run) **and destroys stability**
+(NMSE 556.77, killed at 12 minutes).
+
+The offset needs stripping once, in block 0. The deeper blocks appear to need
+the attenuation -- they are what came apart. This confines the boost to where
+the measurement says it is needed.
+
+## Registered prediction -- three conditions, all must hold
+
+1. **Stability:** the run completes. Not killed by a divergence guard.
+2. **Mechanism:** block-0 attention delta **< 0**, as stage 23 achieved
+   (-0.1156). A smaller positive number is not a pass.
+3. **Primary, held-out NMSE:** <= **0.80**. The base (power -4) is 0.8919;
+   muPC off is 0.5569; depth 4 is 0.5215.
+
+- **CONFIRMED:** all three.
+- **REFUTED:** any one fails.
+- **Prize:** NMSE <= **0.60** would match muPC-off *with* depth-scale control
+  intact and close the bind outright.
+
+**Guard:** real-text within-batch cosine <= 0.10.
+
+## The three outcomes and what each would mean
+
+- **All three hold** -- the bind is resolved: the offset gets stripped where it
+  must be, the trunk stays damped where it must be, and there is finally a
+  configuration with muPC's depth control and healthy geometry.
+- **Stable but block 0 stays positive** -- one block's worth of compensation is
+  too little to flip the sign; the useful scope is between 1 and 8 blocks.
+- **Diverges again** -- block 0 alone is enough to destabilise, meaning the
+  instability is not about how many blocks are boosted but that any un-damped
+  block is enough. That would make the tradeoff much harder and would point
+  away from learning-rate surgery entirely.
+
+All three are informative. The second and third are the more likely, on the
+record: seven mechanisms proposed in three days, six refuted, and the one
+confirmation was a diagnosis rather than a treatment.
