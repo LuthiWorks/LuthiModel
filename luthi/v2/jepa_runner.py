@@ -342,6 +342,10 @@ class RunnerConfig:
     # on all six healthy runs and the diverged run tripped ~300 steps after
     # onset. Requiring sustained elevation is what makes single-point loss
     # spikes -- which healthy runs do have -- non-triggering.
+    # Batches for the PERIODIC absolute NMSE check (deep cadence). Small on
+    # purpose -- it is a divergence tripwire, not an evaluation. A run that has
+    # blown up is obvious in a handful of batches.
+    divergence_probe_batches: int = 3
     divergence_loss_mult: float = 10.0
     divergence_baseline_points: int = 10
     divergence_sustained_points: int = 3
@@ -1989,7 +1993,8 @@ class JEPATrainer:
 
     # -- Held-out eval (2026-07-15, JEPA program) --
 
-    def evaluate_heldout(self) -> dict:
+    def evaluate_heldout(self, max_batches: int | None = None,
+                         log_record: bool = True) -> dict:
         """Held-out latent-prediction error per modality.
 
         The numbers the pre-registered criteria read (protocol
@@ -2005,7 +2010,8 @@ class JEPATrainer:
         and appends a ``{"heldout": ...}`` record to training_log.jsonl.
         Empty dict when disabled or no modality has holdout data.
         """
-        n_batches = self.config.logging.heldout_eval_batches
+        n_batches = (max_batches if max_batches is not None
+                     else self.config.logging.heldout_eval_batches)
         if n_batches <= 0:
             return {}
         if not hasattr(self.data_loader, "holdout_batches"):
@@ -2034,7 +2040,7 @@ class JEPATrainer:
                 max_batches=n_batches,
             )
 
-        if results:
+        if results and log_record:
             record = {
                 "step": self.global_step,
                 "heldout": results,
@@ -2201,6 +2207,40 @@ class JEPATrainer:
                         logger.error("DIVERGENCE GUARD TRIPPED: %s", div_loss)
                         self._checkpoint(reason=f"kill:{div_loss}")
                         return f"killed:{div_loss}"
+
+                # Periodic ABSOLUTE divergence check, at deep cadence.
+                #
+                # Added 2026-07-30 after the loss guard above FAILED to catch a
+                # run that diverged from step ~100. Its frozen baseline is the
+                # median of the first 10 logged losses, and that run was already
+                # at 1.0e10 by step 200 -- baseline came out 1.0e11, trip
+                # threshold 1e12, and a loss peaking at 3e11 never crossed it.
+                # The guard baselined itself on the divergence it existed to
+                # detect.
+                #
+                # That is the same blindness as the rolling-baseline bug it was
+                # designed to avoid, in a new form: freezing protects against a
+                # baseline drifting UP over time and does nothing when the run is
+                # already broken when the baseline is taken. EVERY relative
+                # criterion has this hole.
+                #
+                # NMSE does not, because it has an absolute reference: 1.0 is
+                # "no better than predicting the mean", at any scale, in any run,
+                # under any objective. The epoch-end NMSE guard DID catch that
+                # run (killed:divergence:nmse=343309>2.00) -- it just ran once,
+                # 34 minutes too late.
+                if deep_due and float(self.config.divergence_nmse_max or 0) > 0:
+                    quick = self.evaluate_heldout(
+                        max_batches=self.config.divergence_probe_batches,
+                        log_record=False,
+                    )
+                    div_q = self._check_divergence(quick)
+                    if div_q is not None:
+                        logger.error(
+                            "DIVERGENCE GUARD TRIPPED (periodic): %s", div_q
+                        )
+                        self._checkpoint(reason=f"kill:{div_q}")
+                        return f"killed:{div_q}"
 
                 # Checkpoint.
                 self._checkpoint_if_due()

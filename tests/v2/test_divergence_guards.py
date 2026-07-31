@@ -166,3 +166,55 @@ class TestAgainstRealSeries:
         )
         tripped = _feed(g, series)
         assert tripped is not None, "the diverged run must trip"
+
+
+class TestBaselineDuringDivergenceIsTheHole:
+    """Pins the 2026-07-30 guard failure.
+
+    `probe_surprise_d8_amp8_512d_seed88` diverged from step ~100 and the loss
+    guard never fired. Its losses, actually logged:
+
+        step 100  3.2e7      step 600  1.15e11
+        step 200  1.0e10     step 1000 2.33e11
+        step 300  3.3e10     peak      ~3.0e11
+
+    The baseline is the median of the first 10 logged losses = 1.0e11, so the
+    trip threshold was 1e12 and a loss peaking at 3e11 never crossed it. The
+    guard baselined itself on the divergence it existed to detect.
+
+    Freezing the baseline fixed a DIFFERENT bug (a rolling statistic drifting up
+    with the loss). It does nothing when the run is already broken at the moment
+    the baseline is taken. Every relative criterion has this hole, which is why
+    the absolute NMSE check now also runs periodically rather than only at epoch
+    end.
+    """
+
+    REAL_DIVERGED_LOSSES = [
+        3.218e07, 1.029e10, 3.261e10, 7.227e10, 8.521e10,
+        1.150e11, 1.517e11, 1.471e11, 1.881e11, 2.334e11,
+        2.202e11, 2.539e11, 2.7e11, 2.9e11, 3.04e11,
+    ]
+
+    def test_loss_guard_misses_a_run_that_was_already_diverging(self):
+        """Documents the limitation rather than asserting it is acceptable."""
+        g = _Guard()
+        assert _feed(g, self.REAL_DIVERGED_LOSSES) is None, (
+            "if this now trips, the loss guard was strengthened and this test "
+            "should be updated to match the new behaviour"
+        )
+        assert g._div_baseline > 1e10
+
+    def test_absolute_nmse_guard_catches_it_regardless_of_baseline(self):
+        """The reason the absolute check is what runs periodically.
+
+        NMSE has a fixed reference -- 1.0 is 'no better than predicting the
+        mean' -- so it needs no baseline and cannot be blinded by one.
+        """
+        g = _Guard()
+        r = g._check_divergence({"text": {"nmse_mean": 343309.2018}})
+        assert r is not None and "nmse" in r
+
+    def test_absolute_guard_needs_no_history(self):
+        """It must fire on the very first observation, with no warmup at all."""
+        g = _Guard()
+        assert g._check_divergence({"text": {"nmse_mean": 5.0}}) is not None

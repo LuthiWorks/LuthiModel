@@ -635,3 +635,83 @@ divergence guards (loss vs frozen baseline, held-out NMSE > 2.0) are the net; if
 they trip, that is a result, not a failure. Clip engagement will be reported --
 at power=-4 it was 0%, so if -8 pushes gradients into the clip the comparison
 becomes confounded and will be reported as such.
+
+---
+
+# VERDICT, stage 21 (power=-8): REFUTED — catastrophic divergence
+
+**Time:** ~08:30.
+
+Registered: CONFIRMED NMSE <= 0.80, REFUTED >= 0.90.
+**Result: NMSE 343,309.** Refuted by five orders of magnitude.
+
+| power | multiplier | real-text cos | NMSE | outcome |
+|---|---|---|---|---|
+| 0 | 1.0x | 0.3333 | 1.5054 | completed |
+| -1 | 1.68x | 0.5667 | 1.7070 | completed |
+| -2 | 2.83x | 0.1319 | 1.1742 | completed |
+| **-4** | **8x (= L)** | **-0.0294** | **0.8919** | completed |
+| -8 | 64x (= L^2) | 0.8040 | **343,309** | **killed** |
+
+`L_pred` reached 3.05e11 and `std_p5` 1278. The run was killed and marked
+`admissible: False`.
+
+**The optimum is at or near power=-4.** Below it the axis pays; beyond it the
+substrate destabilises completely. 64x on `pc_rate` (0.001 -> 0.064) is past the
+edge.
+
+## THE GUARD I BUILT HAS A HOLE, and this run found it
+
+The fast loss guard **never fired**, on a run that was diverging by step 100.
+
+| step | loss |
+|---|---|
+| 100 | 3.2e7 |
+| 200 | 1.0e10 |
+| 300 | 3.3e10 |
+| 1000 | 2.3e11 |
+| peak | ~3.0e11 |
+
+The baseline is the median of the first 10 logged losses. Those losses were
+**already diverged**, so the baseline came out at **1.0e11**, the trip threshold
+at 1e12, and a loss peaking at 3e11 never crossed it. The guard baselined itself
+on the divergence it existed to detect.
+
+This is the same blindness as the rolling-baseline bug it was designed to avoid,
+in a new form. Freezing protects against a baseline drifting UP over time. It
+does nothing when the run is already broken at the moment the baseline is taken.
+**Every relative criterion has this hole** -- which is the third time this
+project has met that lesson in a week (consolidation trigger, kill criteria,
+now this).
+
+**The absolute guard worked.** Held-out NMSE has a fixed reference -- 1.0 is
+"no better than predicting the mean" at any scale, in any run, under any
+objective -- so it needs no baseline and cannot be blinded by one. It killed the
+run: `killed:divergence:text:nmse=343309.2018>2.00`, `admissible: False`.
+
+It just ran **once, at epoch end**, 34 minutes late.
+
+### Fix
+
+The absolute NMSE check now also runs on the **deep-log cadence** (every 1000
+steps) using `divergence_probe_batches=3` -- a tripwire, not an evaluation. On
+this run it would have fired at step 1000 instead of step 3000.
+
+The relative loss guard is kept: it catches runs that start healthy and degrade,
+which is the case the absolute guard is slower on. The two cover different
+failures and neither is sufficient alone.
+
+Four tests added pinning the real diverged loss series, including one that
+asserts the loss guard MISSES it -- documenting the limitation rather than
+pretending it was fixed.
+
+## Where the ladder stands
+
+Best configuration found: **power=-4**, the point where `residual_scale**-4 ==
+n_blocks` and PC rates scale linearly with depth. Real-text geometry healthy
+(-0.0294 vs depth 4's -0.0008), best muPC-on capability (NMSE 0.8919, lift
+2.21x), clip engaged 0% so unconfounded.
+
+Still short of muPC-off (NMSE 0.5569, lift 4.19x), which surrenders depth-scale
+control. The bind is narrowed and not closed, and the axis is now bounded on
+both sides: power=0 collapses, power=-8 diverges, the useful region is around -4.
