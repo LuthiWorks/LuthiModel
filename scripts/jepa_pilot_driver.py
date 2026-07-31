@@ -175,6 +175,10 @@ STAGES: dict[int, list[tuple[str, int]]] = {
     21: [("probe_surprise_d8_amp8", 512)],
     # EMBEDDING SCALING (2026-07-31): stage 20 + mu_pc_scale_embedding.
     22: [("probe_surprise_d8_embscale", 512)],
+    # BACKPROP-LR COMPENSATION (2026-07-31): stage 20 + block params at
+    # lr/residual_scale. The counterpart of mu_pc_rate_power for the backprop
+    # side -- the half that owns block 0's canceller.
+    23: [("probe_surprise_d8_bplr", 512)],
 }
 
 # Per-arm model configuration -- single source of truth, shared with
@@ -342,6 +346,7 @@ ARM_GRAD_CLIP: dict[str, float] = {
 # on its own -- see the pre-registered readout note in
 # docs/research/2026-07-30_sigreg-projection-hypothesis.md for why capability
 # metrics therefore CANNOT be read from this run either way.
+ARM_BACKPROP_LR_COMPENSATE: dict[str, bool] = {"probe_surprise_d8_bplr": True}
 ARM_SIGREG_PROJ: dict[str, str] = {"probe_surprise_d8_noproj": "none"}
 # `probe_surprise_d8_balanced` is `probe_surprise_d8` (muPC ON, exponent 0.25)
 # plus mu_pc_balance_rates. One variable against stage 14, which collapsed.
@@ -415,6 +420,15 @@ ARM_CONFIGS["probe_surprise_d8_embscale"] = dict(
     mu_pc_scale_embedding=True,
 )
 ARM_GRAD_CLIP["probe_surprise_d8_embscale"] = 20000.0
+# Backprop-LR compensation (2026-07-31). Boosts ONLY the block parameters'
+# learning rate by 1/residual_scale, restoring parity with the un-attenuated
+# parameters outside the trunk. One variable against stage 20.
+ARM_CONFIGS["probe_surprise_d8_bplr"] = dict(ARM_CONFIGS["probe_surprise_d8_amp4"])
+ARM_GRAD_CLIP["probe_surprise_d8_bplr"] = 20000.0
+ARM_TAPER["probe_surprise_d8_bplr"] = ARM_TAPER["living_v5_4x_d4"]
+ARM_FILELIST["probe_surprise_d8_bplr"] = ARM_FILELIST["living_v5_4x_d4"]
+ARM_SIGREG["probe_surprise_d8_bplr"] = ARM_SIGREG["living_v5_4x_d4"]
+ARM_COSINE["probe_surprise_d8_bplr"] = ARM_COSINE["living_v5_4x_d4"]
 ARM_TAPER["probe_surprise_d8_embscale"] = ARM_TAPER["living_v5_4x_d4"]
 ARM_FILELIST["probe_surprise_d8_embscale"] = ARM_FILELIST["living_v5_4x_d4"]
 ARM_SIGREG["probe_surprise_d8_embscale"] = ARM_SIGREG["living_v5_4x_d4"]
@@ -470,6 +484,55 @@ ARM_TAPER["probe_surprise_d8"] = ARM_TAPER["living_v5_4x_d4"]
 ARM_FILELIST["probe_surprise_d8"] = ARM_FILELIST["living_v5_4x_d4"]
 ARM_SIGREG["probe_surprise_d8"] = ARM_SIGREG["living_v5_4x_d4"]
 ARM_COSINE["probe_surprise_d8"] = ARM_COSINE["living_v5_4x_d4"]
+
+
+def _param_groups(loss_module, model, arm: str, base_lr: float):
+    """Optimizer param groups, with optional backprop-LR compensation.
+
+    Every block computes `x = x + residual_scale * f(x)`, so by the chain rule
+    every BACKPROP-trained parameter inside a block receives a gradient scaled
+    by `residual_scale`. Parameters outside the blocks -- the embeddings, the
+    predictor, the projection heads -- do not: `x0` reaches the output through
+    the unattenuated skip path.
+
+    So muPC quietly applies a smaller effective learning rate to the trunk than
+    to everything around it, and the deeper the model the wider that gap.
+
+    Why this matters here (measured 2026-07-31): block 0's job is to strip the
+    ~0.58 shared component that real text carries into the trunk. With muPC off
+    its attention learns an output that OPPOSES that component (delta -0.316).
+    Under attenuation it learns one that REINFORCES it (+0.252). Stage 22 showed
+    rescaling the input cannot fix this -- it changed the magnitude by the
+    predicted 1.68x and never changed the sign. What differs is what attention
+    LEARNED, and what it learns is shaped by the gradient it receives.
+
+    `ARM_BACKPROP_LR_COMPENSATE` multiplies the block parameters' learning rate
+    by `1 / residual_scale`, restoring parity with the un-attenuated parameters.
+    This is the exact counterpart of `mu_pc_rate_power`, which did the same for
+    the PC side and produced the best configuration found -- applied to the side
+    that actually owns block 0's canceller.
+
+    Returns a single group when compensation is off, so the optimizer state is
+    byte-identical to every prior run.
+    """
+    trainable = [p for p in loss_module.parameters() if p.requires_grad]
+    if not ARM_BACKPROP_LR_COMPENSATE.get(arm, False):
+        return trainable
+
+    rs = float(getattr(model.blocks[0], "residual_scale", 1.0))
+    if rs >= 1.0:
+        return trainable
+
+    block_ids = {id(p) for p in model.blocks.parameters() if p.requires_grad}
+    in_blocks = [p for p in trainable if id(p) in block_ids]
+    rest = [p for p in trainable if id(p) not in block_ids]
+    boosted = base_lr / rs
+    print(f"  [backprop-lr] {len(in_blocks)} block tensors at lr={boosted:.3e} "
+          f"(1/{rs:.4f} = {1/rs:.3f}x), {len(rest)} others at lr={base_lr:.3e}")
+    return [
+        {"params": in_blocks, "lr": boosted},
+        {"params": rest, "lr": base_lr},
+    ]
 
 
 def _device() -> torch.device:
@@ -631,7 +694,7 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
     trainer = JEPATrainer(
         loss_module=loss_module,
         optimizer=optim.AdamW(
-            [p for p in loss_module.parameters() if p.requires_grad],
+            _param_groups(loss_module, model, arm, args.lr),
             lr=args.lr,
         ),
         sampler=ModalitySampler(sampler_cfg, generator=gen),

@@ -215,3 +215,85 @@ The periodic absolute divergence guard added this morning **fired for the first
 time in anger**, at ~26 minutes instead of the 45 the run would have taken to
 reach its epoch-end check. First live catch; ~19 minutes saved. The guard hole
 found by stage 21 is closed in practice, not just in tests.
+
+---
+
+# Stage 23 (backprop-LR compensation): registered before the run
+
+**Time:** ~10:00. **Run:** `probe_surprise_d8_bplr_512d_seed86`, 3000 steps.
+**Base:** stage 20 (`probe_surprise_d8_amp4`), the best configuration found.
+**Model config is IDENTICAL** -- the only difference is optimizer param groups.
+Cleanest single variable in this whole sequence.
+
+## What it does and why
+
+Every block computes `x = x + residual_scale * f(x)`, so by the chain rule every
+BACKPROP-trained parameter inside a block receives a gradient scaled by
+`residual_scale`. Parameters outside the blocks -- embeddings, predictor,
+projection heads -- do not, because `x0` reaches the output through the
+unattenuated skip path.
+
+**muPC therefore applies a smaller effective learning rate to the trunk than to
+everything around it, and the gap widens with depth.** At 8 blocks the trunk
+learns at 0.5946x the rate of the rest of the model; at 36 blocks it would be
+0.4082x.
+
+Stage 22 established that this is a *learning* problem, not a geometry one:
+rescaling the input changed the magnitude of block 0's attention delta by the
+predicted 1.68x and never changed its sign. Healthy block-0 attention learns an
+output that OPPOSES the shared component (-0.316); every muPC-on run learns one
+that REINFORCES it (+0.252 at power -4, +0.146 with embedding scaling).
+
+This run multiplies the block parameters' learning rate by `1/residual_scale`
+(1.682x at depth 8), restoring parity. It is the exact counterpart of
+`mu_pc_rate_power` -- which did this for the PC side and produced the best
+configuration found -- applied to the side that actually owns block 0's
+canceller.
+
+Verified: 64 block tensors at lr 5.045e-4, 67 others at 3.000e-4. With
+compensation off the optimizer receives a single group, byte-identical to every
+prior run.
+
+## Registered prediction
+
+**Primary: held-out NMSE.**
+
+| reference | NMSE |
+|---|---|
+| depth 4 | 0.5215 |
+| muPC off | 0.5569 |
+| power -4 (base) | 0.8919 |
+
+- **CONFIRMED:** <= **0.70**
+- **REFUTED:** >= **0.85** (no better than the base)
+- **AMBIGUOUS:** 0.70 - 0.85 -- treated as refuted.
+- **Prize:** <= **0.60** matches muPC-off with depth-scale control intact.
+
+**Guard:** real-text within-batch cosine <= 0.10 (base is -0.0294).
+
+## Mechanism check, and this one is sharper than stage 22's
+
+The claim is specifically that block-0 attention learns the wrong SIGN because
+its gradient is attenuated. So the prediction is not "the offset gets smaller"
+-- it is **block 0's attention delta should go NEGATIVE**, as it is with muPC off.
+
+| block 0 attn delta | |
+|---|---|
+| muPC off (healthy) | -0.316 |
+| power -4 (base) | +0.252 |
+| embedding-scaled (stage 22) | +0.146 |
+| **this run: predicted** | **< 0** |
+
+A smaller positive number is NOT a pass. Stage 22 already produced that and it
+was refuted. Only a sign change confirms the mechanism.
+
+This is the sharpest prediction in the sequence: a specific number, at a
+specific location, that must cross zero rather than merely shrink.
+
+## Honest prior
+
+Six mechanisms proposed and refuted, 2026-07-29 to 07-31. This one is better
+grounded than most -- it follows from a chain-rule fact rather than a story, and
+it is the untested half of an intervention whose other half demonstrably worked.
+That is not evidence, and the last one also followed from an arithmetic identity
+and still failed.
