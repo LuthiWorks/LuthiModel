@@ -181,6 +181,8 @@ STAGES: dict[int, list[tuple[str, int]]] = {
     23: [("probe_surprise_d8_bplr", 512)],
     # BLOCK-0-ONLY compensation (2026-07-31): stage 23 confined to block 0.
     24: [("probe_surprise_d8_bplr0", 512)],
+    # SURPRISE DRIVE OFF (2026-07-31): stage 20 with drive_mode="raw".
+    25: [("probe_d8_amp4_rawdrive", 512)],
 }
 
 # Per-arm model configuration -- single source of truth, shared with
@@ -434,6 +436,20 @@ ARM_GRAD_CLIP["probe_surprise_d8_bplr"] = 20000.0
 # except the boost is confined to block 0. One variable against stage 23.
 ARM_CONFIGS["probe_surprise_d8_bplr0"] = dict(ARM_CONFIGS["probe_surprise_d8_amp4"])
 ARM_GRAD_CLIP["probe_surprise_d8_bplr0"] = 20000.0
+# SURPRISE DRIVE OFF (Brian, 2026-07-31). Stage 20's configuration with
+# drive_mode back to "raw". First isolation test of a recent mechanism against
+# the depth-8 problem: the surprise drive (2026-07-29) changes how much the PC
+# substrate moves per step, and substrate motion at depth is exactly the axis
+# the whole muPC investigation turns on.
+ARM_CONFIGS["probe_d8_amp4_rawdrive"] = dict(
+    ARM_CONFIGS["probe_surprise_d8_amp4"],
+    drive_mode="raw",
+)
+ARM_GRAD_CLIP["probe_d8_amp4_rawdrive"] = 20000.0
+ARM_TAPER["probe_d8_amp4_rawdrive"] = ARM_TAPER["living_v5_4x_d4"]
+ARM_FILELIST["probe_d8_amp4_rawdrive"] = ARM_FILELIST["living_v5_4x_d4"]
+ARM_SIGREG["probe_d8_amp4_rawdrive"] = ARM_SIGREG["living_v5_4x_d4"]
+ARM_COSINE["probe_d8_amp4_rawdrive"] = ARM_COSINE["living_v5_4x_d4"]
 ARM_TAPER["probe_surprise_d8_bplr0"] = ARM_TAPER["living_v5_4x_d4"]
 ARM_FILELIST["probe_surprise_d8_bplr0"] = ARM_FILELIST["living_v5_4x_d4"]
 ARM_SIGREG["probe_surprise_d8_bplr0"] = ARM_SIGREG["living_v5_4x_d4"]
