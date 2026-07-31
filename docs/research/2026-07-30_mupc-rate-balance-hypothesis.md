@@ -232,3 +232,73 @@ But the endpoint metric is what decides, and by that measure power=+1 and
 power=0 are indistinguishable (0.9807 vs 0.9704) while muPC-off is a different
 regime entirely (0.0111). That pattern says the PC rate is not the axis at all
 -- `residual_scale` is.
+
+---
+
+# VERDICT, stage 18 (power=-1, amplify): REFUTED — but not null
+
+**Time:** ~05:20. Scored on the registered primary metric.
+
+| | within-batch cosine | NMSE | probe lift |
+|---|---|---|---|
+| depth 4 healthy | 0.0231 | 0.5215 | 4.80x |
+| d8 muPC off | 0.0111 | 0.5569 | 4.19x |
+| d8 power 0 (control) | 0.9704 | 1.5054 | 1.03x |
+| d8 power +1 (attenuate) | 0.9807 | 6.6805 | 2.89x |
+| **d8 power -1 (amplify)** | **0.6384** | 1.7070 | 1.35x |
+
+Registered: CONFIRMED <= 0.30, REFUTED >= 0.70, ambiguous 0.30-0.70 assigned in
+advance to refuted. **0.6384 is refuted by that rule.**
+
+But it is not the null result the interim predicted. 0.638 against 0.970 is a
+substantial move, in the direction Brian proposed, and it says rate scaling is
+**not** a dead axis — it is an axis with the wrong magnitude, or one that helps
+without being sufficient.
+
+## The interim was wrong for the third time, and I acted on it
+
+At 18 of 30 light records, power=-1's offset dominance matched the control to
+three decimals (0.5716 vs 0.5719). On that basis I told Brian the endpoint would
+"almost certainly read ~0.97 like the others" and that the run's marginal value
+was small. It read 0.638.
+
+Tally for these depth-8 runs: stage 17's interims swung twice and contradicted
+each other, then the endpoint contradicted both; stage 18's interim predicted a
+null and the endpoint was the most informative result of the pair. **Three for
+three.** Interim windows on these runs have zero demonstrated predictive value
+and I have now been misled by them at every opportunity.
+
+The registered-endpoint discipline is the only thing that has worked, and on
+this occasion it survived my own argument against it.
+
+## What this changes
+
+Rate scaling was about to be written off. It should not be. The ordering on the
+endpoint metric is:
+
+    power +1 (attenuate)  0.9807
+    power  0 (none)       0.9704
+    power -1 (amplify)    0.6384
+
+Monotonic in the right direction, with amplification producing by far the
+largest single-knob improvement seen at depth 8 short of disabling muPC. That
+suggests testing further amplification (power=-2, factor 1/s^2 = 2.83x at depth
+8) before concluding the axis is exhausted.
+
+Capability does not follow the same ordering: power=-1 sits at NMSE 1.707 and
+lift 1.35x, barely better than the control's 1.505 / 1.03x and nowhere near
+muPC-off's 0.557 / 4.19x. Note power=+1's lift of 2.89x is an artifact worth
+ignoring — its NMSE is 6.68, a broken model, and lift over a degenerate floor is
+not a capability signal.
+
+So: geometry improves substantially with amplification, capability does not yet
+follow. Those may reconnect at stronger amplification, or the geometry
+improvement may be cosmetic. Untested either way.
+
+## Standing conclusion on the depth question
+
+Unchanged and worth restating: **muPC off is still the only configuration that
+produces a working depth-8 model** (within-batch cosine 0.0111, NMSE 0.5569,
+lift 4.19x — inside depth 4's band on every measure), and it is still the
+configuration whose activation growth compounds to 3.92x at production depth.
+The bind is not resolved. Nothing here licenses starting the 18-hour run.
