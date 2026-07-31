@@ -586,3 +586,52 @@ Every geometry claim in this document and in
 The muPC verdict's headline (muPC off 0.0111 vs muPC on 0.9704) survives -- both
 reproduce on real text (0.0038 vs 0.3333) with the same direction -- but the
 magnitudes were inflated by the out-of-distribution input.
+
+---
+
+# Stage 21 (power=-8): registered before the run
+
+**Time:** ~07:50. **Run:** `probe_surprise_d8_amp8_512d_seed88`, 3000 steps.
+**One variable vs stage 20:** `mu_pc_rate_power` -4 -> -8. Clip held at 20000.
+
+Multiplier becomes `n_blocks**2` -- 64x at depth 8 (pc_rate 0.001 -> 0.064),
+1296x at depth 36. Where power=-4 made PC rates scale linearly with depth, -8
+makes them scale quadratically.
+
+## PRIMARY METRIC CHANGED, deliberately: held-out NMSE
+
+Real-text cosine is **already resolved** at power=-4: -0.0294, against depth 4's
+-0.0008 and muPC-off's 0.0038. There is no headroom left on geometry -- further
+amplification can only break it, not improve it. Scoring on a saturated metric
+would make any result look like noise.
+
+Capability is what still has room: NMSE 0.8919 at power=-4 against muPC-off's
+0.5569 and depth 4's 0.5215.
+
+So the gate scores the quantity that can still move, and guards the one that is
+already won:
+
+- **CONFIRMED (still paying):** held-out NMSE <= **0.80**
+- **REFUTED (saturated or reversed):** >= **0.90** (no better than power=-4)
+- **AMBIGUOUS:** 0.80 - 0.90 -- treated as refuted.
+
+**Prize threshold:** NMSE <= **0.60** would match muPC-off (0.5569) while KEEPING
+muPC's depth-scale control, which is the outcome that resolves the
+scale-control-versus-collapse bind outright.
+
+## GUARD: real-text cosine must stay healthy
+
+Registered as a guard, not a target: **real-text within-batch cosine must remain
+<= 0.10.** If NMSE improves while the cosine degrades past that, this is a
+trade rather than a win and will be reported as one.
+
+Measured with `scripts/measure_input_sensitivity.py`, which exists because the
+random-token version of this measurement inverted four gates' worth of verdicts.
+
+## Stability note
+
+64x on `pc_rate` is a large step and instability is a real possibility. The
+divergence guards (loss vs frozen baseline, held-out NMSE > 2.0) are the net; if
+they trip, that is a result, not a failure. Clip engagement will be reported --
+at power=-4 it was 0%, so if -8 pushes gradients into the clip the comparison
+becomes confounded and will be reported as such.

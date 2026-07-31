@@ -171,6 +171,8 @@ STAGES: dict[int, list[tuple[str, int]]] = {
     19: [("probe_surprise_d8_amp2", 512)],
     # power=-4 + clip raised to 20000 (2026-07-30). PC multiplier == n_blocks.
     20: [("probe_surprise_d8_amp4", 512)],
+    # power=-8 (2026-07-30). PC multiplier == n_blocks**2 (64x at depth 8).
+    21: [("probe_surprise_d8_amp8", 512)],
 }
 
 # Per-arm model configuration -- single source of truth, shared with
@@ -393,6 +395,19 @@ ARM_CONFIGS["probe_surprise_d8_amp4"] = dict(
     mu_pc_rate_power=-4.0,
 )
 ARM_GRAD_CLIP["probe_surprise_d8_amp4"] = 20000.0
+# power=-8 (Brian, 2026-07-30). Multiplier becomes n_blocks**2: 64x at depth 8,
+# 1296x at depth 36. Clip held at 20000 -- ONE variable against stage 20, which
+# engaged the clip on 0% of steps, so it is a genuine control here rather than
+# the dominant term it had become at clip 1000.
+ARM_CONFIGS["probe_surprise_d8_amp8"] = dict(
+    ARM_CONFIGS["probe_surprise_d8"],
+    mu_pc_rate_power=-8.0,
+)
+ARM_GRAD_CLIP["probe_surprise_d8_amp8"] = 20000.0
+ARM_TAPER["probe_surprise_d8_amp8"] = ARM_TAPER["living_v5_4x_d4"]
+ARM_FILELIST["probe_surprise_d8_amp8"] = ARM_FILELIST["living_v5_4x_d4"]
+ARM_SIGREG["probe_surprise_d8_amp8"] = ARM_SIGREG["living_v5_4x_d4"]
+ARM_COSINE["probe_surprise_d8_amp8"] = ARM_COSINE["living_v5_4x_d4"]
 ARM_TAPER["probe_surprise_d8_amp4"] = ARM_TAPER["living_v5_4x_d4"]
 ARM_FILELIST["probe_surprise_d8_amp4"] = ARM_FILELIST["living_v5_4x_d4"]
 ARM_SIGREG["probe_surprise_d8_amp4"] = ARM_SIGREG["living_v5_4x_d4"]
