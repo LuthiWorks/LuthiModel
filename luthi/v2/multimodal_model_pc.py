@@ -81,6 +81,7 @@ class MultimodalPredictiveCodingLM(nn.Module):
         mu_pc_enabled: bool = False,
         mu_pc_exponent: float = 0.5,
         mu_pc_rate_power: float = 0.0,
+        mu_pc_scale_embedding: bool = False,
         backward_pass_enabled: bool = True,
         buffer_dtypes: dict[str, torch.dtype] | None = None,
         # Multimodal parameters
@@ -186,6 +187,8 @@ class MultimodalPredictiveCodingLM(nn.Module):
         ])
 
         # Output projection (text only; used by the LM-style forward API).
+        self._init_mu_pc_embedding_scale(mu_pc_enabled, mu_pc_scale_embedding)
+
         self.final_norm = nn.LayerNorm(d_model)
         self.output_proj = nn.Linear(d_model, vocab_size)
 
@@ -274,7 +277,47 @@ class MultimodalPredictiveCodingLM(nn.Module):
             raise ValueError("At least one modality input must be provided.")
 
         h = torch.cat(parts, dim=1)
+
+        # muPC embedding scaling (2026-07-31). Every block computes
+        #     x1 = x0 + residual_scale * attn_out
+        # so cancelling a shared component carried in x0 requires the attention
+        # output to supply -offset/residual_scale. At s=1.0 that is a fair
+        # fight; at s=0.5946 (depth 8) the corrector must be 1.68x larger,
+        # because **x0 enters unattenuated while everything that could correct
+        # it is attenuated**.
+        #
+        # Measured on real text (scripts/localize_offset_in_block.py): the
+        # embedding carries offset dominance ~0.58 in every arm -- it is an
+        # INPUT property, real passages share enormous common structure. A
+        # healthy trunk removes it in block 0 (muPC off: attn -0.316, ffn
+        # -0.153, then flat at ~0.06 for seven blocks). The attenuated trunk
+        # cannot: at power 0 block 0 moves it +0.008 and the offset then grows
+        # to 0.954 through the trunk.
+        #
+        # Scaling the embedding by the same factor makes x1 = s*(x0 + attn_out),
+        # so cancellation is scale-matched exactly as at s=1.0. Offset dominance
+        # is a ratio and is invariant to the overall factor, so this should
+        # restore block-0 stripping while KEEPING muPC's per-block attenuation
+        # and its depth-scale control -- which the depth ladder shows is real
+        # (activation growth 1.14 flat to 36 blocks with muPC, 3.92 without).
+        #
+        # Default False: bit-identical to every run before this date.
+        # See docs/research/2026-07-31_offset-localized-to-block0-cancellation.md
+        if self._mu_pc_embedding_scale != 1.0:
+            h = h * self._mu_pc_embedding_scale
         return h, spans
+
+    def _init_mu_pc_embedding_scale(self, mu_pc_enabled, mu_pc_scale_embedding):
+        """Shared scale applied to the assembled embedding stream.
+
+        1.0 = off and bit-identical to pre-2026-07-31. Otherwise the same
+        `residual_scale` every block applies to its own output, so the trunk
+        input and the trunk's correctors live at one scale.
+        """
+        rs = float(getattr(self.blocks[0], "residual_scale", 1.0)) if len(self.blocks) else 1.0
+        self._mu_pc_embedding_scale = (
+            rs if (mu_pc_enabled and mu_pc_scale_embedding) else 1.0
+        )
 
     def encode(
         self,

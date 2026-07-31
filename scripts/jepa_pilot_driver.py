@@ -173,6 +173,8 @@ STAGES: dict[int, list[tuple[str, int]]] = {
     20: [("probe_surprise_d8_amp4", 512)],
     # power=-8 (2026-07-30). PC multiplier == n_blocks**2 (64x at depth 8).
     21: [("probe_surprise_d8_amp8", 512)],
+    # EMBEDDING SCALING (2026-07-31): stage 20 + mu_pc_scale_embedding.
+    22: [("probe_surprise_d8_embscale", 512)],
 }
 
 # Per-arm model configuration -- single source of truth, shared with
@@ -404,6 +406,19 @@ ARM_CONFIGS["probe_surprise_d8_amp8"] = dict(
     mu_pc_rate_power=-8.0,
 )
 ARM_GRAD_CLIP["probe_surprise_d8_amp8"] = 20000.0
+# Embedding scaling (2026-07-31). probe_surprise_d8_amp4 + mu_pc_scale_embedding.
+# ONE variable against stage 20, the best configuration found. Tests whether
+# scale-matching the trunk input to its correctors restores block-0 offset
+# stripping while keeping muPC's attenuation.
+ARM_CONFIGS["probe_surprise_d8_embscale"] = dict(
+    ARM_CONFIGS["probe_surprise_d8_amp4"],
+    mu_pc_scale_embedding=True,
+)
+ARM_GRAD_CLIP["probe_surprise_d8_embscale"] = 20000.0
+ARM_TAPER["probe_surprise_d8_embscale"] = ARM_TAPER["living_v5_4x_d4"]
+ARM_FILELIST["probe_surprise_d8_embscale"] = ARM_FILELIST["living_v5_4x_d4"]
+ARM_SIGREG["probe_surprise_d8_embscale"] = ARM_SIGREG["living_v5_4x_d4"]
+ARM_COSINE["probe_surprise_d8_embscale"] = ARM_COSINE["living_v5_4x_d4"]
 ARM_TAPER["probe_surprise_d8_amp8"] = ARM_TAPER["living_v5_4x_d4"]
 ARM_FILELIST["probe_surprise_d8_amp8"] = ARM_FILELIST["living_v5_4x_d4"]
 ARM_SIGREG["probe_surprise_d8_amp8"] = ARM_SIGREG["living_v5_4x_d4"]

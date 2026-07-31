@@ -92,3 +92,57 @@ result.** Five mechanisms have been proposed and refuted across 2026-07-29/30
 by exactly this kind of reasoning. It is cheap to test: one flag, one
 3000-step run at depth 8, scored on real-text NMSE against power=-4's 0.8919
 and muPC-off's 0.5569.
+
+---
+
+# Stage 22 (embedding scaling): registered before the run
+
+**Time:** ~09:05. **Run:** `probe_surprise_d8_embscale_512d_seed87`, 3000 steps.
+**One variable vs stage 20** (`probe_surprise_d8_amp4`, the best configuration
+found): `mu_pc_scale_embedding=True`. Clip held at 20000.
+
+`h = residual_scale * (token_emb + pos_emb + modality_emb)`, applied once where
+the trunk stream is assembled, so `x1 = s * (x0 + attn_out)` and cancellation is
+scale-matched as at `s = 1.0`. muPC's per-block attenuation is untouched.
+
+## Registered prediction
+
+**Primary: held-out NMSE.**
+
+| reference | NMSE |
+|---|---|
+| depth 4 | 0.5215 |
+| muPC off (surrenders depth-scale control) | 0.5569 |
+| power -4 (base for this run) | 0.8919 |
+
+- **CONFIRMED:** <= **0.70** — a clear move from 0.8919 toward the muPC-off
+  regime while keeping attenuation.
+- **REFUTED:** >= **0.85** — no better than power=-4 alone.
+- **AMBIGUOUS:** 0.70 - 0.85 — treated as refuted.
+- **Prize:** <= **0.60** matches muPC-off *with* depth-scale control intact,
+  which closes the bind.
+
+**Guard:** real-text within-batch cosine must stay <= 0.10 (power -4 is at
+-0.0294). Improvement in NMSE bought by degraded geometry is a trade, not a win.
+
+## Independent mechanism check on the same run
+
+The derivation says the offset should be stripped **in block 0**, as it is with
+muPC off (attn -0.316, ffn -0.153), rather than late in the trunk as at
+power=-4 (block 0 attn **+0.252**, stripping deferred to blocks 6-7).
+
+So `scripts/localize_offset_in_block.py` on the resulting checkpoint is a second,
+independent test of the mechanism -- and it can fail even if NMSE improves. If
+NMSE improves while block 0 still fails to strip, the mechanism is wrong and the
+gain came from somewhere else, and that will be reported.
+
+That is the part worth watching: it is the first time in this sequence that the
+proposed mechanism makes a prediction about *where inside the model* something
+should change, rather than only about an outcome number.
+
+## What this cannot establish
+
+Depth 8 only. The depth ladder (`scripts/depth_ladder_probe.py`) and a run at 12
+blocks are still required before anything is claimed about production depth 36.
+Generalizing from the depth I happened to test is the error that produced this
+whole thread.
