@@ -490,3 +490,99 @@ time because it is the failure mode most likely to look like success.
 
 Unchanged: interim windows on these runs are three-for-three wrong. Endpoint
 only.
+
+---
+
+# VERDICT, stage 20 — and a METRIC INVALIDATION
+
+**Time:** ~07:30.
+
+## Scored as registered: REFUTED. Re-scored on real text: CONFIRMED.
+
+| arm | cos RANDOM tokens | cos REAL text | NMSE | probe lift |
+|---|---|---|---|---|
+| depth 4 healthy | 0.0231 | -0.0008 | 0.5215 | 4.80x |
+| d8 muPC off | 0.0111 | 0.0038 | 0.5569 | 4.19x |
+| d8 power 0 | 0.9704 | 0.3333 | 1.5054 | 1.03x |
+| d8 power -1 | 0.6384 | 0.5667 | 1.7070 | 1.35x |
+| d8 power -2 | 0.4127 | 0.1319 | 1.1742 | 2.04x |
+| **d8 power -4** | **0.9528** | **-0.0294** | **0.8919** | **2.21x** |
+
+## The metric was measured out of distribution
+
+`within-batch pairwise cosine` was computed with `torch.randint` over the
+vocabulary -- uniformly random token IDs -- against a model trained on
+Gutenberg. That is far out of distribution, and it inverted the ranking.
+
+On real text, power=-4 is the LEAST collapsed muPC-on arm and is
+indistinguishable from both healthy references. On random tokens it read the
+MOST collapsed. Four consecutive gates (stages 17, 18, 19, 20) were scored on
+the random-token version.
+
+**Why it looked trustworthy:** the depth-4 control read 0.0231 on random tokens,
+matching expectations, so the instrument appeared validated. But a model can map
+random garbage to a single point while discriminating real text perfectly well.
+The control passing does not validate the input distribution.
+
+**Real-text cosine orders capability monotonically** and the random-token
+version does not:
+
+| real cos | -0.029 | 0.132 | 0.333 | 0.567 |
+|---|---|---|---|---|
+| NMSE | 0.892 | 1.174 | 1.505 | 1.707 |
+
+Perfect ordering across four arms. That is what a working geometry metric should
+do, and it is the strongest evidence that the real-text version is the right
+instrument and the random-token version was not.
+
+## Re-scored verdicts
+
+- **Stage 20 (power=-4): CONFIRMED.** Real-text cosine -0.0294 clears the
+  registered <= 0.30 bound and also the separately-recorded <= 0.10 threshold
+  for "within reach of the muPC-off regime".
+- **Stage 19 (power=-2): still CONFIRMED** (real 0.1319).
+- **Stage 18 (power=-1): still REFUTED** (real 0.5667 -- and it is the WORST arm
+  on real text, which the random metric ranked second-best).
+
+The ladder is not monotonic on the correct metric either: power -1 is worse than
+power 0 on real text (0.567 vs 0.333). The axis has structure that neither
+metric revealed cleanly, and only power -2 and -4 improve on the control.
+
+## What power=-4 actually is
+
+`residual_scale ** -4 == n_blocks` exactly, at every depth. muPC's attenuation
+and this amplification cancel, leaving PC rates scaling LINEARLY WITH DEPTH.
+Brian proposed it as "the next step"; it is the point where the two effects
+annihilate.
+
+It is the first configuration that keeps muPC's depth-scale control AND has
+real-text geometry at healthy levels: cosine -0.0294 against depth 4's -0.0008,
+with `residual_scale` still 0.5946 doing its job.
+
+Its gradient median is 469 with the clip at 20000 engaging on **0% of steps** --
+so unlike power -1 and -2 (73% and 93% clipped), this run is NOT clip-confounded.
+
+## What is still NOT resolved
+
+Capability has not caught up. NMSE 0.892 and lift 2.21x against muPC-off's
+0.5569 and 4.19x, and depth 4's 0.5215 and 4.80x. Power=-4 is the best muPC-on
+configuration by a clear margin and remains materially worse than simply
+disabling muPC.
+
+So the bind is narrowed, not resolved: there is now a configuration with both
+depth-scale control and healthy geometry, but it still costs ~60% higher NMSE
+than the configuration that surrenders scale control.
+
+**Confound to state plainly:** stage 20 moved TWO variables (power -2 -> -4 and
+clip 1000 -> 20000). The clip change was necessary -- at 93% engagement the old
+clip was the dominant term -- but it means power=-4 versus power=-2 is not a
+clean single-variable comparison. Power=-4 at clip 1000, or power=-2 at clip
+20000, would separate them.
+
+## Immediate consequence
+
+Every geometry claim in this document and in
+`2026-07-30_mupc-verdict.md` that rests on random-token cosine needs re-reading.
+The muPC verdict's headline (muPC off 0.0111 vs muPC on 0.9704) survives -- both
+reproduce on real text (0.0038 vs 0.3333) with the same direction -- but the
+magnitudes were inflated by the out-of-distribution input.
