@@ -413,3 +413,73 @@ the measurement says it is needed.
 All three are informative. The second and third are the more likely, on the
 record: seven mechanisms proposed in three days, six refuted, and the one
 confirmation was a diagnosis rather than a treatment.
+
+---
+
+# VERDICT, stage 24 (block-0-only): REFUTED — and the framing was wrong
+
+**Time:** ~11:30. Three conditions registered; two failed.
+
+| condition | result |
+|---|---|
+| 1. Stability -- completes, not killed | **PASS** (admissible: True) |
+| 2. Block-0 attn delta < 0 | **FAIL** -- **+0.3720** |
+| 3. Held-out NMSE <= 0.80 | **FAIL** -- 1.4512 |
+
+Worse than the base (power -4: +0.252, NMSE 0.8919) on both measures.
+
+## The finding that matters: block 0 is not a local problem
+
+| compensation scope | block-0 attn delta |
+|---|---|
+| none (power -4) | +0.252 |
+| **all 8 blocks** (stage 23) | **-0.1156** |
+| **block 0 only** (stage 24) | **+0.3720** |
+
+Compensating the whole trunk flipped block 0 NEGATIVE. Compensating block 0
+alone made it MORE POSITIVE. The narrow intervention moved the target in the
+opposite direction from the broad one.
+
+**So block 0's learned behaviour is not determined by block 0's learning rate.**
+What block 0 should output depends on what the rest of the trunk will do with
+it. When the deep blocks learn quickly, the equilibrium has block 0 stripping the
+shared component; when they stay damped, it does not -- and speeding up block 0
+alone only makes it better at the wrong job.
+
+This invalidates the framing of stages 22-24. I localized the failure to block 0
+and treated it as a local defect to repair locally. The localization was correct
+as a description of WHERE the symptom appears and wrong as a guide to where the
+CAUSE lives. Stripping is a **system-level equilibrium** across the trunk.
+
+## Instrument correction: real-text cosine has sampling variance
+
+`power=-4`'s real-text within-batch cosine reads **0.1124** under
+`scripts/measure_input_sensitivity.py` and **-0.0294** under the ad-hoc version
+used on 2026-07-30. Same checkpoint, same metric, different passages sampled
+(250k-token spacing vs a stride derived from sequence count).
+
+The recent gates are unaffected -- the primary metric moved to held-out NMSE at
+stage 21, computed by the eval harness on a proper held-out set. But **the
+-0.0294 headline reported for power=-4 was over-precise**; the honest statement
+is "roughly 0.1, with sample-dependent spread not yet characterized."
+
+Third instrument problem in three days: random-token input inverted four gates;
+grad_norm was blinded by in-place clipping; now this. Each was found by using
+the instrument for something new rather than by inspecting it.
+
+## Standing state
+
+**power=-4 remains the best configuration found** and nothing since has
+displaced it: NMSE 0.8919, lift 2.21x, clip 0%, muPC's depth-scale control
+intact, offset stripped late rather than early.
+
+The bind stands as characterized at stage 23: muPC's gradient attenuation is
+simultaneously what stabilizes deep training and what prevents the trunk from
+reaching the offset-stripping equilibrium. Stage 24 adds that the equilibrium is
+global, so partial compensation does not approach it gradually -- it lands
+somewhere else entirely.
+
+## Tally
+
+Eight mechanisms proposed 2026-07-29 to 07-31. Seven refuted. One confirmed as a
+diagnosis while failing as a treatment (stage 23).
