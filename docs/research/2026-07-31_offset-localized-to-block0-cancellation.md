@@ -146,3 +146,72 @@ Depth 8 only. The depth ladder (`scripts/depth_ladder_probe.py`) and a run at 12
 blocks are still required before anything is claimed about production depth 36.
 Generalizing from the depth I happened to test is the error that produced this
 whole thread.
+
+---
+
+# VERDICT, stage 22 (embedding scaling): REFUTED on both counts
+
+**Time:** ~09:40.
+
+**Outcome:** NMSE 2.1100, killed at 2.4170 by the divergence guard,
+`admissible: False`. Registered CONFIRMED <= 0.70. Against power=-4's 0.8919
+this made things worse. Probe lift 1.00x -- no information above floor.
+
+**Mechanism prediction: FAILED, but measurably half-right.**
+
+| block 0 | attn delta | ffn delta |
+|---|---|---|
+| muPC off (healthy) | **-0.316** | -0.153 |
+| power -4 | +0.252 | +0.088 |
+| embedding-scaled | **+0.146** | +0.175 |
+
+The prediction was that stripping would move into block 0. It did not. The attn
+delta shrank from +0.252 to +0.146 -- roughly the 1.68x the arithmetic predicted,
+in the predicted direction -- **but it never changed sign.**
+
+## Why the derivation was right and useless
+
+`norm1` is a LayerNorm, so `attn_out` is invariant to scaling `x0`. Scaling the
+embedding therefore does exactly what the derivation said: `x1 = s*(x0 +
+attn_out)`, and the ratio between the input and its corrector is rebalanced by
+1/s. The measured 42% reduction in the attn delta is that rebalancing, visible
+and about the right size.
+
+What it cannot do is change **what attention learned to output**. In the healthy
+run block-0 attention produces a component that OPPOSES the offset; in every
+muPC-on run it produces one that REINFORCES it. Rescaling changes magnitude, not
+sign.
+
+So the problem was never the arithmetic of cancellation. **Attenuation changes
+what attention learns**, and no rescaling of the input fixes a learned function
+of the wrong sign. The target moves from the residual stream's geometry to the
+gradient signal attention receives -- which is attenuated by `residual_scale`
+for every backprop-trained parameter in the block.
+
+## Tally
+
+Six mechanisms proposed and refuted, 2026-07-29 to 07-31: SIGReg-winning;
+gradient-magnitude-as-cause; the PC/backprop rate ratio; the unscaled-x0
+constant; the projection-head bias; and now embedding scaling.
+
+This one failed better than the others: it made a quantitative prediction about
+a specific location inside the model, that prediction was measurably half-right,
+and the half that failed points somewhere specific rather than nowhere.
+
+## What still stands
+
+**power=-4 remains the best configuration found** -- real-text cosine -0.0294,
+NMSE 0.8919, lift 2.21x, clip engaged 0%, muPC's depth-scale control intact. It
+strips the offset late (blocks 6-7) rather than early, which is a workaround
+rather than a repair, and it is still short of muPC-off's 0.5569.
+
+`mu_pc_scale_embedding` is left in the codebase, defaulting False. It is a
+correct implementation of a refuted idea; the flag and its comment record why
+scaling the input does not fix a sign error in a learned function.
+
+## Operational note
+
+The periodic absolute divergence guard added this morning **fired for the first
+time in anger**, at ~26 minutes instead of the 45 the run would have taken to
+reach its epoch-end check. First live catch; ~19 minutes saved. The guard hole
+found by stage 21 is closed in practice, not just in tests.
