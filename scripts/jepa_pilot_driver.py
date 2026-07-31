@@ -167,6 +167,8 @@ STAGES: dict[int, list[tuple[str, int]]] = {
     # OPPOSITE-DIRECTION TEST (2026-07-30): PC rates amplified by
     # 1/residual_scale. Same magnitude of adjustment as stage 17, opposite sign.
     18: [("probe_surprise_d8_amplified", 512)],
+    # DOUBLE THE AMPLIFICATION (2026-07-30): power -2, multiplier 2.829x.
+    19: [("probe_surprise_d8_amp2", 512)],
 }
 
 # Per-arm model configuration -- single source of truth, shared with
@@ -359,6 +361,18 @@ ARM_CONFIGS["probe_surprise_d8_amplified"] = dict(
     mu_pc_rate_power=-1.0,
 )
 ARM_GRAD_CLIP["probe_surprise_d8_amplified"] = 1000.0
+# Double the knob again (Brian, 2026-07-30): power -1 -> -2, PC-rate multiplier
+# 1.682x -> 2.829x at depth 8. Continues a monotonic endpoint ordering:
+# power +1 0.9807, power 0 0.9704, power -1 0.6384 (within-batch cosine).
+ARM_CONFIGS["probe_surprise_d8_amp2"] = dict(
+    ARM_CONFIGS["probe_surprise_d8"],
+    mu_pc_rate_power=-2.0,
+)
+ARM_GRAD_CLIP["probe_surprise_d8_amp2"] = 1000.0
+ARM_TAPER["probe_surprise_d8_amp2"] = ARM_TAPER["living_v5_4x_d4"]
+ARM_FILELIST["probe_surprise_d8_amp2"] = ARM_FILELIST["living_v5_4x_d4"]
+ARM_SIGREG["probe_surprise_d8_amp2"] = ARM_SIGREG["living_v5_4x_d4"]
+ARM_COSINE["probe_surprise_d8_amp2"] = ARM_COSINE["living_v5_4x_d4"]
 ARM_TAPER["probe_surprise_d8_amplified"] = ARM_TAPER["living_v5_4x_d4"]
 ARM_FILELIST["probe_surprise_d8_amplified"] = ARM_FILELIST["living_v5_4x_d4"]
 ARM_SIGREG["probe_surprise_d8_amplified"] = ARM_SIGREG["living_v5_4x_d4"]

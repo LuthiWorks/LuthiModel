@@ -302,3 +302,61 @@ produces a working depth-8 model** (within-batch cosine 0.0111, NMSE 0.5569,
 lift 4.19x — inside depth 4's band on every measure), and it is still the
 configuration whose activation growth compounds to 3.92x at production depth.
 The bind is not resolved. Nothing here licenses starting the 18-hour run.
+
+---
+
+# Stage 19 (power=-2): prediction registered before the run
+
+**Time:** ~05:35. Brian's instruction: double the previous adjustment.
+**Run:** `probe_surprise_d8_amp2_512d_seed90`, 3000 steps, ~45 min
+**One variable vs stage 14:** `mu_pc_rate_power` -2.0. PC-rate multiplier
+1.682x -> **2.828x** at depth 8.
+
+## Why this is worth running
+
+The endpoint ordering across the three tested powers is monotonic:
+
+| power | PC-rate multiplier | within-batch cosine |
+|---|---|---|
+| +1 | 0.595x | 0.9807 |
+| 0 | 1.0x | 0.9704 |
+| -1 | 1.682x | **0.6384** |
+
+Amplification produced the largest single-knob improvement seen at depth 8 short
+of disabling muPC entirely. The axis is live; the open question is whether it is
+still paying at 2.83x or has saturated.
+
+## Registered prediction
+
+Primary metric, unchanged: within-batch pairwise cosine on the final checkpoint.
+
+- **CONFIRMED (axis still paying):** <= **0.45** — a clear further improvement on
+  power=-1's 0.6384.
+- **REFUTED (axis exhausted):** >= **0.60** — no better than power=-1.
+- **AMBIGUOUS:** 0.45 - 0.60 — treated as refuted, per standing discipline.
+
+Additional threshold, recorded separately: **<= 0.30 would mean depth 8 is
+usable with muPC ON**, which is the outcome that would resolve the
+depth-scale-control-versus-collapse bind. That is the prize; 0.45 is merely
+"keep going".
+
+## Capability is a registered WARNING, not a pass/fail
+
+Power=-1 improved geometry (0.970 -> 0.638) while capability did NOT follow:
+NMSE 1.707 vs the control's 1.505, against muPC-off's 0.557. Geometry and
+capability came apart.
+
+**If stage 19 improves the cosine further while NMSE degrades again, that is
+evidence the geometry gain is cosmetic** -- the representation becoming less
+uniformly-aligned without becoming more useful. Recorded in advance so a good
+cosine with a bad NMSE is not reported as progress.
+
+The clip of 1000 is carried over unchanged for one-variable discipline, so
+capability remains partly confounded; the clip engagement rate will be reported.
+
+## Interim readings will not be reported
+
+Three for three, these runs' interim windows have pointed the wrong way --
+twice contradicting each other within one run, once predicting a null that the
+endpoint contradicted. No interim conclusions from this run. The endpoint metric
+is the result.
