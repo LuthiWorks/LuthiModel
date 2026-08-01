@@ -58,13 +58,24 @@ std ~3.0 presents to SIGReg at ~1.27. That is why ``std_p5`` (trunk) and
 ``L_sigreg`` (projected) can disagree. Not currently treated as a
 defect; recorded so it is not rediscovered.
 
-NOT YET CROSS-CHECKED against the reference implementation
-(rbalestr-lab/lejepa, pip-installable, ~50 lines of core). This module
-was ported from le-wm, so it has never been validated against anything
-but itself. Parameters worth checking there: t-grid [0, 3] with 17
-trapezoidal knots, exp(-t^2/2) used as BOTH the Gaussian CF target and
-the integration window, 1024 unit-norm projections, and the statistic's
-scaling by batch size.
+CROSS-CHECKED against the reference 2026-08-01 (`rbalestr-lab/lejepa`;
+note `pip install lejepa` fails -- never published to PyPI -- but the
+repo clones and installs from source). **Bit-identical**: buffers ``t``,
+``phi`` and ``weights`` match to 0.0, and the statistic matches to
+relative difference 0.00e+00 on isotropic N(0,1), a 100x shrink, a +3.0
+offset, and a rank-2 degenerate input -- the last being the regime our
+depth-8 runs actually occupy.
+
+The reference also settles the BatchNorm question against our old code:
+its projector is ``MLP(512, [2048, 2048, proj_dim],
+norm_layer=BatchNorm1d)``, which places BatchNorm only in the HIDDEN
+layers -- SIGReg sees a bare final Linear. Our current default matches;
+the old one did not.
+
+One real divergence remains, unexplored: their projector is a 3-layer
+MLP with internal nonlinearity, ours is a single ``nn.Linear``. Whether
+SIGReg behaves differently fed a wide nonlinear projection is untested.
+See docs/research/2026-08-01_sigreg-verified-against-reference.md.
 
 See docs/research/2026-07-30_mupc-verdict.md and the corrected block in
 jepa_loss.py.
@@ -87,9 +98,63 @@ class SIGReg(nn.Module):
         num_proj: number of random unit-vector projections per call.
     """
 
-    def __init__(self, knots: int = 17, num_proj: int = 1024):
+    def __init__(
+        self,
+        knots: int = 17,
+        num_proj: int = 1024,
+        use_generator: bool = True,
+    ):
         super().__init__()
         self.num_proj = num_proj
+        # Dedicated-generator mode (2026-08-01), matching the reference's
+        # `SlicingUnivariateTest`. **Default True.**
+        #
+        # THE DEFECT IT FIXES, measured: our projection draw uses bare
+        # `torch.randn`, so every SIGReg forward advances the GLOBAL RNG
+        # stream -- the same stream that feeds data sampling, dropout and
+        # every other stochastic component. Confirmed: the next global draw
+        # after a forward differs from the draw without one, and it differs
+        # AGAIN between num_proj=256 and num_proj=1024.
+        #
+        # The consequence is not that completed runs are wrong -- they all used
+        # one num_proj and the seed44 byte-identical rerun did reproduce. It is
+        # that **num_proj has never been a clean single variable**: changing it
+        # changes how much RNG SIGReg consumes, which shifts the entire
+        # downstream random sequence including data order. Any experiment on
+        # SIGReg's own parameters would have been confounded and nothing would
+        # have reported it.
+        #
+        # The reference seeds a dedicated generator from a `global_step`
+        # counter, so projections are reproducible per step and the global
+        # stream is untouched. Same design here.
+        #
+        # ON WHY THIS DEFAULTS TO TRUE. It was written default-False to
+        # preserve bit-identity with prior runs. Brian caught that this
+        # contradicts the principle set on 2026-07-28, when the JEPA objective
+        # fix shipped default-ON with the reasoning: "leaving a verified defect
+        # as the default is worse than breaking comparability with runs
+        # produced under it."
+        #
+        # That reasoning applies here with more force, not less. The objective
+        # defect at least showed up in the numbers eventually. RNG-stream
+        # coupling is SILENT -- it would surface only as an unattributable
+        # difference in some future experiment, which is the invisible-default
+        # failure argued against at length in the relative_trust
+        # recommendation.
+        #
+        # Enabling it changes the random stream, so runs from here are not
+        # bit-comparable with earlier ones. That boundary already exists at the
+        # 07-28 objective fix, and every depth-8 run postdates it, so this is
+        # the cheapest possible moment to take the break.
+        #
+        # `use_generator=False` is retained to reproduce pre-2026-08-01
+        # behaviour exactly.
+        self.use_generator = bool(use_generator)
+        self._generator = None
+        self._generator_device = None
+        self.register_buffer(
+            "global_step", torch.zeros((), dtype=torch.long), persistent=True
+        )
         t = torch.linspace(0.0, 3.0, knots, dtype=torch.float32)
         dt = 3.0 / (knots - 1)
         # Trapezoidal weights: 2*dt for interior nodes, dt for endpoints.
@@ -103,6 +168,48 @@ class SIGReg(nn.Module):
         self.register_buffer("phi", window)  # CF target (real part)
         self.register_buffer("weights", weights * window)
 
+    def _projection(self, d: int, device, dtype) -> torch.Tensor:
+        """Draw the (D, num_proj) projection matrix.
+
+        ``use_generator=False`` reproduces the legacy path exactly: a bare
+        ``torch.randn`` on the global stream.
+
+        ``use_generator=True`` draws from a dedicated generator seeded by
+        ``global_step``, so the global stream is untouched and the projections
+        for a given step are reproducible.
+
+        The generator is created on CPU and the result transferred, rather than
+        on ``device``. DirectML does not support device generators, and a CPU
+        generator has the additional property that the projections are
+        identical across backends -- a DML run and a CPU run see the same
+        directions, which the device-generator version could not offer.
+        """
+        if not self.use_generator:
+            return torch.randn(d, self.num_proj, device=device, dtype=dtype)
+
+        if self._generator is None:
+            self._generator = torch.Generator(device="cpu")
+            self._generator_device = "cpu"
+        self._generator.manual_seed(int(self.global_step.item()))
+        a = torch.randn(
+            d, self.num_proj, generator=self._generator,
+            device="cpu", dtype=torch.float32,
+        )
+        # Advance ONLY while training. `global_step` is a persistent buffer, so
+        # incrementing it during evaluation would make held-out eval mutate
+        # model state -- caught immediately by
+        # tests/test_heldout_eval.py::TestEvalMutatesNothing, which exists
+        # because a read-only eval that silently writes is exactly the
+        # silent-success failure this project keeps finding.
+        #
+        # Holding the step fixed in eval has a second benefit: every eval batch
+        # sees the SAME projection directions, so the metric is not jittered by
+        # resampling between batches. The reference increments unconditionally;
+        # it does not carry our eval-purity constraint.
+        if self.training:
+            self.global_step.add_(1)
+        return a.to(device=device, dtype=dtype)
+
     def forward(self, proj: torch.Tensor) -> torch.Tensor:
         """proj: ``(T, B, D)`` standardized embeddings.
 
@@ -111,10 +218,7 @@ class SIGReg(nn.Module):
         Add to total loss with a weight (LeWM default lambda=0.1).
         """
         # Random unit-vector projection matrix (D, num_proj).
-        A = torch.randn(
-            proj.size(-1), self.num_proj,
-            device=proj.device, dtype=proj.dtype,
-        )
+        A = self._projection(proj.size(-1), proj.device, proj.dtype)
         A = A.div_(A.norm(p=2, dim=0))
 
         # Project (T, B, D) @ (D, num_proj) -> (T, B, num_proj), then
