@@ -5,9 +5,32 @@
 **Ours:** `luthi/v2/sigreg.py`, ported from le-wm 2026-06-09, never previously
 validated against anything but itself.
 
-Note: `pip install lejepa` fails -- the package is not on PyPI under that name.
-The repo clones fine and `MINIMAL.md` carries the entire implementation in ~20
-lines, so no install and no environment risk were needed.
+## On the release itself
+
+The repo's README documents `pip install lejepa`. That command fails: **the
+package is not on PyPI under that name.** It is nonetheless a real, functional
+package -- `pyproject.toml` + `setup.py`, hatchling backend -- and installs from
+source.
+
+The explanation is an unfinished publish, not an odd release choice. The
+packaging metadata is unedited boilerplate:
+
+```
+description = "ToDo"
+Homepage    = "https://example.com"
+Repository  = "https://github.com/me/spam.git"
+Bug Tracker = "https://github.com/me/spam/issues"
+```
+
+`me/spam` is the literal placeholder from Python's packaging tutorial. The README
+was written as though published; the publish never happened.
+
+(A `pip install ./lejepa_src` attempt here failed on **Windows long-path** --
+the scratchpad venv sat ~130 characters deep before pip added anything. That was
+an environment choice on our side, not a defect in their packaging.)
+
+For the cross-check none of it mattered: the clone can be imported directly via
+`sys.path`, and `MINIMAL.md` carries the whole implementation in ~20 lines.
 
 ## Verdict: our port is faithful. Verbatim, including variable names.
 
@@ -43,6 +66,29 @@ Point by point against `luthi/v2/sigreg.py`:
 The package version (`lejepa/univariate/epps_pulley.py` +
 `multivariate/slicing.py`) matches too, with DDP `all_reduce` and a
 `world_size` factor we do not need single-GPU.
+
+### Numerical verification
+
+Reading the code establishes the port is faithful. Running both establishes it
+bit-for-bit. Reference `EppsPulley` imported from the clone, ours from
+`luthi/v2/sigreg.py`, same seeded projection matrix so only the statistic can
+differ:
+
+| buffer | identical | max abs diff |
+|---|---|---|
+| `t` | yes | 0.000e+00 |
+| `phi` | yes | 0.000e+00 |
+| `weights` | yes | 0.000e+00 |
+
+| input | reference | ours | rel diff |
+|---|---|---|---|
+| N(0,1) isotropic | 1.102398 | 1.102398 | 0.00e+00 |
+| N(0,1) x 0.01 (shrunk) | 205.769531 | 205.769531 | 0.00e+00 |
+| N(0,1) + 3.0 (offset) | 745.498169 | 745.498169 | 0.00e+00 |
+| rank-2 degenerate | 59.590809 | 59.590809 | 0.00e+00 |
+
+Exact equality including the degenerate and collapsed cases -- the regimes our
+depth-8 runs actually sit in.
 
 **SIGReg itself was never the problem.**
 
