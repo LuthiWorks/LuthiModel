@@ -19,14 +19,55 @@ Gaussian. Constant input -> can't be Gaussian (no complete collapse);
 isotropic prior forces unit-variance and zero-covariance (no
 dimensional collapse).
 
-Critical input contract
------------------------
-SIGReg targets ``N(0, 1)``, so its input must be ~standardized. That
-is the projection head's job (Linear -> BatchNorm). The encoder's
-final LayerNorm in our trunk would wash out the distribution SIGReg
-shapes -- SIGReg must run on a separate BN-projected head, NOT on
-the LayerNorm'd trunk output. The paper warns about this; we honor
-it in jepa_loss.py.
+Critical input contract -- CORRECTED 2026-07-31
+-----------------------------------------------
+The paragraph that stood here was **backwards**, and it survived three
+days past its own refutation because the 2026-07-28 correction was
+applied to ``jepa_loss.py`` and not to this file. It read:
+
+    "SIGReg targets N(0,1), so its input must be ~standardized. That is
+     the projection head's job (Linear -> BatchNorm) ... SIGReg must run
+     on a separate BN-projected head, NOT on the LayerNorm'd trunk
+     output. The paper warns about this; we honor it in jepa_loss.py."
+
+Wrong on both counts, and **the attribution to the paper should not be
+trusted** -- that was our inference, presented as the paper's warning.
+
+**Why it is wrong.** BatchNorm subtracts the batch mean and divides by
+the batch std -- precisely the two quantities SIGReg exists to
+constrain. Pre-standardizing its input hands it a solved problem and the
+anti-collapse term stops binding on the encoder. Measured with THIS
+module, not a reimplementation: under a 100x uniform shrink, SIGReg on
+raw latents moves 0.86 -> 706 (it fights); after BatchNorm 0.566 ->
+0.545, a 3.7% move (it is blind). Under an offset sweep 0 -> 0.995, raw
+goes 1.0 -> 2111, post-BN 0.563 -> 0.567.
+
+SIGReg does NOT require standardized input. It requires the input whose
+distribution you actually want to constrain. Default is now
+``sigreg_projection="linear"``; ``"linear_bn"`` retains the old
+behaviour for A/B only.
+
+**Also wrong:** the trunk's ``final_norm`` is applied only in the
+LM-style ``forward()``, never in ``encode()``, so the JEPA objective
+never sees it. The concern about it "washing out the distribution" was
+about a layer that is not on this path.
+
+Known remaining degree of freedom (measured 2026-07-31): the Linear head
+still absorbs **scale** -- singular values run 0.42-0.55, so a trunk at
+std ~3.0 presents to SIGReg at ~1.27. That is why ``std_p5`` (trunk) and
+``L_sigreg`` (projected) can disagree. Not currently treated as a
+defect; recorded so it is not rediscovered.
+
+NOT YET CROSS-CHECKED against the reference implementation
+(rbalestr-lab/lejepa, pip-installable, ~50 lines of core). This module
+was ported from le-wm, so it has never been validated against anything
+but itself. Parameters worth checking there: t-grid [0, 3] with 17
+trapezoidal knots, exp(-t^2/2) used as BOTH the Gaussian CF target and
+the integration window, 1024 unit-norm projections, and the statistic's
+scaling by batch size.
+
+See docs/research/2026-07-30_mupc-verdict.md and the corrected block in
+jepa_loss.py.
 
 Shape: forward expects ``(T, B, D)`` where T = temporal/position
 group, B = sample dim (mean is taken over this), D = embedding dim.
