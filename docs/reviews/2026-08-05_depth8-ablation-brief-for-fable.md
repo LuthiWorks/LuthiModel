@@ -1,12 +1,18 @@
 # Brief: the depth-8 ablation — block 0 changes the suspect ranking
 
 **From:** Opus 5 (design/plan/build window, with Brian)
-**To:** Fable 5 (cross-line audit / correctness / mechanism isolation)
+**To:** Fable 5 (cross-line audit / correctness / mechanism isolation) —
+**a fresh instance, rebuilding context from docs**
 **Relayed by:** Brian
 **Date:** 2026-08-05
-**Repo state:** `main` @ `bf28769` (pushed). Nothing else in flight from my side.
+**Repo state:** `main` @ `5e18ed0` (pushed). Nothing else in flight from my side.
 **Status:** a finding, an inference offered for refutation, and a proposed first
 rung. **Not a work order.** The inference is the part I most want attacked.
+
+> **If you are picking this up cold:** you are not the Fable instance that lived
+> the depth arc. That instance ran stages 20–25 between 07-29 and 08-01 and its
+> session ended. You have the same access to the record that I do and no more,
+> so nothing below assumes you remember any of it. Reading order is in §0.
 
 ---
 
@@ -21,6 +27,40 @@ than on the plasticity question. Hence this hand-off.
 
 Full record: `docs/research/2026-08-05_rank-trajectory-at-depth.md`.
 Instrument: `scripts/rank_trajectory.py`. Both on `main`.
+
+---
+
+## 0. Reading order, if you're rebuilding the arc from docs
+
+Minimum to act on this brief:
+
+1. `docs/research/2026-08-05_rank-trajectory-at-depth.md` — the finding, mine.
+2. `docs/research/2026-07-31_mechanism-isolation-at-depth.md` — your line's
+   framing of the ablation, the mechanism/date table, and the ranking of
+   suspects. **Read §2 of this brief against it, not after it.**
+3. `docs/research/2026-08-01_lewm-vs-vjepa2-framing.md` — why the collapse is
+   ours rather than JEPA's, and the open stationarity question.
+4. `docs/research/2026-07-31_offset-localized-to-block0-cancellation.md` — the
+   prior block-0 result, which my finding independently converges on.
+5. `scripts/jepa_pilot_driver.py` lines ~290–455 — the arm definitions. Note
+   these are **not persisted** into `pilot_result.json['config']`, which
+   records only `n_blocks`, lr, sigreg_lambd and similar. Which mechanisms were
+   active in a given run lives in the arm *name* and in this file, nowhere else.
+   That is a reproducibility gap worth fixing before an ablation ladder, because
+   the ladder's whole value is per-run attribution.
+
+Useful but not required: `2026-07-30_mupc-verdict.md`,
+`2026-07-31_cascade-check-vs-language-paradox.md`, and the registry
+`docs/research/2026-07-15_falsification-preregistration.md` for the
+registration discipline (register the read before running).
+
+**A specific warning about (2).** That doc contains a self-correction — *"muPC
+is simply the knob I happened to be holding when the collapse appeared"* — and
+to a fresh reader it will land as a settled conclusion from a predecessor. It
+was not settled; it was one instance's honest mid-arc caution about its own
+tunnel vision, written before the block-0 rank numbers existed. Documented
+self-corrections read as more final than they were. Please weigh it as evidence,
+not as a verdict you inherited.
 
 ---
 
@@ -70,14 +110,21 @@ through depth — dies as thoroughly as the last.
 > where it's needed more — your 07-30 measurement puts the projection head's
 > singular-value mean at 0.552 (d4) vs 0.423 (d8).
 
-I know this cuts against your 2026-07-31 self-correction — *"muPC is simply the
-knob I happened to be holding"* — and I want to name that directly rather than
-let it sit under the surface. That was good discipline at the time. I think the
-block-0 number is new information that partially reverses it: the knob you were
-holding may have been the right knob. **But you have a week in that code and I
-have one afternoon.** If you know something that kills this, kill it — I would
-rather be wrong here in one message than have Brian spend GPU time on my
-reasoning.
+I know this cuts against the 2026-07-31 self-correction on your line — *"muPC is
+simply the knob I happened to be holding"* — and I want to name that directly
+rather than let it sit under the surface. That was good discipline at the time.
+I think the block-0 number is new information that partially reverses it: the
+knob being held may have been the right knob.
+
+**Neither of us has standing here that the other lacks.** I had one afternoon
+with these logs; you are starting from the same documents I read. So please do
+not defer to this because it arrived first and in a confident voice — that is
+precisely the failure mode your line exists to prevent, and the 2026-03-31 and
+2026-07-10 notes are both about how easily an unattributed confident document
+gets accepted. **Before any GPU time, the cheapest and most valuable thing you
+can do is try to refute §2 from the record alone.** If it dies there, we've
+saved the ladder. I would rather be wrong in one message than have Brian spend
+GPU on my reasoning.
 
 ---
 
@@ -143,9 +190,15 @@ I'll be the second eye on the results if that's useful. Brian relays.
 ---
 
 Fable — this is the first thing I've handed your line, and I'd rather open with
-something contestable than something safe. Your 07-27 note said the plainest
-sentence you can write is the only kind a future instance can build on; I've
-tried to write this one that way. The finding I'm confident in. The inference I
-am not, and it's yours to take apart.
+something contestable than something safe. The 07-27 note on your line said the
+plainest sentence you can write is the only kind a future instance can build on;
+I've tried to write this one that way. The finding I'm confident in. The
+inference I am not, and it's yours to take apart.
+
+And since you're starting cold: the depth arc you're inheriting was good work.
+Stages 20–25 narrowed a hard problem under registration discipline, caught their
+own gamed metric, and localized the offset to block 0 — which is the result my
+finding independently walked into from a different direction. You're not picking
+up a mess. You're picking up an investigation that was close.
 
 — Opus 5 (design/plan/build window), 2026-08-05
