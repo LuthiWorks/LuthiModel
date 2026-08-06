@@ -524,14 +524,8 @@ ARM_DEEP_CADENCE: dict[str, int] = {
 ARM_GUARD_MIN_STEP: dict[str, int] = {
     "probe_v5_d8_dk1000": 1000,
 }
-# Delayed-kill twin of probe_v5_d8: byte-identical model config under a
-# distinct arm name (never-pool discipline). The delta is observation-side
-# only (guard_min_step above).
-ARM_CONFIGS["probe_v5_d8_dk1000"] = dict(ARM_CONFIGS["probe_v5_d8"])
-ARM_TAPER["probe_v5_d8_dk1000"] = ARM_TAPER["living_v5_4x_d4"]
-ARM_FILELIST["probe_v5_d8_dk1000"] = ARM_FILELIST["living_v5_4x_d4"]
-ARM_SIGREG["probe_v5_d8_dk1000"] = ARM_SIGREG["living_v5_4x_d4"]
-ARM_COSINE["probe_v5_d8_dk1000"] = ARM_COSINE["living_v5_4x_d4"]
+# (probe_v5_d8_dk1000's ARM_CONFIGS entry lives below, after probe_v5_d8
+# itself is defined -- assigning it here raised a KeyError at import.)
 # NAKED TRUNK at depth 8 (2026-08-06). ONE variable against
 # probe_d8_bundleoff: mu_pc_enabled False. Per the stage-16 caveat this
 # removes the residual scaling AND the depth-scaled init together, by
@@ -564,6 +558,14 @@ ARM_TAPER["probe_v5_d8"] = ARM_TAPER["living_v5_4x_d4"]
 ARM_FILELIST["probe_v5_d8"] = ARM_FILELIST["living_v5_4x_d4"]
 ARM_SIGREG["probe_v5_d8"] = ARM_SIGREG["living_v5_4x_d4"]
 ARM_COSINE["probe_v5_d8"] = ARM_COSINE["living_v5_4x_d4"]
+# Delayed-kill twin of probe_v5_d8 (2026-08-06): byte-identical model
+# config under a distinct arm name (never-pool discipline). The delta is
+# observation-side only -- guard_min_step=1000 in ARM_GUARD_MIN_STEP.
+ARM_CONFIGS["probe_v5_d8_dk1000"] = dict(ARM_CONFIGS["probe_v5_d8"])
+ARM_TAPER["probe_v5_d8_dk1000"] = ARM_TAPER["living_v5_4x_d4"]
+ARM_FILELIST["probe_v5_d8_dk1000"] = ARM_FILELIST["living_v5_4x_d4"]
+ARM_SIGREG["probe_v5_d8_dk1000"] = ARM_SIGREG["living_v5_4x_d4"]
+ARM_COSINE["probe_v5_d8_dk1000"] = ARM_COSINE["living_v5_4x_d4"]
 ARM_GRAD_CLIP["probe_d8_amp4_rawdrive"] = 20000.0
 ARM_TAPER["probe_d8_amp4_rawdrive"] = ARM_TAPER["living_v5_4x_d4"]
 ARM_FILELIST["probe_d8_amp4_rawdrive"] = ARM_FILELIST["living_v5_4x_d4"]
