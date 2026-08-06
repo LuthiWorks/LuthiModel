@@ -198,6 +198,14 @@ STAGES: dict[int, list[tuple[str, int]]] = {
     # guard -> the naked d8 trunk is unstable regardless and muPC is
     # exonerated for rung 1's divergence (not for the collapse).
     27: [("probe_d8_naked", 512)],
+    # V5 AT DEPTH 8 (2026-08-06, Brian's call -- registered in
+    # docs/research/2026-08-06_v5-at-depth8-hypothesis.md). The exact
+    # living_v5_4x_d4 configuration with ONLY n_blocks changed: the
+    # pre-07-27 bundle (backward pass, consolidation, gain, trust, muPC)
+    # without the store fix, band, or surprise drive. This is the control
+    # the 07-31 isolation doc named as its own sequencing error and never
+    # ran. Unclipped, faithful to v5 -- the guards are the safety net.
+    28: [("probe_v5_d8", 512)],
 }
 
 # Per-arm model configuration -- single source of truth, shared with
@@ -498,6 +506,7 @@ ARM_COSINE["probe_d8_bundleoff"] = ARM_COSINE["living_v5_4x_d4"]
 ARM_DEEP_CADENCE: dict[str, int] = {
     "probe_d8_bundleoff": 100,
     "probe_d8_naked": 100,
+    "probe_v5_d8": 100,
 }
 # NAKED TRUNK at depth 8 (2026-08-06). ONE variable against
 # probe_d8_bundleoff: mu_pc_enabled False. Per the stage-16 caveat this
@@ -516,6 +525,21 @@ ARM_TAPER["probe_d8_naked"] = ARM_TAPER["living_v5_4x_d4"]
 ARM_FILELIST["probe_d8_naked"] = ARM_FILELIST["living_v5_4x_d4"]
 ARM_SIGREG["probe_d8_naked"] = ARM_SIGREG["living_v5_4x_d4"]
 ARM_COSINE["probe_d8_naked"] = ARM_COSINE["living_v5_4x_d4"]
+# V5 AT DEPTH 8 (2026-08-06, Brian's call). The registered v5 family
+# config with exactly one model change: n_blocks 4 -> 8. Inherits the
+# pre-07-27 bundle (backward pass, consolidation, learning gain, relative
+# trust, episode_recall_threshold 0.7) and muPC at exponent 0.25. NO
+# grad-clip entry on purpose: v5 ran unclipped, the clip was a depth-era
+# addition, and the divergence guards (proven live twice on 2026-08-05/06)
+# are the safety net. Deep cadence 100 -- instrument-side, not mechanism.
+ARM_CONFIGS["probe_v5_d8"] = dict(
+    ARM_CONFIGS["living_v5_4x_d4"],
+    n_blocks=8,
+)
+ARM_TAPER["probe_v5_d8"] = ARM_TAPER["living_v5_4x_d4"]
+ARM_FILELIST["probe_v5_d8"] = ARM_FILELIST["living_v5_4x_d4"]
+ARM_SIGREG["probe_v5_d8"] = ARM_SIGREG["living_v5_4x_d4"]
+ARM_COSINE["probe_v5_d8"] = ARM_COSINE["living_v5_4x_d4"]
 ARM_GRAD_CLIP["probe_d8_amp4_rawdrive"] = 20000.0
 ARM_TAPER["probe_d8_amp4_rawdrive"] = ARM_TAPER["living_v5_4x_d4"]
 ARM_FILELIST["probe_d8_amp4_rawdrive"] = ARM_FILELIST["living_v5_4x_d4"]
