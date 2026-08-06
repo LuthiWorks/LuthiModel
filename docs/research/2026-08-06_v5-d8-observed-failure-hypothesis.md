@@ -76,3 +76,45 @@ finding — the information is all in steps 100-1000.
 python scripts/jepa_pilot_driver.py --stage 29 --seeds 46 \
     --epochs 1 --max-batches-per-epoch 3000 --heldout-batches 5
 ```
+
+---
+
+# RECORD: the observed trajectory, 26 deep firings (killed at step ~2600)
+
+**Outcome:** `killed:divergence:text:nmse=2.0650>2.00`, 0.58 h, 26 firings —
+the registered observation succeeded; every read below is from the frozen
+list.
+
+**The trajectory in three movements:**
+
+1. **Collapse transit (100→200):** rank 238 → 11 (block 0), tail to ~1.
+   The violent transient that killed all three un-delayed runs at their
+   first guard check. Suppressed-trip markers: nmse 14.13@100, none@200
+   (NMSE dipped UNDER 2.0 at maximum degeneracy — the guard-inversion
+   caught inside a single run), 3.49@300.
+2. **Slow systemic healing (200→2500):** SIGReg 2546 → 132-213 (touching
+   the healthy band), offset dominance 0.997 → 0.239 (the July disease
+   genuinely stripped), min-rank 1.1 → 3.1, block 7 re-inflating to ~12.
+   Guards went live at 1000 and found nothing to kill for 1600 steps.
+3. **Relapse (2600):** SIGReg 213 → 2565, grad 404 → 1103, the re-inflated
+   tail crushed back to rank 1-2, offset re-saturating to 0.652. The
+   marginal NMSE trip (2.065) is the leading edge of THIS event — an
+   earlier reading of the kill as "punishing recovery" was wrong and is
+   corrected here.
+
+**The reframe, stated carefully:** yesterday's branch-3 verdict ("the v5
+bundle cannot hold the depth-8 trunk") now looks like a **guard-timing
+artifact**. Given room, v5-d8 does not diverge to destruction — it
+oscillates: collapse, partial heal, relapse. Whether the stages-14-25
+"stable collapse" cells differ from this in kind or only in guard timing
+is now an open question that infects the whole factorial table. The
+guard's NMSE also demonstrably inverts health at the collapse floor
+(quietest exactly when sickest).
+
+**Extension (Brian's standing order, trigger met):** the healing movement
+qualifies as "signs it might have recovered." `probe_v5_d8_dk5000`:
+byte-identical, guard_min_step=5000, 6000 steps so the guards get a live
+window. Frozen reads: (a) do relapse events recur, at what spacing; (b)
+does between-event healing compound (each cycle's rank floor/peak higher)
+or reset; (c) does any block sustain rank >= 20 at two consecutive
+firings plus the final one; (d) SIGReg/offset envelopes across cycles.
