@@ -183,6 +183,14 @@ STAGES: dict[int, list[tuple[str, int]]] = {
     24: [("probe_surprise_d8_bplr0", 512)],
     # SURPRISE DRIVE OFF (2026-07-31): stage 20 with drive_mode="raw".
     25: [("probe_d8_amp4_rawdrive", 512)],
+    # BUNDLE OFF AT DEPTH 8 (2026-08-05, rung 1 of the ablation ladder --
+    # registered in docs/research/2026-08-05_bundleoff-at-depth-hypothesis.md).
+    # Stage 14 minus exactly the seven bundle mechanisms, muPC kept ON.
+    # The record already shows the bundle is not sufficient alone (stage 16:
+    # d8 + full bundle + muPC off is healthy on every axis); this run asks
+    # whether muPC x depth is sufficient WITHOUT the bundle. Rank stays
+    # collapsed -> the entire add-back ladder is unnecessary.
+    26: [("probe_d8_bundleoff", 512)],
 }
 
 # Per-arm model configuration -- single source of truth, shared with
@@ -445,6 +453,44 @@ ARM_CONFIGS["probe_d8_amp4_rawdrive"] = dict(
     ARM_CONFIGS["probe_surprise_d8_amp4"],
     drive_mode="raw",
 )
+# BUNDLE OFF at depth 8 (2026-08-05). Stage 14 (`probe_surprise_d8`) minus
+# exactly the seven bundle mechanisms; muPC stays ON at the standard exponent.
+# Every flag is written out explicitly -- including the ones that match the
+# model defaults -- so this arm reads as its own record rather than
+# inheriting silently through the probe chain. Non-bundle machinery is held
+# byte-identical to stage 14: episode_recall_threshold stays at the
+# living_v3 value 0.7 (base episode store is pre-bundle machinery), the 4x
+# filelist / sigreg 0.2 / cosine LR / taper ride below, and the clip of
+# 1000 is carried per the stage-16 precedent (it engaged 3% there once the
+# trunk was healthy; engagement rate is reported either way).
+ARM_CONFIGS["probe_d8_bundleoff"] = dict(
+    n_blocks=8,
+    mu_pc_enabled=True,
+    mu_pc_exponent=0.25,
+    backward_pass_enabled=False,
+    consolidation_enabled=False,
+    learning_gain_enabled=False,
+    relative_trust=False,
+    adaptive_episodes=False,
+    adaptive_recall=False,
+    homeostatic_band_enabled=False,
+    drive_mode="raw",
+    episode_recall_threshold=0.7,
+)
+ARM_GRAD_CLIP["probe_d8_bundleoff"] = 1000.0
+ARM_TAPER["probe_d8_bundleoff"] = ARM_TAPER["living_v5_4x_d4"]
+ARM_FILELIST["probe_d8_bundleoff"] = ARM_FILELIST["living_v5_4x_d4"]
+ARM_SIGREG["probe_d8_bundleoff"] = ARM_SIGREG["living_v5_4x_d4"]
+ARM_COSINE["probe_d8_bundleoff"] = ARM_COSINE["living_v5_4x_d4"]
+# Per-arm deep-metric cadence (2026-08-05). The rank-trajectory read showed
+# depth-8 block-0 rank is already 9.95 at the first deep firing (step 1000,
+# seed96) -- the destruction completes inside the window the default cadence
+# never observes. 100 gives 30 observations over a 3000-step probe and makes
+# the first 1000 steps visible. Applied per-arm so completed families stay
+# bit-identical and comparable.
+ARM_DEEP_CADENCE: dict[str, int] = {
+    "probe_d8_bundleoff": 100,
+}
 ARM_GRAD_CLIP["probe_d8_amp4_rawdrive"] = 20000.0
 ARM_TAPER["probe_d8_amp4_rawdrive"] = ARM_TAPER["living_v5_4x_d4"]
 ARM_FILELIST["probe_d8_amp4_rawdrive"] = ARM_FILELIST["living_v5_4x_d4"]
@@ -749,7 +795,10 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
                 interval_seconds=args.checkpoint_interval,
                 rolling_slots=args.checkpoint_slots,
             ),
-            logging=LoggingConfig(heldout_eval_batches=args.heldout_batches),
+            logging=LoggingConfig(
+                heldout_eval_batches=args.heldout_batches,
+                deep_interval_batches=ARM_DEEP_CADENCE.get(arm, 1000),
+            ),
             kill_criteria=KillCriteriaConfig(
                 warmup_batches=args.kill_warmup,
                 # Pilot-derived thresholds (calibration pass 1, 2026-07-16
@@ -833,6 +882,17 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
             "sigreg_lambd": ARM_SIGREG.get(arm, SIGREG_LAMBD),
             "cosine_lr": ARM_COSINE.get(arm, False),
             "lr_total_steps": lr_schedule.total_steps,
+            # Full mechanism provenance (2026-08-05, Opus's brief §0.5):
+            # which mechanisms were active in a run used to live only in
+            # the arm NAME and this file's edit history -- an attribution
+            # gap an ablation ladder cannot afford. Record the complete
+            # merged model kwargs and the remaining trainer-side settings
+            # so each pilot_result.json is self-describing.
+            "model_kwargs": {k: v for k, v in model_kwargs.items()
+                             if isinstance(v, (bool, int, float, str))},
+            "grad_clip_norm": ARM_GRAD_CLIP.get(arm, 0.0),
+            "taper": ARM_TAPER.get(arm, False),
+            "deep_interval_batches": ARM_DEEP_CADENCE.get(arm, 1000),
         },
     }
     _result_path(arm, d_model, seed).write_text(json.dumps(result, indent=2))
