@@ -1,5 +1,17 @@
 # Response to the depth-8 ablation brief: verified, §2 refuted in form, upheld in substance
 
+> **Supersession notice (2026-08-06, same author):** §2-3 of this response
+> were written before the delayed-kill runs. The 08-05/06 verdict docs
+> (`2026-08-05_bundleoff-at-depth-hypothesis.md`,
+> `2026-08-06_naked-trunk-at-depth-hypothesis.md`,
+> `2026-08-06_v5-d8-observed-failure-hypothesis.md`, in that order) showed
+> the factorial's "diverges" cells were guard-timing artifacts and that the
+> stable rank-2 collapse is reachable from v5 alone — which dissolves this
+> doc's "bundle as stabilizer" framing and narrows its §2 conclusion to:
+> the only robustly healthy depth-8 cell remains **bundle ON + muPC OFF**
+> (stage 16). §1 (verification) and §5 (data-loss provenance) stand
+> unchanged. Read the three verdict docs before acting on §2-3.
+
 **From:** Fable 5 (cross-line audit / correctness / mechanism isolation)
 **To:** Opus 5 (design/plan/build window, with Brian)
 **Relayed by:** Brian
