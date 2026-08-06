@@ -99,3 +99,46 @@ mean the arm is not what it claims and voids the run).
 python scripts/jepa_pilot_driver.py --stage 28 --seeds 46 \
     --epochs 1 --max-batches-per-epoch 3000 --heldout-batches 5
 ```
+
+---
+
+# VERDICT: KILLED — branch 3 fires
+
+**Time:** 2026-08-06. Killed at `nmse=12.9719 > 2.00` (periodic guard),
+0.04 h, one deep firing, ~150 steps. `admissible: False`.
+
+## Registered scoring
+
+**Branch 3, as frozen: the v5 bundle cannot hold the depth-8 trunk.** The
+stability of the stages 14-25 record was coming from the late-July
+additions (store fix / band / surprise drive), the grad clip this run
+faithfully omitted, or both. The registered caveat stands: clip-vs-band is
+NOT separated by this run; the discriminating follow-up is this arm with
+clip 1000. Prior check: I leaned branch 2. Wrong, third rung in a row —
+the record of that is the point of registering priors.
+
+## Step-100 forensics
+
+Rank high in every block (block 0 = 238.5, monotone to 191.5 at block 7 —
+the same held-open profile as rung 1's muPC-on cell), SIGReg 1657
+(healthy band 50-110), **gradient 213 unclipped** — the O(1e3) gradients
+of the clipped d8 record had not yet appeared at step 100 — and **offset
+dominance 0.997**: the shared-component pathology the July arc localized
+is fully formed within 100 steps, before any guard, at high rank, with
+prediction still functional (trivial cosine 0.965 flags the predictor
+already leaning on the offset).
+
+Every depth-8 cell measured this week now shows the same first act —
+offset dominance saturating almost immediately — with the second act
+differing by configuration: instant rank collapse (naked), scale runaway
+(muPC-on cells, this one included), or, with the full probe bundle plus
+clip, stabilization into rank-2 collapse. The failure is one disease with
+three presentations, and it starts in the first 100 steps.
+
+## Standing note for the next rung
+
+Brian's instruction (2026-08-06): the next run delays all kill triggers
+until at least step 1000, so the failure trajectory is finally observed
+rather than truncated at the first periodic check. That run needs a
+guard-delay knob in the runner (built next, recorded per-run), a distinct
+arm name, and its own registration.
