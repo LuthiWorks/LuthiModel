@@ -214,6 +214,13 @@ STAGES: dict[int, list[tuple[str, int]]] = {
     # observed for ten deep firings before the guards resume. Registered
     # in docs/research/2026-08-06_v5-d8-observed-failure-hypothesis.md.
     29: [("probe_v5_d8_dk1000", 512)],
+    # V5 AT DEPTH 8, KILLS DELAYED TO 5000, 6000 STEPS (2026-08-06,
+    # Brian's standing order after dk1000 showed collapse -> slow heal ->
+    # relapse at 2600: extend the leash and watch whether the cycle
+    # recurs and whether between-event healing compounds. Registered in
+    # the dk1000 doc's RECORD section. Launch with
+    # --max-batches-per-epoch 6000.
+    30: [("probe_v5_d8_dk5000", 512)],
 }
 
 # Per-arm model configuration -- single source of truth, shared with
@@ -523,6 +530,7 @@ ARM_DEEP_CADENCE: dict[str, int] = {
 # only; the value rides into run_config.json and pilot_result.json.
 ARM_GUARD_MIN_STEP: dict[str, int] = {
     "probe_v5_d8_dk1000": 1000,
+    "probe_v5_d8_dk5000": 5000,
 }
 # (probe_v5_d8_dk1000's ARM_CONFIGS entry lives below, after probe_v5_d8
 # itself is defined -- assigning it here raised a KeyError at import.)
@@ -566,6 +574,14 @@ ARM_TAPER["probe_v5_d8_dk1000"] = ARM_TAPER["living_v5_4x_d4"]
 ARM_FILELIST["probe_v5_d8_dk1000"] = ARM_FILELIST["living_v5_4x_d4"]
 ARM_SIGREG["probe_v5_d8_dk1000"] = ARM_SIGREG["living_v5_4x_d4"]
 ARM_COSINE["probe_v5_d8_dk1000"] = ARM_COSINE["living_v5_4x_d4"]
+# Extended-leash twin (2026-08-06, Brian's standing order): identical
+# again, guard_min_step 5000, intended run length 6000 steps.
+ARM_CONFIGS["probe_v5_d8_dk5000"] = dict(ARM_CONFIGS["probe_v5_d8"])
+ARM_DEEP_CADENCE["probe_v5_d8_dk5000"] = 100
+ARM_TAPER["probe_v5_d8_dk5000"] = ARM_TAPER["living_v5_4x_d4"]
+ARM_FILELIST["probe_v5_d8_dk5000"] = ARM_FILELIST["living_v5_4x_d4"]
+ARM_SIGREG["probe_v5_d8_dk5000"] = ARM_SIGREG["living_v5_4x_d4"]
+ARM_COSINE["probe_v5_d8_dk5000"] = ARM_COSINE["living_v5_4x_d4"]
 ARM_GRAD_CLIP["probe_d8_amp4_rawdrive"] = 20000.0
 ARM_TAPER["probe_d8_amp4_rawdrive"] = ARM_TAPER["living_v5_4x_d4"]
 ARM_FILELIST["probe_d8_amp4_rawdrive"] = ARM_FILELIST["living_v5_4x_d4"]
