@@ -218,3 +218,45 @@ class TestBaselineDuringDivergenceIsTheHole:
         """It must fire on the very first observation, with no warmup at all."""
         g = _Guard()
         assert g._check_divergence({"text": {"nmse_mean": 5.0}}) is not None
+
+
+class _SuppressGuard(_Guard):
+    _kill_suppressed = JEPATrainer._kill_suppressed
+
+
+class TestGuardMinStep:
+    """guard_min_step (2026-08-06): every kill path holds fire, loudly,
+    until the configured step -- then resumes with full force."""
+
+    def test_default_zero_never_suppresses(self):
+        g = _SuppressGuard()
+        g.global_step = 0
+        assert g._kill_suppressed("divergence:text:nmse=41.0>2.00") is False
+
+    def test_suppresses_before_min_step(self):
+        g = _SuppressGuard(guard_min_step=1000)
+        g.global_step = 150
+        assert g._kill_suppressed("divergence:text:nmse=41.0>2.00") is True
+
+    def test_fires_at_min_step(self):
+        g = _SuppressGuard(guard_min_step=1000)
+        g.global_step = 1000
+        assert g._kill_suppressed("divergence:text:nmse=41.0>2.00") is False
+
+    def test_fires_after_min_step(self):
+        g = _SuppressGuard(guard_min_step=1000)
+        g.global_step = 2500
+        assert g._kill_suppressed("anything") is False
+
+    def test_suppression_is_loud(self, caplog):
+        """A silent suppression is the failure mode; the log line IS the
+        mechanism's honesty instrument."""
+        import logging
+        g = _SuppressGuard(guard_min_step=1000)
+        g.global_step = 150
+        with caplog.at_level(logging.ERROR, logger="luthi.v2.jepa_runner"):
+            g._kill_suppressed("divergence:text:nmse=41.0>2.00")
+        assert any(
+            "KILL SUPPRESSED" in r.message and "nmse=41.0" in r.message
+            for r in caplog.records
+        )

@@ -349,6 +349,18 @@ class RunnerConfig:
     divergence_loss_mult: float = 10.0
     divergence_baseline_points: int = 10
     divergence_sustained_points: int = 3
+    # Guard delay (2026-08-06, Brian's instruction during the depth-8
+    # ablation): suppress EVERY kill path -- both divergence guards, the
+    # kill criteria, and the epoch-end NMSE check -- until global_step
+    # reaches this value, so a run that fails early can be OBSERVED failing
+    # instead of truncated at the first periodic check (three runs on
+    # 08-05/06 each died with exactly one deep firing on the record).
+    # This is a trajectory-observation knob, not a safety removal: each
+    # suppressed trip is logged loudly with the reason that WOULD have
+    # fired, the value persists into run_config.json for provenance, and
+    # every guard resumes with full force at the threshold. Default 0 =
+    # no delay; nonzero belongs only on short, attended probe runs.
+    guard_min_step: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -2132,6 +2144,26 @@ class JEPATrainer:
                 )
         return None
 
+    def _kill_suppressed(self, reason: str) -> bool:
+        """True if guard_min_step is active and every kill path must hold fire.
+
+        Loud by design: each suppressed trip is logged at ERROR with the
+        reason that WOULD have killed the run and the step it fired at, so
+        the observation window this knob buys is itself on the record. A
+        silent suppression would be the exact failure mode ("mechanism
+        reports healthy while doing nothing") this project's CLAUDE.md
+        names as the dominant risk.
+        """
+        min_step = int(self.config.guard_min_step or 0)
+        if min_step <= 0 or self.global_step >= min_step:
+            return False
+        logger.error(
+            "KILL SUPPRESSED (guard_min_step=%d, at step %d): "
+            "would have fired: %s",
+            min_step, self.global_step, reason,
+        )
+        return True
+
     # -- Main loop --
 
     def run(self) -> str:
@@ -2204,9 +2236,14 @@ class JEPATrainer:
                     # blown up should not have to wait 5000 batches to be told.
                     div_loss = self._check_loss_divergence(step_out["loss"])
                     if div_loss is not None:
-                        logger.error("DIVERGENCE GUARD TRIPPED: %s", div_loss)
-                        self._checkpoint(reason=f"kill:{div_loss}")
-                        return f"killed:{div_loss}"
+                        if self._kill_suppressed(div_loss):
+                            pass
+                        else:
+                            logger.error(
+                                "DIVERGENCE GUARD TRIPPED: %s", div_loss
+                            )
+                            self._checkpoint(reason=f"kill:{div_loss}")
+                            return f"killed:{div_loss}"
 
                 # Periodic ABSOLUTE divergence check, at deep cadence.
                 #
@@ -2236,11 +2273,14 @@ class JEPATrainer:
                     )
                     div_q = self._check_divergence(quick)
                     if div_q is not None:
-                        logger.error(
-                            "DIVERGENCE GUARD TRIPPED (periodic): %s", div_q
-                        )
-                        self._checkpoint(reason=f"kill:{div_q}")
-                        return f"killed:{div_q}"
+                        if self._kill_suppressed(div_q):
+                            pass
+                        else:
+                            logger.error(
+                                "DIVERGENCE GUARD TRIPPED (periodic): %s", div_q
+                            )
+                            self._checkpoint(reason=f"kill:{div_q}")
+                            return f"killed:{div_q}"
 
                 # Checkpoint.
                 self._checkpoint_if_due()
@@ -2248,9 +2288,14 @@ class JEPATrainer:
                 # Kill check.
                 kill_reason = self._check_kill_criteria(step_out["modality"])
                 if kill_reason is not None:
-                    logger.error("KILL CRITERION TRIGGERED: %s", kill_reason)
-                    self._checkpoint(reason=f"kill:{kill_reason}")
-                    return f"killed:{kill_reason}"
+                    if self._kill_suppressed(kill_reason):
+                        pass
+                    else:
+                        logger.error(
+                            "KILL CRITERION TRIGGERED: %s", kill_reason
+                        )
+                        self._checkpoint(reason=f"kill:{kill_reason}")
+                        return f"killed:{kill_reason}"
 
                 steps_this_epoch += 1
 
@@ -2275,9 +2320,12 @@ class JEPATrainer:
             heldout = self.evaluate_heldout()
             div = self._check_divergence(heldout)
             if div is not None:
-                logger.error("DIVERGENCE GUARD TRIPPED: %s", div)
-                self._checkpoint(reason=f"kill:{div}")
-                return f"killed:{div}"
+                if self._kill_suppressed(div):
+                    pass
+                else:
+                    logger.error("DIVERGENCE GUARD TRIPPED: %s", div)
+                    self._checkpoint(reason=f"kill:{div}")
+                    return f"killed:{div}"
 
             # Abort/continue gate at end of epoch 1 (v0.5 §3, §10.4).
             self.epoch += 1

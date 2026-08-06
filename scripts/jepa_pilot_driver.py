@@ -206,6 +206,14 @@ STAGES: dict[int, list[tuple[str, int]]] = {
     # the 07-31 isolation doc named as its own sequencing error and never
     # ran. Unclipped, faithful to v5 -- the guards are the safety net.
     28: [("probe_v5_d8", 512)],
+    # V5 AT DEPTH 8, KILLS DELAYED TO STEP 1000 (2026-08-06, Brian's
+    # instruction: "delay all kill triggers until at least step 1000").
+    # Byte-identical model config to stage 28 under a distinct name; the
+    # only change is observation-side -- guard_min_step=1000, so the
+    # failure that three straight runs showed us only one frame of gets
+    # observed for ten deep firings before the guards resume. Registered
+    # in docs/research/2026-08-06_v5-d8-observed-failure-hypothesis.md.
+    29: [("probe_v5_d8_dk1000", 512)],
 }
 
 # Per-arm model configuration -- single source of truth, shared with
@@ -507,7 +515,23 @@ ARM_DEEP_CADENCE: dict[str, int] = {
     "probe_d8_bundleoff": 100,
     "probe_d8_naked": 100,
     "probe_v5_d8": 100,
+    "probe_v5_d8_dk1000": 100,
 }
+# Per-arm kill-guard delay (2026-08-06, Brian's instruction). Suppresses
+# every kill path until the given global step -- loudly; each would-have-
+# fired trip is logged. Observation-side knob for short attended probes
+# only; the value rides into run_config.json and pilot_result.json.
+ARM_GUARD_MIN_STEP: dict[str, int] = {
+    "probe_v5_d8_dk1000": 1000,
+}
+# Delayed-kill twin of probe_v5_d8: byte-identical model config under a
+# distinct arm name (never-pool discipline). The delta is observation-side
+# only (guard_min_step above).
+ARM_CONFIGS["probe_v5_d8_dk1000"] = dict(ARM_CONFIGS["probe_v5_d8"])
+ARM_TAPER["probe_v5_d8_dk1000"] = ARM_TAPER["living_v5_4x_d4"]
+ARM_FILELIST["probe_v5_d8_dk1000"] = ARM_FILELIST["living_v5_4x_d4"]
+ARM_SIGREG["probe_v5_d8_dk1000"] = ARM_SIGREG["living_v5_4x_d4"]
+ARM_COSINE["probe_v5_d8_dk1000"] = ARM_COSINE["living_v5_4x_d4"]
 # NAKED TRUNK at depth 8 (2026-08-06). ONE variable against
 # probe_d8_bundleoff: mu_pc_enabled False. Per the stage-16 caveat this
 # removes the residual scaling AND the depth-scaled init together, by
@@ -869,6 +893,7 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
             taper=TaperConfig(enabled=ARM_TAPER.get(arm, False)),
             lr_schedule=lr_schedule,
             grad_clip_norm=ARM_GRAD_CLIP.get(arm, 0.0),
+            guard_min_step=ARM_GUARD_MIN_STEP.get(arm, 0),
         ),
         run_dir=run_dir,
     )
@@ -942,6 +967,7 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
             "grad_clip_norm": ARM_GRAD_CLIP.get(arm, 0.0),
             "taper": ARM_TAPER.get(arm, False),
             "deep_interval_batches": ARM_DEEP_CADENCE.get(arm, 1000),
+            "guard_min_step": ARM_GUARD_MIN_STEP.get(arm, 0),
         },
     }
     _result_path(arm, d_model, seed).write_text(json.dumps(result, indent=2))
