@@ -98,3 +98,81 @@ with one supporting cell and zero direct precedent.
 python scripts/jepa_pilot_driver.py --stage 27 --seeds 95 \
     --epochs 1 --max-batches-per-epoch 3000 --heldout-batches 5
 ```
+
+---
+
+# VERDICT: KILLED — the registered gate fires, and the forensics reverse the expected story
+
+**Time:** 2026-08-06. Killed at `nmse=2.7195 > 2.00` (periodic guard), 0.04 h,
+one deep firing recorded, ~150 steps. `admissible: False` for capability.
+
+## Registered scoring, exactly as frozen
+
+**Primary gate (run outcome): KILLED by the divergence guard.** The
+registered reading fires as written: **the naked depth-8 trunk is unstable
+regardless, and muPC is exonerated for rung 1's divergence** (its role in
+the stable collapse is untouched). The bundle's regulators become the
+primary stabilization story; the add-back ladder, band first, is next.
+
+**Secondary rank gate: not scored** — it was registered "only if the run
+completes."
+
+**Prior check:** the registration leaned weakly toward COMPLETES. Wrong
+again, second rung in a row. Both wrong priors are in the record unedited.
+
+## The step-100 forensics — same seed, same data order as rung 1
+
+| step 100 | naked (this run) | bundle-off, muPC ON (rung 1) |
+|---|---|---|
+| block-0 rank | **29.6** | 237.5 |
+| blocks 1-7 rank | **1.0 - 1.6 (collapsed)** | 191 - 227 |
+| L_pred | **31.45 (broken)** | 0.38 (fine) |
+| L_sigreg (healthy 50-110) | **4388** | 1763 |
+| off-diag correlation | 0.907 | — |
+| offset dominance (target) | 0.845 | — |
+| guard NMSE at kill | 2.72 | 41.69 |
+
+Three things fall out, stated with one-record humility:
+
+1. **Rank collapse does not require muPC.** The naked trunk hit rank ~1 in
+   blocks 1-7 within 100 steps, with the full offset-dominance signature.
+   In the *bundled* system muPC-off is healthy (stage 16), so the clean
+   statement is now: **collapse is a failure mode of the depth-8 trunk
+   itself; what varies across cells is what prevents it and what it costs.**
+2. **muPC held the trunk open.** On identical data, muPC-on at step 100 has
+   init-like rank everywhere and working prediction. muPC's residual
+   scaling appears to *slow the collapse* — its original stabilization
+   purpose — while producing a scale runaway the bundle would otherwise
+   damp. The 07-31 framing survives another form: every lever here buys
+   one pathology with another.
+3. **The guard's NMSE inverted the health ordering.** 2.72 (naked) vs 41.69
+   (muPC-on) reads as "naked is nearer health"; every substrate measure
+   says the opposite. NMSE normalizes by target variance, and a collapsed
+   target flatters it — the *same* flattery that gamed stage 25, now in
+   the divergence guard. An instrument correction is warranted: the guard
+   should trip on SIGReg or rank alongside NMSE. (Recorded here; not
+   unilaterally changed — the guard's thresholds are registered surface.)
+
+## Where the factorial now stands
+
+| cell | outcome |
+|---|---|
+| d8, bundle ON, muPC ON | stable collapse (rank ~2) |
+| d8, bundle ON, muPC OFF | stable, healthy |
+| d8, bundle OFF, muPC ON | diverges; rank held open at kill |
+| d8, bundle OFF, muPC OFF | diverges; already collapsed at step 100 |
+
+The bundle is necessary for *stability* at depth 8 in every observed cell.
+Health then depends on muPC being OFF; with muPC ON the stabilized trunk
+lands in rank-2 collapse instead. The next discriminating step is the
+inverted add-back: **which single regulator, added to the naked trunk,
+restores stability — and does rank-2 collapse arrive with it?** Band first,
+per the rung-1 verdict. Control 2 (d4 naked) remains specced and cheap.
+
+## Confounds carried
+
+Single seed; single deep firing per run (the kill lands before firing 2 —
+if the add-back rungs also die early, drop cadence to 25 or lower the
+guard's first-check latency so the registered gates get at least two
+observations); clip 1000 engaged hard here (pre-clip grad 3364 at step
+100); post-kill eval numbers cited nowhere.
