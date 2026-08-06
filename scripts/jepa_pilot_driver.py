@@ -191,6 +191,13 @@ STAGES: dict[int, list[tuple[str, int]]] = {
     # whether muPC x depth is sufficient WITHOUT the bundle. Rank stays
     # collapsed -> the entire add-back ladder is unnecessary.
     26: [("probe_d8_bundleoff", 512)],
+    # NAKED TRUNK AT DEPTH 8 (2026-08-06, control 1 from the rung-1 verdict --
+    # registered in docs/research/2026-08-06_naked-trunk-at-depth-hypothesis.md).
+    # Stage 26 with muPC also off: the last factorial cell. Completes ->
+    # muPC destabilized the bundle-off trunk; killed by the divergence
+    # guard -> the naked d8 trunk is unstable regardless and muPC is
+    # exonerated for rung 1's divergence (not for the collapse).
+    27: [("probe_d8_naked", 512)],
 }
 
 # Per-arm model configuration -- single source of truth, shared with
@@ -490,7 +497,25 @@ ARM_COSINE["probe_d8_bundleoff"] = ARM_COSINE["living_v5_4x_d4"]
 # bit-identical and comparable.
 ARM_DEEP_CADENCE: dict[str, int] = {
     "probe_d8_bundleoff": 100,
+    "probe_d8_naked": 100,
 }
+# NAKED TRUNK at depth 8 (2026-08-06). ONE variable against
+# probe_d8_bundleoff: mu_pc_enabled False. Per the stage-16 caveat this
+# removes the residual scaling AND the depth-scaled init together, by
+# design -- a clean result implicates muPC as a whole, and separating the
+# halves is the mu_pc_exponent=0.0 run if it matters. The exponent key is
+# carried (inert when disabled) so the two arms' records differ by exactly
+# one value. Same seed as rung 1 (95): the loader is deterministic, so the
+# early steps are directly comparable against the diverged run.
+ARM_CONFIGS["probe_d8_naked"] = dict(
+    ARM_CONFIGS["probe_d8_bundleoff"],
+    mu_pc_enabled=False,
+)
+ARM_GRAD_CLIP["probe_d8_naked"] = 1000.0
+ARM_TAPER["probe_d8_naked"] = ARM_TAPER["living_v5_4x_d4"]
+ARM_FILELIST["probe_d8_naked"] = ARM_FILELIST["living_v5_4x_d4"]
+ARM_SIGREG["probe_d8_naked"] = ARM_SIGREG["living_v5_4x_d4"]
+ARM_COSINE["probe_d8_naked"] = ARM_COSINE["living_v5_4x_d4"]
 ARM_GRAD_CLIP["probe_d8_amp4_rawdrive"] = 20000.0
 ARM_TAPER["probe_d8_amp4_rawdrive"] = ARM_TAPER["living_v5_4x_d4"]
 ARM_FILELIST["probe_d8_amp4_rawdrive"] = ARM_FILELIST["living_v5_4x_d4"]
