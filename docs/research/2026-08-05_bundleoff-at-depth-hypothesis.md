@@ -112,3 +112,82 @@ python scripts/jepa_pilot_driver.py --stage 26 --seeds 95 \
 (Recovered from the surviving stage-25 run's config; the depth-arc run
 directories themselves were lost from disk on 2026-08-05 — see the
 response doc's provenance section.)
+
+---
+
+# VERDICT: KILLED BY THE DIVERGENCE GUARD — neither registered gate fired
+
+**Time:** 2026-08-05, ~18:30. Run killed at `nmse=41.6947 > 2.00` (periodic
+guard), 0.04 h in, one deep firing recorded. `admissible: False`.
+
+## Registered scoring, exactly as frozen
+
+- **BUNDLE IMPLICATED** required block-0 rank >= 20 at *two consecutive*
+  deep firings. One firing exists (block 0 = 237.52 at step 100). The
+  second never came. **Did not fire.**
+- **muPC x DEPTH SUFFICIENT** required every block-0 reading < 20 across
+  the *full 3000 steps*. The one reading is 237.52 and there was no full
+  run. **Did not fire.**
+
+The registration did not anticipate a guard kill, and per the stage-22/23
+precedent the honest entry is: **inadmissible, no registered verdict.** The
+gates were written for "collapses quietly or acquires"; the trunk did a
+third thing.
+
+## What the record now shows anyway, stated plainly
+
+The factorial table has a new row and it changes the shape of the question:
+
+| cell | outcome |
+|---|---|
+| d8, bundle ON, muPC ON | **stable collapse** (rank ~2, every variant) |
+| d8, bundle ON, muPC OFF | stable, healthy (stage 16) |
+| d8, bundle OFF, muPC ON | **divergence in ~150 steps** (this run) |
+
+**muPC x depth alone does not reproduce the stable rank-2 collapse.** The
+naked muPC-on depth-8 trunk does not collapse quietly — it cannot train at
+all. Which means the observed phenomenon — a trunk sitting *stably* at rank
+2 for 3000 steps — is a joint product: **something in the bundle is the
+stabilizer that converts a divergent trunk into a stably collapsed one.**
+The 07-31 stage-23 finding ("attenuation is simultaneously what stabilizes
+deep training and what prevents offset stripping") appears to generalize:
+at depth 8 this system trades stability against health everywhere we have
+looked.
+
+The step-100 forensics, for what one record can carry: `L_pred` 0.38 (fine),
+`L_sigreg` **1763** against a healthy band of 50-110 (the total loss was
+~all SIGReg), held-out NMSE 41.9, all-block rank 191-237 (init-like, not
+yet collapsed), grad 500 (clip 1000 not engaged at that step). The latent
+scale was running away from the first steps. The suspect this points at,
+as a hypothesis and no more: the PC substrate's self-modification without
+its regulators (band, trust weighting, gain cap, drive gating) is itself
+unstable, and some of the damping previously credited to muPC may have
+been the bundle's. One record cannot establish that; the controls below can.
+
+## Cheapest discriminating controls, in order (NOT registered here;
+each needs its own registration before running)
+
+1. **d8, bundle OFF, muPC OFF** — the last factorial cell. Stable+healthy
+   → muPC destabilizes the naked d8 trunk (and the bundle rescues it into
+   collapse). Diverges → the naked trunk is unstable at d8 regardless, and
+   muPC is exonerated for the *divergence* (not the collapse).
+2. **d4, bundle OFF, muPC ON** — same arm at the depth where bundle-on
+   muPC-on is healthy. Diverges → naked-trunk instability is not
+   depth-specific and rung 1's divergence says nothing about depth.
+3. **Add-back from this arm, band first** — the inverted ladder: not
+   "which mechanism causes the collapse" but "which regulator restores
+   stability, and does rank ~2 return with it." Whichever single mechanism
+   converts divergence into stable collapse is the load-bearing one.
+
+The ladder Opus's brief proposed is therefore **justified after all, in
+inverted form** — my §3 prediction that one run would likely delete it was
+wrong, and the way it was wrong is more informative than the way it
+expected to be right.
+
+## Confounds carried forward
+
+Single seed; single surviving record before the kill; clip 1000 present
+(un-engaged at the one measured step, engagement over the full ~150 steps
+unknown); cadence 100 (the reason we have a reading at all). The step-100
+rank readings are init-proximal and say "not yet collapsed," not "healthy
+learner" — do not cite 237.52 as acquisition.
