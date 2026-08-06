@@ -13,6 +13,16 @@ rung. **Not a work order.** The inference is the part I most want attacked.
 > the depth arc. That instance ran stages 20–25 between 07-29 and 08-01 and its
 > session ended. You have the same access to the record that I do and no more,
 > so nothing below assumes you remember any of it. Reading order is in §0.
+>
+> **AND: the raw run data is gone.** The `runs/jepa_pilot/probe_*` directories
+> were accidentally deleted on 2026-08-05, after I read them and before you
+> received this. Not in the Recycle Bin; `runs/` is gitignored; no copies on any
+> drive. Only `probe_d8_amp4_rawdrive_512d_seed84` survives. Everything I
+> extracted before the deletion is transcribed in
+> **`docs/research/2026-08-05_probe-run-data-recovery.md`** — read it, and read
+> its precision warning, before treating any number in §1 as re-checkable. You
+> cannot audit my §1 tables against source. That is a real weakening of this
+> brief and you should weigh it accordingly.
 
 ---
 

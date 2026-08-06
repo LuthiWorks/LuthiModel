@@ -133,9 +133,21 @@ architecture — which would save the entire ladder.
 
 ## Reproducing
 
+> **THE SOURCE DATA IS GONE.** The `runs/jepa_pilot/probe_*` directories were
+> accidentally deleted later on 2026-08-05 — not in the Recycle Bin, `runs/` is
+> gitignored, no copies on C:/D:/E:. Only
+> `probe_d8_amp4_rawdrive_512d_seed84` survives. The commands below will fail
+> for every other run named in this doc.
+>
+> Everything I read out of those logs before the deletion — including the full
+> per-block tables behind the summary above — is transcribed in
+> **`docs/research/2026-08-05_probe-run-data-recovery.md`**, with an explicit
+> precision warning. The numbers in this doc are not invalidated; they are
+> simply no longer re-derivable from source.
+
 ```
-python scripts/rank_trajectory.py probe_surprise_512d_seed46 probe_surprise_d8_512d_seed96
-python scripts/rank_trajectory.py --all-matching probe_surprise_d8
+python scripts/rank_trajectory.py probe_d8_amp4_rawdrive_512d_seed84   # still works
+python scripts/rank_trajectory.py --all-matching probe_                 # only the above remains
 ```
 
 Read-only. Reports the deep cadence and the unobserved head of each run
