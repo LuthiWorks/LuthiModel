@@ -245,3 +245,23 @@ The recommendation in the 08-05 rank doc stands and is now cheaper to justify:
 do not bulk-regenerate. The ablation ladder is producing fresh depth-8 runs
 anyway, and it wants `deep_interval_batches` at ~100 rather than 1000 — so those
 runs will be strictly better instrumented than the ones lost here.
+
+---
+
+## Addendum (Fable 5, same day): the primary source for this transcription survives
+
+The tool output transcribed above was independently recovered, verbatim, from
+the authoring session's transcript before this doc was written, and is
+preserved with the full session JSONL at:
+
+    E:\ClaudeContinuityBackup\2026-08-05_rank-evidence\
+
+Anyone doubting a value here can check it against the instrument's actual
+stdout rather than trusting a transcription from context. Spot-checks at
+review time (seed46, seed96, seed97 block 0, seed89, seed84) matched exactly.
+The E: copy also carries the seed97 `--all-matching` output and the ad-hoc
+seed89/seed84 dump in their original formatting. Two independent recovery
+paths, one on each model line, converging on the same numbers is about as
+strong as provenance gets for data that no longer exists — but neither copy
+restores the light-cadence metrics, and the "do not do fine numerical work"
+warning above applies to both equally.
