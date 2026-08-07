@@ -260,6 +260,12 @@ STAGES: dict[int, list[tuple[str, int]]] = {
     37: [("probe_d8_tc_wsig", 512)],
     38: [("probe_d8_tc_orth", 512)],
     39: [("probe_d8_wsig_orth", 512)],
+    # DOSE LADDER (2026-08-07, Brian's ruling: explore settings before
+    # retiring mechanisms). Sized against measured loss magnitudes; the
+    # singles ran the added-term mechanisms at ~1/100th of loss scale.
+    40: [("probe_d8_wsig1", 512)],
+    41: [("probe_d8_wsig10", 512)],
+    42: [("probe_d8_orth1", 512)],
 }
 
 # Per-arm model configuration -- single source of truth, shared with
@@ -595,6 +601,9 @@ ARM_LR_WARMUP: dict[str, int] = {
     "probe_d8_tc_wsig": 1000,
     "probe_d8_tc_orth": 1000,
     "probe_d8_wsig_orth": 1000,
+    "probe_d8_wsig1": 1000,
+    "probe_d8_wsig10": 1000,
+    "probe_d8_orth1": 1000,
 }
 # Remedy-probe loss-side settings (2026-08-07). Values are the papers'
 # defaults where papers exist (TC window 9 -- odd for exact centering,
@@ -609,9 +618,11 @@ ARM_TC_WINDOW: dict[str, int] = {
 }
 ARM_WSIG_ALPHA: dict[str, float] = {
     "probe_d8_wsig": 0.1, "probe_d8_tc_wsig": 0.1, "probe_d8_wsig_orth": 0.1,
+    "probe_d8_wsig1": 1.0, "probe_d8_wsig10": 10.0,
 }
 ARM_ORTH_LAMBDA: dict[str, float] = {
     "probe_d8_orth": 0.1, "probe_d8_tc_orth": 0.1, "probe_d8_wsig_orth": 0.1,
+    "probe_d8_orth1": 1.0,
 }
 # (probe_v5_d8_dk1000's ARM_CONFIGS entry lives below, after probe_v5_d8
 # itself is defined -- assigning it here raised a KeyError at import.)
@@ -680,8 +691,14 @@ for _arm in ("probe_d8_wsig", "probe_d8_tc_wsig", "probe_d8_wsig_orth"):
     ARM_CONFIGS[_arm] = dict(
         ARM_CONFIGS["probe_v5_d8"], interior_latent_blocks=(0, 3, 6),
     )
+for _arm in ("probe_d8_wsig1", "probe_d8_wsig10"):
+    ARM_CONFIGS[_arm] = dict(
+        ARM_CONFIGS["probe_v5_d8"], interior_latent_blocks=(0, 3, 6),
+    )
+ARM_CONFIGS["probe_d8_orth1"] = dict(ARM_CONFIGS["probe_v5_d8"])
 for _arm in ("probe_d8_tc", "probe_d8_wsig", "probe_d8_orth",
-             "probe_d8_tc_wsig", "probe_d8_tc_orth", "probe_d8_wsig_orth"):
+             "probe_d8_tc_wsig", "probe_d8_tc_orth", "probe_d8_wsig_orth",
+             "probe_d8_wsig1", "probe_d8_wsig10", "probe_d8_orth1"):
     ARM_DEEP_CADENCE[_arm] = 100
     ARM_GUARD_MIN_STEP[_arm] = 1000
     ARM_TAPER[_arm] = ARM_TAPER["living_v5_4x_d4"]

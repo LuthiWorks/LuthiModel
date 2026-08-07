@@ -106,3 +106,50 @@ python scripts/jepa_pilot_driver.py --stage 37 --seeds 46 --epochs 1 --max-batch
 python scripts/jepa_pilot_driver.py --stage 38 --seeds 46 --epochs 1 --max-batches-per-epoch 3000 --heldout-batches 5   # tc+orth
 python scripts/jepa_pilot_driver.py --stage 39 --seeds 46 --epochs 1 --max-batches-per-epoch 3000 --heldout-batches 5   # wsig+orth
 ```
+
+---
+
+# SINGLES VERDICT (stages 34-36): three FLOORs, one real clue, two under-doses
+
+| arm | outcome | gate | the mechanism-specific read |
+|---|---|---|---|
+| tc | killed @ ~1000, nmse 2.72 | FLOOR | **Block 0 held rank 209-239 the entire run — first time in 13 depth-8 runs.** Interior oscillated violently (min block 2.6→119→185→1.4; SIGReg 20↔1600) and died. With the offset removed from SIGReg's view, block 0 stops being crushed — the July offset-fight mechanism confirmed from the reverse direction. |
+| wsig | killed @ ~2100, nmse 3.82 | FLOOR | **Differential null:** pressured blocks 0/3/6 collapsed in lockstep with unpressured. Transit delayed (400-700) and 1000+ live-guard steps survived in the healed-offset floor state. |
+| orth | killed @ ~1100, nmse 2.38 | FLOOR | Carve happened anyway: post-run block-0 v/o at 5-6 despite continuous pressure. |
+
+**Sizing self-correction, owned:** wsig's alpha=0.1 was taken on paper
+faith (tuned there for supervised losses of order 1); against our
+transit-era losses of 100-500 the penalty contributed ~1 — plausibly
+100x under-dosed, predicting exactly the observed null. Orth's term was
+likewise ~1 during the transit. The singles tested the mechanisms at
+homeopathic doses; only TC (which redirects the existing, full-strength
+SIGReg rather than adding a small term) was dosed at strength — and it
+produced the day's one structural change.
+
+**tc_wsig conditional (Brian's):** NOT launched — the frozen criterion
+(wsig differential) read null. Superseded by the dose ladder below, per
+Brian's ruling to explore settings before retiring mechanisms.
+
+---
+
+# DOSE LADDER (stages 40-42), registered before launch
+
+Same base, same gates, same frozen reads as the singles. One change per
+arm, sized against measured loss magnitudes rather than paper defaults:
+
+- **Stage 40 `probe_d8_wsig1`:** alpha = 1.0 (penalty ~10 vs healthy
+  loss ~4; still small in transit).
+- **Stage 41 `probe_d8_wsig10`:** alpha = 10.0 (penalty ~100 —
+  commensurate with transit-era loss; the properly-sized dose under the
+  sizing argument).
+- **Stage 42 `probe_d8_orth1`:** lambda = 1.0 (term ~10 at the measured
+  floor spectra).
+
+**Frozen decision rules:** wsig differential (pressured vs unpressured
+block rank) appearing at any dose → the mechanism grips → tc_wsig runs
+at that dose under Brian's standing conditional. Differential absent
+even at alpha=10 → earned retirement of interior-Weak-SIGReg for this
+substrate (a dose that co-dominates the loss and still cannot separate
+the blocks it directly pressures has been given its full chance). Orth
+read: post-run write-path spectra vs the lambda=0.1 twin. All single
+seed (46); the repeat rule from the singles registration carries.
