@@ -141,3 +141,49 @@ RELEASE favors the weight-side pair; HOLD favors the objective-side.
 moment reset — a RELEASE cannot attribute between them without a
 follow-up); the parent run completed via NMSE flattery so its guards-live
 survival says nothing about health.
+
+---
+
+# SURGERY VERDICT: HOLD — the lock is not in the weights, and this doc's strong claim is refuted
+
+**Outcome:** `killed:divergence:nmse=12.3092` at step 4000 — the first
+live check after the grace. Ten post-surgery firings on the tape, and
+they are unambiguous: pooled eff 3.6-10.8 throughout, blocks at 2-3,
+never approaching either the RELEASE bar or health. **The frozen HOLD
+condition (pooled eff < 20) held at every observed firing.** Scored HOLD,
+with the kill noted (the run never reached a natural final firing; the
+tape's uniformity makes the truncation immaterial).
+
+**The sharper finding — the carve re-formed in under 1000 steps.** Post-run
+spectra: block-0 v/o back to 5.0/6.3 from the surgical 28.1/27.6; most
+blocks roughly halved. The collapsed activations re-sculpted the
+broadened projections at the same loci, block 0 most extreme, exactly as
+fast as gradient flow allows.
+
+**What this refutes:** §3 of this doc's mechanism — "the floor is locked
+in weights" — in its strong form, by my own registered test. The carve
+is real, measured, and *consolidation*, not cause: break it and the
+activation dynamics rebuild it immediately. The attractor lives in the
+activation dynamics / objective / architecture at depth. (Why seed 46
+escaped remains open — weight breadth alone was not the discriminator I
+claimed; its escape must have been dynamics-side fortune or an
+activation-state difference the checkpoints cannot show.)
+
+**Confounds:** Adam-moment reset rode along (immaterial under HOLD — a
+confound only a RELEASE needed to untangle); 1000-step grace (the tape
+shows no upward trend to truncate); single seed.
+
+**The discriminator's answer for the three remedies on the table:**
+HOLD favors the **activation/objective-side family** — TC-SIGReg
+(arXiv 2607.26924: move SIGReg to temporally centered residuals) and
+per-block Weak-SIGReg (arXiv 2603.05924: cheap covariance isotropy
+pressure on interior blocks, which currently have none) — and demotes
+the weight-side family (orthogonal penalty, spectral resets, optimizer
+replacement): the weights follow the activations here, not the reverse.
+Design ruling between the two survivors is Brian's and Opus's; both
+papers need a full read first (research seat).
+
+Score another one for the method: my mechanism doc was confident,
+plausible, checkpoint-supported — and its central causal claim died in
+eleven minutes of registered GPU. The instrumented failure was cheap;
+believing the doc would not have been.
