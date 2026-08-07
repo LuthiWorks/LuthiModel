@@ -270,3 +270,46 @@ warmup and the ramp-response sweep is justified. 1/3 -> ambiguous;
 **Note on the middle:** a seed that completes with eff between 20 and
 100, or heals-then-relapses, is scored neither and reported — the arc
 has earned that humility four times.
+
+---
+
+# REPEATS VERDICT: 0/2 — stage 31's recovery did not reproduce
+
+**Seed 95:** `killed:divergence:nmse=2.1486` at step ~1800. Transit at
+300-400, partial scale-heal (offset to 0.21, SIGReg to 108, block 0
+briefly 42-60), broad rank never re-inflated (pooled eff <= 15), marginal
+kill. **FLOOR** by the frozen criterion.
+
+**Seed 97:** `completed` — but at final firing: pooled eff **12.0**, every
+block at **2.1-2.4**, probe lift 1.16x (0.1273 vs floor 0.1101). By the
+frozen criterion (completes with pooled eff < 20) this is **FLOOR**. Its
+completion is itself a finding: held-out NMSE 0.862 on a rank-12 trunk
+sailed under every live guard for 2000 steps — `outcome: completed,
+admissible: True` now demonstrably includes collapsed trunks whose offset
+healed enough to flatter NMSE. **Completion must not be read as health
+anywhere downstream; the registry should treat "completed" as
+rank-qualified from here on.**
+
+**Registration flaw, owned:** the frozen tally rule said both "1/3 →
+ambiguous" and "0/2 new → the lottery; the branch closes" — the same
+event under two labels. The specific clause governs: **stage 31 was not
+reproducible at will. The warmup branch closes at depth 8 as a reliable
+remedy.**
+
+**What warmup demonstrably did do — the distribution moved even though
+recovery didn't reproduce.** All three warmup seeds show gentler transits
+(step 300-500, not 100-200), partial scale-healing (offsets 0.2-0.5 vs
+the non-warmup 0.98-1.0 floor; SIGReg hundreds, not thousands), and
+floors at eff 9-15 rather than 2-5. One seed in three recovered fully.
+Against the non-warmup base (0/2 with room, offsets saturated), warmup
+plausibly shifts the *odds and the floor* without granting reliability.
+That is worth carrying as context into whatever comes next; it is not
+worth building a depth strategy on.
+
+**Standing after the warmup family (n=4: ramps 1000x3, 1500x1):**
+1 full recovery, 3 floors. The pragmatic healthy cell remains
+**bundle ON + muPC OFF** (stage 16). The open remedies from Opus's 08-06
+brief are the λ_sigreg sweep and the projection-head variant; the deeper
+question — why depth 8 makes the floor the attractor — is untouched by
+everything tried so far. Next spend is a design ruling, not another
+single-knob probe.
