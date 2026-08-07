@@ -247,6 +247,19 @@ STAGES: dict[int, list[tuple[str, int]]] = {
     # simultaneously the mechanism's falsification test and the cheapest
     # deployable remedy candidate.
     33: [("probe_v5_d8_surgery", 512)],
+    # DEPTH-8 REMEDY PROBES (2026-08-07, Brian's build order; registered
+    # in docs/research/2026-08-07_depth-remedy-probes-hypothesis.md).
+    # Three mechanisms singly, then pairwise. All share the warmup-1000
+    # base (stage 31's arm -- the only d8 config with any escape
+    # history), cadence 100, guard hold 1000, unclipped, seed 46.
+    # 1 = TC-SIGReg (arXiv 2607.26924), 2 = interior Weak-SIGReg
+    # (arXiv 2603.05924), 3 = orthogonal penalty (classic).
+    34: [("probe_d8_tc", 512)],
+    35: [("probe_d8_wsig", 512)],
+    36: [("probe_d8_orth", 512)],
+    37: [("probe_d8_tc_wsig", 512)],
+    38: [("probe_d8_tc_orth", 512)],
+    39: [("probe_d8_wsig_orth", 512)],
 }
 
 # Per-arm model configuration -- single source of truth, shared with
@@ -576,6 +589,29 @@ ARM_LR_WARMUP: dict[str, int] = {
     "probe_v5_d8_warmup": 1000,
     "probe_v5_d8_warmup15": 1500,
     "probe_v5_d8_surgery": 1000,  # schedule continuity with the parent run
+    "probe_d8_tc": 1000,
+    "probe_d8_wsig": 1000,
+    "probe_d8_orth": 1000,
+    "probe_d8_tc_wsig": 1000,
+    "probe_d8_tc_orth": 1000,
+    "probe_d8_wsig_orth": 1000,
+}
+# Remedy-probe loss-side settings (2026-08-07). Values are the papers'
+# defaults where papers exist (TC window 9 -- odd for exact centering,
+# inside the paper's 4-32 ablation band; wsig alpha 0.1, sketch 64) and
+# a registered first guess for orth lambda: 0.1, sized offline against
+# real checkpoints (penalty mean ~10 per matrix at the measured floor,
+# ~4 healthy -> term ~1.0 at floor, ~0.4 healthy, vs loss 4-500; still
+# light during the transit window, and a lambda sweep is the cheap
+# follow-up if the probes say the direction works).
+ARM_TC_WINDOW: dict[str, int] = {
+    "probe_d8_tc": 9, "probe_d8_tc_wsig": 9, "probe_d8_tc_orth": 9,
+}
+ARM_WSIG_ALPHA: dict[str, float] = {
+    "probe_d8_wsig": 0.1, "probe_d8_tc_wsig": 0.1, "probe_d8_wsig_orth": 0.1,
+}
+ARM_ORTH_LAMBDA: dict[str, float] = {
+    "probe_d8_orth": 0.1, "probe_d8_tc_orth": 0.1, "probe_d8_wsig_orth": 0.1,
 }
 # (probe_v5_d8_dk1000's ARM_CONFIGS entry lives below, after probe_v5_d8
 # itself is defined -- assigning it here raised a KeyError at import.)
@@ -635,6 +671,24 @@ ARM_TAPER["probe_v5_d8_warmup"] = ARM_TAPER["living_v5_4x_d4"]
 ARM_FILELIST["probe_v5_d8_warmup"] = ARM_FILELIST["living_v5_4x_d4"]
 ARM_SIGREG["probe_v5_d8_warmup"] = ARM_SIGREG["living_v5_4x_d4"]
 ARM_COSINE["probe_v5_d8_warmup"] = ARM_COSINE["living_v5_4x_d4"]
+# Remedy-probe arms (2026-08-07): warmup-1000 base, model config =
+# probe_v5_d8, plus interior_latent_blocks (0, 3, 6) for the wsig arms
+# (block 0 is the measured collapse locus; 3 and 6 span the interior).
+for _arm in ("probe_d8_tc", "probe_d8_orth", "probe_d8_tc_orth"):
+    ARM_CONFIGS[_arm] = dict(ARM_CONFIGS["probe_v5_d8"])
+for _arm in ("probe_d8_wsig", "probe_d8_tc_wsig", "probe_d8_wsig_orth"):
+    ARM_CONFIGS[_arm] = dict(
+        ARM_CONFIGS["probe_v5_d8"], interior_latent_blocks=(0, 3, 6),
+    )
+for _arm in ("probe_d8_tc", "probe_d8_wsig", "probe_d8_orth",
+             "probe_d8_tc_wsig", "probe_d8_tc_orth", "probe_d8_wsig_orth"):
+    ARM_DEEP_CADENCE[_arm] = 100
+    ARM_GUARD_MIN_STEP[_arm] = 1000
+    ARM_TAPER[_arm] = ARM_TAPER["living_v5_4x_d4"]
+    ARM_FILELIST[_arm] = ARM_FILELIST["living_v5_4x_d4"]
+    ARM_SIGREG[_arm] = ARM_SIGREG["living_v5_4x_d4"]
+    ARM_COSINE[_arm] = ARM_COSINE["living_v5_4x_d4"]
+
 # Surgery twin (2026-08-07): identical model config; the intervention
 # lives in the pre-seeded checkpoint, not the config.
 ARM_CONFIGS["probe_v5_d8_surgery"] = dict(ARM_CONFIGS["probe_v5_d8"])
@@ -922,6 +976,9 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
         online_encoder=model,
         sigreg_lambd=ARM_SIGREG.get(arm, SIGREG_LAMBD),
         sigreg_projection=ARM_SIGREG_PROJ.get(arm, "linear"),
+        sigreg_tc_window=ARM_TC_WINDOW.get(arm, 0),
+        interior_sigreg_alpha=ARM_WSIG_ALPHA.get(arm, 0.0),
+        orth_lambda=ARM_ORTH_LAMBDA.get(arm, 0.0),
     ).to(device)
 
     # Cosine LR needs the planned run length. tokens_per_pass is
@@ -1057,6 +1114,9 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
             "deep_interval_batches": ARM_DEEP_CADENCE.get(arm, 1000),
             "guard_min_step": ARM_GUARD_MIN_STEP.get(arm, 0),
             "lr_warmup_steps": ARM_LR_WARMUP.get(arm, 0),
+            "sigreg_tc_window": ARM_TC_WINDOW.get(arm, 0),
+            "interior_sigreg_alpha": ARM_WSIG_ALPHA.get(arm, 0.0),
+            "orth_lambda": ARM_ORTH_LAMBDA.get(arm, 0.0),
         },
     }
     _result_path(arm, d_model, seed).write_text(json.dumps(result, indent=2))

@@ -75,11 +75,65 @@ is the code piece of that delta.
 
 from __future__ import annotations
 
+import math
+
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from luthi.v2.multimodal_model_pc import MultimodalPredictiveCodingLM
 from luthi.v2.sigreg import SIGReg
+
+
+def temporal_center(z: torch.Tensor, window: int) -> torch.Tensor:
+    """TC-SIGReg residuals (arXiv 2607.26924): z minus the centered
+    window mean of its sequence neighbours.
+
+    z: (B, S, D); window: odd kernel width in positions. Edge positions
+    average over the clipped window (count_include_pad=False), matching
+    the paper's sliding-window mean.
+    """
+    if window <= 0:
+        return z
+    if window % 2 == 0:
+        raise ValueError(f"tc window must be odd for exact centering; got {window}")
+    means = F.avg_pool1d(
+        z.transpose(1, 2), kernel_size=window, stride=1,
+        padding=window // 2, count_include_pad=False,
+    ).transpose(1, 2)
+    return z - means
+
+
+def sketched_isotropy_penalty(z: torch.Tensor, sketch: torch.Tensor) -> torch.Tensor:
+    """Weak-SIGReg penalty (arXiv 2603.05924): Frobenius distance of the
+    sketched, centered covariance from identity.
+
+    z: (..., D) latents (flattened internally); sketch: (D, K) fixed
+    Gaussian sketch scaled by 1/sqrt(D). Identity target = unit variance
+    per sketched direction, zero cross-covariance — paper-faithful.
+    """
+    flat = z.reshape(-1, z.shape[-1]) @ sketch          # (N, K)
+    flat = flat - flat.mean(dim=0, keepdim=True)
+    n = flat.shape[0]
+    cov = (flat.t() @ flat) / max(n - 1, 1)
+    eye = torch.eye(cov.shape[0], device=cov.device, dtype=cov.dtype)
+    return torch.linalg.norm(cov - eye)
+
+
+def orthogonality_penalty(w: torch.Tensor) -> torch.Tensor:
+    """Scale-adapted soft orthogonality: ||W_hat^T W_hat - I||_F^2 / d,
+    with W_hat = W * sqrt(d) / ||W||_F.
+
+    Scale-free by construction — a matrix may grow or shrink freely; only
+    concentration of its energy into few directions is penalized. Zero
+    for any scalar multiple of an orthogonal matrix; O(d) for rank-1.
+    """
+    d = w.shape[0]
+    frob = torch.linalg.norm(w)
+    w_hat = w * (math.sqrt(d) / (frob + 1e-12))
+    gram = w_hat.t() @ w_hat
+    eye = torch.eye(d, device=w.device, dtype=w.dtype)
+    return (gram - eye).pow(2).sum() / d
 
 
 # LeWM defaults.
@@ -201,12 +255,47 @@ class JEPALoss(nn.Module):
         # that were produced under it.
         sigreg_projection: str = "linear",
         detach_target: bool = True,
+        # Depth-8 remedy probes (2026-08-07, Brian's build order;
+        # registered in docs/research/2026-08-07_depth-remedy-probes-
+        # hypothesis.md). All three default OFF — zero behaviour change
+        # for every existing arm.
+        sigreg_tc_window: int = 0,
+        interior_sigreg_alpha: float = 0.0,
+        interior_sigreg_sketch: int = 64,
+        orth_lambda: float = 0.0,
     ):
         super().__init__()
         self.online_encoder = online_encoder
         self.sigreg_lambd = sigreg_lambd
         self.context_fraction = context_fraction
         self.detach_target = bool(detach_target)
+        # TC-SIGReg (arXiv 2607.26924): SIGReg's input becomes the
+        # temporally centered residual, REPLACING the marginal input per
+        # the paper. 9 is our default request (odd for exact centering;
+        # the paper's 8 was ablated 4-32). For this substrate the window
+        # mean subtraction removes the shared component — the measured
+        # offset pathology — from SIGReg's view.
+        self.sigreg_tc_window = int(sigreg_tc_window)
+        # Weak-SIGReg (arXiv 2603.05924): sketched covariance isotropy on
+        # interior block latents, which currently receive no anti-collapse
+        # pressure at all. Identity target presses toward unit variance in
+        # sketch space, which will fight the trunk's measured native std
+        # band (0.25-0.35) — deliberate, paper-faithful, and part of what
+        # the probe measures. Which blocks supply latents is the model's
+        # interior_latent_blocks config.
+        self.interior_sigreg_alpha = float(interior_sigreg_alpha)
+        # Orthogonal penalty on the attention write path (v/o), classic
+        # soft orthogonality, scale-adapted (see orthogonality_penalty).
+        self.orth_lambda = float(orth_lambda)
+        if self.interior_sigreg_alpha > 0:
+            # Fixed, seeded sketch: the penalty must measure the same
+            # directions every step or it is noise, not pressure.
+            g = torch.Generator().manual_seed(20260807)
+            sketch = torch.randn(
+                online_encoder.d_model, int(interior_sigreg_sketch),
+                generator=g,
+            ) / math.sqrt(online_encoder.d_model)
+            self.register_buffer("interior_sketch", sketch)
 
         d_model = online_encoder.d_model
         n_heads = predictor_n_heads if predictor_n_heads is not None else online_encoder.n_heads
@@ -434,7 +523,14 @@ class JEPALoss(nn.Module):
         # mean trunk scale can drift without SIGReg objecting, so `std_p5`
         # deserves watching for runaway on long runs. See
         # docs/research/2026-07-30_mupc-verdict.md.
-        flat = target_full_latents.reshape(-1, d_model)
+        # TC-SIGReg (2026-08-07): when enabled, SIGReg's input is the
+        # temporally centered residual, REPLACING the marginal latents
+        # (per the paper — no hybrid term).
+        sigreg_source = (
+            temporal_center(target_full_latents, self.sigreg_tc_window)
+            if self.sigreg_tc_window > 0 else target_full_latents
+        )
+        flat = sigreg_source.reshape(-1, d_model)
         # BatchNorm1d expects (N, C); flat is (B * seq_len, D).
         projected = self.projection_heads[modality](flat)
         # SIGReg expects (T, B, D). Use T=1, B=(B * seq_len) -- the
@@ -447,6 +543,37 @@ class JEPALoss(nn.Module):
         # ---- Total ----
         total = l_pred + self.sigreg_lambd * l_sigreg
 
+        # ---- Interior Weak-SIGReg (2026-08-07) ----
+        # Anti-collapse pressure on interior blocks. Fail loud: alpha>0
+        # with no interior latents means the model was not configured to
+        # collect them — a silently inert regularizer would be exactly
+        # the failure mode this repo's CLAUDE.md forbids.
+        l_wsig = None
+        if self.interior_sigreg_alpha > 0:
+            interior = online_result.get("interior_latents")
+            if not interior:
+                raise RuntimeError(
+                    "interior_sigreg_alpha > 0 but the encoder produced no "
+                    "interior_latents — set interior_latent_blocks on the "
+                    "model, or the regularizer is silently inert."
+                )
+            per_block = [
+                sketched_isotropy_penalty(z, self.interior_sketch)
+                for z in interior.values()
+            ]
+            l_wsig = torch.stack(per_block).mean()
+            total = total + self.interior_sigreg_alpha * l_wsig
+
+        # ---- Orthogonal penalty on the attention write path ----
+        l_orth = None
+        if self.orth_lambda > 0:
+            pens = []
+            for block in self.online_encoder.blocks:
+                pens.append(orthogonality_penalty(block.attention.v_proj.weight))
+                pens.append(orthogonality_penalty(block.attention.o_proj.weight))
+            l_orth = torch.stack(pens).mean()
+            total = total + self.orth_lambda * l_orth
+
         # ---- Diagnostics for the runner's kill criteria ----
         online_per_dim_std = online_context_latents.std(dim=(0, 1))  # [D]
 
@@ -454,6 +581,8 @@ class JEPALoss(nn.Module):
             "loss": total,
             "l_pred": l_pred.detach(),
             "l_sigreg": l_sigreg.detach(),
+            "l_wsig": l_wsig.detach() if l_wsig is not None else None,
+            "l_orth": l_orth.detach() if l_orth is not None else None,
             "online_std": online_per_dim_std.detach(),
             "online_context_latents": online_context_latents.detach(),
             "block_latents": online_result.get("block_latents"),

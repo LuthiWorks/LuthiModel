@@ -112,9 +112,17 @@ class MultimodalPredictiveCodingLM(nn.Module):
         learning_gain_rise: float = 2.0,
         learning_gain_cap: float = 3.0,
         episode_recall_threshold: float = 0.5,
+        # Interior Weak-SIGReg support (2026-08-07): block indices whose
+        # residual-stream outputs are exposed NON-detached in encode()'s
+        # result as `interior_latents`, so the loss can apply anti-collapse
+        # pressure inside the trunk. Empty = off (no memory cost, no
+        # behaviour change). Our chosen probes use (0, 3, 6): block 0 is
+        # the measured collapse locus; 3 and 6 span the interior.
+        interior_latent_blocks: tuple = (),
     ):
         super().__init__()
         self.dead_ffn = bool(dead_ffn)
+        self.interior_latent_blocks = tuple(int(i) for i in interior_latent_blocks)
         self.d_model = d_model
         self.n_heads = n_heads
         self.max_seq_len = max_seq_len
@@ -376,10 +384,15 @@ class MultimodalPredictiveCodingLM(nn.Module):
         # blocks 1 and 2 abandoned 10-13% of their input dimensions while
         # block 0 was untouched, which a pooled measure would have hidden.
         block_latents: list[torch.Tensor] = []
-        for block in self.blocks:
+        interior_latents: dict[int, torch.Tensor] = {}
+        for bi, block in enumerate(self.blocks):
             h = block(h, causal=causal)
             if collect_block_latents:
                 block_latents.append(h.detach())
+            # Interior Weak-SIGReg (2026-08-07): NON-detached — the whole
+            # point is gradient pressure on the interior stream.
+            if bi in self.interior_latent_blocks:
+                interior_latents[bi] = h
 
         # Phase 2: top-down backward sweep (PC).
         if self.training and self.backward_pass_enabled:
@@ -396,6 +409,8 @@ class MultimodalPredictiveCodingLM(nn.Module):
         }
         if collect_block_latents:
             out["block_latents"] = block_latents
+        if interior_latents:
+            out["interior_latents"] = interior_latents
         return out
 
     def forward(
