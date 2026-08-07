@@ -221,6 +221,17 @@ STAGES: dict[int, list[tuple[str, int]]] = {
     # the dk1000 doc's RECORD section. Launch with
     # --max-batches-per-epoch 6000.
     30: [("probe_v5_d8_dk5000", 512)],
+    # LR WARMUP AT DEPTH 8 (2026-08-06, Opus's hypothesis, Fable's attack
+    # survived -- registered in
+    # docs/research/2026-08-06_warmup-at-depth8-hypothesis.md). The JEPA
+    # runner shipped without the warmup the older trainers carry
+    # deliberately (train_pc.py, audit 2026-05-10); every JEPA run has
+    # trained at full 3e-4 from step 0, and the d8 destruction completes
+    # inside 200 steps. probe_v5_d8 byte-identical + linear warmup over
+    # 1000 steps. Scored on pooled stable_rank in ABSOLUTE terms (healthy
+    # d4 band measured 13.5-47.5; collapsed floor <= 2.42), per the
+    # instrument findings in Opus's 08-06 brief.
+    31: [("probe_v5_d8_warmup", 512)],
 }
 
 # Per-arm model configuration -- single source of truth, shared with
@@ -531,6 +542,18 @@ ARM_DEEP_CADENCE: dict[str, int] = {
 ARM_GUARD_MIN_STEP: dict[str, int] = {
     "probe_v5_d8_dk1000": 1000,
     "probe_v5_d8_dk5000": 5000,
+    # Warmup arm: guards held through the ramp. Init-proximal NMSE has
+    # never been measured (every prior run had 100+ full-LR steps of
+    # damage before the first check), and the NMSE guard is documented to
+    # misread degenerate states -- a barely-trained model tripping it at
+    # step 100 would void the run for nothing. Guards live from 1000,
+    # exactly when the ramp ends and full LR arrives.
+    "probe_v5_d8_warmup": 1000,
+}
+# Per-arm LR warmup steps (2026-08-06). Rides into LRScheduleConfig;
+# 0 (default) preserves every prior arm's schedule bit-exactly.
+ARM_LR_WARMUP: dict[str, int] = {
+    "probe_v5_d8_warmup": 1000,
 }
 # (probe_v5_d8_dk1000's ARM_CONFIGS entry lives below, after probe_v5_d8
 # itself is defined -- assigning it here raised a KeyError at import.)
@@ -582,6 +605,14 @@ ARM_TAPER["probe_v5_d8_dk5000"] = ARM_TAPER["living_v5_4x_d4"]
 ARM_FILELIST["probe_v5_d8_dk5000"] = ARM_FILELIST["living_v5_4x_d4"]
 ARM_SIGREG["probe_v5_d8_dk5000"] = ARM_SIGREG["living_v5_4x_d4"]
 ARM_COSINE["probe_v5_d8_dk5000"] = ARM_COSINE["living_v5_4x_d4"]
+# Warmup twin (2026-08-06): probe_v5_d8 byte-identical in model config;
+# the delta is schedule-side (ARM_LR_WARMUP) plus the guard hold above.
+ARM_CONFIGS["probe_v5_d8_warmup"] = dict(ARM_CONFIGS["probe_v5_d8"])
+ARM_DEEP_CADENCE["probe_v5_d8_warmup"] = 100
+ARM_TAPER["probe_v5_d8_warmup"] = ARM_TAPER["living_v5_4x_d4"]
+ARM_FILELIST["probe_v5_d8_warmup"] = ARM_FILELIST["living_v5_4x_d4"]
+ARM_SIGREG["probe_v5_d8_warmup"] = ARM_SIGREG["living_v5_4x_d4"]
+ARM_COSINE["probe_v5_d8_warmup"] = ARM_COSINE["living_v5_4x_d4"]
 ARM_GRAD_CLIP["probe_d8_amp4_rawdrive"] = 20000.0
 ARM_TAPER["probe_d8_amp4_rawdrive"] = ARM_TAPER["living_v5_4x_d4"]
 ARM_FILELIST["probe_d8_amp4_rawdrive"] = ARM_FILELIST["living_v5_4x_d4"]
@@ -866,6 +897,7 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
         enabled=ARM_COSINE.get(arm, False),
         min_lr_ratio=0.1,
         total_steps=args.epochs * steps_per_epoch,
+        warmup_steps=ARM_LR_WARMUP.get(arm, 0),
     )
 
     sampler_cfg = SamplerConfig(
@@ -986,6 +1018,7 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
             "taper": ARM_TAPER.get(arm, False),
             "deep_interval_batches": ARM_DEEP_CADENCE.get(arm, 1000),
             "guard_min_step": ARM_GUARD_MIN_STEP.get(arm, 0),
+            "lr_warmup_steps": ARM_LR_WARMUP.get(arm, 0),
         },
     }
     _result_path(arm, d_model, seed).write_text(json.dumps(result, indent=2))

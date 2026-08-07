@@ -268,6 +268,15 @@ class LRScheduleConfig:
 
     enabled: bool = False
     min_lr_ratio: float = 0.1
+    # Linear LR warmup (2026-08-06, Opus's finding): the JEPA runner was
+    # written without the warmup the older trainers carry deliberately
+    # (train_pc.py, audit 2026-05-10), so every JEPA run has trained at
+    # full LR from step 0. At depth 8 the trunk's destruction completes
+    # inside 200 steps -- exactly the cold-Adam window warmup protects.
+    # Steps 0..warmup_steps-1 scale LR linearly from 1/warmup_steps up to
+    # 1.0; cosine decay then runs over the REMAINING steps. 0 = off,
+    # preserving every prior run's schedule bit-exactly.
+    warmup_steps: int = 0
     # Planned total optimizer steps; the driver estimates this from
     # corpus size. Required (> 0) when enabled -- cosine needs to know
     # where the end is.
@@ -992,9 +1001,17 @@ class JEPATrainer:
 
         sched = self.config.lr_schedule
         if sched.enabled:
-            scale = cosine_lr_scale(
-                self.global_step / sched.total_steps, sched.min_lr_ratio,
-            )
+            w = int(sched.warmup_steps or 0)
+            if w > 0 and self.global_step < w:
+                # Linear ramp; (step+1)/w so step 0 trains at 1/w of base
+                # rather than exactly zero (a zero LR is a silently frozen
+                # optimizer -- same guard philosophy as the cosine floor).
+                scale = (self.global_step + 1) / w
+            else:
+                denom = max(sched.total_steps - w, 1)
+                scale = cosine_lr_scale(
+                    (self.global_step - w) / denom, sched.min_lr_ratio,
+                )
             for group, base in zip(self.optimizer.param_groups, self._base_lrs):
                 group["lr"] = base * scale
 

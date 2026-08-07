@@ -215,3 +215,50 @@ class TestV4ArmWiring:
             sigreg_lambd=ARM_SIGREG.get("living_v4_4x_d4", SIGREG_LAMBD),
         )
         assert loss.sigreg_lambd == pytest.approx(0.2)
+
+
+class TestWarmup:
+    """LR warmup (2026-08-06, Opus's finding): the JEPA runner shipped
+    without the warmup the older trainers carry deliberately, so every
+    JEPA run trained at full LR from step 0 -- at depth 8, straight into
+    the sub-200-step destruction window. warmup_steps=0 must preserve
+    every historical schedule bit-exactly."""
+
+    def test_zero_warmup_is_bit_exact_legacy(self, tmp_path):
+        total = 6
+        tr = _build_trainer(
+            tmp_path,
+            LRScheduleConfig(enabled=True, min_lr_ratio=0.1,
+                             total_steps=total, warmup_steps=0),
+        )
+        tr.train_step("text", tr.data_loader.next_batch("text"))
+        assert tr.optimizer.param_groups[0]["lr"] == pytest.approx(
+            BASE_LR * cosine_lr_scale(0.0, 0.1)
+        )
+
+    def test_ramp_then_cosine(self, tmp_path):
+        total, w = 12, 4
+        tr = _build_trainer(
+            tmp_path,
+            LRScheduleConfig(enabled=True, min_lr_ratio=0.1,
+                             total_steps=total, warmup_steps=w),
+        )
+        seen = []
+        for _ in range(total):
+            tr.train_step("text", tr.data_loader.next_batch("text"))
+            seen.append(tr.optimizer.param_groups[0]["lr"])
+        # Ramp: step k applies (k+1)/w -- never exactly zero.
+        assert seen[0] == pytest.approx(BASE_LR * 1 / w)
+        assert seen[1] == pytest.approx(BASE_LR * 2 / w)
+        assert seen[w - 1] == pytest.approx(BASE_LR * 1.0)
+        # Cosine resumes over the REMAINING steps, from 1.0 downward.
+        assert seen[w] == pytest.approx(
+            BASE_LR * cosine_lr_scale(0.0, 0.1)
+        )
+        assert seen[-1] == pytest.approx(
+            BASE_LR * cosine_lr_scale((total - 1 - w) / (total - w), 0.1)
+        )
+        # Rises through warmup, never above base, decays after.
+        assert all(a <= b for a, b in zip(seen[:w], seen[1:w]))
+        assert max(seen) <= BASE_LR * 1.0 + 1e-12
+        assert all(a >= b for a, b in zip(seen[w:], seen[w + 1:]))
