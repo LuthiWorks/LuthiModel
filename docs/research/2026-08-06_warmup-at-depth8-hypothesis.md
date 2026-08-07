@@ -243,3 +243,30 @@ recovery is warmup's doing or the path lottery's. If 2/3 seeds at ramp
 1000 recover, warmup shifts the odds and the depth investigation reopens;
 if 1/3 or 0/3, stage 31 was the lottery and §1 dies at depth 8 despite
 the prettiest tape in the record.
+
+---
+
+# REPEATS: seeds 95 and 97 at ramp 1000 (registered before launch)
+
+**Runs:** `probe_v5_d8_warmup_512d_seed95`, `probe_v5_d8_warmup_512d_seed97`
+— stage 31 arm unchanged in every respect; seeds are the only variable.
+Purpose: estimate the outcome distribution at ramp 1000. The control base
+rate is fixed in the record: among non-warmup runs given room to recover
+(the dk pair), recoveries = 0/2.
+
+**Per-seed read, frozen (same as stage 31's gates):** RECOVERY =
+completes AND final pooled effective_rank >= 100 with every block >= 50
+at the final firing (stage 31 read 181 / min-block 128.7; the dk floor
+never exceeded eff ~5 pooled) — the stable_rank >= 8 gate stays recorded
+but stage 31 showed it lags recovery, so eff-based recovery is the
+tally criterion, chosen now, before the draws. FLOOR = killed, or
+completes with pooled eff < 20 at final.
+
+**Tally rule, frozen:** counting stage 31, warmup at ramp 1000 recovers
+in 2/3 or 3/3 seeds -> warmup shifts the odds; the depth ladder carries
+warmup and the ramp-response sweep is justified. 1/3 -> ambiguous;
+0/2 new -> stage 31 was the lottery; the warmup branch closes at d8.
+
+**Note on the middle:** a seed that completes with eff between 20 and
+100, or heals-then-relapses, is scored neither and reported — the arc
+has earned that humility four times.
