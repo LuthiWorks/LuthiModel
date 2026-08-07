@@ -106,3 +106,72 @@ the ramp; step of first stable_rank >= 8 if any.
 python scripts/jepa_pilot_driver.py --stage 31 --seeds 46 \
     --epochs 1 --max-batches-per-epoch 3000 --heldout-batches 5
 ```
+
+---
+
+# VERDICT: NO VERDICT on the registered gates — and the first depth-8 completion in the record
+
+**Time:** 2026-08-06 evening. **Outcome: `completed`** — the first depth-8
+run ever to finish under live guards. 30 deep firings. Both gates missed:
+stable_rank oscillated 1.56-4.86 after step 1500 (never >= 8 at two
+consecutive firings; not <= 4 everywhere either — it crossed 4 five
+times). Fourth consecutive registration this trunk has refused to fit.
+Scored as frozen: **NO VERDICT**, with the recorded facts below.
+
+## Recorded facts
+
+1. **The transit still happened** (steps 400-500, at ~40-50% LR) — warmup
+   did not prevent it; the strongest version of §1 is dead. But it was
+   *gentle*: the trunk came out of it with block 0 at rank 31, SIGReg
+   at 106 (in-band), and offset already stripped to 0.27 — where every
+   full-LR twin exited the transit with nothing above ~11, SIGReg in the
+   thousands, and offset saturated.
+2. **From that gentler floor, recovery compounded for 2500 steps** — the
+   thing the dk5000 tape proved never happens from the violent floor.
+   By step 3000: every block at effective rank 128+, pooled eff 181,
+   offset 0.133, SIGReg ~11, all under fully live guards from step 1000.
+3. **Capability is healthy on the d4 rubric:** held-out NMSE **0.5518** —
+   inside the depth-4 band (0.5215-0.60) and equal to stage 16's 0.5569 —
+   probe lift **4.33x** (d4: 4.67-4.80x; stage 16: 4.19x). These numbers
+   are readable precisely because the target space is no longer
+   degenerate.
+4. **The recovery is incomplete on the strictest instrument.** Pooled
+   stable_rank ended at 4.63 vs 31.4-38.0 for d4 at the same step
+   (measured, all five seeds) — a dominant-direction concentration
+   persists even as the broad space re-inflated. Whatever direction that
+   is, it survived everything and is unexplained.
+5. **Instrument recalibration from the ramp:** stable_rank ~2.4 at step
+   100 is the *init-proximal* state (identical at 1/10th LR and full LR),
+   not evidence of destruction — and init-proximal held-out NMSE
+   measures in the hundreds (439 at step 100), which retroactively
+   justifies every early-step guard hold and voids any first-check NMSE
+   reading as a health signal on young runs.
+6. Training-time SIGReg settled at 9-21 — *below* the 50-110 d4 band.
+   Recorded as an open question, not a health claim (the 07-27 family
+   showed over-quieting has costs).
+
+## Reading, carefully
+
+Warmup did not prevent the collapse; it changed the *class* of the
+outcome — from a violent transit into a permanent attractor, to a gentle
+transit into a recoverable state. It is the first intervention in the
+entire depth arc that changed this trunk's fate rather than its
+timing. The chain "gentler transit → structure survives → recovery
+compounds" fits every tape in the arc, including dk1000's doomed partial
+heal (which started from a violent floor and had nothing to compound
+from). It is one seed, on a substrate whose regime outcomes are measured
+to be chaotic (dk1000 vs dk5000), and the pre-committed seed-95 repeat is
+the immediate next spend before any of this hardens.
+
+## Next, in order
+
+1. **Seed-95 repeat** (pre-committed): same arm, nothing changed. If it
+   reproduces even approximately, warmup is load-bearing at depth.
+2. The stable_rank residual — what is the persistent dominant direction?
+   `localize_offset_in_block.py` on this checkpoint would say whether it
+   is the old offset in a new coat (offset dominance says no: 0.13).
+3. Longer run: does stable_rank keep climbing past 3000 toward the d4
+   trained band, or plateau at ~4?
+4. Design (Brian + Opus): if seed 95 reproduces, the "only healthy cell"
+   framing is dead, muPC-ON at depth is back on the table with warmup,
+   and the ladder (d12, d36) should carry warmup from day one.
