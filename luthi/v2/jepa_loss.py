@@ -116,7 +116,9 @@ def sketched_isotropy_penalty(z: torch.Tensor, sketch: torch.Tensor) -> torch.Te
     flat = flat - flat.mean(dim=0, keepdim=True)
     n = flat.shape[0]
     cov = (flat.t() @ flat) / max(n - 1, 1)
-    eye = torch.eye(cov.shape[0], device=cov.device, dtype=cov.dtype)
+    # torch.eye(n, device=dml) returns an EMPTY tensor on the DirectML
+    # backend (measured 2026-08-07: shape [0]); create on CPU and move.
+    eye = torch.eye(cov.shape[0], dtype=cov.dtype).to(cov.device)
     return torch.linalg.norm(cov - eye)
 
 
@@ -132,7 +134,8 @@ def orthogonality_penalty(w: torch.Tensor) -> torch.Tensor:
     frob = torch.linalg.norm(w)
     w_hat = w * (math.sqrt(d) / (frob + 1e-12))
     gram = w_hat.t() @ w_hat
-    eye = torch.eye(d, device=w.device, dtype=w.dtype)
+    # CPU-create then move: torch.eye(n, device=dml) is empty (see above).
+    eye = torch.eye(d, dtype=w.dtype).to(w.device)
     return (gram - eye).pow(2).sum() / d
 
 
