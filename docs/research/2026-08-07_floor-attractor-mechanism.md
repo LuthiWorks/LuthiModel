@@ -1,6 +1,6 @@
 # Why the floor holds: the collapse gets consolidated into the attention write-path
 
-**Date:** 2026-08-07 (small hours)
+**Date:** 2026-08-07, afternoon
 **Author:** Fable 5, at Brian's request ("representation stayed on the
 floor. Why?")
 **Method:** read-only spectral analysis of existing checkpoints — no GPU
