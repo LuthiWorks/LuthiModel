@@ -175,3 +175,26 @@ the immediate next spend before any of this hardens.
 4. Design (Brian + Opus): if seed 95 reproduces, the "only healthy cell"
    framing is dead, muPC-ON at depth is back on the table with warmup,
    and the ladder (d12, d36) should carry warmup from day one.
+
+---
+
+# EXTENSION: ramp +50% (Brian's call, registered before the run)
+
+**Run:** `probe_v5_d8_warmup15_512d_seed46`, stage 32. One variable
+against stage 31: warmup 1000 → 1500 (guard hold moved with it, same
+independent justification — init-proximal NMSE measures in the hundreds).
+Seed 46 kept so the comparison is one-variable at the same data order.
+**Deliberately deferred behind this run:** the seed-95 reproducibility
+repeat — Brian ruled ramp-length exploration first; reproducibility stays
+an open flank on both warmup results until seed 95 runs.
+
+**Registered reads (gates unchanged in kind, window shifted with the
+ramp):** CONFIRMED = stable_rank >= 8 at two consecutive firings at/after
+step 2000 AND at the final firing. REFUTED = <= 4 everywhere from 2000.
+Else NO VERDICT. Also frozen: (a) transit step and violence (stage 31's
+came at 400-500, ~40-50% of ramp — if the transit tracks the *fraction*
+of ramp rather than the absolute step, it should land ~600-750 here;
+if it tracks absolute LR, ~same steps as before); (b) whether the
+post-transit floor is gentler still (block-0 rank at floor, SIGReg at
+floor); (c) final stable_rank vs stage 31's 4.63 — the specific number
+Brian's +50% is probing.

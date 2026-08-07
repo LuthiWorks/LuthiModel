@@ -232,6 +232,12 @@ STAGES: dict[int, list[tuple[str, int]]] = {
     # d4 band measured 13.5-47.5; collapsed floor <= 2.42), per the
     # instrument findings in Opus's 08-06 brief.
     31: [("probe_v5_d8_warmup", 512)],
+    # WARMUP +50% (2026-08-06, Brian's call after stage 31's near-recovery:
+    # "increase whatever changes you made by another 50%"). Ramp 1000 ->
+    # 1500, guard hold moved with it. One variable against stage 31.
+    # Registered in docs/research/2026-08-06_warmup-at-depth8-hypothesis.md
+    # (EXTENSION section).
+    32: [("probe_v5_d8_warmup15", 512)],
 }
 
 # Per-arm model configuration -- single source of truth, shared with
@@ -549,11 +555,13 @@ ARM_GUARD_MIN_STEP: dict[str, int] = {
     # step 100 would void the run for nothing. Guards live from 1000,
     # exactly when the ramp ends and full LR arrives.
     "probe_v5_d8_warmup": 1000,
+    "probe_v5_d8_warmup15": 1500,
 }
 # Per-arm LR warmup steps (2026-08-06). Rides into LRScheduleConfig;
 # 0 (default) preserves every prior arm's schedule bit-exactly.
 ARM_LR_WARMUP: dict[str, int] = {
     "probe_v5_d8_warmup": 1000,
+    "probe_v5_d8_warmup15": 1500,
 }
 # (probe_v5_d8_dk1000's ARM_CONFIGS entry lives below, after probe_v5_d8
 # itself is defined -- assigning it here raised a KeyError at import.)
@@ -613,6 +621,14 @@ ARM_TAPER["probe_v5_d8_warmup"] = ARM_TAPER["living_v5_4x_d4"]
 ARM_FILELIST["probe_v5_d8_warmup"] = ARM_FILELIST["living_v5_4x_d4"]
 ARM_SIGREG["probe_v5_d8_warmup"] = ARM_SIGREG["living_v5_4x_d4"]
 ARM_COSINE["probe_v5_d8_warmup"] = ARM_COSINE["living_v5_4x_d4"]
+# +50% ramp twin (2026-08-06, Brian's call): identical model config,
+# ramp 1500 via ARM_LR_WARMUP, guard hold 1500 above.
+ARM_CONFIGS["probe_v5_d8_warmup15"] = dict(ARM_CONFIGS["probe_v5_d8"])
+ARM_DEEP_CADENCE["probe_v5_d8_warmup15"] = 100
+ARM_TAPER["probe_v5_d8_warmup15"] = ARM_TAPER["living_v5_4x_d4"]
+ARM_FILELIST["probe_v5_d8_warmup15"] = ARM_FILELIST["living_v5_4x_d4"]
+ARM_SIGREG["probe_v5_d8_warmup15"] = ARM_SIGREG["living_v5_4x_d4"]
+ARM_COSINE["probe_v5_d8_warmup15"] = ARM_COSINE["living_v5_4x_d4"]
 ARM_GRAD_CLIP["probe_d8_amp4_rawdrive"] = 20000.0
 ARM_TAPER["probe_d8_amp4_rawdrive"] = ARM_TAPER["living_v5_4x_d4"]
 ARM_FILELIST["probe_d8_amp4_rawdrive"] = ARM_FILELIST["living_v5_4x_d4"]
