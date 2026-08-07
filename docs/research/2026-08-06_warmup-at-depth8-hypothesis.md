@@ -198,3 +198,48 @@ if it tracks absolute LR, ~same steps as before); (b) whether the
 post-transit floor is gentler still (block-0 rank at floor, SIGReg at
 floor); (c) final stable_rank vs stage 31's 4.63 — the specific number
 Brian's +50% is probing.
+
+---
+
+# EXTENSION VERDICT: REFUTED at ramp 1500 — and the pair now demands repeats
+
+**Outcome:** `killed:divergence:text:nmse=3.5017>2.00` at step 2500,
+`admissible: False`. **REFUTED gate fires as registered** (stable_rank
+<= 4 at every firing from 2000; it never exceeded 1.96 after step 1300).
+Probe lift 1.13x — no signal above floor.
+
+## Recorded facts
+
+1. **Transit at the same absolute steps (400-500), not the same ramp
+   fraction** — at 33% LR here vs 50% at ramp-1000, on the same seed and
+   deterministic data order. The transit is pinned to step/data, not to an
+   LR threshold. (Which of step-count or data-content pins it needs a
+   different seed to separate.)
+2. **The slower ramp exited the transit with LESS structure, not more:**
+   block 0 bled 87.7 → 7.3 across steps 500-800, offset re-saturated to
+   0.98, and no recovery ever compounded — 2000 steps of floor-churn until
+   the kill. The stage-31 chain ("gentler transit → structure survives →
+   recovery compounds") did not run here despite a gentler schedule.
+3. The run survived steps 1500-2400 under LIVE guards with NMSE <= 2.0
+   while fully collapsed — the collapsed-target flattery keeping a dead
+   trunk alive, again, now in the survival direction.
+
+## The uncomfortable, load-bearing conclusion
+
+Ramp 1000 (stage 31): near-recovery, first d8 completion, NMSE in the d4
+band. Ramp 1500 (this run): permanent floor, REFUTED. Same seed, same
+data order, one knob moved in the *gentler* direction. Either warmup
+length is a knife-edge parameter with a non-monotone optimum — possible
+but a priori unlikely — or **regime-scale path chaos dominates
+single-run outcomes and stage 31's recovery cannot yet be attributed to
+warmup at all.** The dk-twin pair already proved identical configs can
+split heal-vs-floor; this pair shows one-knob comparisons at n=1 are
+unreadable on this substrate.
+
+**Consequence, stated as the next-spend rule: no more single-seed knob
+moves on this question.** The only informative next runs are repeats —
+seeds 95 (and ideally 97) at ramp 1000 — to measure whether stage 31's
+recovery is warmup's doing or the path lottery's. If 2/3 seeds at ramp
+1000 recover, warmup shifts the odds and the depth investigation reopens;
+if 1/3 or 0/3, stage 31 was the lottery and §1 dies at depth 8 despite
+the prettiest tape in the record.
