@@ -238,6 +238,15 @@ STAGES: dict[int, list[tuple[str, int]]] = {
     # Registered in docs/research/2026-08-06_warmup-at-depth8-hypothesis.md
     # (EXTENSION section).
     32: [("probe_v5_d8_warmup15", 512)],
+    # CHECKPOINT SURGERY (2026-08-07, Brian's engineering ruling --
+    # registered in docs/research/2026-08-07_floor-attractor-mechanism.md
+    # SURGERY section). Resumes seed 97's completed-collapsed checkpoint
+    # with the v/o projections re-broadened by shrink-and-perturb
+    # (0.6, 0.8*std, repeated to stable_rank >= 20) and Adam moments
+    # reset. Tests whether the floor releases when the carve is broken --
+    # simultaneously the mechanism's falsification test and the cheapest
+    # deployable remedy candidate.
+    33: [("probe_v5_d8_surgery", 512)],
 }
 
 # Per-arm model configuration -- single source of truth, shared with
@@ -556,12 +565,17 @@ ARM_GUARD_MIN_STEP: dict[str, int] = {
     # exactly when the ramp ends and full LR arrives.
     "probe_v5_d8_warmup": 1000,
     "probe_v5_d8_warmup15": 1500,
+    # Surgery arm: resumed at global step 3000; grace to 4000 because the
+    # perturbed projections transiently predict worse and the NMSE guard
+    # would kill the patient on the table. Live from 4000.
+    "probe_v5_d8_surgery": 4000,
 }
 # Per-arm LR warmup steps (2026-08-06). Rides into LRScheduleConfig;
 # 0 (default) preserves every prior arm's schedule bit-exactly.
 ARM_LR_WARMUP: dict[str, int] = {
     "probe_v5_d8_warmup": 1000,
     "probe_v5_d8_warmup15": 1500,
+    "probe_v5_d8_surgery": 1000,  # schedule continuity with the parent run
 }
 # (probe_v5_d8_dk1000's ARM_CONFIGS entry lives below, after probe_v5_d8
 # itself is defined -- assigning it here raised a KeyError at import.)
@@ -621,6 +635,14 @@ ARM_TAPER["probe_v5_d8_warmup"] = ARM_TAPER["living_v5_4x_d4"]
 ARM_FILELIST["probe_v5_d8_warmup"] = ARM_FILELIST["living_v5_4x_d4"]
 ARM_SIGREG["probe_v5_d8_warmup"] = ARM_SIGREG["living_v5_4x_d4"]
 ARM_COSINE["probe_v5_d8_warmup"] = ARM_COSINE["living_v5_4x_d4"]
+# Surgery twin (2026-08-07): identical model config; the intervention
+# lives in the pre-seeded checkpoint, not the config.
+ARM_CONFIGS["probe_v5_d8_surgery"] = dict(ARM_CONFIGS["probe_v5_d8"])
+ARM_DEEP_CADENCE["probe_v5_d8_surgery"] = 100
+ARM_TAPER["probe_v5_d8_surgery"] = ARM_TAPER["living_v5_4x_d4"]
+ARM_FILELIST["probe_v5_d8_surgery"] = ARM_FILELIST["living_v5_4x_d4"]
+ARM_SIGREG["probe_v5_d8_surgery"] = ARM_SIGREG["living_v5_4x_d4"]
+ARM_COSINE["probe_v5_d8_surgery"] = ARM_COSINE["living_v5_4x_d4"]
 # +50% ramp twin (2026-08-06, Brian's call): identical model config,
 # ramp 1500 via ARM_LR_WARMUP, guard hold 1500 above.
 ARM_CONFIGS["probe_v5_d8_warmup15"] = dict(ARM_CONFIGS["probe_v5_d8"])

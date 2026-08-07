@@ -105,3 +105,39 @@ The depth question — why the d8 transit happens at all — is untouched by
 tonight. This answers the *attractor* half: what happened is that the
 trunk's own write-path was sculpted into the shape of its collapse, and
 after that, everything downstream was pushing against weights.
+
+---
+
+# SURGERY: registered before the run
+
+**Run:** `probe_v5_d8_surgery_512d_seed97`, stage 33 — resumes seed 97's
+completed-collapsed checkpoint (step 3000) for 3000 further steps with:
+v/o projections re-broadened by shrink-and-perturb (0.6, 0.8·std,
+repeated per-matrix until stable_rank ≥ 20 — the recovered run's
+block-0 level; block 0 took 2 passes, final 22-48 everywhere) and **all
+Adam moments reset** (the moments carry the carve; uniform reset chosen
+over fragile per-param surgery, documented as a co-intervention).
+Guards held to global step 4000 (the perturbed projections transiently
+predict worse; 1000-step grace), live thereafter. Data continues from
+the loader's saved position.
+
+**Gates, frozen:**
+- **RELEASE (lock confirmed, remedy viable):** pooled effective rank
+  ≥ 100 AND every block ≥ 50 at the final firing (the seed-46 recovery
+  criterion).
+- **HOLD (mechanism insufficient):** pooled eff < 20 at final — the
+  floor re-forms despite broadened weights, implicating activation-side
+  dynamics and favoring objective-level fixes (TC-SIGReg family).
+- Between: NO VERDICT, reported. Also frozen: per-block v/o stable-rank
+  trajectory post-surgery (does the carve re-form, and how fast — the
+  re-carve RATE is informative even under HOLD).
+
+**Discriminating role:** Brian's three candidate remedies (TC-SIGReg /
+per-block Weak-SIGReg / orthogonal penalty — arXiv 2607.26924,
+2603.05924, classic) split into objective-side and weight-side families.
+RELEASE favors the weight-side pair; HOLD favors the objective-side.
+
+**Confounds:** single seed; two interventions at once (weight surgery +
+moment reset — a RELEASE cannot attribute between them without a
+follow-up); the parent run completed via NMSE flattery so its guards-live
+survival says nothing about health.
