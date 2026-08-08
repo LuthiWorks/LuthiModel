@@ -67,3 +67,17 @@ the registered fallback dimension, not swept in advance.
 ```
 python scripts/jepa_pilot_driver.py --stage 44 --seeds 46 --epochs 1 --max-batches-per-epoch 6000 --heldout-batches 5
 ```
+
+---
+
+# VOID-1 (registered condition fired) + amendment
+
+First attempt killed at ~step 400 (nmse 2.36), before the ramp — VOID
+per the pre-registered condition. Root cause is instructive and owned:
+this arm was registered WITHOUT the guard hold every other probe arm
+carries, and at deep cadence 100 the periodic NMSE guard inspects 10x
+more often than the cadence-1000 era that certified stage 16 healthy —
+the healthy cell may always wobble early, unobserved. Guard-timing as a
+hidden variable, third appearance, this time via my own inconsistent
+registration. Amendment: guard_min_step 1000 (the probe standard);
+void run preserved as *_void1; rerun otherwise identical.
