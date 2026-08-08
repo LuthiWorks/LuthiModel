@@ -153,3 +153,33 @@ substrate (a dose that co-dominates the loss and still cannot separate
 the blocks it directly pressures has been given its full chance). Orth
 read: post-run write-path spectra vs the lambda=0.1 twin. All single
 seed (46); the repeat rule from the singles registration carries.
+
+---
+
+# LADDER RUNG 2 (wsig alpha=10): the collapse ARRESTED — recovery-class, NO VERDICT by 0.9
+
+**Outcome:** completed, guards live from 1000. **The deep transit never
+fully happened** — first run in the record: min block rank bottomed at
+~22-33 (vs 1-2 in all 16 prior d8 runs), then climbed 2500 steps to a
+final state of all blocks 62-142, offset 0.135, SIGReg ~12-22, probe
+lift **3.67x** (vs stage 31's 4.33x, stage 16's 4.19x — real signal,
+not flattery). Scored against the frozen gates exactly: **NO VERDICT** —
+pooled eff read 99.1 at the final firing against the gate's >= 100,
+having sat at 111-120 for the prior thousand steps; and the
+**differential read is null again** — unpressured blocks rose in step
+with pressured ones. The mechanism grips globally (three blocks'
+gradients reach the whole trunk through attention), not locally.
+
+**Correction to this doc's own narrative:** the "every counter-force
+gets absorbed" reading from the singles was a dosing artifact. At
+loss-commensurate dose, activation-side pressure *prevented* the deep
+collapse rather than being absorbed. Prevention, not escape — a new
+outcome class.
+
+**Consequence (Brian's standing conditional):** tc_wsig runs at the
+gripping dose. Stage 43 `probe_d8_tc_wsig10` = TC (window 9, replacing
+marginal) + interior wsig alpha=10 — the block-0 protector plus the
+whole-trunk arrestor, both at strength. Same base, same gates, seed 46.
+Queued behind the in-flight pipeline (orth1, then the 0.1-dose pairs).
+Pre-committed: if it recovers, seeds 95/97 before any conclusion
+hardens; and wsig10 itself owes the same repeats regardless.

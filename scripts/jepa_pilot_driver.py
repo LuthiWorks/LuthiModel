@@ -266,6 +266,9 @@ STAGES: dict[int, list[tuple[str, int]]] = {
     40: [("probe_d8_wsig1", 512)],
     41: [("probe_d8_wsig10", 512)],
     42: [("probe_d8_orth1", 512)],
+    # TC + wsig AT THE GRIPPING DOSE (2026-08-07, Brian's standing
+    # conditional, triggered by rung 2 arresting the collapse).
+    43: [("probe_d8_tc_wsig10", 512)],
 }
 
 # Per-arm model configuration -- single source of truth, shared with
@@ -615,10 +618,12 @@ ARM_LR_WARMUP: dict[str, int] = {
 # follow-up if the probes say the direction works).
 ARM_TC_WINDOW: dict[str, int] = {
     "probe_d8_tc": 9, "probe_d8_tc_wsig": 9, "probe_d8_tc_orth": 9,
+    "probe_d8_tc_wsig10": 9,
 }
 ARM_WSIG_ALPHA: dict[str, float] = {
     "probe_d8_wsig": 0.1, "probe_d8_tc_wsig": 0.1, "probe_d8_wsig_orth": 0.1,
     "probe_d8_wsig1": 1.0, "probe_d8_wsig10": 10.0,
+    "probe_d8_tc_wsig10": 10.0,
 }
 ARM_ORTH_LAMBDA: dict[str, float] = {
     "probe_d8_orth": 0.1, "probe_d8_tc_orth": 0.1, "probe_d8_wsig_orth": 0.1,
@@ -691,14 +696,15 @@ for _arm in ("probe_d8_wsig", "probe_d8_tc_wsig", "probe_d8_wsig_orth"):
     ARM_CONFIGS[_arm] = dict(
         ARM_CONFIGS["probe_v5_d8"], interior_latent_blocks=(0, 3, 6),
     )
-for _arm in ("probe_d8_wsig1", "probe_d8_wsig10"):
+for _arm in ("probe_d8_wsig1", "probe_d8_wsig10", "probe_d8_tc_wsig10"):
     ARM_CONFIGS[_arm] = dict(
         ARM_CONFIGS["probe_v5_d8"], interior_latent_blocks=(0, 3, 6),
     )
 ARM_CONFIGS["probe_d8_orth1"] = dict(ARM_CONFIGS["probe_v5_d8"])
 for _arm in ("probe_d8_tc", "probe_d8_wsig", "probe_d8_orth",
              "probe_d8_tc_wsig", "probe_d8_tc_orth", "probe_d8_wsig_orth",
-             "probe_d8_wsig1", "probe_d8_wsig10", "probe_d8_orth1"):
+             "probe_d8_wsig1", "probe_d8_wsig10", "probe_d8_orth1",
+             "probe_d8_tc_wsig10"):
     ARM_DEEP_CADENCE[_arm] = 100
     ARM_GUARD_MIN_STEP[_arm] = 1000
     ARM_TAPER[_arm] = ARM_TAPER["living_v5_4x_d4"]
