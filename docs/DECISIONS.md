@@ -136,3 +136,24 @@ d8/muPC-off with substrate-health metrics (rank bands, native-voice std,
 offset) healthy and RELIABLE (n>=3 seeds) — registered properly when
 that track opens. muPC and the remaining depth machinery re-enter
 afterward, carrying warmup + governor learnings.
+
+## 2026-08-08: "concluded working" defined for the muPC re-entry rule (Brian's request)
+
+The 2026-08-07 pivot rule says muPC returns only after LLM-JEPA is
+"concluded to work with our project." Registered definition so the rule
+is checkable:
+
+- **Provisionally working:** an LLM-JEPA family gates at 2-of-3 seeds
+  (the standing four-gate criterion) at depth 8.
+- **Concluded working:** that result replicates at the ruled 768x8
+  scale target (Brian, 2026-07-26: "scale moves go UP").
+
+Only after both does the muPC re-entry probe run (one variable on the
+working recipe, three seeds, same gates), with the parked scheduled-muPC
+design (2026-08-07) as the registered fallback if always-on muPC breaks
+the recovery. Note added 2026-08-08 while the stage-51 runway family
+runs: early kills at marginal NMSE with strong capability (seed 46:
+killed at nmse 2.41 carrying ppl 500 / lift 4.23x) raise a registered
+suspicion that the divergence guard's 2.0 bound — calibrated on the
+pure-JEPA objective — may need recalibration for the combined objective
+before any "working" verdict is trustworthy in either direction.
