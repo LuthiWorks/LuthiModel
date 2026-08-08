@@ -62,3 +62,34 @@ readable in their own record), offset dominance, SIGReg.
 python scripts/jepa_pilot_driver.py --stage 45 --seeds 46,95,97 --epochs 1 --max-batches-per-epoch 3000 --heldout-batches 5
 python scripts/jepa_pilot_driver.py --stage 46 --seeds 46,95,97 --epochs 1 --max-batches-per-epoch 3000 --heldout-batches 5
 ```
+
+---
+
+# FAMILY VERDICT (2026-08-08, 00:30): 0-for-6 on the gate — with the diagnosis in hand
+
+**Normalized (stage 45): 0/3** — all seeds killed at ~1000-1300. **Raw
+(stage 46): 0/3 on the gate**, but seeds 46/95 completed with
+recovery-class breadth (eff 106/119, min blocks 28.9/66.0) and
+top_dir_share driven DOWN all run (95: 0.341→0.081; 46: 0.28→0.19).
+Seed 97 died in both sub-families (share 0.776 at kill — a hostile path
+throughout the record).
+
+**§B answered: the scale-fight is load-bearing.** Shape-only pressure
+dies early; raw pressure (re-inflation included) completes and recovers
+breadth. Term B stays raw.
+
+**The gate/cap incompatibility — design error #2, mine:** cap 0.05
+mathematically cannot deliver stable_rank 20. With ~100 directions
+sharing the tail, top share parked at 0.05-0.08 pins stable_rank at
+~2-4 (measured: 1.2-3.0). Stable 20 requires share ≈ 0.02 — exactly the
+§C tightening Opus offered and I declined. Overruled by measurement;
+ratifying Opus's number.
+
+# V2 REGISTRATION (cap 0.02, raw anchor) — one variable vs stage 46
+
+Arm `probe_d8_vbg2` (stage 47): identical to `probe_d8_vbg_raw` except
+`cap = 0.02`. Same gates (stable_rank >= 20, two consecutive >= 2000 +
+final, 2-of-3 seeds 46/95/97), same recorded reads. Prediction, stated:
+if the cap mechanism is what parks the share, v2 parks it near 0.02 and
+stable_rank lands in the 8-25 range — the gate sits inside the
+uncertainty, which is where an honest gate belongs.

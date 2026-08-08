@@ -281,6 +281,10 @@ STAGES: dict[int, list[tuple[str, int]]] = {
     # VBG raw sub-family (2026-08-07 late, Fable's SB ruling): arrest-anchored
     # Term B with trace normalization OFF -- the proven pressure plus cap.
     46: [("probe_d8_vbg_raw", 512)],
+    # VBG v2 (2026-08-08): raw anchor, cap tightened to 0.02 -- Opus's SC
+    # number, ratified after the 0.05 cap measured incompatible with the
+    # stable-rank-20 gate. One variable vs stage 46.
+    47: [("probe_d8_vbg2", 512)],
 }
 
 # Per-arm model configuration -- single source of truth, shared with
@@ -772,23 +776,28 @@ for _arm in ("probe_d8_tc", "probe_d8_wsig", "probe_d8_orth",
 #   above the entire loss late in the arrest run (~17). Flagged in the
 #   return note rather than taken silently.
 ARM_VBG_SHARE_W: dict[str, float] = {"probe_d8_vbg": 1.5,
-                                     "probe_d8_vbg_raw": 10.3}
+                                     "probe_d8_vbg_raw": 10.3,
+                                     "probe_d8_vbg2": 10.3}
 ARM_VBG_CAP_W: dict[str, float] = {"probe_d8_vbg": 18.0,
-                                   "probe_d8_vbg_raw": 18.0}
+                                   "probe_d8_vbg_raw": 18.0,
+                                   "probe_d8_vbg2": 18.0}
 ARM_VBG_CAP: dict[str, float] = {"probe_d8_vbg": 0.05,
-                                 "probe_d8_vbg_raw": 0.05}
+                                 "probe_d8_vbg_raw": 0.05,
+                                 "probe_d8_vbg2": 0.02}
 # Design ruling on the return note's SB (Fable, 2026-08-07 late): run BOTH
 # anchors as sub-families rather than choose. The normalized arm (1.5,
 # floor-anchored) is the design-principled bet; the raw arm (10.3,
 # arrest-anchored, trace normalization OFF) reproduces the proven arrest
 # pressure INCLUDING the scale-fight component, plus the new cap. The
 # pair answers "was the scale pressure load-bearing?" with six runs.
-ARM_VBG_RAW: dict[str, bool] = {"probe_d8_vbg_raw": True}
+ARM_VBG_RAW: dict[str, bool] = {"probe_d8_vbg_raw": True,
+                                "probe_d8_vbg2": True}
 ARM_CONFIGS["probe_d8_vbg"] = dict(
     ARM_CONFIGS["probe_v5_d8"], interior_latent_blocks=(0, 3, 6),
 )
 ARM_CONFIGS["probe_d8_vbg_raw"] = dict(ARM_CONFIGS["probe_d8_vbg"])
-for _a in ("probe_d8_vbg_raw",):
+ARM_CONFIGS["probe_d8_vbg2"] = dict(ARM_CONFIGS["probe_d8_vbg"])
+for _a in ("probe_d8_vbg_raw", "probe_d8_vbg2"):
     ARM_DEEP_CADENCE[_a] = 100
     ARM_GUARD_MIN_STEP[_a] = 1000
     ARM_LR_WARMUP[_a] = 1000
