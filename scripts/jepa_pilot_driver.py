@@ -278,6 +278,9 @@ STAGES: dict[int, list[tuple[str, int]]] = {
     # the chorus, marginal SIGReg untouched. Three seeds, always -- the
     # gate is >= 2 of 3, per the spec's §5.
     45: [("probe_d8_vbg", 512)],
+    # VBG raw sub-family (2026-08-07 late, Fable's SB ruling): arrest-anchored
+    # Term B with trace normalization OFF -- the proven pressure plus cap.
+    46: [("probe_d8_vbg_raw", 512)],
 }
 
 # Per-arm model configuration -- single source of truth, shared with
@@ -768,12 +771,31 @@ for _arm in ("probe_d8_tc", "probe_d8_wsig", "probe_d8_orth",
 #   measured floor share would contribute 2041 * 0.548 = 1118 -- two orders
 #   above the entire loss late in the arrest run (~17). Flagged in the
 #   return note rather than taken silently.
-ARM_VBG_SHARE_W: dict[str, float] = {"probe_d8_vbg": 1.5}
-ARM_VBG_CAP_W: dict[str, float] = {"probe_d8_vbg": 18.0}
-ARM_VBG_CAP: dict[str, float] = {"probe_d8_vbg": 0.05}
+ARM_VBG_SHARE_W: dict[str, float] = {"probe_d8_vbg": 1.5,
+                                     "probe_d8_vbg_raw": 10.3}
+ARM_VBG_CAP_W: dict[str, float] = {"probe_d8_vbg": 18.0,
+                                   "probe_d8_vbg_raw": 18.0}
+ARM_VBG_CAP: dict[str, float] = {"probe_d8_vbg": 0.05,
+                                 "probe_d8_vbg_raw": 0.05}
+# Design ruling on the return note's SB (Fable, 2026-08-07 late): run BOTH
+# anchors as sub-families rather than choose. The normalized arm (1.5,
+# floor-anchored) is the design-principled bet; the raw arm (10.3,
+# arrest-anchored, trace normalization OFF) reproduces the proven arrest
+# pressure INCLUDING the scale-fight component, plus the new cap. The
+# pair answers "was the scale pressure load-bearing?" with six runs.
+ARM_VBG_RAW: dict[str, bool] = {"probe_d8_vbg_raw": True}
 ARM_CONFIGS["probe_d8_vbg"] = dict(
     ARM_CONFIGS["probe_v5_d8"], interior_latent_blocks=(0, 3, 6),
 )
+ARM_CONFIGS["probe_d8_vbg_raw"] = dict(ARM_CONFIGS["probe_d8_vbg"])
+for _a in ("probe_d8_vbg_raw",):
+    ARM_DEEP_CADENCE[_a] = 100
+    ARM_GUARD_MIN_STEP[_a] = 1000
+    ARM_LR_WARMUP[_a] = 1000
+    ARM_TAPER[_a] = ARM_TAPER["living_v5_4x_d4"]
+    ARM_FILELIST[_a] = ARM_FILELIST["living_v5_4x_d4"]
+    ARM_SIGREG[_a] = ARM_SIGREG["living_v5_4x_d4"]
+    ARM_COSINE[_a] = ARM_COSINE["living_v5_4x_d4"]
 ARM_DEEP_CADENCE["probe_d8_vbg"] = 100
 ARM_GUARD_MIN_STEP["probe_d8_vbg"] = 1000
 ARM_LR_WARMUP["probe_d8_vbg"] = 1000
@@ -1079,6 +1101,7 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
         vbg_cap_weight=ARM_VBG_CAP_W.get(arm, 0.0),
         vbg_share_weight=ARM_VBG_SHARE_W.get(arm, 0.0),
         vbg_cap=ARM_VBG_CAP.get(arm, 0.05),
+        vbg_trace_normalized=not ARM_VBG_RAW.get(arm, False),
     ).to(device)
 
     # Cosine LR needs the planned run length. tokens_per_pass is
@@ -1225,6 +1248,7 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
             # state (the 2026-08-05 attribution gap, closed for this family).
             "vbg_cap_weight": ARM_VBG_CAP_W.get(arm, 0.0),
             "vbg_share_weight": ARM_VBG_SHARE_W.get(arm, 0.0),
+            "vbg_trace_normalized": not ARM_VBG_RAW.get(arm, False),
             "vbg_cap": ARM_VBG_CAP.get(arm, 0.05),
             "mu_pc_schedule": ARM_MUPC_SCHED.get(arm),
         },
