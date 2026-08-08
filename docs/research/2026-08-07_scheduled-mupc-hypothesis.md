@@ -81,3 +81,24 @@ the healthy cell may always wobble early, unobserved. Guard-timing as a
 hidden variable, third appearance, this time via my own inconsistent
 registration. Amendment: guard_min_step 1000 (the probe standard);
 void run preserved as *_void1; rerun otherwise identical.
+
+---
+
+# VOID-2 — and the void is itself a finding
+
+Rerun (guard hold restored) killed at ~step 2100, nmse 2.07 — BEFORE the
+ramp. Not a guard artifact this time: a genuine late transit (healthy
+through ~1600 with SIGReg in-band at 23 and offset 0.13, then b0
+184 → 25 → 10 across 1700-2100). **The stage-16 cell — the record's "one
+robustly healthy depth-8 configuration" — is now 1-for-2 across seeds.**
+The path lottery reaches the healthy cell too; "robust" was a single
+draw. This demotion propagates to every document that leaned on stage 16
+as an anchor, including the verdicts brief to Opus.
+
+The scheduled-muPC design remains UNTESTED — no run has yet survived to
+its own ramp. VOID-2 amendment: rerun at seed 94, the one seed with a
+surviving history in this cell, registered as the design's best fair
+chance. If seed 94 also fails to reach step 3000, the schedule test is
+parked until the battery finds a base that reliably reaches mid-run, and
+the 1-for-N health statistics of the nomupc cell become their own
+registered question.
