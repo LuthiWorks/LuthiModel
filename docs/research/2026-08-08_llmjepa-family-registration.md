@@ -69,3 +69,29 @@ record).
 ```
 python scripts/jepa_pilot_driver.py --stage 50 --seeds 46,95,97 --epochs 1 --max-batches-per-epoch 3000 --heldout-batches 5
 ```
+
+---
+
+# VOID (2026-08-08, ~12:15): the family ran with NTP OFF while its record said 400
+
+The driver's JEPALoss constructor call was missing the `w_ntp` argument;
+the loss module ran at the default 0.0 while `pilot_result.json`
+recorded `w_ntp: 400.0` from the ARM dict. All three runs were plain
+nomupc+warmup draws mislabeled as the pivot's first test — the exact
+"reports healthy while doing nothing" failure this repo's CLAUDE.md
+names as the dominant risk. It slipped the build (§G said "built to
+spec") AND the design seat's review; unit tests construct the loss
+directly and cannot see driver wiring. What caught it: the instruments
+refusing to corroborate the label (l_ntp None, no perplexity, loss 15
+where thousands belonged).
+
+**Fixes:** the one-line pass-through, and a structural
+provenance-consistency contract in `_run_one` — every dual-sourced dose
+is now asserted equal between the persisted record and the live module
+before training starts; a mismatch raises. The class is closed, not
+just the instance.
+
+Void runs preserved as `*_void_ntpoff` in the closed folder (they are
+legitimate nomupc+warmup draws under a wrong name: 1-of-3 completed,
+consistent with that cell's known odds). Family relaunched with the fix;
+gates unchanged.

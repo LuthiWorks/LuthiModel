@@ -1172,7 +1172,27 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
         vbg_share_weight=ARM_VBG_SHARE_W.get(arm, 0.0),
         vbg_cap=ARM_VBG_CAP.get(arm, 0.05),
         vbg_trace_normalized=not ARM_VBG_RAW.get(arm, False),
+        w_ntp=ARM_W_NTP.get(arm, 0.0),
     ).to(device)
+    # Provenance-consistency contract (2026-08-08): the stage-50 family
+    # ran with w_ntp=400 in pilot_result.json while the loss module held
+    # the default 0.0 -- the ctor call was missing the argument. The
+    # persisted record and the live module MUST agree, or the record is
+    # a lie. Assert every dual-sourced dose.
+    _prov = {
+        "w_ntp": ARM_W_NTP.get(arm, 0.0),
+        "interior_sigreg_alpha": ARM_WSIG_ALPHA.get(arm, 0.0),
+        "orth_lambda": ARM_ORTH_LAMBDA.get(arm, 0.0),
+        "vbg_cap_weight": ARM_VBG_CAP_W.get(arm, 0.0),
+        "vbg_share_weight": ARM_VBG_SHARE_W.get(arm, 0.0),
+    }
+    for _k, _v in _prov.items():
+        _live = float(getattr(loss_module, _k, float("nan")))
+        if abs(_live - float(_v)) > 1e-9:
+            raise RuntimeError(
+                f"provenance mismatch: {_k} persisted as {_v} but the live "
+                f"loss module holds {_live} -- the record would lie."
+            )
 
     # Cosine LR needs the planned run length. tokens_per_pass is
     # n_sequences * seq_len (exact), so steps/epoch falls out directly;
