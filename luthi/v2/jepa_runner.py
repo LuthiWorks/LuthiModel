@@ -715,6 +715,19 @@ def _deep_collapse_metrics(online_context_latents: torch.Tensor) -> dict:
 
     # Stable rank: ||C||_F^2 / ||C||_2^2.
     metrics["stable_rank"] = float((sing_vals.pow(2).sum() / sing_vals.max().pow(2)).item())
+    # Chorus stable rank (2026-08-08, Brian's "how do we make stable_rank
+    # helpful?"): the same statistic with the TOP direction excluded.
+    # stable_rank is a nonlinear tangle of soloist size and chorus
+    # health; top_dir_share reports the first, this reports the second.
+    # A rebuilding chorus under a persistent soloist -- the seed-46
+    # signature -- is visible here and invisible in stable_rank.
+    if sing_vals.numel() > 1:
+        tail = sing_vals[1:]
+        metrics["chorus_stable_rank"] = float(
+            (tail.pow(2).sum() / tail.max().pow(2)).item()
+        )
+    else:
+        metrics["chorus_stable_rank"] = 1.0
 
     # Top-direction variance share (VBG spec §3): the honest gauge of the
     # thing the variance-budget governor governs. Emitted ALWAYS -- governor
