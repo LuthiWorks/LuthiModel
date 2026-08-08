@@ -93,3 +93,26 @@ final, 2-of-3 seeds 46/95/97), same recorded reads. Prediction, stated:
 if the cap mechanism is what parks the share, v2 parks it near 0.02 and
 stable_rank lands in the 8-25 range — the gate sits inside the
 uncertainty, which is where an honest gate belongs.
+
+---
+
+# V2 VERDICT (2026-08-08, ~02:30): 0-for-3 — the governor family closes
+
+Seeds 46/95 (v1-raw's completers) killed at ~1800-1900 with shares
+EXPLODING (0.37/0.79) — the tighter cap did not park the share and may
+destabilize mid-transit. Seed 97 (hostile in every prior run) completed
+healthy-breadth (eff 171.3, share 0.062) — the chaos flipped which seed
+thrives — yet stable_rank read 3.17. The arithmetic closes the design:
+at eff ~170, even share parked at 0.02 yields stable ~15; the gate at 20
+requires share <0.017 AND tail breadth beyond anything measured at d8.
+**Nine governor runs, zero gate hits. The VBG family is closed at these
+designs.** What survives it: the share instrument (permanent), the
+scale-fight answer (raw pressure is the working kind), and the measured
+share↔stable relation that would size any future attempt honestly.
+
+Per the 2026-08-07 pivot rule, one follow-up remains before the rule
+fires: the width rung. Registered as stage 48 (`probe_d8_w768` — the
+warmup-base d8 arm at d_model 768, restoring width-per-depth to 96 vs
+the 64 of every collapsing run; 2-of-3 gates unchanged). If width also
+fails to produce reliability, the pivot to LLM-JEPA (d8, muPC off) fires
+with the record complete.

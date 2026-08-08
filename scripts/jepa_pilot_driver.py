@@ -285,6 +285,9 @@ STAGES: dict[int, list[tuple[str, int]]] = {
     # number, ratified after the 0.05 cap measured incompatible with the
     # stable-rank-20 gate. One variable vs stage 46.
     47: [("probe_d8_vbg2", 512)],
+    # WIDTH RUNG (2026-08-08, Brian's aspect-ratio hypothesis): the
+    # warmup-base d8 arm at d_model 768 -- width-per-depth back to 96.
+    48: [("probe_d8_w768", 768)],
 }
 
 # Per-arm model configuration -- single source of truth, shared with
@@ -797,6 +800,15 @@ ARM_CONFIGS["probe_d8_vbg"] = dict(
 )
 ARM_CONFIGS["probe_d8_vbg_raw"] = dict(ARM_CONFIGS["probe_d8_vbg"])
 ARM_CONFIGS["probe_d8_vbg2"] = dict(ARM_CONFIGS["probe_d8_vbg"])
+ARM_CONFIGS["probe_d8_w768"] = dict(ARM_CONFIGS["probe_v5_d8"])
+for _a in ("probe_d8_w768",):
+    ARM_DEEP_CADENCE[_a] = 100
+    ARM_GUARD_MIN_STEP[_a] = 1000
+    ARM_LR_WARMUP[_a] = 1000
+    ARM_TAPER[_a] = ARM_TAPER["living_v5_4x_d4"]
+    ARM_FILELIST[_a] = ARM_FILELIST["living_v5_4x_d4"]
+    ARM_SIGREG[_a] = ARM_SIGREG["living_v5_4x_d4"]
+    ARM_COSINE[_a] = ARM_COSINE["living_v5_4x_d4"]
 for _a in ("probe_d8_vbg_raw", "probe_d8_vbg2"):
     ARM_DEEP_CADENCE[_a] = 100
     ARM_GUARD_MIN_STEP[_a] = 1000
