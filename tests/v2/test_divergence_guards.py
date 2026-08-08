@@ -260,3 +260,33 @@ class TestGuardMinStep:
             "KILL SUPPRESSED" in r.message and "nmse=41.0" in r.message
             for r in caplog.records
         )
+
+
+class TestPplVeto:
+    """Two-gauge execution rule (2026-08-08): under a combined objective a
+    marginal NMSE trip is vetoed by demonstrably healthy generation."""
+
+    def test_veto_off_preserves_old_rule(self):
+        g = _Guard()
+        r = g._check_divergence({"text": {"nmse_mean": 2.4, "perplexity": 300.0}})
+        assert r is not None
+
+    def test_healthy_ppl_vetoes_marginal_trip(self):
+        g = _Guard(divergence_ppl_veto=8000.0)
+        r = g._check_divergence({"text": {"nmse_mean": 2.4, "perplexity": 500.0}})
+        assert r is None
+
+    def test_broken_ppl_does_not_veto(self):
+        g = _Guard(divergence_ppl_veto=8000.0)
+        r = g._check_divergence({"text": {"nmse_mean": 2.4, "perplexity": 20000.0}})
+        assert r is not None
+
+    def test_missing_ppl_does_not_veto(self):
+        g = _Guard(divergence_ppl_veto=8000.0)
+        r = g._check_divergence({"text": {"nmse_mean": 2.4}})
+        assert r is not None
+
+    def test_nonfinite_nmse_never_vetoed(self):
+        g = _Guard(divergence_ppl_veto=8000.0)
+        r = g._check_divergence({"text": {"nmse_mean": float("inf"), "perplexity": 300.0}})
+        assert r is not None and "nonfinite" in r

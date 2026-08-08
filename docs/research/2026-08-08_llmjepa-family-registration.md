@@ -121,3 +121,29 @@ rescue path open; the climb is real, monotone, and runway-limited — the
 doubling the runway should carry eff past 100 and the blocks past 50;
 if it plateaus sub-gate, the recovery has a ceiling and v2 goes to the
 dose/parametrization questions (§B/§C) with that measured fact.
+
+---
+
+# RUNWAY FAMILY VERDICT + THE TWO-GAUGE AMENDMENT (2026-08-08, afternoon)
+
+**Stage 51, first attempt: 0-for-3 — all executed at marginal NMSE
+(2.41/2.08/2.54) before step 1900, carrying lifts 4.23x/2.62x/3.67x at
+death.** The runway question was never answered; the family was killed
+by a guard whose founding claim ("NMSE > 2.0 is broken regardless of
+objective") is falsified by its own victims: seed 46 died at 2.41
+holding a 4.23x probe lift. Fourth instrument of the arc caught judging
+a new regime by an old regime's physics.
+
+**Amendment (registered, arm-gated, tested):** the two-gauge execution
+rule — for arms with w_ntp > 0, a marginal NMSE trip is VETOED, loudly,
+when the same divergence probe reads held-out perplexity below 8000
+(a quarter of the 32k chance level). Genuinely broken generation does
+not veto; nonfinite NMSE is never vetoed; the independent 10x-loss guard
+still kills catastrophic runaways unilaterally; every non-NTP arm keeps
+the old rule bit-exactly. This is not "the guard stops saying things we
+dislike" — it is "execution requires both objectives' gauges to agree
+the run is dead," and it was built only after the old rule produced a
+measured counterexample to its own justification.
+
+Pre-veto runs preserved as *_preveto in the closed folder. Family
+relaunched under the amended rule; gates unchanged.

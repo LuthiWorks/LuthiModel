@@ -370,6 +370,17 @@ class RunnerConfig:
     # every guard resumes with full force at the threshold. Default 0 =
     # no delay; nonzero belongs only on short, attended probe runs.
     guard_min_step: int = 0
+    # Two-gauge execution rule (2026-08-08, registered after the stage-51
+    # family was executed 3-for-3 at marginal NMSE while carrying probe
+    # lifts up to 4.23x): under a combined NTP+JEPA objective, NMSE alone
+    # is no longer sufficient evidence of brokenness -- its "> 2.0 is
+    # broken regardless of objective" claim is falsified by measurement.
+    # When this is set (> 0) and the same divergence probe reports
+    # held-out perplexity BELOW it, a marginal NMSE trip is VETOED,
+    # loudly. 0 = off (every non-NTP arm keeps the old rule exactly).
+    # The 10x-loss guard is untouched and still kills catastrophic
+    # runaways unilaterally.
+    divergence_ppl_veto: float = 0.0
     # Scheduled muPC (2026-08-07, Brian's design: "run with muPC off
     # until a certain point, then turn it on"). The record's seam: muPC's
     # measured harm is acquisition-phase (attenuated gradients teach
@@ -2279,6 +2290,7 @@ class JEPATrainer:
         limit = float(self.config.divergence_nmse_max or 0.0)
         if limit <= 0.0:
             return None
+        veto = float(self.config.divergence_ppl_veto or 0.0)
         for modality, r in (heldout or {}).items():
             nmse = r.get("nmse_mean")
             if nmse is None:
@@ -2286,6 +2298,15 @@ class JEPATrainer:
             if not math.isfinite(float(nmse)):
                 return f"divergence:{modality}:nmse_nonfinite"
             if float(nmse) > limit:
+                ppl = r.get("perplexity")
+                if veto > 0 and ppl is not None and math.isfinite(float(ppl))                         and float(ppl) < veto:
+                    logger.error(
+                        "NMSE TRIP VETOED by healthy generative gauge: "
+                        "%s nmse=%.4f>%.2f but perplexity=%.1f < %.0f "
+                        "(two-gauge rule; loss guard remains armed)",
+                        modality, float(nmse), limit, float(ppl), veto,
+                    )
+                    continue
                 return (
                     f"divergence:{modality}:nmse={float(nmse):.4f}>{limit:.2f}"
                 )

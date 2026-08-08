@@ -819,6 +819,11 @@ for _arm in ("probe_d8_tc", "probe_d8_wsig", "probe_d8_orth",
 # overruled, and it is one dict entry.
 ARM_W_NTP: dict[str, float] = {"probe_d8_llmjepa": 400.0,
                                "probe_d8_llmjepa6k": 400.0}
+# Two-gauge execution rule (2026-08-08): NTP arms only. 8000 = a quarter
+# of the 32k chance level -- generation this good vetoes a marginal NMSE
+# trip; genuinely broken generation (ppl >= 8000) does not.
+ARM_PPL_VETO: dict[str, float] = {"probe_d8_llmjepa": 8000.0,
+                                  "probe_d8_llmjepa6k": 8000.0}
 ARM_CONFIGS["probe_d8_llmjepa"] = dict(
     ARM_CONFIGS["probe_v5_d8"], mu_pc_enabled=False,
 )
@@ -1265,6 +1270,7 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
             lr_schedule=lr_schedule,
             grad_clip_norm=ARM_GRAD_CLIP.get(arm, 0.0),
             guard_min_step=ARM_GUARD_MIN_STEP.get(arm, 0),
+            divergence_ppl_veto=ARM_PPL_VETO.get(arm, 0.0),
             mu_pc_schedule_start=ARM_MUPC_SCHED.get(arm, (0, 1000, 0.25))[0],
             mu_pc_schedule_ramp=ARM_MUPC_SCHED.get(arm, (0, 1000, 0.25))[1],
             mu_pc_schedule_exponent=ARM_MUPC_SCHED.get(arm, (0, 1000, 0.25))[2],
@@ -1343,6 +1349,7 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
             "deep_interval_batches": ARM_DEEP_CADENCE.get(arm, 1000),
             "guard_min_step": ARM_GUARD_MIN_STEP.get(arm, 0),
             "lr_warmup_steps": ARM_LR_WARMUP.get(arm, 0),
+            "divergence_ppl_veto": ARM_PPL_VETO.get(arm, 0.0),
             "sigreg_tc_window": ARM_TC_WINDOW.get(arm, 0),
             "interior_sigreg_alpha": ARM_WSIG_ALPHA.get(arm, 0.0),
             "orth_lambda": ARM_ORTH_LAMBDA.get(arm, 0.0),
