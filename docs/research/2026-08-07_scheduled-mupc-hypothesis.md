@@ -102,3 +102,23 @@ chance. If seed 94 also fails to reach step 3000, the schedule test is
 parked until the battery finds a base that reliably reaches mid-run, and
 the 1-for-N health statistics of the nomupc cell become their own
 registered question.
+
+---
+
+# PARKED (registered condition fired) — and the cell statistics become the question
+
+Seed 94 — the cell's one surviving draw — transited at ~700 and was
+killed at 800 on rerun. The nomupc cell now stands **1-for-3** across
+draws. Per VOID-2's pre-registered rule, the scheduled-muPC design is
+PARKED, untested through no fault of its own: no base run has reached
+its own ramp. It revives automatically when the battery produces a base
+configuration that reliably reaches mid-run (the wsig10 repeats are the
+nearest candidate).
+
+**Registered question replacing it:** the outcome distribution of the
+depth-8 cells themselves. Standing tallies: full-bundle+muPC 0-for-many;
+warmup 1-for-3; nomupc 1-for-3; wsig10 1-for-1 (repeats owed). No
+depth-8 configuration in the record has a demonstrated reliable good
+outcome. The design target is therefore distribution-collapsing
+mechanisms or architecture changes (width ratio, decorrelation family,
+TC descendants), not setting-search.
