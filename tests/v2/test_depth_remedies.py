@@ -78,3 +78,64 @@ class TestOrthogonalityPenalty:
         a = orthogonality_penalty(w).item()
         b = orthogonality_penalty(w * 100).item()
         assert a == pytest.approx(b, rel=1e-4)
+
+
+class TestMuPCSchedule:
+    """Scheduled muPC (2026-08-07, Brian's design): anneal residual_scale
+    1.0 -> muPC target across a ramp; loud contracts on misconfiguration."""
+
+    def _guard(self, **over):
+        from luthi.v2.jepa_runner import JEPATrainer, RunnerConfig, SamplerConfig
+
+        class _G:
+            _apply_mu_pc_schedule = JEPATrainer._apply_mu_pc_schedule
+        g = _G()
+        cfg = RunnerConfig(sampler=SamplerConfig(corpus_sizes_tokens={"text": 1000}))
+        for k, v in over.items():
+            setattr(cfg, k, v)
+        g.config = cfg
+
+        class _B:
+            def __init__(self):
+                self.residual_scale = 1.0
+                self.mu_pc_rate_power = 0.0
+
+        class _Enc:
+            blocks = [_B() for _ in range(8)]
+
+        class _LM:
+            online_encoder = _Enc()
+        g.loss_module = _LM()
+        g.global_step = 0
+        return g
+
+    def test_disabled_is_noop(self):
+        g = self._guard(mu_pc_schedule_start=0)
+        g.loss_module.online_encoder.blocks[0].residual_scale = 1.0
+        g._apply_mu_pc_schedule()
+        assert g.loss_module.online_encoder.blocks[0].residual_scale == 1.0
+
+    def test_anneal_reaches_mupc_target(self):
+        g = self._guard(mu_pc_schedule_start=3000, mu_pc_schedule_ramp=1000)
+        target = 1.0 / (8 ** 0.25)
+        g.global_step = 2999; g._apply_mu_pc_schedule()
+        assert g.loss_module.online_encoder.blocks[0].residual_scale == pytest.approx(1.0)
+        g.global_step = 3500; g._apply_mu_pc_schedule()
+        mid = g.loss_module.online_encoder.blocks[0].residual_scale
+        assert 1.0 > mid > target
+        g.global_step = 4000; g._apply_mu_pc_schedule()
+        assert g.loss_module.online_encoder.blocks[0].residual_scale == pytest.approx(target)
+        g.global_step = 9999; g._apply_mu_pc_schedule()
+        assert g.loss_module.online_encoder.blocks[0].residual_scale == pytest.approx(target)
+
+    def test_refuses_built_in_mupc(self):
+        g = self._guard(mu_pc_schedule_start=3000)
+        g.loss_module.online_encoder.blocks[3].residual_scale = 0.5946
+        with pytest.raises(RuntimeError, match="double-attenuate"):
+            g._apply_mu_pc_schedule()
+
+    def test_refuses_rate_power_arms(self):
+        g = self._guard(mu_pc_schedule_start=3000)
+        g.loss_module.online_encoder.blocks[2].mu_pc_rate_power = -4.0
+        with pytest.raises(RuntimeError, match="rate_power"):
+            g._apply_mu_pc_schedule()

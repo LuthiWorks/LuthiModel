@@ -370,6 +370,21 @@ class RunnerConfig:
     # every guard resumes with full force at the threshold. Default 0 =
     # no delay; nonzero belongs only on short, attended probe runs.
     guard_min_step: int = 0
+    # Scheduled muPC (2026-08-07, Brian's design: "run with muPC off
+    # until a certain point, then turn it on"). The record's seam: muPC's
+    # measured harm is acquisition-phase (attenuated gradients teach
+    # block 0 the wrong sign, stages 22-24) while its benefit is
+    # long-run depth-scale control. Acquire at residual scale 1.0, then
+    # ANNEAL every block's scale to the muPC value over ramp_steps —
+    # never a step change (a discontinuity in the computed function
+    # trips guards on a healthy run). 0 = disabled. Requires the model
+    # built with mu_pc_enabled=False (checked loudly at run start); only
+    # the scaling half of muPC is delivered — the depth-scaled-init half
+    # cannot apply retroactively, and the 07-30 verdict measured init
+    # washing out by step 3000 anyway.
+    mu_pc_schedule_start: int = 0
+    mu_pc_schedule_ramp: int = 1000
+    mu_pc_schedule_exponent: float = 0.25
 
 
 # ---------------------------------------------------------------------------
@@ -1656,6 +1671,41 @@ class JEPATrainer:
 
     # -- Plasticity taper (run-3 build) --
 
+    def _apply_mu_pc_schedule(self) -> None:
+        """Anneal per-block residual_scale from 1.0 to the muPC value.
+
+        No-op when disabled. Loud contract at first application: the
+        model must have been built muPC-OFF (all blocks at scale 1.0
+        pre-schedule) — scheduling on top of built-in muPC would double-
+        attenuate silently. Also refuses mu_pc_rate_power arms: the PC
+        rate multipliers are computed from residual_scale at CONSTRUCTION
+        and this schedule does not recompute them.
+        """
+        start = int(self.config.mu_pc_schedule_start or 0)
+        if start <= 0:
+            return
+        blocks = self.loss_module.online_encoder.blocks
+        if not getattr(self, "_mupc_sched_checked", False):
+            self._mupc_sched_checked = True
+            for b in blocks:
+                if abs(float(getattr(b, "residual_scale", 1.0)) - 1.0) > 1e-9:
+                    raise RuntimeError(
+                        "mu_pc_schedule requires a model built with "
+                        "mu_pc_enabled=False (found residual_scale != 1.0). "
+                        "Scheduling over built-in muPC would double-attenuate."
+                    )
+                if abs(float(getattr(b, "mu_pc_rate_power", 0.0))) > 1e-9:
+                    raise RuntimeError(
+                        "mu_pc_schedule does not support mu_pc_rate_power "
+                        "arms (rate multipliers are fixed at construction)."
+                    )
+        target = 1.0 / (len(blocks) ** float(self.config.mu_pc_schedule_exponent))
+        ramp = max(int(self.config.mu_pc_schedule_ramp), 1)
+        frac = min(max((self.global_step - start) / ramp, 0.0), 1.0)
+        scale = 1.0 + (target - 1.0) * frac
+        for b in blocks:
+            b.residual_scale = scale
+
     def _apply_taper(self) -> None:
         """Recompute run-progress and sweep rate_scale over the living
         layers. Called per step; a no-op sweep when disabled (scale
@@ -2236,6 +2286,7 @@ class JEPATrainer:
                 # Plasticity taper: recompute AFTER coverage advances so
                 # the schedule sees this step's progress (run-3 build).
                 self._apply_taper()
+                self._apply_mu_pc_schedule()
 
                 # Logging fires on this modality's *own* step count, so
                 # rare modalities are instrumented on their own cadence

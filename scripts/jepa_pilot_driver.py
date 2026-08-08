@@ -269,6 +269,11 @@ STAGES: dict[int, list[tuple[str, int]]] = {
     # TC + wsig AT THE GRIPPING DOSE (2026-08-07, Brian's standing
     # conditional, triggered by rung 2 arresting the collapse).
     43: [("probe_d8_tc_wsig10", 512)],
+    # SCHEDULED muPC (2026-08-07, Brian's design): acquire at scale 1.0
+    # in the stage-16 healthy cell, then anneal muPC in at step 3000 over
+    # 1000 steps; observe 2000 steps at full attenuation. Registered in
+    # docs/research/2026-08-07_scheduled-mupc-hypothesis.md.
+    44: [("probe_d8_mupc_sched", 512)],
 }
 
 # Per-arm model configuration -- single source of truth, shared with
@@ -608,6 +613,18 @@ ARM_LR_WARMUP: dict[str, int] = {
     "probe_d8_wsig10": 1000,
     "probe_d8_orth1": 1000,
 }
+# Scheduled-muPC arm (2026-08-07, Brian's design): the stage-16 healthy
+# cell (probe_surprise bundle, muPC OFF, clip 1000) run longer, with the
+# runner annealing residual scale to the muPC value mid-run.
+ARM_DEEP_CADENCE["probe_d8_mupc_sched"] = 100
+ARM_TAPER["probe_d8_mupc_sched"] = ARM_TAPER["living_v5_4x_d4"]
+ARM_FILELIST["probe_d8_mupc_sched"] = ARM_FILELIST["living_v5_4x_d4"]
+ARM_SIGREG["probe_d8_mupc_sched"] = ARM_SIGREG["living_v5_4x_d4"]
+ARM_COSINE["probe_d8_mupc_sched"] = ARM_COSINE["living_v5_4x_d4"]
+ARM_MUPC_SCHED: dict[str, tuple] = {
+    # (start_step, ramp_steps, exponent)
+    "probe_d8_mupc_sched": (3000, 1000, 0.25),
+}
 # Remedy-probe loss-side settings (2026-08-07). Values are the papers'
 # defaults where papers exist (TC window 9 -- odd for exact centering,
 # inside the paper's 4-32 ablation band; wsig alpha 0.1, sketch 64) and
@@ -787,6 +804,10 @@ ARM_TAPER["probe_surprise_d8_nomupc"] = ARM_TAPER["living_v5_4x_d4"]
 ARM_FILELIST["probe_surprise_d8_nomupc"] = ARM_FILELIST["living_v5_4x_d4"]
 ARM_SIGREG["probe_surprise_d8_nomupc"] = ARM_SIGREG["living_v5_4x_d4"]
 ARM_COSINE["probe_surprise_d8_nomupc"] = ARM_COSINE["living_v5_4x_d4"]
+# Scheduled-muPC arm config (2026-08-07): must follow the nomupc arm it
+# copies (the earlier misplaced assignment KeyError'd at import).
+ARM_CONFIGS["probe_d8_mupc_sched"] = dict(ARM_CONFIGS["probe_surprise_d8_nomupc"])
+ARM_GRAD_CLIP["probe_d8_mupc_sched"] = 1000.0
 ARM_CONFIGS["probe_surprise_d8_noproj"] = dict(ARM_CONFIGS["probe_surprise_d8"])
 ARM_TAPER["probe_surprise_d8_noproj"] = ARM_TAPER["living_v5_4x_d4"]
 ARM_FILELIST["probe_surprise_d8_noproj"] = ARM_FILELIST["living_v5_4x_d4"]
@@ -1062,6 +1083,9 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
             lr_schedule=lr_schedule,
             grad_clip_norm=ARM_GRAD_CLIP.get(arm, 0.0),
             guard_min_step=ARM_GUARD_MIN_STEP.get(arm, 0),
+            mu_pc_schedule_start=ARM_MUPC_SCHED.get(arm, (0, 1000, 0.25))[0],
+            mu_pc_schedule_ramp=ARM_MUPC_SCHED.get(arm, (0, 1000, 0.25))[1],
+            mu_pc_schedule_exponent=ARM_MUPC_SCHED.get(arm, (0, 1000, 0.25))[2],
         ),
         run_dir=run_dir,
     )
@@ -1140,6 +1164,7 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
             "sigreg_tc_window": ARM_TC_WINDOW.get(arm, 0),
             "interior_sigreg_alpha": ARM_WSIG_ALPHA.get(arm, 0.0),
             "orth_lambda": ARM_ORTH_LAMBDA.get(arm, 0.0),
+            "mu_pc_schedule": ARM_MUPC_SCHED.get(arm),
         },
     }
     _result_path(arm, d_model, seed).write_text(json.dumps(result, indent=2))
