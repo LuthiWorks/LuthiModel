@@ -111,25 +111,28 @@ Newest last.
 >    sustained GPU load than anything run so far, on the 15-year-old PSU
 >    already suspected in the 860's SATA failure.
 
-## 2026-08-07 (late): the depth-8 pivot rule (Brian, sharpened by Fable)
+## 2026-08-07 (late): the depth-8 pivot rule (Brian; corrected per his ruling)
 
 **If** the VBG family (stages 45-46, running overnight) and its immediate
 follow-ups — the width-ratio rung included — fail to produce a depth-8
-recipe reliable at 2-of-3 seeds, **then** the depth ladder pauses and the
-project refocuses on **LLM-JEPA integration at depth 4** (arXiv
-2509.14252: generative NTP head + view-pair JEPA term, lambda-balanced,
-tied-weights [PRED] predictor): prove the result transfers to the
-PC-hybrid living substrate on the one configuration with a perfect
-reliability record (d4, 5-for-5 across families). Capability growth in
-the interim comes from WIDTH at fixed depth (Brian's aspect-ratio
-hypothesis: keep width-per-depth near the healthy/production ratio).
-muPC and depth re-enter together, later, carrying warmup + governor
-learnings, from a working generative model rather than a silent
-collapsing one.
+recipe reliable at 2-of-3 seeds, **then** the project refocuses on
+**LLM-JEPA integration at DEPTH 8 with muPC OFF** (arXiv 2509.14252:
+generative NTP head + view-pair JEPA term, lambda-balanced, tied-weights
+[PRED] predictor). muPC turns back on only once LLM-JEPA is concluded to
+work with our project. (An earlier draft of this entry said "retreat to
+depth 4" — that was Fable's sharpening, overruled by Brian: the pivot
+stays at depth 8.)
+
+Mechanistic rationale FOR the ruling (Fable, after the correction): the
+NTP term is itself an anti-collapse pressure this substrate has never
+had at depth — cross-entropy over 32k classes cannot be satisfied by a
+rank-2 representation, whereas the pure-JEPA objective (our entire
+collapse record) can be trivially satisfied by degeneracy. The muPC-off
+d8 cell's 1-for-3 reliability under pure JEPA may not predict its
+behavior under the combined objective at all.
 
 Gate for "LLM-JEPA works with our project": generation quality gains at
-d4 with substrate-health metrics (rank bands, native-voice std, offset)
-unmoved — registered properly when that track opens. Rationale: depth is
-one scale axis and currently stalled; the production pathway (how Luthi
-will ever speak) is the longest-parked question and fully unblocked; the
-pivot trades a stalled axis for an open one and abandons nothing.
+d8/muPC-off with substrate-health metrics (rank bands, native-voice std,
+offset) healthy and RELIABLE (n>=3 seeds) — registered properly when
+that track opens. muPC and the remaining depth machinery re-enter
+afterward, carrying warmup + governor learnings.
