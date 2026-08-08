@@ -345,6 +345,11 @@ class JEPALoss(nn.Module):
         vbg_cap: float = 0.05,
         vbg_power_iters: int = 3,
         vbg_trace_normalized: bool = True,
+        # LLM-JEPA (arXiv 2509.14252), spec
+        # docs/reviews/2026-08-08_llm-jepa-integration-spec-for-opus.md.
+        # Default 0.0 -> inert; every existing arm bit-identical.
+        w_ntp: float = 0.0,
+        ntp_freeze_plasticity: bool = True,
     ):
         super().__init__()
         self.online_encoder = online_encoder
@@ -379,6 +384,27 @@ class JEPALoss(nn.Module):
         self.vbg_power_iters = int(vbg_power_iters)
         self.vbg_trace_normalized = bool(vbg_trace_normalized)
         self._vbg_on = self.vbg_cap_weight > 0 or self.vbg_share_weight > 0
+        # LLM-JEPA next-token term. `L = w_ntp * L_NTP + l_pred +
+        # sigreg_lambd * l_sigreg`. The paper puts its weight on the JEPA
+        # side (L = L_LLM + lambda * d(Pred(Enc(Text)), Enc(Code))) with NTP
+        # at 1.0; ours is the same family up to overall scale, but see the
+        # return note -- the paper's JEPA term is a bounded cosine distance
+        # while ours carries SIGReg at O(1e2-1e3), so their lambda~1 ratio
+        # does not transfer numerically.
+        self.w_ntp = float(w_ntp)
+        # Whether the NTP forward runs with living-state self-modification
+        # suspended. Default True: the NTP pass is a THIRD encode, and an
+        # unfrozen one would raise per-step self-modification from two
+        # events to three, changing substrate dynamics against every run in
+        # the record. Frozen keeps NTP a pure gradient signal on the
+        # backprop params and preserves one-variable comparability.
+        self.ntp_freeze_plasticity = bool(ntp_freeze_plasticity)
+        if self.w_ntp > 0 and not hasattr(online_encoder, "output_proj"):
+            raise RuntimeError(
+                "w_ntp > 0 but the encoder has no output_proj (LM head) — the "
+                "next-token term has nothing to project logits with. Restore "
+                "the LM head or leave w_ntp at 0."
+            )
         if self.interior_sigreg_alpha > 0 or self._vbg_on:
             # Fixed, seeded sketch: the penalty must measure the same
             # directions every step or it is noise, not pressure.
@@ -474,6 +500,32 @@ class JEPALoss(nn.Module):
         # keep the predictor's input slot live so M8 -> M9 isn't a
         # retrofit.
         self.register_buffer("action_token", torch.zeros(d_model))
+
+    def _ntp_loss(self, text_tokens: torch.Tensor) -> torch.Tensor:
+        """Causal next-token cross-entropy through the model's LM head.
+
+        Uses ``online_encoder.forward()``, which is the pre-JEPA LM path:
+        ``encode(causal=True)`` -> ``final_norm`` -> ``output_proj``. Causal
+        masking is the encoder's, not re-implemented here -- so the leakage
+        test in tests/test_llm_jepa.py exercises the real path rather than a
+        parallel one that could drift from it.
+
+        Runs under ``freeze_plasticity`` by default. This is a THIRD encode
+        per training step; unfrozen it would take per-step living-state
+        self-modification from two events to three and confound this track
+        against every run in the record. See the return note.
+        """
+        from luthi.v2.plasticity import freeze_plasticity
+        if self.ntp_freeze_plasticity:
+            with freeze_plasticity(self.online_encoder):
+                logits = self.online_encoder(text_tokens=text_tokens)
+        else:
+            logits = self.online_encoder(text_tokens=text_tokens)
+        # Standard shift: position t predicts token t+1.
+        return F.cross_entropy(
+            logits[:, :-1, :].reshape(-1, logits.shape[-1]),
+            text_tokens[:, 1:].reshape(-1),
+        )
 
     def _raise_if_no_interior(self, interior) -> None:
         """Fail loud when the governor is on but has nothing to govern.
@@ -728,6 +780,21 @@ class JEPALoss(nn.Module):
                 l_vbg_share = torch.stack(shares).mean()
                 total = total + self.vbg_share_weight * l_vbg_share
 
+        # ---- LLM-JEPA next-token term (2026-08-08 spec) ----
+        # The anti-collapse force the record has never carried at depth:
+        # cross-entropy over 32k classes cannot be satisfied by a rank-2
+        # representation, the way a pure embedding objective can.
+        l_ntp = None
+        if self.w_ntp > 0 and modality == "text":
+            ntp_tokens = modality_inputs.get("text_tokens")
+            if ntp_tokens is None:
+                raise RuntimeError(
+                    "w_ntp > 0 but no text_tokens in modality_inputs — the "
+                    "next-token term would be silently skipped."
+                )
+            l_ntp = self._ntp_loss(ntp_tokens)
+            total = total + self.w_ntp * l_ntp
+
         # ---- Orthogonal penalty on the attention write path ----
         l_orth = None
         if self.orth_lambda > 0:
@@ -747,6 +814,7 @@ class JEPALoss(nn.Module):
             "l_sigreg": l_sigreg.detach(),
             "l_wsig": l_wsig.detach() if l_wsig is not None else None,
             "l_orth": l_orth.detach() if l_orth is not None else None,
+            "l_ntp": l_ntp.detach() if l_ntp is not None else None,
             "l_vbg_cap": l_vbg_cap.detach() if l_vbg_cap is not None else None,
             "l_vbg_share": l_vbg_share.detach() if l_vbg_share is not None else None,
             # Per-governed-block top-direction share (power-iteration

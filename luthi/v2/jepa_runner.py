@@ -1131,6 +1131,10 @@ class JEPATrainer:
             # magnitude cannot be read is one this repo cannot dose. All
             # four are None when their mechanism is off, so no existing
             # arm's record changes shape in content.
+            # LLM-JEPA next-token term (2026-08-08). Logged from day one per
+            # the standing observability rule this arc produced: a term you
+            # cannot read you cannot dose.
+            "l_ntp": _opt_item(raw.get("l_ntp")),
             "l_wsig": _opt_item(raw.get("l_wsig")),
             "l_orth": _opt_item(raw.get("l_orth")),
             "l_vbg_cap": _opt_item(raw.get("l_vbg_cap")),

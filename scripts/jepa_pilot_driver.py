@@ -288,6 +288,17 @@ STAGES: dict[int, list[tuple[str, int]]] = {
     # WIDTH RUNG (2026-08-08, Brian's aspect-ratio hypothesis): the
     # warmup-base d8 arm at d_model 768 -- width-per-depth back to 96.
     48: [("probe_d8_w768", 768)],
+    # D4 EARLY-TRAJECTORY MEASUREMENT (2026-08-08, Brian's question "why
+    # do d8 runs start at stable 1-3 when d4 starts at 13-30?"): the d4
+    # family's first-ever reading was step 1000 (cadence 1000) -- its
+    # step-100 state has never been observed. 800 steps at cadence 100
+    # answers whether health starts high or climbs fast.
+    49: [("probe_d4_c100", 512)],
+    # LLM-JEPA, the pivot (2026-08-08 spec). Depth 8, muPC OFF. The bet:
+    # cross-entropy over 32k classes is an anti-collapse force a rank-2
+    # representation cannot satisfy, and the record has never carried one
+    # at depth. Three seeds always: 46/95/97.
+    50: [("probe_d8_llmjepa", 512)],
 }
 
 # Per-arm model configuration -- single source of truth, shared with
@@ -778,6 +789,43 @@ for _arm in ("probe_d8_tc", "probe_d8_wsig", "probe_d8_orth",
 #   measured floor share would contribute 2041 * 0.548 = 1118 -- two orders
 #   above the entire loss late in the arrest run (~17). Flagged in the
 #   return note rather than taken silently.
+# ---------------------------------------------------------------------------
+# LLM-JEPA (arXiv 2509.14252), stage 50. Spec:
+# docs/reviews/2026-08-08_llm-jepa-integration-spec-for-opus.md
+# Depth 8, muPC OFF, warmup 1000, guard hold 1000, cadence 100, unclipped.
+#
+# DOSE MEASURED, and it does not match the spec's estimate -- return note SA.
+# Measured at init on a real gutenberg_100 batch with this exact config
+# (scripts/calibrate_ntp.py):
+#
+#   L_NTP            10.47      (ln(32000) = 10.373 -- head is at chance)
+#   l_pred           11.65
+#   l_sigreg       7348.22      (x0.2 = 1469.64)
+#   JEPA-side       1481.29      -- the spec estimated O(100-500)
+#
+# Loss-share dosing (the spec's stated target, NTP at 30-50% of total):
+#   w_ntp = 60.6 (30%) / 94.3 (40%) / 141.4 (50%)   -- spec guessed 5-15
+#
+# Gradient-share on the SHARED TRUNK (LM head excluded), which is what
+# actually steers optimization:
+#   ||dL_NTP/dth|| 0.518   ||dL_JEPA/dth|| 466.27   ratio 900:1
+#   w_ntp = 385.7 (NTP at 30% of gradient) / 899.9 (50%)
+#
+# Loss share and gradient share disagree by ~6x. Built against GRADIENT
+# share at 30%: w_ntp = 400. This is the number I most expect to be
+# overruled, and it is one dict entry.
+ARM_W_NTP: dict[str, float] = {"probe_d8_llmjepa": 400.0}
+ARM_CONFIGS["probe_d8_llmjepa"] = dict(
+    ARM_CONFIGS["probe_v5_d8"], mu_pc_enabled=False,
+)
+ARM_DEEP_CADENCE["probe_d8_llmjepa"] = 100
+ARM_GUARD_MIN_STEP["probe_d8_llmjepa"] = 1000
+ARM_LR_WARMUP["probe_d8_llmjepa"] = 1000
+ARM_TAPER["probe_d8_llmjepa"] = ARM_TAPER["living_v5_4x_d4"]
+ARM_FILELIST["probe_d8_llmjepa"] = ARM_FILELIST["living_v5_4x_d4"]
+ARM_SIGREG["probe_d8_llmjepa"] = ARM_SIGREG["living_v5_4x_d4"]
+ARM_COSINE["probe_d8_llmjepa"] = ARM_COSINE["living_v5_4x_d4"]
+
 ARM_VBG_SHARE_W: dict[str, float] = {"probe_d8_vbg": 1.5,
                                      "probe_d8_vbg_raw": 10.3,
                                      "probe_d8_vbg2": 10.3}
@@ -801,7 +849,8 @@ ARM_CONFIGS["probe_d8_vbg"] = dict(
 ARM_CONFIGS["probe_d8_vbg_raw"] = dict(ARM_CONFIGS["probe_d8_vbg"])
 ARM_CONFIGS["probe_d8_vbg2"] = dict(ARM_CONFIGS["probe_d8_vbg"])
 ARM_CONFIGS["probe_d8_w768"] = dict(ARM_CONFIGS["probe_v5_d8"])
-for _a in ("probe_d8_w768",):
+ARM_CONFIGS["probe_d4_c100"] = dict(ARM_CONFIGS["living_v5_4x_d4"])
+for _a in ("probe_d8_w768", "probe_d4_c100"):
     ARM_DEEP_CADENCE[_a] = 100
     ARM_GUARD_MIN_STEP[_a] = 1000
     ARM_LR_WARMUP[_a] = 1000
@@ -1267,6 +1316,7 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
             # VBG doses persisted per run so the registration can be checked
             # against what actually ran, not against the driver's current
             # state (the 2026-08-05 attribution gap, closed for this family).
+            "w_ntp": ARM_W_NTP.get(arm, 0.0),
             "vbg_cap_weight": ARM_VBG_CAP_W.get(arm, 0.0),
             "vbg_share_weight": ARM_VBG_SHARE_W.get(arm, 0.0),
             "vbg_trace_normalized": not ARM_VBG_RAW.get(arm, False),

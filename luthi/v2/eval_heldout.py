@@ -31,6 +31,7 @@ Non-negotiable discipline, enforced here rather than hoped for:
 from __future__ import annotations
 
 import contextlib
+import math
 from typing import Iterable, Iterator
 
 import torch
@@ -70,6 +71,7 @@ def heldout_latent_prediction(
     l_preds: list[float] = []
     l_sigregs: list[float] = []
     nmses: list[float] = []
+    l_ntps: list[float] = []
     with _eval_guard(loss_module):
         for i, batch in enumerate(batches):
             if max_batches is not None and i >= max_batches:
@@ -87,13 +89,28 @@ def heldout_latent_prediction(
             centered = target_block - target_block.mean(dim=(0, 1), keepdim=True)
             target_var = float(centered.pow(2).mean().item())
             nmses.append(l_pred / max(target_var, 1e-12))
+            # LLM-JEPA (2026-08-08 spec §3): the generative gauge. Held-out
+            # perplexity over 32k classes cannot be flattered by a collapsed
+            # target the way NMSE can -- it is the one capability number in
+            # this harness degeneracy has no route to game. None when the
+            # NTP term is off, so no existing arm's record changes.
+            if result.get("l_ntp") is not None:
+                l_ntps.append(float(result["l_ntp"].item()))
     n = len(l_preds)
-    return {
+    out = {
         "l_pred_mean": (sum(l_preds) / n) if n else float("nan"),
         "nmse_mean": (sum(nmses) / n) if n else float("nan"),
         "l_sigreg_mean": (sum(l_sigregs) / n) if n else float("nan"),
         "n_batches": n,
     }
+    if l_ntps:
+        mean_ntp = sum(l_ntps) / len(l_ntps)
+        out["l_ntp_mean"] = mean_ntp
+        # exp of mean cross-entropy in nats. Guarded: a diverged run can
+        # produce an l_ntp large enough to overflow float, and an eval
+        # diagnostic must never be the thing that kills a run.
+        out["perplexity"] = math.exp(mean_ntp) if mean_ntp < 700 else float("inf")
+    return out
 
 
 def _collect_next_token_pairs(
