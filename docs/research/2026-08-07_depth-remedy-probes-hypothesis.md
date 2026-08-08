@@ -183,3 +183,32 @@ whole-trunk arrestor, both at strength. Same base, same gates, seed 46.
 Queued behind the in-flight pipeline (orth1, then the 0.1-dose pairs).
 Pre-committed: if it recovers, seeds 95/97 before any conclusion
 hardens; and wsig10 itself owes the same repeats regardless.
+
+---
+
+# REFERENCE: RoBlock (ICLR 2026 submission) — the real source behind "R1UN"
+
+Verified via Brian's browser (OpenReview challenge-walls automated
+access): **"RoBlock: Wide and Deep Scaling of Recommenders via Embedding
+Collapse Mitigation"** (openreview.net/forum?id=Tuxg7dcg3a; anonymous
+code at anonymous.4open.science/r/RoBlock-2F8A). Provenance note: an
+earlier search summary presented its "rank-1 update normalization"
+component remixed into this project's vocabulary (transformer blocks,
+SIGReg) — the citation was real, the framing was not. Domain is
+recommender-system embedding tables, but the core concern (depth-wise
+collapse intensifying with model depth, unfixed by input-layer remedies)
+is structurally ours.
+
+Transfer candidates for the design read (Opus):
+1. **R1UN spectrum rebalancing** — cheap approximate spectral fix, no
+   per-step SVD; answers the cost objection to activation-spectrum
+   rebalancing at block boundaries.
+2. **HSIC-guided decoupling** — independence, strictly stronger than the
+   covariance decorrelation of our wsig penalty, which at alpha=10 is
+   now measured to arrest the collapse. A principled upgrade path from
+   a mechanism that already grips.
+3. Field-wise multi-head router — rec-sys-specific; likely no transfer.
+
+Sits on the design shortlist alongside TC-family objective reshaping and
+trunk-interior decorrelation (of which HSIC is the strong form), with
+Muon as the odds-shifter class behind them.
