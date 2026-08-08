@@ -212,3 +212,30 @@ Transfer candidates for the design read (Opus):
 Sits on the design shortlist alongside TC-family objective reshaping and
 trunk-interior decorrelation (of which HSIC is the strong form), with
 Muon as the odds-shifter class behind them.
+
+---
+
+# PAIRS + tc_wsig10 VERDICT: weak pairs all FLOOR; the strength pair ANTI-COMPOSES
+
+**Weak-dose pairs (Brian's original build, stages 37-39):** tc_wsig
+killed nmse 403 / probe 0.000; tc_orth killed nmse 43.5; wsig_orth
+killed nmse 2.86. All FLOOR, as the dosing analysis predicted.
+
+**tc_wsig10 (stage 43, both winners at strength): FLOOR — fastest
+collapse in the record.** Rank 2.8 at the FIRST firing (every other run
+starts ~215 init-proximal); killed at first live check, nmse 284. The
+combination is not additive — it is destructive. Working hypothesis for
+the record (untested): wsig10's arrest depended on co-pressure with
+marginal SIGReg; TC removes marginal SIGReg by construction, leaving
+the interior identity-target to fight prediction alone. Whatever the
+mechanism, the measured lesson is loud: **mechanisms that work alone do
+not compose by default. Every combination is its own experiment.**
+
+**Day's standing tally (all seed 46, single draws):** arrest-class:
+wsig10 alone. Recovery-class: warmup alone (1/3 seeds). Partial
+protection: tc alone (block 0). Floors: everything else including all
+four combinations tried. Next per the battery protocol: repeats of
+wsig10 (seeds 95/97), the scheduled-muPC arm (running), then the
+width-ratio rung (Brian's aspect-ratio hypothesis: d8@512 halves
+width-per-depth vs both the healthy d4 cell AND the production
+4096x36 shape — d8@768 or @1024 tests shape-vs-depth).
