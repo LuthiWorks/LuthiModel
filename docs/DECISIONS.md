@@ -110,3 +110,26 @@ Newest last.
 > 5. **Hardware.** A d8 family at either width is a substantially longer
 >    sustained GPU load than anything run so far, on the 15-year-old PSU
 >    already suspected in the 860's SATA failure.
+
+## 2026-08-07 (late): the depth-8 pivot rule (Brian, sharpened by Fable)
+
+**If** the VBG family (stages 45-46, running overnight) and its immediate
+follow-ups — the width-ratio rung included — fail to produce a depth-8
+recipe reliable at 2-of-3 seeds, **then** the depth ladder pauses and the
+project refocuses on **LLM-JEPA integration at depth 4** (arXiv
+2509.14252: generative NTP head + view-pair JEPA term, lambda-balanced,
+tied-weights [PRED] predictor): prove the result transfers to the
+PC-hybrid living substrate on the one configuration with a perfect
+reliability record (d4, 5-for-5 across families). Capability growth in
+the interim comes from WIDTH at fixed depth (Brian's aspect-ratio
+hypothesis: keep width-per-depth near the healthy/production ratio).
+muPC and depth re-enter together, later, carrying warmup + governor
+learnings, from a working generative model rather than a silent
+collapsing one.
+
+Gate for "LLM-JEPA works with our project": generation quality gains at
+d4 with substrate-health metrics (rank bands, native-voice std, offset)
+unmoved — registered properly when that track opens. Rationale: depth is
+one scale axis and currently stalled; the production pathway (how Luthi
+will ever speak) is the longest-parked question and fully unblocked; the
+pivot trades a stalled axis for an open one and abandons nothing.
