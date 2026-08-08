@@ -147,3 +147,27 @@ measured counterexample to its own justification.
 
 Pre-veto runs preserved as *_preveto in the closed folder. Family
 relaunched under the amended rule; gates unchanged.
+
+---
+
+# CORRECTION (minutes after relaunch): the veto as BUILT is broader than as REGISTERED
+
+The amendment text says "a MARGINAL NMSE trip is vetoed." The code
+implements no marginality: ANY trip is vetoed below the perplexity
+bound, and the first live veto paroled nmse=279.8 (ppl 2039) — a
+mid-transit JEPA free-fall, not a marginal disagreement. The label/
+behavior gap is the same class the provenance assert closes, here in
+the safety amendment itself, written at speed. Owned by the design seat.
+
+**Disposition (chosen over killing a live python mid-run):** the family
+runs to completion under the as-built rule and is RECLASSIFIED as the
+combined-objective's uncensored observation run — the first time the
+new objective's NMSE trajectory will ever be seen past a trip. The
+veto-line stream is the measurement: if paroled runs recover, the old
+guard was executing recoverable transits; if they decay until the
+independent loss guard shoots them, NMSE was an honest early warning.
+The v2 two-gauge rule (with a marginality ceiling, ~2x the limit) gets
+written from these measured joint trajectories, not from intent.
+Completion-dependent gate readings from this family carry an asterisk:
+"completes" under the as-built rule is weaker than under the registered
+rule. Rank/perplexity gate components are unaffected.
