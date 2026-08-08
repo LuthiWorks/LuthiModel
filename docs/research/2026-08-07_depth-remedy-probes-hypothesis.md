@@ -239,3 +239,37 @@ wsig10 (seeds 95/97), the scheduled-muPC arm (running), then the
 width-ratio rung (Brian's aspect-ratio hypothesis: d8@512 halves
 width-per-depth vs both the healthy d4 cell AND the production
 4096x36 shape — d8@768 or @1024 tests shape-vs-depth).
+
+---
+
+# SOLOIST FORENSIC (Brian's stable-rank observation, run to ground)
+
+Instrument: `scripts/soloist_forensic.py` (read-only, CPU; top principal
+direction of final-block latents on a real gutenberg_100 batch, tested
+against position, token identity, token log-frequency, and the
+positional/token-embedding subspaces). Note an instrument nuance first:
+these full-sequence eval-mode reads sit systematically higher than the
+logged training-time pooled values (stage 31: 21.9 here vs 4.63 logged) —
+the ORDERING across runs is what carries meaning.
+
+| run | top-dir share | latent stable rank | what the top direction is |
+|---|---|---|---|
+| healthy d4 (24k) | **0.9%** | 115.4 | a small positional feature (93% inside the pos-embedding subspace) — no soloist exists |
+| stage-31 recovery (d8) | 4.6% | 21.9 | **token identity (~90%), frequency-aligned (r=-0.48)** |
+| wsig10 arrest (d8) | 12.2% | 8.2 | smeared mixture (0.30 token-identity, ~0.25 each subspace) |
+
+**The soloist is not a parasite — it is the token-frequency axis
+over-expressed.** In health that axis exists but carries under 1% of
+variance. In the best d8 recovery it carries ~5x that; in the arrest run
+(earlier in its recovery when killed) concentration is higher still and
+not yet differentiated into a clean feature. The depth-8 failure mode,
+seen from this angle: the trunk allocates a normal feature an abnormal
+share of the variance budget and cannot rebalance. This is precisely the
+signature decorrelation-class mechanisms target (wsig-at-dose, HSIC per
+RoBlock), and it is the known embedding-collapse signature in the
+rec-sys literature Brian's RoBlock find addresses.
+
+Open follow-up: whether the over-expression is cause or residue of the
+collapse — a cadence-100 read of the top-dir share THROUGH a transit
+would say (computable from existing block_latents? No — per-step latents
+are not stored; it needs one instrumented run or a checkpoint ladder).
