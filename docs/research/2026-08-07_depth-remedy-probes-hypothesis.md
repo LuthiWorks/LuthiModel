@@ -273,3 +273,28 @@ Open follow-up: whether the over-expression is cause or residue of the
 collapse — a cadence-100 read of the top-dir share THROUGH a transit
 would say (computable from existing block_latents? No — per-step latents
 are not stored; it needs one instrumented run or a checkpoint ladder).
+
+---
+
+# CLOSING MEASUREMENT (2026-08-08): the transit is universal — depth breaks the rescue, not the fall
+
+Brian's question ("why do d8 runs start at stable 1-3 when d4 starts at
+13-30?") answered by the first-ever sub-1000-step look at depth 4
+(`probe_d4_c100`, stage 49, cadence 100, warmup base — warmup is a
+confound vs the historical no-warmup family, noted):
+
+- **d4 starts at stable 2.50** — identical to every d8 start. The
+  historical "13-30 start" was the step-1000 achievement, never the
+  birth state.
+- **d4 has its own transit**: steps 300-400, eff 200→83, share →0.283,
+  stable →1.05 — the full disease signature — followed by SELF-RESCUE:
+  by step 800, eff 162, share 0.063, stable 3.28 and climbing toward
+  the known step-1000 band. The d4 family's 5-for-5 health means this
+  rescue is the RELIABLE part.
+
+The depth chapter's closing sentence: **the fall is universal; health
+is the rescue; depth does not cause the fall — it breaks the rescue.**
+Every remedy probe this week targeted the fall. The LLM-JEPA track
+(2026-08-08 spec) inherits the corrected question: NTP's job is not to
+prevent the transit but to hold open a rescue path that degeneracy
+cannot satisfy.
