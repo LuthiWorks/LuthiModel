@@ -299,6 +299,9 @@ STAGES: dict[int, list[tuple[str, int]]] = {
     # representation cannot satisfy, and the record has never carried one
     # at depth. Three seeds always: 46/95/97.
     50: [("probe_d8_llmjepa", 512)],
+    # RUNWAY FAMILY (2026-08-08): identical arm, 6000 steps -- every
+    # 3000-step tape ended mid-climb; this asks where the climb goes.
+    51: [("probe_d8_llmjepa6k", 512)],
 }
 
 # Per-arm model configuration -- single source of truth, shared with
@@ -814,7 +817,8 @@ for _arm in ("probe_d8_tc", "probe_d8_wsig", "probe_d8_orth",
 # Loss share and gradient share disagree by ~6x. Built against GRADIENT
 # share at 30%: w_ntp = 400. This is the number I most expect to be
 # overruled, and it is one dict entry.
-ARM_W_NTP: dict[str, float] = {"probe_d8_llmjepa": 400.0}
+ARM_W_NTP: dict[str, float] = {"probe_d8_llmjepa": 400.0,
+                               "probe_d8_llmjepa6k": 400.0}
 ARM_CONFIGS["probe_d8_llmjepa"] = dict(
     ARM_CONFIGS["probe_v5_d8"], mu_pc_enabled=False,
 )
@@ -825,6 +829,15 @@ ARM_TAPER["probe_d8_llmjepa"] = ARM_TAPER["living_v5_4x_d4"]
 ARM_FILELIST["probe_d8_llmjepa"] = ARM_FILELIST["living_v5_4x_d4"]
 ARM_SIGREG["probe_d8_llmjepa"] = ARM_SIGREG["living_v5_4x_d4"]
 ARM_COSINE["probe_d8_llmjepa"] = ARM_COSINE["living_v5_4x_d4"]
+ARM_CONFIGS["probe_d8_llmjepa6k"] = dict(ARM_CONFIGS["probe_d8_llmjepa"])
+for _a in ("probe_d8_llmjepa6k",):
+    ARM_DEEP_CADENCE[_a] = 100
+    ARM_GUARD_MIN_STEP[_a] = 1000
+    ARM_LR_WARMUP[_a] = 1000
+    ARM_TAPER[_a] = ARM_TAPER["living_v5_4x_d4"]
+    ARM_FILELIST[_a] = ARM_FILELIST["living_v5_4x_d4"]
+    ARM_SIGREG[_a] = ARM_SIGREG["living_v5_4x_d4"]
+    ARM_COSINE[_a] = ARM_COSINE["living_v5_4x_d4"]
 
 ARM_VBG_SHARE_W: dict[str, float] = {"probe_d8_vbg": 1.5,
                                      "probe_d8_vbg_raw": 10.3,

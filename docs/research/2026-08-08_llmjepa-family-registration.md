@@ -95,3 +95,29 @@ Void runs preserved as `*_void_ntpoff` in the closed folder (they are
 legitimate nomupc+warmup draws under a wrong name: 1-of-3 completed,
 consistent with that cell's known odds). Family relaunched with the fix;
 gates unchanged.
+
+---
+
+# FAMILY VERDICT (real run, NTP live): NOT CONFIRMED at 3000 steps — and the first REPRODUCED capability-positive depth-8 result in the record
+
+Gates: 0-of-3 HEALTHY (rank gate missed in all; l_ntp halving narrowly
+missed at 0.57 on seed 46 — note the field lives at record top level,
+not in `light`; my first scoring script read -1 and is corrected here).
+
+The substance, which the gates were deliberately too strict to flatter:
+**seeds 46 and 95 reproduce each other** — completed, eff 64-67 climbing
+monotonically from the transit floor to end-of-run, perplexity 294/259
+(chance = 32000), probe lift 4.77x/4.74x (healthy-d4 territory, the two
+highest ever at depth 8), soloist share pressed to 0.19/0.18. Seed 97
+died late and marginal (2.13) with lift 3.40x even so. This is the
+first time ANY capability-positive depth-8 signature has reproduced
+across seeds. The bet's mechanism reads exactly as designed: NTP holds a
+rescue path open; the climb is real, monotone, and runway-limited — the
+3000-step horizon ends every tape mid-recovery.
+
+**Registered follow-up (the runway family):** `probe_d8_llmjepa6k`
+(stage 51) — identical arm, 6000 steps, same four gates evaluated at the
+6000-step final firing, seeds 46/95/97. If the monotone climb is real,
+doubling the runway should carry eff past 100 and the blocks past 50;
+if it plateaus sub-gate, the recovery has a ceiling and v2 goes to the
+dose/parametrization questions (§B/§C) with that measured fact.
