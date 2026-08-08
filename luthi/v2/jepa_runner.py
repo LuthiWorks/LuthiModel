@@ -664,6 +664,34 @@ def _effective_rank(latents: torch.Tensor) -> float:
     return float(math.exp(float(-(p * torch.log(p.clamp(min=1e-12))).sum().item())))
 
 
+def _opt_item(t) -> Optional[float]:
+    """float(t) for an optional tensor diagnostic; None passes through.
+
+    Auxiliary loss terms are None whenever their mechanism is off, and a
+    logged None is the honest record of "this term did not exist this run"
+    -- distinguishable from 0.0, which would mean "it ran and cost nothing."
+    """
+    return None if t is None else float(t.item())
+
+
+def _rank_and_top_share(latents: torch.Tensor) -> tuple[float, float]:
+    """Effective rank AND top-direction variance share from ONE SVD.
+
+    Added with the VBG instrumentation (spec §3) so the per-block gauge the
+    governor is judged on costs nothing beyond the rank already computed at
+    deep cadence. Identical math to ``_effective_rank`` for the rank half --
+    that function stays for callers that only want the rank.
+    """
+    flat = latents.detach().float().reshape(-1, latents.shape[-1])
+    flat = flat - flat.mean(dim=0, keepdim=True)
+    n = flat.shape[0]
+    cov = (flat.t() @ flat) / max(n - 1, 1)
+    sv = torch.linalg.svdvals(cov).clamp(min=1e-12)
+    p = sv / sv.sum()
+    eff = math.exp(float(-(p * torch.log(p.clamp(min=1e-12))).sum().item()))
+    return float(eff), float((sv.max() / sv.sum()).item())
+
+
 def _deep_collapse_metrics(online_context_latents: torch.Tensor) -> dict:
     """v0.5 §5 deep metrics, per modality.
 
@@ -687,6 +715,15 @@ def _deep_collapse_metrics(online_context_latents: torch.Tensor) -> dict:
 
     # Stable rank: ||C||_F^2 / ||C||_2^2.
     metrics["stable_rank"] = float((sing_vals.pow(2).sum() / sing_vals.max().pow(2)).item())
+
+    # Top-direction variance share (VBG spec §3): the honest gauge of the
+    # thing the variance-budget governor governs. Emitted ALWAYS -- governor
+    # on or off -- so the cause-vs-residue question is answerable in every
+    # future run for free. Exact here (the SVD is already taken) rather than
+    # the governor's power-iteration estimate, and measured in FULL space,
+    # matching scripts/soloist_forensic.py rather than the governor's sketch
+    # space. Reference reads: healthy d4 0.009, best d8 recovery 0.046.
+    metrics["top_dir_share"] = float((sing_vals.max() / sing_vals.sum()).item())
 
     # Cumulative-variance indices (where do we cross 90% / 99% of variance?).
     cumsum = sing_vals.cumsum(0) / sing_vals.sum()
@@ -1083,6 +1120,21 @@ class JEPATrainer:
             # l_sigreg. SIGReg is the single anti-collapse term that
             # subsumes both variance and covariance regularization.
             "l_sigreg": float(raw["l_sigreg"].item()),
+            # Auxiliary loss terms. DEVIATION from VBG spec §6 ("no changes
+            # to the metric contract beyond the one new field") -- flagged
+            # deliberately rather than taken silently, because the omission
+            # is a real defect: `l_wsig` has never been logged, so the
+            # arrest run's own dose was invisible in the record and had to
+            # be reconstructed on 2026-08-07 from the loss identity
+            # (loss - l_pred - 0.2*l_sigreg => 10*l_wsig ~ 69.9 at step 100,
+            # 15.5% of loss; ~73% by step 1600+). A regularizer whose
+            # magnitude cannot be read is one this repo cannot dose. All
+            # four are None when their mechanism is off, so no existing
+            # arm's record changes shape in content.
+            "l_wsig": _opt_item(raw.get("l_wsig")),
+            "l_orth": _opt_item(raw.get("l_orth")),
+            "l_vbg_cap": _opt_item(raw.get("l_vbg_cap")),
+            "l_vbg_share": _opt_item(raw.get("l_vbg_share")),
             "tokens_consumed": dict(self.tokens_consumed),
             "elapsed_seconds": time.monotonic() - self.run_start_time,
             # EMIT_BATCH_1 §3 + §4. Field names spec-locked: LuthiScope's
@@ -1162,11 +1214,18 @@ class JEPATrainer:
             # produced -- a pooled rank cannot see one block collapsing while
             # another compensates.
             block_ranks: list[float] = []
+            # Per-block top-direction share alongside rank (VBG spec §3).
+            # One SVD serves both, so this costs nothing beyond the rank
+            # already being computed here.
+            block_top_share: list[float] = []
             for bl in (raw.get("block_latents") or []):
                 try:
-                    block_ranks.append(_effective_rank(bl))
+                    er, tds = _rank_and_top_share(bl)
+                    block_ranks.append(er)
+                    block_top_share.append(tds)
                 except Exception:  # noqa: BLE001 -- diagnostics never kill a run
                     block_ranks.append(float("nan"))
+                    block_top_share.append(float("nan"))
 
             # EMIT_BATCH_1 §2: per-block substrate detail (deep cadence
             # only, to bound payload). LuthiScope renders this as a
@@ -1201,6 +1260,10 @@ class JEPATrainer:
                     # External review 2026-07-28, instrument #5.
                     "weight_pred_cosine": a.get("weight_pred_cosine"),
                     "effective_rank": block_ranks[i] if i < len(block_ranks) else None,
+                    # VBG spec §3. Always emitted, governor on or off.
+                    "top_dir_share": (
+                        block_top_share[i] if i < len(block_top_share) else None
+                    ),
                     # Surprise-drive readings (2026-07-29). `drive_duty` is the
                     # instrument that makes "quiet because familiar" separable
                     # from "quiet because broken" -- the distinction the whole

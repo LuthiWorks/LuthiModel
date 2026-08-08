@@ -274,6 +274,10 @@ STAGES: dict[int, list[tuple[str, int]]] = {
     # 1000 steps; observe 2000 steps at full attenuation. Registered in
     # docs/research/2026-08-07_scheduled-mupc-hypothesis.md.
     44: [("probe_d8_mupc_sched", 512)],
+    # Variance-budget governor (2026-08-07 spec). Cap the soloist, share
+    # the chorus, marginal SIGReg untouched. Three seeds, always -- the
+    # gate is >= 2 of 3, per the spec's §5.
+    45: [("probe_d8_vbg", 512)],
 }
 
 # Per-arm model configuration -- single source of truth, shared with
@@ -729,6 +733,55 @@ for _arm in ("probe_d8_tc", "probe_d8_wsig", "probe_d8_orth",
     ARM_SIGREG[_arm] = ARM_SIGREG["living_v5_4x_d4"]
     ARM_COSINE[_arm] = ARM_COSINE["living_v5_4x_d4"]
 
+# ---------------------------------------------------------------------------
+# Variance-budget governor (VBG), stage 45. Spec:
+# docs/reviews/2026-08-07_variance-budget-governor-spec-for-opus.md
+#
+# Stage-31 base (warmup 1000, guard hold 1000, cadence 100, unclipped),
+# interior_latent_blocks (0, 3, 6), marginal SIGReg untouched.
+#
+# DOSES ARE MEASURED, NOT ASSUMED -- scripts/calibrate_vbg.py, run against
+# real checkpoints on 2026-08-07. They differ sharply from the spec's own
+# arithmetic because the spec reads the floor's top-direction share as
+# ~0.12; that figure is the wsig10 ARREST run (the successful
+# intervention), not a floor. Measured:
+#
+#   probe_v5_d8_dk5000  seed46  share_sketch 0.790  (full 0.833)  floor
+#   probe_v5_d8_warmup  seed97  share_sketch 0.667  (full 0.647)  floor
+#   probe_d8_wsig10     seed46  share_sketch 0.093  (full 0.218)  arrest
+#
+# w_share: match the alpha=10 raw-scale contribution that arrested the
+#   collapse. Backed out of the loss identity on probe_d8_wsig10 step 100
+#   (l_wsig is unlogged -- see the runner deviation note):
+#       451.11 = 3.738 + 0.2*1887.56 + 10*l_wsig  =>  10*l_wsig = 69.86
+#   Trace-normalized penalty on floor checkpoints measures 44.7-51.1:
+#       w_share = 69.86 / ~47 = 1.49  ->  1.5
+#   (The same calc on the ARREST checkpoint gives 10.3, because wsig had
+#   already pulled that state's scale toward unit and trace-normalization
+#   has almost nothing left to remove there -- ratio raw/norm 1.17, vs
+#   27-65 at the floor. The floor is the right anchor: it is the state the
+#   governor actually has to act on.)
+#
+# w_cap: O(10) contribution at the measured floor share.
+#       relu(0.79 - 0.05)^2 = 0.548;   10 / 0.548 = 18.2  ->  18
+#   The spec's derivation from share 0.12 gives w_cap ~2041, which at the
+#   measured floor share would contribute 2041 * 0.548 = 1118 -- two orders
+#   above the entire loss late in the arrest run (~17). Flagged in the
+#   return note rather than taken silently.
+ARM_VBG_SHARE_W: dict[str, float] = {"probe_d8_vbg": 1.5}
+ARM_VBG_CAP_W: dict[str, float] = {"probe_d8_vbg": 18.0}
+ARM_VBG_CAP: dict[str, float] = {"probe_d8_vbg": 0.05}
+ARM_CONFIGS["probe_d8_vbg"] = dict(
+    ARM_CONFIGS["probe_v5_d8"], interior_latent_blocks=(0, 3, 6),
+)
+ARM_DEEP_CADENCE["probe_d8_vbg"] = 100
+ARM_GUARD_MIN_STEP["probe_d8_vbg"] = 1000
+ARM_LR_WARMUP["probe_d8_vbg"] = 1000
+ARM_TAPER["probe_d8_vbg"] = ARM_TAPER["living_v5_4x_d4"]
+ARM_FILELIST["probe_d8_vbg"] = ARM_FILELIST["living_v5_4x_d4"]
+ARM_SIGREG["probe_d8_vbg"] = ARM_SIGREG["living_v5_4x_d4"]
+ARM_COSINE["probe_d8_vbg"] = ARM_COSINE["living_v5_4x_d4"]
+
 # Surgery twin (2026-08-07): identical model config; the intervention
 # lives in the pre-seeded checkpoint, not the config.
 ARM_CONFIGS["probe_v5_d8_surgery"] = dict(ARM_CONFIGS["probe_v5_d8"])
@@ -1023,6 +1076,9 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
         sigreg_tc_window=ARM_TC_WINDOW.get(arm, 0),
         interior_sigreg_alpha=ARM_WSIG_ALPHA.get(arm, 0.0),
         orth_lambda=ARM_ORTH_LAMBDA.get(arm, 0.0),
+        vbg_cap_weight=ARM_VBG_CAP_W.get(arm, 0.0),
+        vbg_share_weight=ARM_VBG_SHARE_W.get(arm, 0.0),
+        vbg_cap=ARM_VBG_CAP.get(arm, 0.05),
     ).to(device)
 
     # Cosine LR needs the planned run length. tokens_per_pass is
@@ -1164,6 +1220,12 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
             "sigreg_tc_window": ARM_TC_WINDOW.get(arm, 0),
             "interior_sigreg_alpha": ARM_WSIG_ALPHA.get(arm, 0.0),
             "orth_lambda": ARM_ORTH_LAMBDA.get(arm, 0.0),
+            # VBG doses persisted per run so the registration can be checked
+            # against what actually ran, not against the driver's current
+            # state (the 2026-08-05 attribution gap, closed for this family).
+            "vbg_cap_weight": ARM_VBG_CAP_W.get(arm, 0.0),
+            "vbg_share_weight": ARM_VBG_SHARE_W.get(arm, 0.0),
+            "vbg_cap": ARM_VBG_CAP.get(arm, 0.05),
             "mu_pc_schedule": ARM_MUPC_SCHED.get(arm),
         },
     }
