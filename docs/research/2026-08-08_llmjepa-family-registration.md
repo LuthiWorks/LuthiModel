@@ -206,3 +206,34 @@ as-built breadth carries (marginality ceiling deferred until this
 family's uncensored trajectories are analyzed); single dose point — if
 v2 under-anchors (capability collapses back toward pure-JEPA outcomes),
 the truth lies between 3 and 400 and a bisection family follows.
+
+---
+
+# V2 FAMILY VERDICT (2026-08-09, early): 0-for-3 — legitimate deaths, and the dose picture completes
+
+seed 46: loss guard @3700 (25x baseline). seed 95: **kill-2 dimensional
+collapse** — the July rank criterion's first-ever firing — after living
+past ~5000 steps. seed 97: loss guard @4700. No NMSE misfires; the
+two-gauge veto held parole correctly while the unvetoable guards ended
+genuinely broken runs. The guard stack worked as a system for the first
+time.
+
+**The two-dose picture, complete:** w_ntp=400 (NTP-led): immediate
+transit, language-driven partial recovery, 3/3 completions, geometry
+sub-gate. w_ntp=3 (JEPA-led): the longest healthy phases in the d8
+record (2500-5000 steps), then the attractor wins with real deaths.
+Dose moves WHEN the transit comes and WHAT survives it — not WHETHER.
+The attractor stands against both extremes of the balance.
+
+**The fork (design-level, Brian + Opus):**
+(a) one bisection family (w_ntp ~30-60, both terms materially present
+    throughout) — the last dose experiment worth its GPU;
+(b) stop dosing; take the complete two-dose evidence to the design
+    table — the open structural threads: what rescues depth-4
+    (unanswered and central), the paper's [PRED] predictor and true
+    paired views (our context/full pair is an analogy, per Opus's SD),
+    TC revisited under NTP, and the ruled 768x8 shape.
+The design seat's lean: (b), with (a) as its first agenda item if the
+table wants one more number. Either way the week ends with the guard
+stack trustworthy, the instruments decomposed and honest, and the
+attractor named, measured, and still standing.
