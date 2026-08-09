@@ -302,6 +302,10 @@ STAGES: dict[int, list[tuple[str, int]]] = {
     # RUNWAY FAMILY (2026-08-08): identical arm, 6000 steps -- every
     # 3000-step tape ended mid-climb; this asks where the climb goes.
     51: [("probe_d8_llmjepa6k", 512)],
+    # V2 (2026-08-08): JEPA leads, NTP anchors -- w_ntp 3, sized from the
+    # measured settled magnitudes after the handoff read showed w_ntp=400
+    # made the family 98-100% NTP from step 1100.
+    52: [("probe_d8_llmjepa_v2", 512)],
 }
 
 # Per-arm model configuration -- single source of truth, shared with
@@ -818,12 +822,14 @@ for _arm in ("probe_d8_tc", "probe_d8_wsig", "probe_d8_orth",
 # share at 30%: w_ntp = 400. This is the number I most expect to be
 # overruled, and it is one dict entry.
 ARM_W_NTP: dict[str, float] = {"probe_d8_llmjepa": 400.0,
-                               "probe_d8_llmjepa6k": 400.0}
+                               "probe_d8_llmjepa6k": 400.0,
+                               "probe_d8_llmjepa_v2": 3.0}
 # Two-gauge execution rule (2026-08-08): NTP arms only. 8000 = a quarter
 # of the 32k chance level -- generation this good vetoes a marginal NMSE
 # trip; genuinely broken generation (ppl >= 8000) does not.
 ARM_PPL_VETO: dict[str, float] = {"probe_d8_llmjepa": 8000.0,
-                                  "probe_d8_llmjepa6k": 8000.0}
+                                  "probe_d8_llmjepa6k": 8000.0,
+                                  "probe_d8_llmjepa_v2": 8000.0}
 ARM_CONFIGS["probe_d8_llmjepa"] = dict(
     ARM_CONFIGS["probe_v5_d8"], mu_pc_enabled=False,
 )
@@ -836,6 +842,15 @@ ARM_SIGREG["probe_d8_llmjepa"] = ARM_SIGREG["living_v5_4x_d4"]
 ARM_COSINE["probe_d8_llmjepa"] = ARM_COSINE["living_v5_4x_d4"]
 ARM_CONFIGS["probe_d8_llmjepa6k"] = dict(ARM_CONFIGS["probe_d8_llmjepa"])
 for _a in ("probe_d8_llmjepa6k",):
+    ARM_DEEP_CADENCE[_a] = 100
+    ARM_GUARD_MIN_STEP[_a] = 1000
+    ARM_LR_WARMUP[_a] = 1000
+    ARM_TAPER[_a] = ARM_TAPER["living_v5_4x_d4"]
+    ARM_FILELIST[_a] = ARM_FILELIST["living_v5_4x_d4"]
+    ARM_SIGREG[_a] = ARM_SIGREG["living_v5_4x_d4"]
+    ARM_COSINE[_a] = ARM_COSINE["living_v5_4x_d4"]
+ARM_CONFIGS["probe_d8_llmjepa_v2"] = dict(ARM_CONFIGS["probe_d8_llmjepa"])
+for _a in ("probe_d8_llmjepa_v2",):
     ARM_DEEP_CADENCE[_a] = 100
     ARM_GUARD_MIN_STEP[_a] = 1000
     ARM_LR_WARMUP[_a] = 1000

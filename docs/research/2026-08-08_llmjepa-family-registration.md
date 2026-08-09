@@ -171,3 +171,38 @@ written from these measured joint trajectories, not from intent.
 Completion-dependent gate readings from this family carry an asterisk:
 "completes" under the as-built rule is weaker than under the registered
 rule. Rank/perplexity gate components are unaffected.
+
+---
+
+# RUNWAY FAMILY VERDICT (observation-grade, two-gauge rule): 3-for-3 completions, 0-for-3 gates — and the diagnosis
+
+First depth-8 family ever to complete all seeds. Final states:
+46: eff 65 / min 54 / ppl 1050 / lift 4.23x (plateaued-sagged);
+95: eff 110 / min 13 / ppl 167 / lift 4.81x (late surge, chorus 5.75
+rising 4x in the final 200 steps at cutoff);
+97: eff 79 / min 27 / ppl 204 / lift 4.77x.
+Each seed missed a DIFFERENT gate criterion; all passed completion and
+perplexity. The two-gauge rule paroled seed 46 through NMSE spikes to
+347 and delivered three complete tapes; no paroled run decayed into the
+LM-with-dead-JEPA end state (all recovered geometry to eff 65-110).
+
+**The measured diagnosis (Brian's "are the knobs right?" — they were
+not):** NTP held 78-85% of the loss at the FIRST firing and 98-100%
+from step 1100 on. The registered "graceful handoff" never existed;
+l_sigreg fell its hundred-fold within the first few hundred steps. The
+family ran as language models with a vestigial (1-2%) embedding
+objective — hence capability robust in every draw while geometry
+limped. Opus's SB warning was correct and understated; the design
+seat's option-(a) ruling is refuted by its own recorded read.
+
+# V2 REGISTRATION: JEPA leads, NTP anchors (the original intent, first time actually run)
+
+`probe_d8_llmjepa_v2` (stage 52): identical arm, **w_ntp = 3** — sized
+from the measured settled magnitudes (l_ntp ~5, JEPA side ~20 →
+NTP ~35-40% settled share; ~2% through the early window, which belongs
+to SIGReg's shaping per the original design). Same gates, same
+two-gauge rule, seeds 46/95/97, 6000 steps. Confounds: the veto's
+as-built breadth carries (marginality ceiling deferred until this
+family's uncensored trajectories are analyzed); single dose point — if
+v2 under-anchors (capability collapses back toward pure-JEPA outcomes),
+the truth lies between 3 and 400 and a bisection family follows.
