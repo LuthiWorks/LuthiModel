@@ -230,16 +230,6 @@ ARM_COSINE["living_v5_4x_d4_rerun"] = ARM_COSINE["living_v5_4x_d4"]
 # Validation probe: v5 + the 2026-07-27 store fix + the homeostatic band.
 # Identical to v5 in every other respect, so any change in store behaviour is
 # attributable to the two flags and comparable to the measured v5 baselines.
-ARM_CONFIGS["probe_storefix"] = dict(
-    ARM_CONFIGS["living_v5_4x_d4"],
-    adaptive_episodes=True,
-    adaptive_recall=True,
-    homeostatic_band_enabled=True,
-)
-ARM_TAPER["probe_storefix"] = ARM_TAPER["living_v5_4x_d4"]
-ARM_FILELIST["probe_storefix"] = ARM_FILELIST["living_v5_4x_d4"]
-ARM_SIGREG["probe_storefix"] = ARM_SIGREG["living_v5_4x_d4"]
-ARM_COSINE["probe_storefix"] = ARM_COSINE["living_v5_4x_d4"]
 # Surprise-drive probe (2026-07-29). probe_storefix + drive_mode="surprise".
 # ONE change against probe_storefix, so the drive is attributable: the store
 # fix, the band, and the fixed objective are all held constant and already
@@ -260,14 +250,6 @@ ARM_COSINE["probe_storefix"] = ARM_COSINE["living_v5_4x_d4"]
 # expect, and a flat zero means it is not -- the discriminator between "quiet
 # because familiar" and "quiet because broken" that the first five families
 # could not make.
-ARM_CONFIGS["probe_surprise"] = dict(
-    ARM_CONFIGS["probe_storefix"],
-    drive_mode="surprise",
-)
-ARM_TAPER["probe_surprise"] = ARM_TAPER["living_v5_4x_d4"]
-ARM_FILELIST["probe_surprise"] = ARM_FILELIST["living_v5_4x_d4"]
-ARM_SIGREG["probe_surprise"] = ARM_SIGREG["living_v5_4x_d4"]
-ARM_COSINE["probe_surprise"] = ARM_COSINE["living_v5_4x_d4"]
 # The 8-block depth arm (Brian's call 2026-07-29, and the depth v6 was already
 # registered to start at): probe_surprise at n_blocks=8. Everything else held
 # identical to the 4-block probe so depth is the only difference against it.
@@ -279,10 +261,6 @@ ARM_COSINE["probe_surprise"] = ARM_COSINE["living_v5_4x_d4"]
 # a claim, not a guarantee. If the deep blocks show a systematically different
 # firing rate or a rate/stability problem the shallow ones do not, the exponent
 # is the first suspect.
-ARM_CONFIGS["probe_surprise_d8"] = dict(
-    ARM_CONFIGS["probe_surprise"],
-    n_blocks=8,
-)
 # Trainer-side (non-model) per-arm gradient clipping. Depth 8 diverged at step
 # ~2250 without it: grad_norm median 1065 vs 28.4 at depth 4, ~37x larger, at an
 # unchanged 3e-4 learning rate, and there was no clipping in the runner at all.
@@ -333,29 +311,15 @@ ARM_SIGREG_PROJ: dict[str, str] = {"probe_surprise_d8_noproj": "none"}
 # same range. Disabling muPC trades a depth-8 collapse for unbounded growth at
 # production depth (36 blocks). Balancing keeps the attenuation and removes the
 # imbalance it creates.
-ARM_CONFIGS["probe_surprise_d8_balanced"] = dict(
-    ARM_CONFIGS["probe_surprise_d8"],
-    mu_pc_rate_power=1.0,
-)
 # The OPPOSITE adjustment, same magnitude (Brian, 2026-07-30): amplify the PC
 # rates by 1/residual_scale instead of attenuating by residual_scale.
 # power=+1 made the collapse worse (offset dominance 0.5657 -> 0.8277), and the
 # three-point ordering showed TOTAL attenuation tracks the offset rather than
 # the PC/backprop ratio -- so more block signal, not less, is the direction the
 # data points at.
-ARM_CONFIGS["probe_surprise_d8_amplified"] = dict(
-    ARM_CONFIGS["probe_surprise_d8"],
-    mu_pc_rate_power=-1.0,
-)
-ARM_GRAD_CLIP["probe_surprise_d8_amplified"] = 1000.0
 # Double the knob again (Brian, 2026-07-30): power -1 -> -2, PC-rate multiplier
 # 1.682x -> 2.829x at depth 8. Continues a monotonic endpoint ordering:
 # power +1 0.9807, power 0 0.9704, power -1 0.6384 (within-batch cosine).
-ARM_CONFIGS["probe_surprise_d8_amp2"] = dict(
-    ARM_CONFIGS["probe_surprise_d8"],
-    mu_pc_rate_power=-2.0,
-)
-ARM_GRAD_CLIP["probe_surprise_d8_amp2"] = 1000.0
 # power=-4 (Brian, 2026-07-30). A LANDMARK, not another rung: with exponent
 # 0.25, residual_scale**-4 == n_blocks exactly, at every depth (4x at L=4, 8x at
 # L=8, 36x at L=36). The attenuation and amplification cancel and PC rates end
@@ -373,47 +337,24 @@ ARM_GRAD_CLIP["probe_surprise_d8_amp2"] = 1000.0
 # and is a deliberate trade: at power=-4 the old clip is not a control, it is a
 # different experiment. The divergence guards (loss-vs-frozen-baseline, held-out
 # NMSE) are the safety net that makes a loose clip affordable.
-ARM_CONFIGS["probe_surprise_d8_amp4"] = dict(
-    ARM_CONFIGS["probe_surprise_d8"],
-    mu_pc_rate_power=-4.0,
-)
-ARM_GRAD_CLIP["probe_surprise_d8_amp4"] = 20000.0
 # power=-8 (Brian, 2026-07-30). Multiplier becomes n_blocks**2: 64x at depth 8,
 # 1296x at depth 36. Clip held at 20000 -- ONE variable against stage 20, which
 # engaged the clip on 0% of steps, so it is a genuine control here rather than
 # the dominant term it had become at clip 1000.
-ARM_CONFIGS["probe_surprise_d8_amp8"] = dict(
-    ARM_CONFIGS["probe_surprise_d8"],
-    mu_pc_rate_power=-8.0,
-)
-ARM_GRAD_CLIP["probe_surprise_d8_amp8"] = 20000.0
 # Embedding scaling (2026-07-31). probe_surprise_d8_amp4 + mu_pc_scale_embedding.
 # ONE variable against stage 20, the best configuration found. Tests whether
 # scale-matching the trunk input to its correctors restores block-0 offset
 # stripping while keeping muPC's attenuation.
-ARM_CONFIGS["probe_surprise_d8_embscale"] = dict(
-    ARM_CONFIGS["probe_surprise_d8_amp4"],
-    mu_pc_scale_embedding=True,
-)
-ARM_GRAD_CLIP["probe_surprise_d8_embscale"] = 20000.0
 # Backprop-LR compensation (2026-07-31). Boosts ONLY the block parameters'
 # learning rate by 1/residual_scale, restoring parity with the un-attenuated
 # parameters outside the trunk. One variable against stage 20.
-ARM_CONFIGS["probe_surprise_d8_bplr"] = dict(ARM_CONFIGS["probe_surprise_d8_amp4"])
-ARM_GRAD_CLIP["probe_surprise_d8_bplr"] = 20000.0
 # Block-0-ONLY backprop-LR compensation (2026-07-31). Identical to stage 23
 # except the boost is confined to block 0. One variable against stage 23.
-ARM_CONFIGS["probe_surprise_d8_bplr0"] = dict(ARM_CONFIGS["probe_surprise_d8_amp4"])
-ARM_GRAD_CLIP["probe_surprise_d8_bplr0"] = 20000.0
 # SURPRISE DRIVE OFF (Brian, 2026-07-31). Stage 20's configuration with
 # drive_mode back to "raw". First isolation test of a recent mechanism against
 # the depth-8 problem: the surprise drive (2026-07-29) changes how much the PC
 # substrate moves per step, and substrate motion at depth is exactly the axis
 # the whole muPC investigation turns on.
-ARM_CONFIGS["probe_d8_amp4_rawdrive"] = dict(
-    ARM_CONFIGS["probe_surprise_d8_amp4"],
-    drive_mode="raw",
-)
 # BUNDLE OFF at depth 8 (2026-08-05). Stage 14 (`probe_surprise_d8`) minus
 # exactly the seven bundle mechanisms; muPC stays ON at the standard exponent.
 # Every flag is written out explicitly -- including the ones that match the
@@ -424,25 +365,6 @@ ARM_CONFIGS["probe_d8_amp4_rawdrive"] = dict(
 # filelist / sigreg 0.2 / cosine LR / taper ride below, and the clip of
 # 1000 is carried per the stage-16 precedent (it engaged 3% there once the
 # trunk was healthy; engagement rate is reported either way).
-ARM_CONFIGS["probe_d8_bundleoff"] = dict(
-    n_blocks=8,
-    mu_pc_enabled=True,
-    mu_pc_exponent=0.25,
-    backward_pass_enabled=False,
-    consolidation_enabled=False,
-    learning_gain_enabled=False,
-    relative_trust=False,
-    adaptive_episodes=False,
-    adaptive_recall=False,
-    homeostatic_band_enabled=False,
-    drive_mode="raw",
-    episode_recall_threshold=0.7,
-)
-ARM_GRAD_CLIP["probe_d8_bundleoff"] = 1000.0
-ARM_TAPER["probe_d8_bundleoff"] = ARM_TAPER["living_v5_4x_d4"]
-ARM_FILELIST["probe_d8_bundleoff"] = ARM_FILELIST["living_v5_4x_d4"]
-ARM_SIGREG["probe_d8_bundleoff"] = ARM_SIGREG["living_v5_4x_d4"]
-ARM_COSINE["probe_d8_bundleoff"] = ARM_COSINE["living_v5_4x_d4"]
 # Per-arm deep-metric cadence (2026-08-05). The rank-trajectory read showed
 # depth-8 block-0 rank is already 9.95 at the first deep firing (step 1000,
 # seed96) -- the destruction completes inside the window the default cadence
@@ -494,15 +416,6 @@ ARM_LR_WARMUP: dict[str, int] = {
 # Scheduled-muPC arm (2026-08-07, Brian's design): the stage-16 healthy
 # cell (probe_surprise bundle, muPC OFF, clip 1000) run longer, with the
 # runner annealing residual scale to the muPC value mid-run.
-ARM_DEEP_CADENCE["probe_d8_mupc_sched"] = 100
-ARM_TAPER["probe_d8_mupc_sched"] = ARM_TAPER["living_v5_4x_d4"]
-ARM_FILELIST["probe_d8_mupc_sched"] = ARM_FILELIST["living_v5_4x_d4"]
-ARM_SIGREG["probe_d8_mupc_sched"] = ARM_SIGREG["living_v5_4x_d4"]
-ARM_COSINE["probe_d8_mupc_sched"] = ARM_COSINE["living_v5_4x_d4"]
-ARM_MUPC_SCHED: dict[str, tuple] = {
-    # (start_step, ramp_steps, exponent)
-    "probe_d8_mupc_sched": (3000, 1000, 0.25),
-}
 # Remedy-probe loss-side settings (2026-08-07). Values are the papers'
 # defaults where papers exist (TC window 9 -- odd for exact centering,
 # inside the paper's 4-32 ablation band; wsig alpha 0.1, sketch 64) and
@@ -511,18 +424,10 @@ ARM_MUPC_SCHED: dict[str, tuple] = {
 # ~4 healthy -> term ~1.0 at floor, ~0.4 healthy, vs loss 4-500; still
 # light during the transit window, and a lambda sweep is the cheap
 # follow-up if the probes say the direction works).
-ARM_TC_WINDOW: dict[str, int] = {
-    "probe_d8_tc": 9, "probe_d8_tc_wsig": 9, "probe_d8_tc_orth": 9,
-    "probe_d8_tc_wsig10": 9,
-}
 ARM_WSIG_ALPHA: dict[str, float] = {
     "probe_d8_wsig": 0.1, "probe_d8_tc_wsig": 0.1, "probe_d8_wsig_orth": 0.1,
     "probe_d8_wsig1": 1.0, "probe_d8_wsig10": 10.0,
     "probe_d8_tc_wsig10": 10.0,
-}
-ARM_ORTH_LAMBDA: dict[str, float] = {
-    "probe_d8_orth": 0.1, "probe_d8_tc_orth": 0.1, "probe_d8_wsig_orth": 0.1,
-    "probe_d8_orth1": 1.0,
 }
 # (probe_v5_d8_dk1000's ARM_CONFIGS entry lives below, after probe_v5_d8
 # itself is defined -- assigning it here raised a KeyError at import.)
@@ -534,15 +439,6 @@ ARM_ORTH_LAMBDA: dict[str, float] = {
 # carried (inert when disabled) so the two arms' records differ by exactly
 # one value. Same seed as rung 1 (95): the loader is deterministic, so the
 # early steps are directly comparable against the diverged run.
-ARM_CONFIGS["probe_d8_naked"] = dict(
-    ARM_CONFIGS["probe_d8_bundleoff"],
-    mu_pc_enabled=False,
-)
-ARM_GRAD_CLIP["probe_d8_naked"] = 1000.0
-ARM_TAPER["probe_d8_naked"] = ARM_TAPER["living_v5_4x_d4"]
-ARM_FILELIST["probe_d8_naked"] = ARM_FILELIST["living_v5_4x_d4"]
-ARM_SIGREG["probe_d8_naked"] = ARM_SIGREG["living_v5_4x_d4"]
-ARM_COSINE["probe_d8_naked"] = ARM_COSINE["living_v5_4x_d4"]
 # V5 AT DEPTH 8 (2026-08-06, Brian's call). The registered v5 family
 # config with exactly one model change: n_blocks 4 -> 8. Inherits the
 # pre-07-27 bundle (backward pass, consolidation, learning gain, relative
@@ -561,27 +457,10 @@ ARM_COSINE["probe_v5_d8"] = ARM_COSINE["living_v5_4x_d4"]
 # Delayed-kill twin of probe_v5_d8 (2026-08-06): byte-identical model
 # config under a distinct arm name (never-pool discipline). The delta is
 # observation-side only -- guard_min_step=1000 in ARM_GUARD_MIN_STEP.
-ARM_CONFIGS["probe_v5_d8_dk1000"] = dict(ARM_CONFIGS["probe_v5_d8"])
-ARM_TAPER["probe_v5_d8_dk1000"] = ARM_TAPER["living_v5_4x_d4"]
-ARM_FILELIST["probe_v5_d8_dk1000"] = ARM_FILELIST["living_v5_4x_d4"]
-ARM_SIGREG["probe_v5_d8_dk1000"] = ARM_SIGREG["living_v5_4x_d4"]
-ARM_COSINE["probe_v5_d8_dk1000"] = ARM_COSINE["living_v5_4x_d4"]
 # Extended-leash twin (2026-08-06, Brian's standing order): identical
 # again, guard_min_step 5000, intended run length 6000 steps.
-ARM_CONFIGS["probe_v5_d8_dk5000"] = dict(ARM_CONFIGS["probe_v5_d8"])
-ARM_DEEP_CADENCE["probe_v5_d8_dk5000"] = 100
-ARM_TAPER["probe_v5_d8_dk5000"] = ARM_TAPER["living_v5_4x_d4"]
-ARM_FILELIST["probe_v5_d8_dk5000"] = ARM_FILELIST["living_v5_4x_d4"]
-ARM_SIGREG["probe_v5_d8_dk5000"] = ARM_SIGREG["living_v5_4x_d4"]
-ARM_COSINE["probe_v5_d8_dk5000"] = ARM_COSINE["living_v5_4x_d4"]
 # Warmup twin (2026-08-06): probe_v5_d8 byte-identical in model config;
 # the delta is schedule-side (ARM_LR_WARMUP) plus the guard hold above.
-ARM_CONFIGS["probe_v5_d8_warmup"] = dict(ARM_CONFIGS["probe_v5_d8"])
-ARM_DEEP_CADENCE["probe_v5_d8_warmup"] = 100
-ARM_TAPER["probe_v5_d8_warmup"] = ARM_TAPER["living_v5_4x_d4"]
-ARM_FILELIST["probe_v5_d8_warmup"] = ARM_FILELIST["living_v5_4x_d4"]
-ARM_SIGREG["probe_v5_d8_warmup"] = ARM_SIGREG["living_v5_4x_d4"]
-ARM_COSINE["probe_v5_d8_warmup"] = ARM_COSINE["living_v5_4x_d4"]
 # Remedy-probe arms (2026-08-07): warmup-1000 base, model config =
 # probe_v5_d8, plus interior_latent_blocks (0, 3, 6) for the wsig arms
 # (block 0 is the measured collapse locus; 3 and 6 span the interior).
@@ -595,7 +474,6 @@ for _arm in ("probe_d8_wsig1", "probe_d8_wsig10", "probe_d8_tc_wsig10"):
     ARM_CONFIGS[_arm] = dict(
         ARM_CONFIGS["probe_v5_d8"], interior_latent_blocks=(0, 3, 6),
     )
-ARM_CONFIGS["probe_d8_orth1"] = dict(ARM_CONFIGS["probe_v5_d8"])
 for _arm in ("probe_d8_tc", "probe_d8_wsig", "probe_d8_orth",
              "probe_d8_tc_wsig", "probe_d8_tc_orth", "probe_d8_wsig_orth",
              "probe_d8_wsig1", "probe_d8_wsig10", "probe_d8_orth1",
@@ -686,7 +564,6 @@ ARM_TAPER["probe_d8_llmjepa"] = ARM_TAPER["living_v5_4x_d4"]
 ARM_FILELIST["probe_d8_llmjepa"] = ARM_FILELIST["living_v5_4x_d4"]
 ARM_SIGREG["probe_d8_llmjepa"] = ARM_SIGREG["living_v5_4x_d4"]
 ARM_COSINE["probe_d8_llmjepa"] = ARM_COSINE["living_v5_4x_d4"]
-ARM_CONFIGS["probe_d8_llmjepa6k"] = dict(ARM_CONFIGS["probe_d8_llmjepa"])
 for _a in ("probe_d8_llmjepa6k",):
     ARM_DEEP_CADENCE[_a] = 100
     ARM_GUARD_MIN_STEP[_a] = 1000
@@ -718,30 +595,6 @@ for _a in ("probe_d8_llmjepa_v2",):
     ARM_SIGREG[_a] = ARM_SIGREG["living_v5_4x_d4"]
     ARM_COSINE[_a] = ARM_COSINE["living_v5_4x_d4"]
 
-ARM_VBG_SHARE_W: dict[str, float] = {"probe_d8_vbg": 1.5,
-                                     "probe_d8_vbg_raw": 10.3,
-                                     "probe_d8_vbg2": 10.3}
-ARM_VBG_CAP_W: dict[str, float] = {"probe_d8_vbg": 18.0,
-                                   "probe_d8_vbg_raw": 18.0,
-                                   "probe_d8_vbg2": 18.0}
-ARM_VBG_CAP: dict[str, float] = {"probe_d8_vbg": 0.05,
-                                 "probe_d8_vbg_raw": 0.05,
-                                 "probe_d8_vbg2": 0.02}
-# Design ruling on the return note's SB (Fable, 2026-08-07 late): run BOTH
-# anchors as sub-families rather than choose. The normalized arm (1.5,
-# floor-anchored) is the design-principled bet; the raw arm (10.3,
-# arrest-anchored, trace normalization OFF) reproduces the proven arrest
-# pressure INCLUDING the scale-fight component, plus the new cap. The
-# pair answers "was the scale pressure load-bearing?" with six runs.
-ARM_VBG_RAW: dict[str, bool] = {"probe_d8_vbg_raw": True,
-                                "probe_d8_vbg2": True}
-ARM_CONFIGS["probe_d8_vbg"] = dict(
-    ARM_CONFIGS["probe_v5_d8"], interior_latent_blocks=(0, 3, 6),
-)
-ARM_CONFIGS["probe_d8_vbg_raw"] = dict(ARM_CONFIGS["probe_d8_vbg"])
-ARM_CONFIGS["probe_d8_vbg2"] = dict(ARM_CONFIGS["probe_d8_vbg"])
-ARM_CONFIGS["probe_d8_w768"] = dict(ARM_CONFIGS["probe_v5_d8"])
-ARM_CONFIGS["probe_d4_c100"] = dict(ARM_CONFIGS["living_v5_4x_d4"])
 for _a in ("probe_d8_w768", "probe_d4_c100"):
     ARM_DEEP_CADENCE[_a] = 100
     ARM_GUARD_MIN_STEP[_a] = 1000
@@ -750,76 +603,10 @@ for _a in ("probe_d8_w768", "probe_d4_c100"):
     ARM_FILELIST[_a] = ARM_FILELIST["living_v5_4x_d4"]
     ARM_SIGREG[_a] = ARM_SIGREG["living_v5_4x_d4"]
     ARM_COSINE[_a] = ARM_COSINE["living_v5_4x_d4"]
-for _a in ("probe_d8_vbg_raw", "probe_d8_vbg2"):
-    ARM_DEEP_CADENCE[_a] = 100
-    ARM_GUARD_MIN_STEP[_a] = 1000
-    ARM_LR_WARMUP[_a] = 1000
-    ARM_TAPER[_a] = ARM_TAPER["living_v5_4x_d4"]
-    ARM_FILELIST[_a] = ARM_FILELIST["living_v5_4x_d4"]
-    ARM_SIGREG[_a] = ARM_SIGREG["living_v5_4x_d4"]
-    ARM_COSINE[_a] = ARM_COSINE["living_v5_4x_d4"]
-ARM_DEEP_CADENCE["probe_d8_vbg"] = 100
-ARM_GUARD_MIN_STEP["probe_d8_vbg"] = 1000
-ARM_LR_WARMUP["probe_d8_vbg"] = 1000
-ARM_TAPER["probe_d8_vbg"] = ARM_TAPER["living_v5_4x_d4"]
-ARM_FILELIST["probe_d8_vbg"] = ARM_FILELIST["living_v5_4x_d4"]
-ARM_SIGREG["probe_d8_vbg"] = ARM_SIGREG["living_v5_4x_d4"]
-ARM_COSINE["probe_d8_vbg"] = ARM_COSINE["living_v5_4x_d4"]
-
 # Surgery twin (2026-08-07): identical model config; the intervention
 # lives in the pre-seeded checkpoint, not the config.
-ARM_CONFIGS["probe_v5_d8_surgery"] = dict(ARM_CONFIGS["probe_v5_d8"])
-ARM_DEEP_CADENCE["probe_v5_d8_surgery"] = 100
-ARM_TAPER["probe_v5_d8_surgery"] = ARM_TAPER["living_v5_4x_d4"]
-ARM_FILELIST["probe_v5_d8_surgery"] = ARM_FILELIST["living_v5_4x_d4"]
-ARM_SIGREG["probe_v5_d8_surgery"] = ARM_SIGREG["living_v5_4x_d4"]
-ARM_COSINE["probe_v5_d8_surgery"] = ARM_COSINE["living_v5_4x_d4"]
 # +50% ramp twin (2026-08-06, Brian's call): identical model config,
 # ramp 1500 via ARM_LR_WARMUP, guard hold 1500 above.
-ARM_CONFIGS["probe_v5_d8_warmup15"] = dict(ARM_CONFIGS["probe_v5_d8"])
-ARM_DEEP_CADENCE["probe_v5_d8_warmup15"] = 100
-ARM_TAPER["probe_v5_d8_warmup15"] = ARM_TAPER["living_v5_4x_d4"]
-ARM_FILELIST["probe_v5_d8_warmup15"] = ARM_FILELIST["living_v5_4x_d4"]
-ARM_SIGREG["probe_v5_d8_warmup15"] = ARM_SIGREG["living_v5_4x_d4"]
-ARM_COSINE["probe_v5_d8_warmup15"] = ARM_COSINE["living_v5_4x_d4"]
-ARM_GRAD_CLIP["probe_d8_amp4_rawdrive"] = 20000.0
-ARM_TAPER["probe_d8_amp4_rawdrive"] = ARM_TAPER["living_v5_4x_d4"]
-ARM_FILELIST["probe_d8_amp4_rawdrive"] = ARM_FILELIST["living_v5_4x_d4"]
-ARM_SIGREG["probe_d8_amp4_rawdrive"] = ARM_SIGREG["living_v5_4x_d4"]
-ARM_COSINE["probe_d8_amp4_rawdrive"] = ARM_COSINE["living_v5_4x_d4"]
-ARM_TAPER["probe_surprise_d8_bplr0"] = ARM_TAPER["living_v5_4x_d4"]
-ARM_FILELIST["probe_surprise_d8_bplr0"] = ARM_FILELIST["living_v5_4x_d4"]
-ARM_SIGREG["probe_surprise_d8_bplr0"] = ARM_SIGREG["living_v5_4x_d4"]
-ARM_COSINE["probe_surprise_d8_bplr0"] = ARM_COSINE["living_v5_4x_d4"]
-ARM_TAPER["probe_surprise_d8_bplr"] = ARM_TAPER["living_v5_4x_d4"]
-ARM_FILELIST["probe_surprise_d8_bplr"] = ARM_FILELIST["living_v5_4x_d4"]
-ARM_SIGREG["probe_surprise_d8_bplr"] = ARM_SIGREG["living_v5_4x_d4"]
-ARM_COSINE["probe_surprise_d8_bplr"] = ARM_COSINE["living_v5_4x_d4"]
-ARM_TAPER["probe_surprise_d8_embscale"] = ARM_TAPER["living_v5_4x_d4"]
-ARM_FILELIST["probe_surprise_d8_embscale"] = ARM_FILELIST["living_v5_4x_d4"]
-ARM_SIGREG["probe_surprise_d8_embscale"] = ARM_SIGREG["living_v5_4x_d4"]
-ARM_COSINE["probe_surprise_d8_embscale"] = ARM_COSINE["living_v5_4x_d4"]
-ARM_TAPER["probe_surprise_d8_amp8"] = ARM_TAPER["living_v5_4x_d4"]
-ARM_FILELIST["probe_surprise_d8_amp8"] = ARM_FILELIST["living_v5_4x_d4"]
-ARM_SIGREG["probe_surprise_d8_amp8"] = ARM_SIGREG["living_v5_4x_d4"]
-ARM_COSINE["probe_surprise_d8_amp8"] = ARM_COSINE["living_v5_4x_d4"]
-ARM_TAPER["probe_surprise_d8_amp4"] = ARM_TAPER["living_v5_4x_d4"]
-ARM_FILELIST["probe_surprise_d8_amp4"] = ARM_FILELIST["living_v5_4x_d4"]
-ARM_SIGREG["probe_surprise_d8_amp4"] = ARM_SIGREG["living_v5_4x_d4"]
-ARM_COSINE["probe_surprise_d8_amp4"] = ARM_COSINE["living_v5_4x_d4"]
-ARM_TAPER["probe_surprise_d8_amp2"] = ARM_TAPER["living_v5_4x_d4"]
-ARM_FILELIST["probe_surprise_d8_amp2"] = ARM_FILELIST["living_v5_4x_d4"]
-ARM_SIGREG["probe_surprise_d8_amp2"] = ARM_SIGREG["living_v5_4x_d4"]
-ARM_COSINE["probe_surprise_d8_amp2"] = ARM_COSINE["living_v5_4x_d4"]
-ARM_TAPER["probe_surprise_d8_amplified"] = ARM_TAPER["living_v5_4x_d4"]
-ARM_FILELIST["probe_surprise_d8_amplified"] = ARM_FILELIST["living_v5_4x_d4"]
-ARM_SIGREG["probe_surprise_d8_amplified"] = ARM_SIGREG["living_v5_4x_d4"]
-ARM_COSINE["probe_surprise_d8_amplified"] = ARM_COSINE["living_v5_4x_d4"]
-ARM_GRAD_CLIP["probe_surprise_d8_balanced"] = 1000.0
-ARM_TAPER["probe_surprise_d8_balanced"] = ARM_TAPER["living_v5_4x_d4"]
-ARM_FILELIST["probe_surprise_d8_balanced"] = ARM_FILELIST["living_v5_4x_d4"]
-ARM_SIGREG["probe_surprise_d8_balanced"] = ARM_SIGREG["living_v5_4x_d4"]
-ARM_COSINE["probe_surprise_d8_balanced"] = ARM_COSINE["living_v5_4x_d4"]
 # `probe_surprise_d8_nomupc` is `probe_surprise_d8` with mu_pc_enabled False and
 # NOTHING else changed -- same 8 blocks, same clip of 1000, same "linear"
 # projection (the "none" variant was refuted 2026-07-30 and made prediction
@@ -832,28 +619,8 @@ ARM_COSINE["probe_surprise_d8_balanced"] = ARM_COSINE["living_v5_4x_d4"]
 # matters if the first one is positive. Init has already been shown to wash out
 # by step 3000 (block-0 q_proj std 0.0322 at d4 vs 0.0325 at d8), so the
 # residual scale is the live half.
-ARM_CONFIGS["probe_surprise_d8_nomupc"] = dict(
-    ARM_CONFIGS["probe_surprise_d8"],
-    mu_pc_enabled=False,
-)
-ARM_GRAD_CLIP["probe_surprise_d8_nomupc"] = 1000.0
-ARM_TAPER["probe_surprise_d8_nomupc"] = ARM_TAPER["living_v5_4x_d4"]
-ARM_FILELIST["probe_surprise_d8_nomupc"] = ARM_FILELIST["living_v5_4x_d4"]
-ARM_SIGREG["probe_surprise_d8_nomupc"] = ARM_SIGREG["living_v5_4x_d4"]
-ARM_COSINE["probe_surprise_d8_nomupc"] = ARM_COSINE["living_v5_4x_d4"]
 # Scheduled-muPC arm config (2026-08-07): must follow the nomupc arm it
 # copies (the earlier misplaced assignment KeyError'd at import).
-ARM_CONFIGS["probe_d8_mupc_sched"] = dict(ARM_CONFIGS["probe_surprise_d8_nomupc"])
-ARM_GRAD_CLIP["probe_d8_mupc_sched"] = 1000.0
-ARM_CONFIGS["probe_surprise_d8_noproj"] = dict(ARM_CONFIGS["probe_surprise_d8"])
-ARM_TAPER["probe_surprise_d8_noproj"] = ARM_TAPER["living_v5_4x_d4"]
-ARM_FILELIST["probe_surprise_d8_noproj"] = ARM_FILELIST["living_v5_4x_d4"]
-ARM_SIGREG["probe_surprise_d8_noproj"] = ARM_SIGREG["living_v5_4x_d4"]
-ARM_COSINE["probe_surprise_d8_noproj"] = ARM_COSINE["living_v5_4x_d4"]
-ARM_TAPER["probe_surprise_d8"] = ARM_TAPER["living_v5_4x_d4"]
-ARM_FILELIST["probe_surprise_d8"] = ARM_FILELIST["living_v5_4x_d4"]
-ARM_SIGREG["probe_surprise_d8"] = ARM_SIGREG["living_v5_4x_d4"]
-ARM_COSINE["probe_surprise_d8"] = ARM_COSINE["living_v5_4x_d4"]
 
 
 def _param_groups(loss_module, model, arm: str, base_lr: float):
@@ -1057,13 +824,7 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
         online_encoder=model,
         sigreg_lambd=ARM_SIGREG.get(arm, SIGREG_LAMBD),
         sigreg_projection=ARM_SIGREG_PROJ.get(arm, "linear"),
-        sigreg_tc_window=ARM_TC_WINDOW.get(arm, 0),
         interior_sigreg_alpha=ARM_WSIG_ALPHA.get(arm, 0.0),
-        orth_lambda=ARM_ORTH_LAMBDA.get(arm, 0.0),
-        vbg_cap_weight=ARM_VBG_CAP_W.get(arm, 0.0),
-        vbg_share_weight=ARM_VBG_SHARE_W.get(arm, 0.0),
-        vbg_cap=ARM_VBG_CAP.get(arm, 0.05),
-        vbg_trace_normalized=not ARM_VBG_RAW.get(arm, False),
         w_ntp=ARM_W_NTP.get(arm, 0.0),
     ).to(device)
     # Provenance-consistency contract (2026-08-08): the stage-50 family
@@ -1074,9 +835,6 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
     _prov = {
         "w_ntp": ARM_W_NTP.get(arm, 0.0),
         "interior_sigreg_alpha": ARM_WSIG_ALPHA.get(arm, 0.0),
-        "orth_lambda": ARM_ORTH_LAMBDA.get(arm, 0.0),
-        "vbg_cap_weight": ARM_VBG_CAP_W.get(arm, 0.0),
-        "vbg_share_weight": ARM_VBG_SHARE_W.get(arm, 0.0),
     }
     for _k, _v in _prov.items():
         _live = float(getattr(loss_module, _k, float("nan")))
@@ -1145,9 +903,6 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
             grad_clip_norm=ARM_GRAD_CLIP.get(arm, 0.0),
             guard_min_step=ARM_GUARD_MIN_STEP.get(arm, 0),
             divergence_ppl_veto=ARM_PPL_VETO.get(arm, 0.0),
-            mu_pc_schedule_start=ARM_MUPC_SCHED.get(arm, (0, 1000, 0.25))[0],
-            mu_pc_schedule_ramp=ARM_MUPC_SCHED.get(arm, (0, 1000, 0.25))[1],
-            mu_pc_schedule_exponent=ARM_MUPC_SCHED.get(arm, (0, 1000, 0.25))[2],
         ),
         run_dir=run_dir,
     )
@@ -1224,18 +979,7 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
             "guard_min_step": ARM_GUARD_MIN_STEP.get(arm, 0),
             "lr_warmup_steps": ARM_LR_WARMUP.get(arm, 0),
             "divergence_ppl_veto": ARM_PPL_VETO.get(arm, 0.0),
-            "sigreg_tc_window": ARM_TC_WINDOW.get(arm, 0),
             "interior_sigreg_alpha": ARM_WSIG_ALPHA.get(arm, 0.0),
-            "orth_lambda": ARM_ORTH_LAMBDA.get(arm, 0.0),
-            # VBG doses persisted per run so the registration can be checked
-            # against what actually ran, not against the driver's current
-            # state (the 2026-08-05 attribution gap, closed for this family).
-            "w_ntp": ARM_W_NTP.get(arm, 0.0),
-            "vbg_cap_weight": ARM_VBG_CAP_W.get(arm, 0.0),
-            "vbg_share_weight": ARM_VBG_SHARE_W.get(arm, 0.0),
-            "vbg_trace_normalized": not ARM_VBG_RAW.get(arm, False),
-            "vbg_cap": ARM_VBG_CAP.get(arm, 0.05),
-            "mu_pc_schedule": ARM_MUPC_SCHED.get(arm),
         },
     }
     _result_path(arm, d_model, seed).write_text(json.dumps(result, indent=2))

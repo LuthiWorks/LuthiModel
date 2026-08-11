@@ -85,25 +85,6 @@ from luthi.v2.multimodal_model_pc import MultimodalPredictiveCodingLM
 from luthi.v2.sigreg import SIGReg
 
 
-def temporal_center(z: torch.Tensor, window: int) -> torch.Tensor:
-    """TC-SIGReg residuals (arXiv 2607.26924): z minus the centered
-    window mean of its sequence neighbours.
-
-    z: (B, S, D); window: odd kernel width in positions. Edge positions
-    average over the clipped window (count_include_pad=False), matching
-    the paper's sliding-window mean.
-    """
-    if window <= 0:
-        return z
-    if window % 2 == 0:
-        raise ValueError(f"tc window must be odd for exact centering; got {window}")
-    means = F.avg_pool1d(
-        z.transpose(1, 2), kernel_size=window, stride=1,
-        padding=window // 2, count_include_pad=False,
-    ).transpose(1, 2)
-    return z - means
-
-
 def _sketched_cov(z: torch.Tensor, sketch: torch.Tensor) -> torch.Tensor:
     """Centered covariance of ``z`` in sketch space. (K, K), differentiable."""
     flat = z.reshape(-1, z.shape[-1]) @ sketch          # (N, K)
@@ -115,7 +96,6 @@ def _sketched_cov(z: torch.Tensor, sketch: torch.Tensor) -> torch.Tensor:
 def sketched_isotropy_penalty(
     z: torch.Tensor,
     sketch: torch.Tensor,
-    trace_normalized: bool = False,
 ) -> torch.Tensor:
     """Weak-SIGReg penalty (arXiv 2603.05924): Frobenius distance of the
     sketched, centered covariance from identity.
@@ -123,90 +103,12 @@ def sketched_isotropy_penalty(
     z: (..., D) latents (flattened internally); sketch: (D, K) fixed
     Gaussian sketch scaled by 1/sqrt(D). Identity target = unit variance
     per sketched direction, zero cross-covariance — paper-faithful.
-
-    ``trace_normalized`` (VBG Term B, spec §1): rescale the covariance to
-    trace K before the identity comparison, so the penalty presses on
-    SHAPE (equal sharing among sketched directions) and is invariant to
-    overall scale. The raw form's magnitude is dominated by the scale
-    mismatch against the trunk's native std band (0.25-0.35, the 07-24
-    ruling): at std 0.3 a sketched dim has variance ~0.09, and the
-    diagonal term alone contributes sqrt(K)*|0.09-1| = 8*0.91 = 7.28 —
-    against a measured raw l_wsig of 6.99 on the arrest run at step 100.
-    Nearly the whole raw penalty is the scale-fight. Normalizing removes
-    that unpriced tax and leaves the sharing pressure that did the work.
     """
     cov = _sketched_cov(z, sketch)
-    if trace_normalized:
-        k = cov.shape[0]
-        cov = cov * (k / (cov.diagonal().sum() + 1e-12))
     # torch.eye(n, device=dml) returns an EMPTY tensor on the DirectML
     # backend (measured 2026-08-07: shape [0]); create on CPU and move.
     eye = torch.eye(cov.shape[0], dtype=cov.dtype).to(cov.device)
     return torch.linalg.norm(cov - eye)
-
-
-def top_direction_share(
-    z: torch.Tensor,
-    sketch: torch.Tensor,
-    power_vec: torch.Tensor,
-    n_iter: int = 3,
-) -> tuple[torch.Tensor, torch.Tensor]:
-    """Variance share of the top principal direction (VBG Term A gauge).
-
-    ``share_1 = lambda_max(Cov) / trace(Cov)`` estimated in sketch space by
-    ``n_iter`` power-iteration steps warm-started from ``power_vec``.
-
-    Returns ``(share, new_power_vec)``. The iterate is DETACHED (standard
-    spectral-norm practice, cf. Miyato et al.): gradients flow through the
-    Rayleigh quotient ``v^T C v`` and the trace, not through the eigenvector
-    estimation. Warm-starting is what makes 3 iterations sufficient — do not
-    re-randomize per step.
-
-    NOTE (flagged to the design seat): this is the share among the K sketched
-    directions, not among all D. Random projection keeps a strongly dominant
-    direction but subsamples the tail, so sketch-space share runs HIGHER than
-    the full-space share the soloist forensic reports. See
-    ``scripts/calibrate_vbg.py`` for the measured ratio.
-    """
-    cov = _sketched_cov(z, sketch)
-    v = power_vec
-    with torch.no_grad():
-        for _ in range(n_iter):
-            v = cov @ v
-            v = v / (v.norm() + 1e-12)
-    lam = v @ (cov @ v)                       # Rayleigh quotient, differentiable
-    trace = cov.diagonal().sum()
-    return lam / (trace + 1e-12), v.detach()
-
-
-def soloist_cap_penalty(share: torch.Tensor, cap: float) -> torch.Tensor:
-    """VBG Term A: penalize only the EXCESS of the top direction's variance
-    share above ``cap``.
-
-    ``relu(share - cap)^2`` — a cap, not a kill. The soloist forensic
-    (2026-08-07) found the dominant direction is the token-frequency axis,
-    a legitimate feature whose gain is stuck, not a parasite: in health it
-    carries under 1% of variance, in the best d8 recovery ~4.6%. A direction
-    is allowed its budget; only over-funding is taxed.
-    """
-    return torch.relu(share - cap).pow(2)
-
-
-def orthogonality_penalty(w: torch.Tensor) -> torch.Tensor:
-    """Scale-adapted soft orthogonality: ||W_hat^T W_hat - I||_F^2 / d,
-    with W_hat = W * sqrt(d) / ||W||_F.
-
-    Scale-free by construction — a matrix may grow or shrink freely; only
-    concentration of its energy into few directions is penalized. Zero
-    for any scalar multiple of an orthogonal matrix; O(d) for rank-1.
-    """
-    d = w.shape[0]
-    frob = torch.linalg.norm(w)
-    w_hat = w * (math.sqrt(d) / (frob + 1e-12))
-    gram = w_hat.t() @ w_hat
-    # CPU-create then move: torch.eye(n, device=dml) is empty (see above).
-    eye = torch.eye(d, dtype=w.dtype).to(w.device)
-    return (gram - eye).pow(2).sum() / d
 
 
 # LeWM defaults.
@@ -332,19 +234,8 @@ class JEPALoss(nn.Module):
         # registered in docs/research/2026-08-07_depth-remedy-probes-
         # hypothesis.md). All three default OFF — zero behaviour change
         # for every existing arm.
-        sigreg_tc_window: int = 0,
         interior_sigreg_alpha: float = 0.0,
         interior_sigreg_sketch: int = 64,
-        orth_lambda: float = 0.0,
-        # Variance-budget governor (VBG), spec
-        # docs/reviews/2026-08-07_variance-budget-governor-spec-for-opus.md.
-        # Both weights default 0.0 -> the governor is inert and every
-        # existing arm is bit-identical.
-        vbg_cap_weight: float = 0.0,
-        vbg_share_weight: float = 0.0,
-        vbg_cap: float = 0.05,
-        vbg_power_iters: int = 3,
-        vbg_trace_normalized: bool = True,
         # LLM-JEPA (arXiv 2509.14252), spec
         # docs/reviews/2026-08-08_llm-jepa-integration-spec-for-opus.md.
         # Default 0.0 -> inert; every existing arm bit-identical.
@@ -356,13 +247,6 @@ class JEPALoss(nn.Module):
         self.sigreg_lambd = sigreg_lambd
         self.context_fraction = context_fraction
         self.detach_target = bool(detach_target)
-        # TC-SIGReg (arXiv 2607.26924): SIGReg's input becomes the
-        # temporally centered residual, REPLACING the marginal input per
-        # the paper. 9 is our default request (odd for exact centering;
-        # the paper's 8 was ablated 4-32). For this substrate the window
-        # mean subtraction removes the shared component — the measured
-        # offset pathology — from SIGReg's view.
-        self.sigreg_tc_window = int(sigreg_tc_window)
         # Weak-SIGReg (arXiv 2603.05924): sketched covariance isotropy on
         # interior block latents, which currently receive no anti-collapse
         # pressure at all. Identity target presses toward unit variance in
@@ -371,19 +255,6 @@ class JEPALoss(nn.Module):
         # the probe measures. Which blocks supply latents is the model's
         # interior_latent_blocks config.
         self.interior_sigreg_alpha = float(interior_sigreg_alpha)
-        # Orthogonal penalty on the attention write path (v/o), classic
-        # soft orthogonality, scale-adapted (see orthogonality_penalty).
-        self.orth_lambda = float(orth_lambda)
-        # VBG (spec 2026-08-07). Term A caps the top direction's variance
-        # share; Term B is the sketched sharing penalty made scale-free.
-        # Marginal SIGReg is deliberately untouched: wsig10's arrest
-        # plausibly depended on it (the anti-composition result).
-        self.vbg_cap_weight = float(vbg_cap_weight)
-        self.vbg_share_weight = float(vbg_share_weight)
-        self.vbg_cap = float(vbg_cap)
-        self.vbg_power_iters = int(vbg_power_iters)
-        self.vbg_trace_normalized = bool(vbg_trace_normalized)
-        self._vbg_on = self.vbg_cap_weight > 0 or self.vbg_share_weight > 0
         # LLM-JEPA next-token term. `L = w_ntp * L_NTP + l_pred +
         # sigreg_lambd * l_sigreg`. The paper puts its weight on the JEPA
         # side (L = L_LLM + lambda * d(Pred(Enc(Text)), Enc(Code))) with NTP
@@ -405,7 +276,7 @@ class JEPALoss(nn.Module):
                 "next-token term has nothing to project logits with. Restore "
                 "the LM head or leave w_ntp at 0."
             )
-        if self.interior_sigreg_alpha > 0 or self._vbg_on:
+        if self.interior_sigreg_alpha > 0:
             # Fixed, seeded sketch: the penalty must measure the same
             # directions every step or it is noise, not pressure.
             g = torch.Generator().manual_seed(20260807)
@@ -414,21 +285,6 @@ class JEPALoss(nn.Module):
                 generator=g,
             ) / math.sqrt(online_encoder.d_model)
             self.register_buffer("interior_sketch", sketch)
-        if self._vbg_on:
-            # Warm-start iterates for the power method, one per governed
-            # block, in the order interior_latents is emitted.
-            #
-            # persistent=False (my call, per spec §4): this is optimizer
-            # scratch, not model state. Registering it non-persistent keeps
-            # every existing checkpoint loadable with no strict=False
-            # concession, and costs exactly one extra power-iteration step
-            # of convergence on resume. Seeded so a fresh process is
-            # reproducible.
-            n_gov = max(1, len(getattr(online_encoder, "interior_latent_blocks", ()) or ()))
-            gp = torch.Generator().manual_seed(20260808)
-            vecs = torch.randn(n_gov, int(interior_sigreg_sketch), generator=gp)
-            vecs = vecs / vecs.norm(dim=1, keepdim=True)
-            self.register_buffer("vbg_power_vecs", vecs, persistent=False)
 
         d_model = online_encoder.d_model
         n_heads = predictor_n_heads if predictor_n_heads is not None else online_encoder.n_heads
@@ -526,22 +382,6 @@ class JEPALoss(nn.Module):
             logits[:, :-1, :].reshape(-1, logits.shape[-1]),
             text_tokens[:, 1:].reshape(-1),
         )
-
-    def _raise_if_no_interior(self, interior) -> None:
-        """Fail loud when the governor is on but has nothing to govern.
-
-        Split out from the loss path so the contract is testable without a
-        full forward — a silently inert regularizer is precisely the failure
-        mode this repo's CLAUDE.md forbids, so it gets its own test.
-        """
-        if not interior:
-            raise RuntimeError(
-                "VBG weights > 0 (vbg_cap_weight=%r, vbg_share_weight=%r) but "
-                "the encoder produced no interior_latents — set "
-                "interior_latent_blocks on the model, or the governor is "
-                "silently inert."
-                % (self.vbg_cap_weight, self.vbg_share_weight)
-            )
 
     def compute_modality_loss(
         self,
@@ -698,14 +538,7 @@ class JEPALoss(nn.Module):
         # mean trunk scale can drift without SIGReg objecting, so `std_p5`
         # deserves watching for runaway on long runs. See
         # docs/research/2026-07-30_mupc-verdict.md.
-        # TC-SIGReg (2026-08-07): when enabled, SIGReg's input is the
-        # temporally centered residual, REPLACING the marginal latents
-        # (per the paper — no hybrid term).
-        sigreg_source = (
-            temporal_center(target_full_latents, self.sigreg_tc_window)
-            if self.sigreg_tc_window > 0 else target_full_latents
-        )
-        flat = sigreg_source.reshape(-1, d_model)
+        flat = target_full_latents.reshape(-1, d_model)
         # BatchNorm1d expects (N, C); flat is (B * seq_len, D).
         projected = self.projection_heads[modality](flat)
         # SIGReg expects (T, B, D). Use T=1, B=(B * seq_len) -- the
@@ -739,47 +572,6 @@ class JEPALoss(nn.Module):
             l_wsig = torch.stack(per_block).mean()
             total = total + self.interior_sigreg_alpha * l_wsig
 
-        # ---- Variance-budget governor (VBG, 2026-08-07 spec) ----
-        # Term A caps the top direction's variance share; Term B is the
-        # sharing penalty, trace-normalized so it presses on shape rather
-        # than fighting the trunk's native scale. Both computed on the same
-        # interior latents the wsig path already collects.
-        l_vbg_cap = None
-        l_vbg_share = None
-        vbg_shares: list[torch.Tensor] = []
-        if self._vbg_on:
-            interior = online_result.get("interior_latents")
-            self._raise_if_no_interior(interior)
-            caps: list[torch.Tensor] = []
-            shares: list[torch.Tensor] = []
-            new_vecs: list[torch.Tensor] = []
-            for i, z in enumerate(interior.values()):
-                vec = self.vbg_power_vecs[min(i, self.vbg_power_vecs.shape[0] - 1)]
-                share, new_vec = top_direction_share(
-                    z, self.interior_sketch, vec.to(z.dtype),
-                    n_iter=self.vbg_power_iters,
-                )
-                vbg_shares.append(share.detach())
-                new_vecs.append(new_vec)
-                if self.vbg_cap_weight > 0:
-                    caps.append(soloist_cap_penalty(share, self.vbg_cap))
-                if self.vbg_share_weight > 0:
-                    shares.append(sketched_isotropy_penalty(
-                        z, self.interior_sketch,
-                        trace_normalized=self.vbg_trace_normalized,
-                    ))
-            # Warm-start carry-over for the next step.
-            with torch.no_grad():
-                for i, nv in enumerate(new_vecs):
-                    if i < self.vbg_power_vecs.shape[0]:
-                        self.vbg_power_vecs[i].copy_(nv.to(self.vbg_power_vecs.dtype))
-            if caps:
-                l_vbg_cap = torch.stack(caps).mean()
-                total = total + self.vbg_cap_weight * l_vbg_cap
-            if shares:
-                l_vbg_share = torch.stack(shares).mean()
-                total = total + self.vbg_share_weight * l_vbg_share
-
         # ---- LLM-JEPA next-token term (2026-08-08 spec) ----
         # The anti-collapse force the record has never carried at depth:
         # cross-entropy over 32k classes cannot be satisfied by a rank-2
@@ -795,16 +587,6 @@ class JEPALoss(nn.Module):
             l_ntp = self._ntp_loss(ntp_tokens)
             total = total + self.w_ntp * l_ntp
 
-        # ---- Orthogonal penalty on the attention write path ----
-        l_orth = None
-        if self.orth_lambda > 0:
-            pens = []
-            for block in self.online_encoder.blocks:
-                pens.append(orthogonality_penalty(block.attention.v_proj.weight))
-                pens.append(orthogonality_penalty(block.attention.o_proj.weight))
-            l_orth = torch.stack(pens).mean()
-            total = total + self.orth_lambda * l_orth
-
         # ---- Diagnostics for the runner's kill criteria ----
         online_per_dim_std = online_context_latents.std(dim=(0, 1))  # [D]
 
@@ -813,17 +595,7 @@ class JEPALoss(nn.Module):
             "l_pred": l_pred.detach(),
             "l_sigreg": l_sigreg.detach(),
             "l_wsig": l_wsig.detach() if l_wsig is not None else None,
-            "l_orth": l_orth.detach() if l_orth is not None else None,
             "l_ntp": l_ntp.detach() if l_ntp is not None else None,
-            "l_vbg_cap": l_vbg_cap.detach() if l_vbg_cap is not None else None,
-            "l_vbg_share": l_vbg_share.detach() if l_vbg_share is not None else None,
-            # Per-governed-block top-direction share (power-iteration
-            # estimate, detached). Empty when the governor is off; the
-            # always-on gauge lives in the runner's deep metrics, computed
-            # exactly from the SVD that is already being taken there.
-            "vbg_top_dir_share": (
-                [float(s.item()) for s in vbg_shares] if vbg_shares else None
-            ),
             "online_std": online_per_dim_std.detach(),
             "online_context_latents": online_context_latents.detach(),
             "block_latents": online_result.get("block_latents"),
