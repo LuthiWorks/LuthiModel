@@ -237,3 +237,21 @@ The design seat's lean: (b), with (a) as its first agenda item if the
 table wants one more number. Either way the week ends with the guard
 stack trustworthy, the instruments decomposed and honest, and the
 attractor named, measured, and still standing.
+
+---
+
+# SET-POINT SWEEP REGISTRATION (2026-08-10, external protocol step 2)
+
+Context: the external protocol's step-1 reading was taken and its
+discriminator NEUTRALIZED by our healthy-d4 control (set_point_drift is
+near zero in sick AND healthy runs alike; the anchor is glacial by
+design at the 1e-6 default; precision floors are not binding anywhere).
+The sweep therefore runs as a MEDICINE probe, not a cause-confirmation:
+does a mobile homeostatic anchor change the late collapse? Stage 53:
+the v2 arm with set_point_adapt_rate 1e-5 / 1e-4 / 1e-3, seed 46 each,
+6000 steps, nothing else changed. Read: outcome class + late-transit
+timing vs v2's 3700/5000+/4700 deaths; the precision front-back
+divergence (block-0 tripling while deep blocks fall, 3000-5000 — the
+new late-transit lead from the same reading) tracked per arm. Scouting
+grade (1 seed/value); any arm that changes the outcome class earns the
+full three-seed treatment before belief.

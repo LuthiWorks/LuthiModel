@@ -138,174 +138,20 @@ STAGES: dict[int, list[tuple[str, int]]] = {
     # fix is unit-tested but has never run at scale, and the defect it
     # repairs was invisible to every counter for five whole families.
     # Distinct arm name so its artifacts can never pool with a family.
-    12: [("probe_storefix", 512)],
-    # SURPRISE-DRIVE PROBE (2026-07-29, not a registered family): stage 12's
-    # configuration plus drive_mode="surprise". Same purpose and same
-    # discipline -- the drive fix is unit-tested (20 tests) but has never run on
-    # real corpus data, and the thing it repairs (a self-extinguishing drive)
-    # was invisible for five families because "quiet because familiar" and
-    # "quiet because broken" were not separable. Read drive_duty first.
-    13: [("probe_surprise", 512)],
-    # SURPRISE DRIVE AT DEPTH 8 (2026-07-29, Brian's call; also the depth v6
-    # was registered to start at). Full length -- the extinction question is
-    # what this run exists to answer and 4,000 steps provably cannot.
-    14: [("probe_surprise_d8", 512)],
-    # SIGREG PROJECTION TEST (2026-07-30): stage 14 with sigreg_projection
-    # "none" instead of "linear". One variable. Readout is offset dominance,
-    # NOT capability -- the carried-over clip independently kills capability.
-    15: [("probe_surprise_d8_noproj", 512)],
-    # muPC TEST (2026-07-30): stage 14 with mu_pc_enabled=False. One variable.
-    # Primary readout is within-batch pairwise cosine measured post-hoc, NOT
-    # capability -- the carried-over clip independently kills capability.
-    16: [("probe_surprise_d8_nomupc", 512)],
-    # muPC RATE-BALANCE TEST (2026-07-30): muPC back ON at its normal
-    # exponent, with the PC rates scaled by residual_scale so both halves of
-    # the two-speed system are attenuated together. Tests whether depth-scale
-    # control and no-collapse can be had at the same time. One variable
-    # against stage 14.
-    17: [("probe_surprise_d8_balanced", 512)],
-    # OPPOSITE-DIRECTION TEST (2026-07-30): PC rates amplified by
-    # 1/residual_scale. Same magnitude of adjustment as stage 17, opposite sign.
-    18: [("probe_surprise_d8_amplified", 512)],
-    # DOUBLE THE AMPLIFICATION (2026-07-30): power -2, multiplier 2.829x.
-    19: [("probe_surprise_d8_amp2", 512)],
-    # power=-4 + clip raised to 20000 (2026-07-30). PC multiplier == n_blocks.
-    20: [("probe_surprise_d8_amp4", 512)],
-    # power=-8 (2026-07-30). PC multiplier == n_blocks**2 (64x at depth 8).
-    21: [("probe_surprise_d8_amp8", 512)],
-    # EMBEDDING SCALING (2026-07-31): stage 20 + mu_pc_scale_embedding.
-    22: [("probe_surprise_d8_embscale", 512)],
-    # BACKPROP-LR COMPENSATION (2026-07-31): stage 20 + block params at
-    # lr/residual_scale. The counterpart of mu_pc_rate_power for the backprop
-    # side -- the half that owns block 0's canceller.
-    23: [("probe_surprise_d8_bplr", 512)],
-    # BLOCK-0-ONLY compensation (2026-07-31): stage 23 confined to block 0.
-    24: [("probe_surprise_d8_bplr0", 512)],
-    # SURPRISE DRIVE OFF (2026-07-31): stage 20 with drive_mode="raw".
-    25: [("probe_d8_amp4_rawdrive", 512)],
-    # BUNDLE OFF AT DEPTH 8 (2026-08-05, rung 1 of the ablation ladder --
-    # registered in docs/research/2026-08-05_bundleoff-at-depth-hypothesis.md).
-    # Stage 14 minus exactly the seven bundle mechanisms, muPC kept ON.
-    # The record already shows the bundle is not sufficient alone (stage 16:
-    # d8 + full bundle + muPC off is healthy on every axis); this run asks
-    # whether muPC x depth is sufficient WITHOUT the bundle. Rank stays
-    # collapsed -> the entire add-back ladder is unnecessary.
-    26: [("probe_d8_bundleoff", 512)],
-    # NAKED TRUNK AT DEPTH 8 (2026-08-06, control 1 from the rung-1 verdict --
-    # registered in docs/research/2026-08-06_naked-trunk-at-depth-hypothesis.md).
-    # Stage 26 with muPC also off: the last factorial cell. Completes ->
-    # muPC destabilized the bundle-off trunk; killed by the divergence
-    # guard -> the naked d8 trunk is unstable regardless and muPC is
-    # exonerated for rung 1's divergence (not for the collapse).
-    27: [("probe_d8_naked", 512)],
-    # V5 AT DEPTH 8 (2026-08-06, Brian's call -- registered in
-    # docs/research/2026-08-06_v5-at-depth8-hypothesis.md). The exact
-    # living_v5_4x_d4 configuration with ONLY n_blocks changed: the
-    # pre-07-27 bundle (backward pass, consolidation, gain, trust, muPC)
-    # without the store fix, band, or surprise drive. This is the control
-    # the 07-31 isolation doc named as its own sequencing error and never
-    # ran. Unclipped, faithful to v5 -- the guards are the safety net.
-    28: [("probe_v5_d8", 512)],
-    # V5 AT DEPTH 8, KILLS DELAYED TO STEP 1000 (2026-08-06, Brian's
-    # instruction: "delay all kill triggers until at least step 1000").
-    # Byte-identical model config to stage 28 under a distinct name; the
-    # only change is observation-side -- guard_min_step=1000, so the
-    # failure that three straight runs showed us only one frame of gets
-    # observed for ten deep firings before the guards resume. Registered
-    # in docs/research/2026-08-06_v5-d8-observed-failure-hypothesis.md.
-    29: [("probe_v5_d8_dk1000", 512)],
-    # V5 AT DEPTH 8, KILLS DELAYED TO 5000, 6000 STEPS (2026-08-06,
-    # Brian's standing order after dk1000 showed collapse -> slow heal ->
-    # relapse at 2600: extend the leash and watch whether the cycle
-    # recurs and whether between-event healing compounds. Registered in
-    # the dk1000 doc's RECORD section. Launch with
-    # --max-batches-per-epoch 6000.
-    30: [("probe_v5_d8_dk5000", 512)],
-    # LR WARMUP AT DEPTH 8 (2026-08-06, Opus's hypothesis, Fable's attack
-    # survived -- registered in
-    # docs/research/2026-08-06_warmup-at-depth8-hypothesis.md). The JEPA
-    # runner shipped without the warmup the older trainers carry
-    # deliberately (train_pc.py, audit 2026-05-10); every JEPA run has
-    # trained at full 3e-4 from step 0, and the d8 destruction completes
-    # inside 200 steps. probe_v5_d8 byte-identical + linear warmup over
-    # 1000 steps. Scored on pooled stable_rank in ABSOLUTE terms (healthy
-    # d4 band measured 13.5-47.5; collapsed floor <= 2.42), per the
-    # instrument findings in Opus's 08-06 brief.
-    31: [("probe_v5_d8_warmup", 512)],
-    # WARMUP +50% (2026-08-06, Brian's call after stage 31's near-recovery:
-    # "increase whatever changes you made by another 50%"). Ramp 1000 ->
-    # 1500, guard hold moved with it. One variable against stage 31.
-    # Registered in docs/research/2026-08-06_warmup-at-depth8-hypothesis.md
-    # (EXTENSION section).
-    32: [("probe_v5_d8_warmup15", 512)],
-    # CHECKPOINT SURGERY (2026-08-07, Brian's engineering ruling --
-    # registered in docs/research/2026-08-07_floor-attractor-mechanism.md
-    # SURGERY section). Resumes seed 97's completed-collapsed checkpoint
-    # with the v/o projections re-broadened by shrink-and-perturb
-    # (0.6, 0.8*std, repeated to stable_rank >= 20) and Adam moments
-    # reset. Tests whether the floor releases when the carve is broken --
-    # simultaneously the mechanism's falsification test and the cheapest
-    # deployable remedy candidate.
-    33: [("probe_v5_d8_surgery", 512)],
-    # DEPTH-8 REMEDY PROBES (2026-08-07, Brian's build order; registered
-    # in docs/research/2026-08-07_depth-remedy-probes-hypothesis.md).
-    # Three mechanisms singly, then pairwise. All share the warmup-1000
-    # base (stage 31's arm -- the only d8 config with any escape
-    # history), cadence 100, guard hold 1000, unclipped, seed 46.
-    # 1 = TC-SIGReg (arXiv 2607.26924), 2 = interior Weak-SIGReg
-    # (arXiv 2603.05924), 3 = orthogonal penalty (classic).
-    34: [("probe_d8_tc", 512)],
-    35: [("probe_d8_wsig", 512)],
-    36: [("probe_d8_orth", 512)],
-    37: [("probe_d8_tc_wsig", 512)],
-    38: [("probe_d8_tc_orth", 512)],
-    39: [("probe_d8_wsig_orth", 512)],
-    # DOSE LADDER (2026-08-07, Brian's ruling: explore settings before
-    # retiring mechanisms). Sized against measured loss magnitudes; the
-    # singles ran the added-term mechanisms at ~1/100th of loss scale.
-    40: [("probe_d8_wsig1", 512)],
-    41: [("probe_d8_wsig10", 512)],
-    42: [("probe_d8_orth1", 512)],
-    # TC + wsig AT THE GRIPPING DOSE (2026-08-07, Brian's standing
-    # conditional, triggered by rung 2 arresting the collapse).
-    43: [("probe_d8_tc_wsig10", 512)],
-    # SCHEDULED muPC (2026-08-07, Brian's design): acquire at scale 1.0
-    # in the stage-16 healthy cell, then anneal muPC in at step 3000 over
-    # 1000 steps; observe 2000 steps at full attenuation. Registered in
-    # docs/research/2026-08-07_scheduled-mupc-hypothesis.md.
-    44: [("probe_d8_mupc_sched", 512)],
-    # Variance-budget governor (2026-08-07 spec). Cap the soloist, share
-    # the chorus, marginal SIGReg untouched. Three seeds, always -- the
-    # gate is >= 2 of 3, per the spec's §5.
-    45: [("probe_d8_vbg", 512)],
-    # VBG raw sub-family (2026-08-07 late, Fable's SB ruling): arrest-anchored
-    # Term B with trace normalization OFF -- the proven pressure plus cap.
-    46: [("probe_d8_vbg_raw", 512)],
-    # VBG v2 (2026-08-08): raw anchor, cap tightened to 0.02 -- Opus's SC
-    # number, ratified after the 0.05 cap measured incompatible with the
-    # stable-rank-20 gate. One variable vs stage 46.
-    47: [("probe_d8_vbg2", 512)],
-    # WIDTH RUNG (2026-08-08, Brian's aspect-ratio hypothesis): the
-    # warmup-base d8 arm at d_model 768 -- width-per-depth back to 96.
-    48: [("probe_d8_w768", 768)],
-    # D4 EARLY-TRAJECTORY MEASUREMENT (2026-08-08, Brian's question "why
-    # do d8 runs start at stable 1-3 when d4 starts at 13-30?"): the d4
-    # family's first-ever reading was step 1000 (cadence 1000) -- its
-    # step-100 state has never been observed. 800 steps at cadence 100
-    # answers whether health starts high or climbs fast.
-    49: [("probe_d4_c100", 512)],
-    # LLM-JEPA, the pivot (2026-08-08 spec). Depth 8, muPC OFF. The bet:
-    # cross-entropy over 32k classes is an anti-collapse force a rank-2
-    # representation cannot satisfy, and the record has never carried one
-    # at depth. Three seeds always: 46/95/97.
+    # --- Depth-8 probe era (stages 12-52, 2026-07-29 to 08-09): PRUNED ---
+    # 2026-08-10, Brian's ruling: the probe arms and stages of the depth
+    # investigation are removed from the live driver. Every arm
+    # definition, dose, and verdict survives in git history and in
+    # docs/research/ (start: 2026-08-08_depth-investigation-consolidated
+    # .md). Active work continues from the LLM-JEPA pivot arm below.
     50: [("probe_d8_llmjepa", 512)],
-    # RUNWAY FAMILY (2026-08-08): identical arm, 6000 steps -- every
-    # 3000-step tape ended mid-climb; this asks where the climb goes.
-    51: [("probe_d8_llmjepa6k", 512)],
-    # V2 (2026-08-08): JEPA leads, NTP anchors -- w_ntp 3, sized from the
-    # measured settled magnitudes after the handoff read showed w_ntp=400
-    # made the family 98-100% NTP from step 1100.
     52: [("probe_d8_llmjepa_v2", 512)],
+    # SET-POINT ADAPT-RATE SWEEP (2026-08-10, external protocol step 2,
+    # Brian's go): the v2 arm with the homeostatic anchor made mobile.
+    # Default is 1e-6 (glacial); the sweep asks whether a mobile anchor
+    # changes the late collapse. One parameter, nothing else.
+    53: [("probe_d8_v2_spa5", 512), ("probe_d8_v2_spa4", 512),
+         ("probe_d8_v2_spa3", 512)],
 }
 
 # Per-arm model configuration -- single source of truth, shared with
@@ -850,6 +696,19 @@ for _a in ("probe_d8_llmjepa6k",):
     ARM_SIGREG[_a] = ARM_SIGREG["living_v5_4x_d4"]
     ARM_COSINE[_a] = ARM_COSINE["living_v5_4x_d4"]
 ARM_CONFIGS["probe_d8_llmjepa_v2"] = dict(ARM_CONFIGS["probe_d8_llmjepa"])
+for _spa_arm, _spa in (("probe_d8_v2_spa5", 1e-5), ("probe_d8_v2_spa4", 1e-4),
+                       ("probe_d8_v2_spa3", 1e-3)):
+    ARM_CONFIGS[_spa_arm] = dict(ARM_CONFIGS["probe_d8_llmjepa_v2"],
+                                 set_point_adapt_rate=_spa)
+    ARM_W_NTP[_spa_arm] = 3.0
+    ARM_PPL_VETO[_spa_arm] = 8000.0
+    ARM_DEEP_CADENCE[_spa_arm] = 100
+    ARM_GUARD_MIN_STEP[_spa_arm] = 1000
+    ARM_LR_WARMUP[_spa_arm] = 1000
+    ARM_TAPER[_spa_arm] = ARM_TAPER["living_v5_4x_d4"]
+    ARM_FILELIST[_spa_arm] = ARM_FILELIST["living_v5_4x_d4"]
+    ARM_SIGREG[_spa_arm] = ARM_SIGREG["living_v5_4x_d4"]
+    ARM_COSINE[_spa_arm] = ARM_COSINE["living_v5_4x_d4"]
 for _a in ("probe_d8_llmjepa_v2",):
     ARM_DEEP_CADENCE[_a] = 100
     ARM_GUARD_MIN_STEP[_a] = 1000
