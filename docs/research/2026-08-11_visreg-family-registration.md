@@ -103,7 +103,10 @@ standing late-collapse lead from the sweep verdict).
 
 ## Launch
 
-    python scripts/jepa_pilot_driver.py --stage 54 --seeds 46 95 97 \
+    python scripts/jepa_pilot_driver.py --stage 54 --seeds 46,95,97 \
         --epochs 1 --max-batches-per-epoch 6000 --heldout-batches 5
+
+(First launch attempt failed on `--seeds 46 95 97` -- the flag takes a
+comma-separated string. Corrected here; no GPU time spent.)
 
 Not launched at registration time; awaiting Brian's go.
