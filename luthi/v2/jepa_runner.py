@@ -504,7 +504,7 @@ def _light_collapse_metrics(
     predicted_target: Optional[torch.Tensor],
     ctx_len: int,
     online_std: torch.Tensor,
-    l_sigreg: float,
+    l_sigreg: Optional[float],
 ) -> dict:
     """Per-modality light metrics. LeJEPA refactor 2026-06-09: dropped
     target_std (still produced by the loss but not as a distinct kill
@@ -548,7 +548,10 @@ def _light_collapse_metrics(
     # SIGReg = encoder output drifting away from isotropic Gaussian,
     # the regularizer's target. The kill criterion based on this is the
     # natural LeJEPA-era replacement for the EMA-asymmetry kill-5.
-    metrics["sigreg"] = float(l_sigreg)
+    # None under the VISReg replacement path (2026-08-11): the SIGReg
+    # statistic is not computed there, and a stale/zero stand-in would be
+    # a lying label. No kill path reads this metric numerically.
+    metrics["sigreg"] = float(l_sigreg) if l_sigreg is not None else None
 
     # Predictor-trivial cosine: kill-5's surviving axis. Predicted
     # vs target-block (same encoder, target positions). Still a
@@ -959,6 +962,20 @@ class JEPATrainer:
             "sigreg_num_proj": int(self.loss_module.sigreg.num_proj),
             "context_fraction": self.loss_module.context_fraction,
         }
+        # VISReg replacement path (2026-08-11): when active, the SIGReg
+        # entries above describe a module that never ran this arm --
+        # record the replacement explicitly so the config cannot be
+        # misread as a SIGReg run.
+        if getattr(self.loss_module, "visreg_lambda", 0.0) > 0:
+            vr = self.loss_module.visreg
+            config_dict["loss"].update({
+                "visreg_lambda": self.loss_module.visreg_lambda,
+                "visreg_num_proj": int(vr.num_proj),
+                "visreg_scale_w": vr.lambda_scale,
+                "visreg_shape_w": vr.lambda_shape,
+                "visreg_center_w": vr.lambda_center,
+                "sigreg_replaced_by_visreg": True,
+            })
         with open(config_path, "w", encoding="utf-8") as f:
             json.dump(config_dict, f, indent=2)
         logger.info("Archived run config to %s", config_path)
@@ -1128,7 +1145,14 @@ class JEPATrainer:
             # LeJEPA refactor 2026-06-09: l_var / l_cov replaced by
             # l_sigreg. SIGReg is the single anti-collapse term that
             # subsumes both variance and covariance regularization.
-            "l_sigreg": float(raw["l_sigreg"].item()),
+            "l_sigreg": _opt_item(raw.get("l_sigreg")),
+            # VISReg terms (2026-08-11) -- None unless the arm runs the
+            # VISReg replacement path. Logged from birth per the standing
+            # observability rule: a term you cannot read you cannot dose.
+            "l_visreg": _opt_item(raw.get("l_visreg")),
+            "l_vis_scale": _opt_item(raw.get("l_vis_scale")),
+            "l_vis_shape": _opt_item(raw.get("l_vis_shape")),
+            "l_vis_center": _opt_item(raw.get("l_vis_center")),
             # Auxiliary loss terms. DEVIATION from VBG spec §6 ("no changes
             # to the metric contract beyond the one new field") -- flagged
             # deliberately rather than taken silently, because the omission
@@ -1202,7 +1226,7 @@ class JEPATrainer:
                 online_std=raw["online_std"],
                 # LeJEPA refactor: SIGReg loss value is the per-modality
                 # collapse signal (no more target-encoder std).
-                l_sigreg=float(raw["l_sigreg"].item()),
+                l_sigreg=_opt_item(raw.get("l_sigreg")),
             )
             record["light"] = light_m
             self.history.push(modality, light_m)
@@ -1319,11 +1343,19 @@ class JEPATrainer:
     def _human_log_line(self, record: dict) -> None:
         elapsed_h = record["elapsed_seconds"] / 3600.0
         light = record.get("light", {})
+        # Under the VISReg replacement path l_sigreg is None and l_visreg
+        # carries the regularizer; show whichever one actually ran.
+        if record.get("l_sigreg") is not None:
+            reg_str = f"L_sigreg={record['l_sigreg']:.4f} "
+        elif record.get("l_visreg") is not None:
+            reg_str = f"L_visreg={record['l_visreg']:.4f} "
+        else:
+            reg_str = "L_sigreg=None "
         msg = (
             f"[step {record['step']:>7}] mod={record['modality']:<6} "
             f"loss={record['loss']:.4f} "
             f"L_pred={record['l_pred']:.4f} "
-            f"L_sigreg={record['l_sigreg']:.4f} "
+            f"{reg_str}"
             f"std_p5={light.get('online_std_p5', float('nan')):.4f} "
             f"cos_pred={light.get('predictor_trivial_cosine_mean', float('nan')):.4f} "
             f"elapsed={elapsed_h:.2f}h"
@@ -1893,6 +1925,7 @@ class JEPATrainer:
                     "predictor.",
                     "projection_heads.",
                     "sigreg.",
+                    "visreg.",
                 ))
                 and name != "action_token"
             },

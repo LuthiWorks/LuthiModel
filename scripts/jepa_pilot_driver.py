@@ -152,6 +152,14 @@ STAGES: dict[int, list[tuple[str, int]]] = {
     # changes the late collapse. One parameter, nothing else.
     53: [("probe_d8_v2_spa5", 512), ("probe_d8_v2_spa4", 512),
          ("probe_d8_v2_spa3", 512)],
+    # VISREG REPLACEMENT (2026-08-11, external protocol step 3, Brian's
+    # build order; rulings in docs/reviews/2026-08-10_pruning-and-visreg-
+    # brief-for-opus.md). v5-at-d8 base, muPC off, SIGReg REPLACED by
+    # VISReg (arXiv 2606.02572) on TRUNK latents, convex mix 0.6, paper
+    # defaults. NTP is OUT of v1 (aux-theorem read: its protective
+    # condition is structurally unavailable at pilot scale) -- the
+    # cleanest possible one-variable swap against the v5-d8 record.
+    54: [("probe_d8_visreg", 512)],
 }
 
 # Per-arm model configuration -- single source of truth, shared with
@@ -586,6 +594,40 @@ for _spa_arm, _spa in (("probe_d8_v2_spa5", 1e-5), ("probe_d8_v2_spa4", 1e-4),
     ARM_FILELIST[_spa_arm] = ARM_FILELIST["living_v5_4x_d4"]
     ARM_SIGREG[_spa_arm] = ARM_SIGREG["living_v5_4x_d4"]
     ARM_COSINE[_spa_arm] = ARM_COSINE["living_v5_4x_d4"]
+# ---------------------------------------------------------------------------
+# VISReg replacement arm (2026-08-11), stage 54.
+#
+# Doses are the PAPER'S, adopted as published (the week's costliest
+# errors were re-derived dosings): convex lambda 0.6 (their small-
+# dataset recommendation), component weights 1.0 each, K = 1024 (their
+# K = C*D guidance with C > 1 at D = 512). All three VISReg terms are
+# O(1) by construction -- none can run to the 10^3 our Epps-Pulley
+# statistic hits at init -- so no gradient-share calibration pass is
+# needed before first flight; the per-term logging (l_vis_*) is the
+# check that this holds in practice.
+#
+# sigreg_projection="none" is REQUIRED by the loss module (trunk-latents
+# ruling: the learnable head absorbs scale, measured 0.42-0.55 singular
+# values, and would blind VISReg exactly as it blinded SIGReg).
+# ARM_SIGREG is set to 0.0 for record honesty: SIGReg does not run in
+# this arm, and a persisted 0.2 would imply a route that does not exist.
+# NO ARM_W_NTP / ARM_PPL_VETO entries: NTP is out of v1 by ruling, and
+# the ppl veto is meaningless without it -- the plain NMSE guard applies.
+# ---------------------------------------------------------------------------
+ARM_VISREG: dict[str, float] = {"probe_d8_visreg": 0.6}
+ARM_VISREG_NUM_PROJ: dict[str, int] = {"probe_d8_visreg": 1024}
+ARM_CONFIGS["probe_d8_visreg"] = dict(
+    ARM_CONFIGS["probe_v5_d8"], mu_pc_enabled=False,
+)
+ARM_SIGREG_PROJ["probe_d8_visreg"] = "none"
+ARM_SIGREG["probe_d8_visreg"] = 0.0
+ARM_DEEP_CADENCE["probe_d8_visreg"] = 100
+ARM_GUARD_MIN_STEP["probe_d8_visreg"] = 1000
+ARM_LR_WARMUP["probe_d8_visreg"] = 1000
+ARM_TAPER["probe_d8_visreg"] = ARM_TAPER["living_v5_4x_d4"]
+ARM_FILELIST["probe_d8_visreg"] = ARM_FILELIST["living_v5_4x_d4"]
+ARM_COSINE["probe_d8_visreg"] = ARM_COSINE["living_v5_4x_d4"]
+
 for _a in ("probe_d8_llmjepa_v2",):
     ARM_DEEP_CADENCE[_a] = 100
     ARM_GUARD_MIN_STEP[_a] = 1000
@@ -826,6 +868,8 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
         sigreg_projection=ARM_SIGREG_PROJ.get(arm, "linear"),
         interior_sigreg_alpha=ARM_WSIG_ALPHA.get(arm, 0.0),
         w_ntp=ARM_W_NTP.get(arm, 0.0),
+        visreg_lambda=ARM_VISREG.get(arm, 0.0),
+        visreg_num_proj=ARM_VISREG_NUM_PROJ.get(arm, 1024),
     ).to(device)
     # Provenance-consistency contract (2026-08-08): the stage-50 family
     # ran with w_ntp=400 in pilot_result.json while the loss module held
@@ -835,6 +879,7 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
     _prov = {
         "w_ntp": ARM_W_NTP.get(arm, 0.0),
         "interior_sigreg_alpha": ARM_WSIG_ALPHA.get(arm, 0.0),
+        "visreg_lambda": ARM_VISREG.get(arm, 0.0),
     }
     for _k, _v in _prov.items():
         _live = float(getattr(loss_module, _k, float("nan")))
@@ -980,6 +1025,19 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
             "lr_warmup_steps": ARM_LR_WARMUP.get(arm, 0),
             "divergence_ppl_veto": ARM_PPL_VETO.get(arm, 0.0),
             "interior_sigreg_alpha": ARM_WSIG_ALPHA.get(arm, 0.0),
+            # Restored 2026-08-11: the 08-10 prune dropped this entry from
+            # the result config while w_ntp remained a live mechanism (the
+            # v2 family runs at 3.0). The provenance assert above compares
+            # the ARM dict to the live module, so it could not catch the
+            # persisted FILE going silent -- exactly the class the assert
+            # exists for, one layer further out.
+            "w_ntp": ARM_W_NTP.get(arm, 0.0),
+            # VISReg replacement provenance (2026-08-11). When lambda > 0
+            # the sigreg_lambd above is 0.0 by arm construction and SIGReg
+            # did not run; the convex mix replaces the additive form.
+            "visreg_lambda": ARM_VISREG.get(arm, 0.0),
+            "visreg_num_proj": ARM_VISREG_NUM_PROJ.get(arm, 1024),
+            "sigreg_projection": ARM_SIGREG_PROJ.get(arm, "linear"),
         },
     }
     _result_path(arm, d_model, seed).write_text(json.dumps(result, indent=2))

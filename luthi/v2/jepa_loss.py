@@ -241,6 +241,20 @@ class JEPALoss(nn.Module):
         # Default 0.0 -> inert; every existing arm bit-identical.
         w_ntp: float = 0.0,
         ntp_freeze_plasticity: bool = True,
+        # VISReg (arXiv 2606.02572), 2026-08-11 -- SIGReg's REPLACEMENT,
+        # not an addition (external protocol step 3; rulings in
+        # docs/reviews/2026-08-10_pruning-and-visreg-brief-for-opus.md).
+        # visreg_lambda is the Eq. 9 CONVEX mixing weight:
+        #     L = (1 - lambda) * l_pred + lambda * L_Reg
+        # 0.0 (default) = OFF: the SIGReg path runs bit-identically for
+        # every existing arm. When > 0, SIGReg is skipped entirely and
+        # l_sigreg is reported as None -- never a stale number for a term
+        # that did not run.
+        visreg_lambda: float = 0.0,
+        visreg_num_proj: int = 1024,
+        visreg_scale_w: float = 1.0,
+        visreg_shape_w: float = 1.0,
+        visreg_center_w: float = 1.0,
     ):
         super().__init__()
         self.online_encoder = online_encoder
@@ -270,6 +284,38 @@ class JEPALoss(nn.Module):
         # the record. Frozen keeps NTP a pure gradient signal on the
         # backprop params and preserves one-variable comparability.
         self.ntp_freeze_plasticity = bool(ntp_freeze_plasticity)
+        self.visreg_lambda = float(visreg_lambda)
+        # Validate on ANY nonzero value: a negative lambda falling through
+        # a `> 0` gate to "silently off" would be exactly the inert-
+        # mechanism class this repo forbids.
+        if self.visreg_lambda != 0.0 and not (0.0 < self.visreg_lambda < 1.0):
+            raise ValueError(
+                "visreg_lambda is the convex Eq. 9 mixing weight and must "
+                f"lie in (0, 1), or 0 for off; got {self.visreg_lambda}."
+            )
+        if self.visreg_lambda > 0:
+            # Trunk-latents ruling (2026-08-10, return note (d)): the
+            # learnable projection head ABSORBS SCALE (singular values
+            # 0.552 at d4, 0.423 at d8, measured), so a regularizer behind
+            # it never sees the real scale and its variance target cannot
+            # bind on the trunk -- the exact measured SIGReg blindness.
+            # Adopting VISReg through the head would reproduce the defect
+            # and misattribute it to VISReg. Refuse loudly.
+            if sigreg_projection != "none":
+                raise RuntimeError(
+                    "visreg_lambda > 0 requires sigreg_projection='none' "
+                    "(VISReg runs on trunk latents directly -- a learnable "
+                    "head between the regularizer and the trunk absorbs the "
+                    "scale it exists to constrain); got "
+                    f"sigreg_projection={sigreg_projection!r}."
+                )
+            from luthi.v2.visreg import VISReg
+            self.visreg = VISReg(
+                num_proj=visreg_num_proj,
+                lambda_scale=visreg_scale_w,
+                lambda_shape=visreg_shape_w,
+                lambda_center=visreg_center_w,
+            )
         if self.w_ntp > 0 and not hasattr(online_encoder, "output_proj"):
             raise RuntimeError(
                 "w_ntp > 0 but the encoder has no output_proj (LM head) — the "
@@ -539,17 +585,35 @@ class JEPALoss(nn.Module):
         # deserves watching for runaway on long runs. See
         # docs/research/2026-07-30_mupc-verdict.md.
         flat = target_full_latents.reshape(-1, d_model)
-        # BatchNorm1d expects (N, C); flat is (B * seq_len, D).
-        projected = self.projection_heads[modality](flat)
-        # SIGReg expects (T, B, D). Use T=1, B=(B * seq_len) -- the
-        # per-modality, per-position embeddings across the batch are
-        # the sample set (per 4.8 brief 2026-06-09: "more samples =>
-        # better CF estimate").
-        sigreg_input = projected.unsqueeze(0)
-        l_sigreg = self.sigreg(sigreg_input)
+        vis_terms = None
+        if self.visreg_lambda > 0:
+            # ---- VISReg replacement path (2026-08-11) ----
+            # SIGReg is SKIPPED, not zero-weighted: stacking would
+            # double-count shape (VISReg's own decomposition separates
+            # shape from scale, the thing stacking would blur -- build
+            # seat's (b) read, ratified). Trunk latents directly; the
+            # ctor enforces sigreg_projection="none" so
+            # projection_heads[modality] is Identity by construction.
+            # Convex Eq. 9 mix -- structurally different from the
+            # additive form every prior run used, adopted as published.
+            vis_terms = self.visreg(flat)
+            l_sigreg = None
+            total = (
+                (1.0 - self.visreg_lambda) * l_pred
+                + self.visreg_lambda * vis_terms["l_reg"]
+            )
+        else:
+            # BatchNorm1d expects (N, C); flat is (B * seq_len, D).
+            projected = self.projection_heads[modality](flat)
+            # SIGReg expects (T, B, D). Use T=1, B=(B * seq_len) -- the
+            # per-modality, per-position embeddings across the batch are
+            # the sample set (per 4.8 brief 2026-06-09: "more samples =>
+            # better CF estimate").
+            sigreg_input = projected.unsqueeze(0)
+            l_sigreg = self.sigreg(sigreg_input)
 
-        # ---- Total ----
-        total = l_pred + self.sigreg_lambd * l_sigreg
+            # ---- Total ----
+            total = l_pred + self.sigreg_lambd * l_sigreg
 
         # ---- Interior Weak-SIGReg (2026-08-07) ----
         # Anti-collapse pressure on interior blocks. Fail loud: alpha>0
@@ -593,7 +657,19 @@ class JEPALoss(nn.Module):
         return {
             "loss": total,
             "l_pred": l_pred.detach(),
-            "l_sigreg": l_sigreg.detach(),
+            "l_sigreg": l_sigreg.detach() if l_sigreg is not None else None,
+            "l_visreg": (
+                vis_terms["l_reg"].detach() if vis_terms is not None else None
+            ),
+            "l_vis_scale": (
+                vis_terms["l_scale"].detach() if vis_terms is not None else None
+            ),
+            "l_vis_shape": (
+                vis_terms["l_shape"].detach() if vis_terms is not None else None
+            ),
+            "l_vis_center": (
+                vis_terms["l_center"].detach() if vis_terms is not None else None
+            ),
             "l_wsig": l_wsig.detach() if l_wsig is not None else None,
             "l_ntp": l_ntp.detach() if l_ntp is not None else None,
             "online_std": online_per_dim_std.detach(),

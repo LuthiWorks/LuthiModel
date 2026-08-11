@@ -70,6 +70,7 @@ def heldout_latent_prediction(
     """
     l_preds: list[float] = []
     l_sigregs: list[float] = []
+    l_visregs: list[float] = []
     nmses: list[float] = []
     l_ntps: list[float] = []
     with _eval_guard(loss_module):
@@ -79,7 +80,12 @@ def heldout_latent_prediction(
             result = loss_module.compute_modality_loss(modality, batch)
             l_pred = float(result["l_pred"].item())
             l_preds.append(l_pred)
-            l_sigregs.append(float(result["l_sigreg"].item()))
+            # None under the VISReg replacement path (2026-08-11), where
+            # l_visreg carries the regularizer diagnostic instead.
+            if result.get("l_sigreg") is not None:
+                l_sigregs.append(float(result["l_sigreg"].item()))
+            if result.get("l_visreg") is not None:
+                l_visregs.append(float(result["l_visreg"].item()))
             # NMSE (blind amendment 2026-07-16): error normalized by the
             # target block's own per-dim variance, so arms with different
             # latent scales are comparable ("what fraction of its own
@@ -100,9 +106,13 @@ def heldout_latent_prediction(
     out = {
         "l_pred_mean": (sum(l_preds) / n) if n else float("nan"),
         "nmse_mean": (sum(nmses) / n) if n else float("nan"),
-        "l_sigreg_mean": (sum(l_sigregs) / n) if n else float("nan"),
+        "l_sigreg_mean": (
+            (sum(l_sigregs) / len(l_sigregs)) if l_sigregs else None
+        ),
         "n_batches": n,
     }
+    if l_visregs:
+        out["l_visreg_mean"] = sum(l_visregs) / len(l_visregs)
     if l_ntps:
         mean_ntp = sum(l_ntps) / len(l_ntps)
         out["l_ntp_mean"] = mean_ntp
