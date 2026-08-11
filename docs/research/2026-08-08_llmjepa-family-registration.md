@@ -255,3 +255,36 @@ divergence (block-0 tripling while deep blocks fall, 3000-5000 — the
 new late-transit lead from the same reading) tracked per arm. Scouting
 grade (1 seed/value); any arm that changes the outcome class earns the
 full three-seed treatment before belief.
+
+---
+
+## VERDICT — set-point adapt-rate sweep (stage 53), scored 2026-08-10
+
+Registered read: outcome class + late-transit timing vs v2's deaths
+(3700 / 5000+ / 4700), one variable, seed 46 throughout. Frozen before
+scoring; scored from `training_log.jsonl` deep-cadence rows firsthand.
+
+| arm  | rate  | transit        | terminal                            | death            | ppl / lift   |
+|------|-------|----------------|-------------------------------------|------------------|--------------|
+| spa5 | 1e-5  | ~1100 (eff 4.7)| slow climb to 65.8 @5100, cliff @5700| loss guard @5700 | 1613 / 1.04x |
+| spa4 | 1e-4  | ~1100 (eff 31) | churn 17–46, chorus ~1.2 from 1600, slide to 4.4 | kill-2 @~5000 | n/a (killed) |
+| spa3 | 1e-3  | ~600–1100      | tds 1.0 (total collapse) by 1200    | NMSE @1200       | n/a (killed) |
+
+**Class: REFUTED, monotonically.** Every increment of anchor mobility
+made the run die sooner and deeper: 1e-5 lands inside the v2 baseline
+death window; 1e-4 loses the chorus by step 1600 and never recovers
+(l_ntp flat ~7.0-7.3 all run — no language learning either); 1e-3 is
+total collapse (top_dir_share = 1.0) within 1200 steps, among the
+fastest deaths in the record. The homeostat's stiff anchor is
+PROTECTIVE, not causal — consistent with the drift reading (~0 in
+healthy and sick runs alike) that motivated the sweep as a probe rather
+than a bet. The external hypothesis ("the anchor fights the objective's
+pull; mobility relieves the war") predicts the opposite gradient; the
+war, if it exists, is not at the anchor.
+
+Consequences: `set_point_adapt_rate` stays at 1e-6 permanently; the
+late-collapse lead reverts to the **precision front-back divergence**
+(block-0 precision rising ~3x while deep blocks fall, steps 3000-5000
+pre-kill — the one signature that accumulates on the death timescale).
+Next per protocol: VISReg as SIGReg's replacement (rulings + build
+order in `docs/reviews/2026-08-10_pruning-and-visreg-brief-for-opus.md`).
