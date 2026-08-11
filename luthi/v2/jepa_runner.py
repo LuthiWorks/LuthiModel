@@ -2144,7 +2144,8 @@ class JEPATrainer:
     # -- Held-out eval (2026-07-15, JEPA program) --
 
     def evaluate_heldout(self, max_batches: int | None = None,
-                         log_record: bool = True) -> dict:
+                         log_record: bool = True,
+                         quick: bool = False) -> dict:
         """Held-out latent-prediction error per modality.
 
         The numbers the pre-registered criteria read (protocol
@@ -2191,6 +2192,12 @@ class JEPATrainer:
             )
 
         if results and log_record:
+            if quick:
+                # Guard-cadence few-batch estimate (2026-08-11): marked so
+                # it is never confused with the epoch-end full eval when
+                # reading the log or the LuthiScope heldout series.
+                for _r in results.values():
+                    _r["quick"] = True
             record = {
                 "step": self.global_step,
                 "heldout": results,
@@ -2415,9 +2422,16 @@ class JEPATrainer:
                 # run (killed:divergence:nmse=343309>2.00) -- it just ran once,
                 # 34 minutes too late.
                 if deep_due and float(self.config.divergence_nmse_max or 0) > 0:
+                    # log_record=True since 2026-08-11 (Brian's request, the
+                    # seed-97 lesson): this is the exact number the guard
+                    # kills on, and it was computed every cadence then thrown
+                    # away -- invisible in LuthiScope while deciding runs'
+                    # lives. Quick evals are marked so the few-batch estimate
+                    # is never confused with the epoch-end 50-batch one.
                     quick = self.evaluate_heldout(
                         max_batches=self.config.divergence_probe_batches,
-                        log_record=False,
+                        log_record=True,
+                        quick=True,
                     )
                     div_q = self._check_divergence(quick)
                     if div_q is not None:

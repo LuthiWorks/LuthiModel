@@ -110,3 +110,69 @@ standing late-collapse lead from the sweep verdict).
 comma-separated string. Corrected here; no GPU time spent.)
 
 Not launched at registration time; awaiting Brian's go.
+
+---
+
+## VERDICT — scored 2026-08-11, family complete
+
+| seed | outcome | final eff | chorus | stable | tds | heldout NMSE | probe lift |
+|------|---------------------------|-------|-------|-------|-------|-------|--------|
+| 46 | completed, 6000 | 128.9 | 16.58 | 16.3 | 0.026 | 1.002 | 1.78x |
+| 95 | completed, 6000 | 136.8 | 19.73 | 19.9 | 0.023 | 0.504 | 3.75x |
+| 97 | killed:nmse=2.71 @4400 | 118.0 | 15.49 | — | 0.031 | — | 1.41x* |
+
+*97's probe ran post-kill on the wrecked-transient state; its step-4000
+l_pred (0.074) was the best in the family.
+
+**FAMILY: CONFIRMED, 2-of-3 HEALTHY** (gates as frozen: complete
+un-killed, pooled eff >= 100, every block >= 50 — seed 46 blocks
+129-203, seed 95 blocks 137-210).
+
+### Frozen predictions, scored
+
+1. "The early transit still comes" — **REFUTED, 3-for-3.** No seed
+   ever fell below eff ~99 at ANY step. The universal transit — present
+   in every prior run at every depth including healthy d4 — did not
+   occur. VISReg did not enable a rescue; it abolished the fall.
+2. "Offset falls faster and further" — **CONFIRMED.** top_dir_share
+   born at ~0.07 and monotone down to 0.023-0.031; the soloist never
+   formed in any seed. The center term killed the first act in the crib.
+3. "At least one seed shows a genuine rescue" — **MOOT** (nothing to
+   rescue). The property bet (gradient survives collapse) was never
+   exercised because collapse never started; the mechanism's value
+   showed up as prevention, not rescue.
+
+### New phenomenon, named: SCALE BREATHING
+
+All three seeds show transient std excursions (std50 jumping 0.4 <->
+2.4 within ~100 steps) that VISReg pulls back each time — the convex
+negotiation working. Seed 97 survived two (steps 2000, 3200) and died
+when a third (4400) coincided with a guard checkpoint: nmse 2.71
+against limit 2.0, with eff 118 / chorus 15.5 / l_pred 0.074-at-4000 —
+healthy geometry killed mid-breath. Per the registered rank-tape rule,
+97 reads as a **guard-timing artifact on a recoverable transient**, not
+a collapse death. Consequences: (a) the seed-97 class argues for a
+transient-tolerant divergence rule (e.g. two consecutive over-limit
+checks) — a REGISTERED CHANGE for the next family, not a mid-family
+patch; (b) scale breathing's cause (plasticity events? LR-scale
+resonance?) is an open forensic.
+
+### Also learned
+
+- Two distinct healthy equilibria: 46 quiet-sharp (std ~0.8, l_pred
+  0.28), 95 loud-blunt (std ~1.9, l_pred 1.15, but the BEST heldout
+  NMSE 0.504 and probe lift 3.75x). Loudness cost training-loss and
+  bought generalization; worth its own read someday.
+- Probe lift 3.75x with NO NTP term — the LLM-JEPA family's 4.7x now
+  looks mostly geometric, not linguistic.
+- The guard-cadence NMSE was invisible in LuthiScope while deciding
+  runs' lives (seed-97 lesson); quick evals are now logged and marked
+  (`quick: true`) as of this commit.
+
+### Standing
+
+Depth-8 collapse: **SOLVED at 512d, provisionally** (2-of-3, this
+family). Per the ledger definition, "concluded working" requires
+replication at the ruled **768x8**. That is the next family. NTP
+reintroduction (capability layer over stable geometry) and the
+scale-breathing forensic queue behind it.
