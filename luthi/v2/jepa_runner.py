@@ -343,6 +343,12 @@ class RunnerConfig:
     # kill costs the seed). Every observed recoverable breath resolved
     # within ~100-200 steps; 500 gives a real fighting chance. 0 restores
     # the pre-2026-08-11 first-reading kill.
+    # Per-step instruments (2026-08-11, the scale-breathing forensic's
+    # order): grad_norm + batch std50 every step, written to a sidecar
+    # per_step.jsonl. The breathing mechanism is sub-cadence; these two
+    # scalars are what resolve the next breath. On-device accumulation,
+    # ONE host sync per step (DirectML syncs are the real cost).
+    per_step_instruments: bool = True
     divergence_persist_steps: int = 500
     # Hard ceiling: a single reading above limit * this multiplier kills
     # immediately, persistence and rank veto notwithstanding. Genuine
@@ -1148,6 +1154,35 @@ class JEPATrainer:
         self.global_step += 1
         self.modality_step[modality] += 1
 
+        # Per-step instruments (2026-08-11): grad_norm + batch std50 every
+        # step into per_step.jsonl. Post-increment step number so the rows
+        # align with the diagnostics records. On logging steps the full
+        # sweep above already produced the norm; reuse it rather than
+        # paying a second pass.
+        if self.config.per_step_instruments:
+            if will_log:
+                ps_grad = self._last_grad_norm
+            elif pre_clip_norm is not None:
+                ps_grad = pre_clip_norm
+            else:
+                total_sq_t = None
+                for group in self.optimizer.param_groups:
+                    for p in group["params"]:
+                        if p.grad is None:
+                            continue
+                        sq = p.grad.detach().pow(2).sum()
+                        total_sq_t = sq if total_sq_t is None else total_sq_t + sq
+                ps_grad = (
+                    float(total_sq_t.item()) ** 0.5
+                    if total_sq_t is not None else float("nan")
+                )
+            # aten::median falls back to CPU on DML anyway; move the tiny
+            # [D] vector explicitly and keep the fallback warning out.
+            ps_std50 = float(
+                result["online_std"].detach().float().cpu().median().item()
+            )
+            self._emit_per_step(self.global_step, ps_grad, ps_std50)
+
         return {
             "loss": loss_value,
             "modality": modality,
@@ -1155,6 +1190,24 @@ class JEPATrainer:
         }
 
     # -- Diagnostics --
+
+    def _emit_per_step(self, step: int, grad_norm: float, std50: float) -> None:
+        """Append one slim row to the per-step sidecar (per_step.jsonl).
+
+        Separate file by design: ~27k rows per full-corpus epoch would
+        drown the main record's shape; the sidecar is the forensic's
+        instrument, LuthiScope keeps reading training_log.jsonl.
+        Open-per-write, not a persistent handle: a held-open handle
+        blocks directory cleanup on Windows (found by the m9 tmpdir
+        tests) and loses buffered rows on a crash; ~50us of open churn
+        per step is nothing against a training step.
+        """
+        # Non-finite values become null: bare `nan`/`inf` is not JSON and
+        # would poison every reader of the sidecar.
+        g = f"{grad_norm:.6g}" if math.isfinite(grad_norm) else "null"
+        s = f"{std50:.6g}" if math.isfinite(std50) else "null"
+        with open(self.run_dir / "per_step.jsonl", "a", encoding="utf-8") as f:
+            f.write(f'{{"step": {step}, "grad_norm": {g}, "std50": {s}}}\n')
 
     def _compute_and_log_diagnostics(
         self,

@@ -160,6 +160,9 @@ STAGES: dict[int, list[tuple[str, int]]] = {
     # condition is structurally unavailable at pilot scale) -- the
     # cleanest possible one-variable swap against the v5-d8 record.
     54: [("probe_d8_visreg", 512)],
+    # RULED-SCALE FAMILY (2026-08-11): 768x8, VISReg, full-corpus epoch.
+    # See the arm block below and the spec's Amendment 2.
+    55: [("probe_768_visreg", 768)],
 }
 
 # Per-arm model configuration -- single source of truth, shared with
@@ -622,6 +625,34 @@ ARM_VISREG_NUM_PROJ: dict[str, int] = {"probe_d8_visreg": 1024}
 ARM_DIV_PERSIST: dict[str, int] = {}
 ARM_DIV_CEIL_MULT: dict[str, float] = {}
 ARM_DIV_RANK_VETO: dict[str, float] = {}
+
+# ---------------------------------------------------------------------------
+# 768x8 ruled-scale family (2026-08-11), stage 55. Spec + amendments:
+# docs/research/2026-08-11_768x8-family-spec.md. Brian's rulings: width
+# 768, heads 8x96, FULL corpus seen (one epoch of the 1051-file 113.0M-
+# token list Opus built, bf1649a). K = 1536 (C=2, Opus's slice-coverage
+# argument). n_heads=8 here also moves the JEPA predictor (it inherits
+# encoder heads) -- recorded in Amendment 1, deliberately unpinned.
+# Launch: --stage 55 --seeds 46,95,97 --epochs 1 (NO max-batches cap;
+# cosine spans the epoch by construction). Batch from the two-run smoke;
+# if 16 is forced, lambda_shape 2.0 rides as a registered
+# batch-compensating dose (Amendment 1, section 3).
+# ---------------------------------------------------------------------------
+ARM_CONFIGS["probe_768_visreg"] = dict(
+    ARM_CONFIGS["probe_v5_d8"], mu_pc_enabled=False, n_heads=8,
+)
+ARM_VISREG["probe_768_visreg"] = 0.6
+ARM_VISREG_NUM_PROJ["probe_768_visreg"] = 1536
+ARM_SIGREG_PROJ["probe_768_visreg"] = "none"
+ARM_SIGREG["probe_768_visreg"] = 0.0
+ARM_DEEP_CADENCE["probe_768_visreg"] = 100
+ARM_GUARD_MIN_STEP["probe_768_visreg"] = 1000
+ARM_LR_WARMUP["probe_768_visreg"] = 1000
+ARM_TAPER["probe_768_visreg"] = ARM_TAPER["living_v5_4x_d4"]
+ARM_COSINE["probe_768_visreg"] = ARM_COSINE["living_v5_4x_d4"]
+ARM_FILELIST["probe_768_visreg"] = str(
+    REPO_ROOT / "corpus_build" / "gutenberg_768_filelist.txt"
+)
 ARM_CONFIGS["probe_d8_visreg"] = dict(
     ARM_CONFIGS["probe_v5_d8"], mu_pc_enabled=False,
 )
@@ -959,7 +990,13 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
             # defaults (persist 500 / ceiling 10x / rank veto at eff 100).
             divergence_persist_steps=ARM_DIV_PERSIST.get(arm, 500),
             divergence_hard_ceiling_mult=ARM_DIV_CEIL_MULT.get(arm, 10.0),
-            divergence_rank_veto_min_eff=ARM_DIV_RANK_VETO.get(arm, 100.0),
+            # Width-relative default (Opus's §2 measurement, 2026-08-11):
+            # healthy eff scales ~ D^0.75, not linearly. 100 at 512 -> 135
+            # at 768. Linear would be ~10% stiffer than what the 512
+            # family passed.
+            divergence_rank_veto_min_eff=ARM_DIV_RANK_VETO.get(
+                arm, float(round(100.0 * (d_model / 512.0) ** 0.75))
+            ),
         ),
         run_dir=run_dir,
     )
@@ -1054,7 +1091,9 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
             # which guard contract judged this run.
             "divergence_persist_steps": ARM_DIV_PERSIST.get(arm, 500),
             "divergence_hard_ceiling_mult": ARM_DIV_CEIL_MULT.get(arm, 10.0),
-            "divergence_rank_veto_min_eff": ARM_DIV_RANK_VETO.get(arm, 100.0),
+            "divergence_rank_veto_min_eff": ARM_DIV_RANK_VETO.get(
+                arm, float(round(100.0 * (d_model / 512.0) ** 0.75))
+            ),
         },
     }
     _result_path(arm, d_model, seed).write_text(json.dumps(result, indent=2))
