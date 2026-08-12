@@ -35,6 +35,9 @@ class _Guard:
         self._div_losses = []
         self._div_baseline = None
         self._div_run = 0
+        # Middle-ground guard state (2026-08-11).
+        self._div_over_since = {}
+        self._last_eff_rank = None
 
     _check_loss_divergence = JEPATrainer._check_loss_divergence
     _check_divergence = JEPATrainer._check_divergence
@@ -56,8 +59,13 @@ class TestNMSEGuard:
         assert g._check_divergence({"text": {"nmse_mean": 0.5658}}) is None
 
     def test_diverged_nmse_trips(self):
-        """The actual value from the diverged depth-8 run."""
-        g = _Guard()
+        """The actual value from the diverged depth-8 run.
+
+        Since the 2026-08-11 middle-ground rules, a first sub-ceiling
+        reading starts the persistence clock rather than killing;
+        persist=0 restores the legacy first-reading kill this test pins.
+        """
+        g = _Guard(divergence_persist_steps=0)
         r = g._check_divergence({"text": {"nmse_mean": 5.675383453829092}})
         assert r is not None and "nmse" in r
 
@@ -215,9 +223,91 @@ class TestBaselineDuringDivergenceIsTheHole:
         assert r is not None and "nmse" in r
 
     def test_absolute_guard_needs_no_history(self):
-        """It must fire on the very first observation, with no warmup at all."""
+        """It must fire on the very first observation, with no warmup at all.
+
+        Post-2026-08-11 that first-observation property belongs to the hard
+        ceiling (limit * mult = 20 by default); a sub-ceiling 5.0 starts the
+        persistence clock instead, and persist=0 restores the legacy kill.
+        """
         g = _Guard()
-        assert g._check_divergence({"text": {"nmse_mean": 5.0}}) is not None
+        assert g._check_divergence({"text": {"nmse_mean": 25.0}}) is not None
+        g2 = _Guard(divergence_persist_steps=0)
+        assert g2._check_divergence({"text": {"nmse_mean": 5.0}}) is not None
+
+
+class TestMiddleGroundRules:
+    """The 2026-08-11 kill middle ground (Brian's ruling, the seed-97
+    lesson): persistence 500+, hard ceiling, rank veto — defaults ON."""
+
+    def _over(self, g, step, nmse=3.0):
+        g.global_step = step
+        return g._check_divergence({"text": {"nmse_mean": nmse}})
+
+    def test_first_reading_does_not_kill(self):
+        g = _Guard()
+        assert self._over(g, 0) is None
+        assert g._div_over_since["text"] == 0
+
+    def test_sustained_500_kills(self):
+        g = _Guard()
+        for s in range(0, 500, 100):
+            assert self._over(g, s) is None
+        r = self._over(g, 500)
+        assert r is not None and "sustained 500" in r
+
+    def test_recovery_resets_the_clock(self):
+        g = _Guard()
+        for s in (0, 100, 200):
+            assert self._over(g, s) is None
+        g.global_step = 300
+        assert g._check_divergence({"text": {"nmse_mean": 1.5}}) is None
+        assert "text" not in g._div_over_since
+        # A fresh excursion must wait its own full 500 again.
+        for s in (400, 500, 600, 700, 800):
+            assert self._over(g, s) is None
+        assert self._over(g, 900) is not None
+
+    def test_hard_ceiling_kills_immediately_even_with_healthy_rank(self):
+        g = _Guard()
+        g._last_eff_rank = 130.0
+        r = self._over(g, 0, nmse=25.0)  # limit 2.0 * mult 10 = 20
+        assert r is not None and "hard-ceiling" in r
+
+    def test_rank_veto_blocks_kill_and_clock_keeps_running(self):
+        g = _Guard()
+        g._last_eff_rank = 118.0  # seed 97 at its death
+        for s in range(0, 700, 100):
+            assert self._over(g, s) is None, f"vetoed kill fired at {s}"
+        # Geometry falls -> the already-elapsed clock kills at once.
+        g._last_eff_rank = 40.0
+        assert self._over(g, 700) is not None
+
+    def test_nonfinite_still_kills_instantly(self):
+        g = _Guard()
+        g._last_eff_rank = 130.0
+        r = g._check_divergence({"text": {"nmse_mean": float("inf")}})
+        assert r is not None and "nonfinite" in r
+
+    def test_toggles_disable_each_rule(self):
+        # Ceiling off: even a monstrous reading only starts the clock.
+        g = _Guard(divergence_hard_ceiling_mult=0.0)
+        assert self._over(g, 0, nmse=1e6) is None
+        # Veto off: healthy rank no longer protects once sustained.
+        g2 = _Guard(divergence_rank_veto_min_eff=0.0)
+        g2._last_eff_rank = 130.0
+        for s in range(0, 500, 100):
+            assert self._over(g2, s) is None
+        assert self._over(g2, 500) is not None
+
+    def test_seed_97_would_have_lived(self):
+        """The regression this whole ruling exists to prevent: one
+        over-limit breath (nmse 2.71, eff 118) between healthy checks."""
+        g = _Guard()
+        g._last_eff_rank = 118.0
+        assert self._over(g, 4400, nmse=2.7083) is None  # rank veto holds
+        g.global_step = 4500
+        assert g._check_divergence({"text": {"nmse_mean": 0.6}}) is None
+        assert "text" not in g._div_over_since  # clock reset on recovery
 
 
 class _SuppressGuard(_Guard):
@@ -267,7 +357,7 @@ class TestPplVeto:
     marginal NMSE trip is vetoed by demonstrably healthy generation."""
 
     def test_veto_off_preserves_old_rule(self):
-        g = _Guard()
+        g = _Guard(divergence_persist_steps=0)
         r = g._check_divergence({"text": {"nmse_mean": 2.4, "perplexity": 300.0}})
         assert r is not None
 
@@ -277,12 +367,12 @@ class TestPplVeto:
         assert r is None
 
     def test_broken_ppl_does_not_veto(self):
-        g = _Guard(divergence_ppl_veto=8000.0)
+        g = _Guard(divergence_ppl_veto=8000.0, divergence_persist_steps=0)
         r = g._check_divergence({"text": {"nmse_mean": 2.4, "perplexity": 20000.0}})
         assert r is not None
 
     def test_missing_ppl_does_not_veto(self):
-        g = _Guard(divergence_ppl_veto=8000.0)
+        g = _Guard(divergence_ppl_veto=8000.0, divergence_persist_steps=0)
         r = g._check_divergence({"text": {"nmse_mean": 2.4}})
         assert r is not None
 

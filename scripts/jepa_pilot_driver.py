@@ -616,6 +616,12 @@ for _spa_arm, _spa in (("probe_d8_v2_spa5", 1e-5), ("probe_d8_v2_spa4", 1e-4),
 # ---------------------------------------------------------------------------
 ARM_VISREG: dict[str, float] = {"probe_d8_visreg": 0.6}
 ARM_VISREG_NUM_PROJ: dict[str, int] = {"probe_d8_visreg": 1024}
+# Middle-ground kill-rule overrides (2026-08-11). Empty = every arm runs
+# the ruled defaults; entries exist so a registered experiment can restore
+# the legacy first-reading kill (persist 0) or disable a rule (0).
+ARM_DIV_PERSIST: dict[str, int] = {}
+ARM_DIV_CEIL_MULT: dict[str, float] = {}
+ARM_DIV_RANK_VETO: dict[str, float] = {}
 ARM_CONFIGS["probe_d8_visreg"] = dict(
     ARM_CONFIGS["probe_v5_d8"], mu_pc_enabled=False,
 )
@@ -948,6 +954,12 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
             grad_clip_norm=ARM_GRAD_CLIP.get(arm, 0.0),
             guard_min_step=ARM_GUARD_MIN_STEP.get(arm, 0),
             divergence_ppl_veto=ARM_PPL_VETO.get(arm, 0.0),
+            # Middle-ground kill rules (2026-08-11, Brian's ruling). The
+            # per-arm dicts are the toggle; absent entries take the ruled
+            # defaults (persist 500 / ceiling 10x / rank veto at eff 100).
+            divergence_persist_steps=ARM_DIV_PERSIST.get(arm, 500),
+            divergence_hard_ceiling_mult=ARM_DIV_CEIL_MULT.get(arm, 10.0),
+            divergence_rank_veto_min_eff=ARM_DIV_RANK_VETO.get(arm, 100.0),
         ),
         run_dir=run_dir,
     )
@@ -1038,6 +1050,11 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
             "visreg_lambda": ARM_VISREG.get(arm, 0.0),
             "visreg_num_proj": ARM_VISREG_NUM_PROJ.get(arm, 1024),
             "sigreg_projection": ARM_SIGREG_PROJ.get(arm, "linear"),
+            # Middle-ground kill rules (2026-08-11) -- provenance for
+            # which guard contract judged this run.
+            "divergence_persist_steps": ARM_DIV_PERSIST.get(arm, 500),
+            "divergence_hard_ceiling_mult": ARM_DIV_CEIL_MULT.get(arm, 10.0),
+            "divergence_rank_veto_min_eff": ARM_DIV_RANK_VETO.get(arm, 100.0),
         },
     }
     _result_path(arm, d_model, seed).write_text(json.dumps(result, indent=2))

@@ -333,6 +333,29 @@ class RunnerConfig:
     # step, at any scale, under any objective. On by default because it can
     # only fire on a run that is already lost.
     divergence_nmse_max: float = 2.0
+    # Middle-ground kill rules (Brian's ruling, 2026-08-11, the seed-97
+    # lesson: a healthy run killed when a one-checkpoint "scale breath"
+    # coincided with a guard check). All three DEFAULT ON per the house
+    # principle that a verified defect must not remain the default.
+    #
+    # Persistence: NMSE over limit must be SUSTAINED this many steps
+    # before the kill fires (a wrong wait costs ~2 GPU minutes; a wrong
+    # kill costs the seed). Every observed recoverable breath resolved
+    # within ~100-200 steps; 500 gives a real fighting chance. 0 restores
+    # the pre-2026-08-11 first-reading kill.
+    divergence_persist_steps: int = 500
+    # Hard ceiling: a single reading above limit * this multiplier kills
+    # immediately, persistence and rank veto notwithstanding. Genuine
+    # divergence blows through (ancestral deaths read 100s-1000s); the
+    # deepest breath ever taped was 2.71. 0 disables.
+    divergence_hard_ceiling_mult: float = 10.0
+    # Rank veto: an over-limit NMSE with pooled effective rank still at or
+    # above this value does not kill (logged loudly; the persistence clock
+    # keeps running so a later rank fall kills without restarting the
+    # wait). The rank instruments are the only participants that have
+    # never lied; two independent gauges must agree before a run dies.
+    # 0 disables.
+    divergence_rank_veto_min_eff: float = 100.0
     # Fast per-step companion to the NMSE guard above. `evaluate_heldout` runs
     # only at epoch end -- at depth 8 that is a check every ~6 hours, far too
     # slow for a divergence that began at step 2250. This watches the training
@@ -897,6 +920,11 @@ class JEPATrainer:
         self._div_losses: list[float] = []
         self._div_baseline: Optional[float] = None
         self._div_run: int = 0
+        # Middle-ground NMSE guard state (2026-08-11): step at which each
+        # modality's NMSE first went over limit (persistence clock), and
+        # the latest pooled effective rank (rank veto's gauge).
+        self._div_over_since: dict[str, int] = {}
+        self._last_eff_rank: Optional[float] = None
         # Kill-5 solved-not-copying log throttle (2026-07-17 amendment):
         # per-modality, log the healthy cosine crossing once, not per step.
         self._kill5_solved_logged: set[str] = set()
@@ -1241,6 +1269,10 @@ class JEPATrainer:
         if deep:
             deep_m = _deep_collapse_metrics(raw["online_context_latents"])
             record["deep"] = deep_m
+            # Rank veto's gauge (2026-08-11): the divergence guard runs at
+            # deep cadence, so this is at most one cadence stale when read.
+            if deep_m.get("effective_rank") is not None:
+                self._last_eff_rank = float(deep_m["effective_rank"])
             self.history.push(modality, deep_m)
 
             # Per-block effective rank (external review 2026-07-28). Computed
@@ -2294,9 +2326,55 @@ class JEPATrainer:
                         modality, float(nmse), limit, float(ppl), veto,
                     )
                     continue
-                return (
-                    f"divergence:{modality}:nmse={float(nmse):.4f}>{limit:.2f}"
+                # -- Middle-ground rules (2026-08-11, Brian's ruling) --
+                # 1. Hard ceiling: so broken that no debate is owed.
+                ceil_mult = float(self.config.divergence_hard_ceiling_mult or 0.0)
+                if ceil_mult > 0 and float(nmse) > limit * ceil_mult:
+                    return (
+                        f"divergence:{modality}:nmse={float(nmse):.4f}"
+                        f">hard-ceiling({limit * ceil_mult:.1f})"
+                    )
+                # Persistence clock starts (or continues) on any
+                # over-limit reading -- including vetoed ones below, so a
+                # later rank fall kills without restarting the wait.
+                first = self._div_over_since.setdefault(
+                    modality, self.global_step
                 )
+                sustained = self.global_step - first
+                # 2. Rank veto: two independent gauges must agree. The
+                # rank instruments have never lied; an over-limit NMSE
+                # with healthy pooled geometry is the seed-97 class.
+                veto_eff = float(self.config.divergence_rank_veto_min_eff or 0.0)
+                eff = self._last_eff_rank
+                if veto_eff > 0 and eff is not None and eff >= veto_eff:
+                    logger.error(
+                        "NMSE TRIPPED BUT GEOMETRY HEALTHY: %s nmse=%.4f>%.2f "
+                        "with pooled eff=%.1f >= %.0f -- kill vetoed (rank "
+                        "veto); persistence clock at %d steps keeps running",
+                        modality, float(nmse), limit, eff, veto_eff, sustained,
+                    )
+                    continue
+                # 3. Persistence: sustained beyond the ruled window kills;
+                # anything shorter is a breath being given its chance.
+                persist = int(self.config.divergence_persist_steps or 0)
+                if sustained >= persist:
+                    return (
+                        f"divergence:{modality}:nmse={float(nmse):.4f}"
+                        f">{limit:.2f} sustained {sustained} steps"
+                    )
+                logger.error(
+                    "NMSE OVER LIMIT, HOLDING: %s nmse=%.4f>%.2f sustained "
+                    "%d of %d steps before kill",
+                    modality, float(nmse), limit, sustained, persist,
+                )
+            else:
+                if modality in self._div_over_since:
+                    logger.info(
+                        "NMSE RECOVERED: %s back under %.2f after %d steps "
+                        "over -- persistence clock reset",
+                        modality, limit,
+                        self.global_step - self._div_over_since.pop(modality),
+                    )
         return None
 
     def _kill_suppressed(self, reason: str) -> bool:
