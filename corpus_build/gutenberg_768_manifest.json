@@ -1,0 +1,21 @@
+{
+  "built": "2026-08-11",
+  "purpose": "768x8 family (stage 55) -- data ~ width^2 ruling, 2.25x of 50.4M",
+  "target_tokens": 113000000,
+  "measured_tokens": 113017786,
+  "measured_tokens_existing_482": 50186422,
+  "expansion_ratio": 2.252,
+  "files": 1051,
+  "files_kept_from_4x": 482,
+  "files_added": 569,
+  "bytes": 418581645,
+  "tokenizer": "corpus_build/tokenizer_32k.json",
+  "selection_seed": 768,
+  "dedup_keys": [
+    "gutenberg id (PGxxxxx), case-normalised, across both roots",
+    "sha256 of file content (catches the same text re-catalogued under a second id, e.g. PG1133 == PG2269)"
+  ],
+  "gutenberg_100_ids_also_in_pool": 100,
+  "content_duplicate_candidates_rejected": 1,
+  "sanitizer_pass": "none -- pool is boilerplate-stripped at download time; see module docstring"
+}
