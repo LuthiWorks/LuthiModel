@@ -70,22 +70,38 @@ def _nmse_for_run(run_dir: Path, result: dict) -> float:
     ))
     loader = _DeviceLoader(MultimodalDataLoaderImpl(text=text_ds), device)
 
-    from scripts.jepa_pilot_driver import ARM_CONFIGS
-    # Rebuild the arm EXACTLY as trained: driver-default kwargs, then the
-    # arm's declared config overrides (same merge as _run_one) -- the
-    # recall gate is live at eval and the depth arm carries its own
-    # n_blocks/mu_pc_*, so a mismatched rebuild would evaluate a
-    # different model.
-    model_kwargs = dict(
-        vocab_size=text_ds.vocab_size(),
-        d_model=result["d_model"],
-        n_blocks=cfg["n_blocks"],
-        n_heads=4,
-        ffn_expansion=1,
-        max_seq_len=cfg["seq_len"],
-        backward_pass_enabled=False,
-    )
-    model_kwargs.update(ARM_CONFIGS[result["arm"]])
+    # Rebuild the arm EXACTLY as trained. PREFER the kwargs the run itself
+    # recorded (2026-08-05 mechanism-provenance block in the driver): that
+    # is what the model was actually constructed with, and it cannot drift.
+    #
+    # The legacy path below reconstructs from the live ARM_CONFIGS registry
+    # on top of hardcoded defaults -- notably n_heads=4. That is only
+    # correct while the arm's registry entry still declares every non-default
+    # it was trained with: probe_768_visreg ran at n_heads=8 and is correct
+    # solely because its entry says so. An arm trained with a non-default
+    # that later leaves the registry would rebuild silently wrong and the
+    # verdict would report numbers for a different model. Kept as fallback
+    # for pre-provenance runs only. (Opus 5 audit, 2026-08-13.)
+    recorded = cfg.get("model_kwargs")
+    if recorded:
+        model_kwargs = dict(recorded)
+        model_kwargs["vocab_size"] = text_ds.vocab_size()
+        # Eval never runs the top-down sweep (it is gated on .training),
+        # but keep the historical explicit-off for parity with the
+        # legacy path.
+        model_kwargs["backward_pass_enabled"] = False
+    else:
+        from scripts.jepa_pilot_driver import ARM_CONFIGS
+        model_kwargs = dict(
+            vocab_size=text_ds.vocab_size(),
+            d_model=result["d_model"],
+            n_blocks=cfg["n_blocks"],
+            n_heads=4,
+            ffn_expansion=1,
+            max_seq_len=cfg["seq_len"],
+            backward_pass_enabled=False,
+        )
+        model_kwargs.update(ARM_CONFIGS[result["arm"]])
     model = MultimodalPredictiveCodingLM(**model_kwargs).to(device)
     # v4 arms carry a non-default SIGReg weight (recorded in the run's
     # config). NMSE depends only on l_pred, but the reported sigreg

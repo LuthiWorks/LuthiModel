@@ -176,3 +176,57 @@ family). Per the ledger definition, "concluded working" requires
 replication at the ruled **768x8**. That is the next family. NTP
 reintroduction (capability layer over stable geometry) and the
 scale-breathing forensic queue behind it.
+
+---
+
+## SUPERSESSION NOTICE — 2026-08-13 (Opus 5, post-768 audit)
+
+**This family's scored predictions describe a 6,000-step window, and the
+phenomenon they declare absent begins at ~10,000 steps.** The reads below
+are not withdrawn — they are correct about what they measured — but they
+do not support the conclusions drawn from them, and the Standing above
+must be read with this attached. Full evidence: AMENDMENT 3 in
+`2026-08-11_768x8-family-spec.md`, Finding (A).
+
+What the 768 tape shows, at this family's own wire step:
+
+| step 6,000, seed 97 (768) | value | reads as |
+|---|---|---|
+| b0 effective rank | 264.1 | healthy |
+| b0 `top_dir_share` | 0.039 | "the soloist never formed" |
+
+Identical in character to this family's 3-for-3 read. Then, in the same
+run: `top_dir_share` begins climbing at ~9,600, crosses 0.20 at 13,100,
+and ends at **0.919**; effective rank ends at **2.0**. And at step 29,800
+that run took a transit (eff 360 → 204, chorus 34 → 5.4) and recovered by
+30,100.
+
+Consequences for the scored predictions:
+
+1. **Prediction 1 — "VISReg abolished the fall" does not transfer.** The
+   768 run transited at 29,800, ~5x beyond this family's horizon. What
+   this family established is that no transit occurs *in the first 6,000
+   steps*. "Abolished" was a claim about all time and the evidence covers
+   6,000 steps.
+2. **Prediction 2 — "the soloist never formed in any seed. The center
+   term killed the first act in the crib." SUPERSEDED.** The soloist
+   forms; it forms late. It was not killed, it had not been born yet.
+   The center term's actual measured contribution is ~0.55% of the
+   regularizer at the end of a long run (768x8 spec, Finding (B)), and
+   `offset_dominance` is 0.995+ in every block except the one where the
+   term is applied.
+3. **Prediction 3 — MOOT stands**, for the reason given, but note the 768
+   run *did* exercise the property bet at 29,800 and it held: the
+   surviving gradient made rescue possible. That is this family's
+   mechanism claim vindicated on someone else's tape.
+
+**Standing, amended:** depth-8 collapse is **not** solved at 512d. It is
+**unobserved at 512d within 6,000 steps**, which is a different and much
+weaker statement. The registered obligation this creates: one 512 VISReg
+seed run to 25–30k steps (~5h) before any conclusion about VISReg and
+depth-8 collapse is carried forward. Whether the 768 outcome is a width
+effect or a run-length effect cannot be attributed until that control
+exists.
+
+Recorded per the house rule that supersession notices are cheap and
+documented conclusions read as more final than they were.

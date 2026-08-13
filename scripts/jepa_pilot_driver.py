@@ -48,6 +48,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import statistics
 import sys
 import time
@@ -767,11 +768,45 @@ def _param_groups(loss_module, model, arm: str, base_lr: float):
 
 
 def _device() -> torch.device:
+    """The accelerator, or a LOUD failure.
+
+    Hardened 2026-08-13 (Opus 5 audit). The previous version returned CPU
+    silently whenever ``import torch_directml`` raised, which is the
+    forbidden shape from CLAUDE.md: "Missing resources fail loudly, never
+    silently fall back." Two ways it bites, both silent:
+
+    - The repo's own ``.venv`` is a uv-managed CPython 3.14 carrying
+      torch 2.10.0+cpu and NO torch_directml, while the training
+      environment is ``C:\\Program Files\\Python310\\python.exe`` with
+      torch 2.4.1 + DirectML. Anything launched from the obvious-looking
+      in-repo venv took the fallback and reported nothing.
+    - `pilot_verdict.py` carries determinism guards written specifically
+      for DirectML warm-up numerics. Recomputing a verdict on CPU
+      produces different numbers with no marker saying so.
+
+    Set ``LUTHI_ALLOW_CPU=1`` to opt in deliberately; the fallback then
+    still announces itself on stderr, because a run whose device is a
+    surprise is a run whose numbers are a surprise.
+    """
     try:
         import torch_directml
         return torch_directml.device()
     except ImportError:
-        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        pass
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    msg = (
+        "No accelerator: torch_directml is not importable and CUDA is "
+        f"unavailable (python={sys.executable}, torch={torch.__version__}). "
+        "The training environment for this repo is Python 3.10 with "
+        "torch 2.4.1 + torch-directml; the in-repo .venv is NOT it. "
+        "Set LUTHI_ALLOW_CPU=1 to run on CPU deliberately."
+    )
+    if os.environ.get("LUTHI_ALLOW_CPU") != "1":
+        raise RuntimeError(msg)
+    print(f"  [device] WARNING -- running on CPU by LUTHI_ALLOW_CPU=1. {msg}",
+          file=sys.stderr, flush=True)
+    return torch.device("cpu")
 
 
 class _DeviceLoader:
@@ -1067,6 +1102,15 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
             # so each pilot_result.json is self-describing.
             "model_kwargs": {k: v for k, v in model_kwargs.items()
                              if isinstance(v, (bool, int, float, str))},
+            # Execution provenance (2026-08-13, Opus 5 audit). The record
+            # described the model and every mechanism but never the
+            # machine, so a run that took the old silent CPU fallback --
+            # different backend, different numerics, ~100x slower -- wrote
+            # a result file indistinguishable from a DirectML run. Same
+            # class as the w_ntp note above, one layer further out again.
+            "device": str(device),
+            "torch_version": torch.__version__,
+            "python": sys.version.split()[0],
             "grad_clip_norm": ARM_GRAD_CLIP.get(arm, 0.0),
             "taper": ARM_TAPER.get(arm, False),
             "deep_interval_batches": ARM_DEEP_CADENCE.get(arm, 1000),
