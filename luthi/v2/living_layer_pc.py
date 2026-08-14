@@ -286,6 +286,23 @@ class PredictiveCodingLayer(nn.Module):
         else:
             self._consolidation_tracker = None
         self._consolidation_fire_count: int = 0
+        # --- consolidation EFFECT counters (2026-08-14, Opus 5 audit) ---
+        # `_consolidation_fire_count` counts TRIGGERS, not consolidations.
+        # Both replay pathways return the number of episodes they actually
+        # replayed and return 0 immediately on an empty store -- and both
+        # return values were discarded while the fire count incremented
+        # unconditionally. Measured consequence on the 768x8 family
+        # (seed 97, 54,000 steps): blocks 0-4 logged ~1,000
+        # `consolidation_fires` each having replayed ZERO episodes, because
+        # their episode stores were empty for the entire run. The metric
+        # Brian asked for on 2026-07-18 to make "memory becoming structure"
+        # countable was counting the trigger and not the becoming.
+        #
+        # replayed_total: cumulative episodes actually replayed.
+        # noop_fires: triggers where both pathways replayed nothing.
+        # fires - noop_fires = triggers that did something.
+        self._consolidation_replayed_total: int = 0
+        self._consolidation_noop_fires: int = 0
 
         self._buffer_dtype_overrides: dict[str, torch.dtype] = dict(
             buffer_dtypes or {}
@@ -497,6 +514,42 @@ class PredictiveCodingLayer(nn.Module):
         )
         self.register_buffer(
             "band_damp_rows", torch.tensor(0, dtype=torch.long)
+        )
+        # --- silent-skip counters (2026-08-14, Opus 5 audit) ---
+        # Two paths in this layer decline to do their work and return
+        # normally. Both were uncounted, which makes "quiet because the
+        # input was ordinary" indistinguishable from "quiet because this
+        # block's living channel has been off for 4,000 batches" -- the
+        # exact discriminator `drive_duty` exists to provide for the
+        # drive, missing here. CLAUDE.md: every mechanism ships with the
+        # instrument that could catch it lying.
+        #
+        # nonfinite_forward_skips: a non-finite forward skips
+        # pc_self_modify entirely AND publishes a zeroed _last_pred_error
+        # to the top-down sweep. Correct behaviour (living buffers must
+        # not eat NaN), but a block silently not learning is precisely
+        # the failure this repo has paid for repeatedly.
+        # persistent=False is REQUIRED, not incidental: v2 model loading has
+        # a deliberate strict=True contract (see luthi/living_extra_state.py,
+        # which exists so living state can grow without breaking it, and
+        # tests/test_living_extra_state.py which pins it). A persistent
+        # buffer added here would make every existing checkpoint fail to
+        # load with a missing-key error. Consequence, accepted: these
+        # counters reset on resume, so they are per-process. That is fine
+        # for their purpose -- they are differenced between logged records
+        # to get a rate, and a reset shows up as a negative delta rather
+        # than as silence.
+        self.register_buffer(
+            "nonfinite_forward_skips", torch.tensor(0, dtype=torch.long),
+            persistent=False,
+        )
+        # band_degenerate_skips: the homeostatic band no-ops when its
+        # reference median is non-finite or <= 0 (i.e. activity variance
+        # has collapsed). band_boost_rows/band_damp_rows both read 0 in
+        # that case -- identical to a healthy band with nothing to do.
+        self.register_buffer(
+            "band_degenerate_skips", torch.tensor(0, dtype=torch.long),
+            persistent=False,
         )
         # Mean input pattern at episode write time. Used by Salvatori-style
         # attractor consolidation (`consolidate_layer_attractor`) to re-
@@ -815,6 +868,9 @@ class PredictiveCodingLayer(nn.Module):
             act = self.act_var.clamp(min=0).sqrt()
             ref = act.median()
             if not torch.isfinite(ref) or float(ref) <= 0:
+                # Counted (2026-08-14): boost/damp rows both read 0 here,
+                # identical to a healthy band with nothing to correct.
+                self.band_degenerate_skips.add_(1)
                 return gate
 
             lo = self.band_lo_frac * ref
@@ -1081,6 +1137,11 @@ class PredictiveCodingLayer(nn.Module):
         # this guard), which made every checkpointed v2 forward fail at
         # backward with CheckpointError.
         if not torch.isfinite(output.detach()).all():
+            # Counted (2026-08-14): silently skipping the living update is
+            # correct, but silently NOT RECORDING it is how a block stops
+            # learning for a whole family while every counter reads healthy.
+            # Surfaced in aliveness() as `nonfinite_forward_skips`.
+            self.nonfinite_forward_skips.add_(1)
             # Cache a safe zero pred_error so the inter-block top-down sweep
             # sees a valid (if no-op) signal when self-mod was skipped.
             self._last_pred_error = torch.zeros(
@@ -1244,18 +1305,25 @@ class PredictiveCodingLayer(nn.Module):
                         consolidate_layer,
                         consolidate_layer_attractor,
                     )
+                    # Return values are the episode counts actually replayed
+                    # (0 on an empty store). Captured, not discarded --
+                    # see the counter block in __init__.
+                    replayed = 0
                     if self.consolidation_style in ("gradient", "both"):
-                        consolidate_layer(
+                        replayed += consolidate_layer(
                             self,
                             consolidation_rate_factor=self.consolidation_rate_factor,
-                        )
+                        ) or 0
                     if self.consolidation_style in ("attractor", "both"):
-                        consolidate_layer_attractor(
+                        replayed += consolidate_layer_attractor(
                             self,
                             consolidation_rate_factor=self.consolidation_rate_factor,
                             n_replay_passes=self.consolidation_attractor_passes,
-                        )
+                        ) or 0
                     self._consolidation_fire_count += 1
+                    self._consolidation_replayed_total += int(replayed)
+                    if replayed == 0:
+                        self._consolidation_noop_fires += 1
 
         # iPC (T>1) grad-path repair (Fable mode-matrix sweep, 2026-07-15):
         # the inner loop's `output` rebinds happened under no_grad, so the
@@ -1380,6 +1448,13 @@ class PredictiveCodingLayer(nn.Module):
             # Homeostatic band readings (observational only).
             "band_boost_rows": int(self.band_boost_rows.item()),
             "band_damp_rows": int(self.band_damp_rows.item()),
+            # Silent-skip counters (2026-08-14). Cumulative, so differencing
+            # two logged records gives the per-interval rate. A nonzero and
+            # RISING nonfinite_forward_skips means this block's living
+            # channel is intermittently off and every other buffer below is
+            # reporting stale values with full confidence.
+            "nonfinite_forward_skips": int(self.nonfinite_forward_skips.item()),
+            "band_degenerate_skips": int(self.band_degenerate_skips.item()),
             # cos(vec(W), vec(P)) -- external review 2026-07-28, instrument #5.
             # W and P currently receive the SAME outer-product form
             # (outer(output_mean, error_at_input), pc_ops.py steps d and i),
@@ -1451,6 +1526,16 @@ class PredictiveCodingLayer(nn.Module):
             # channels silent). Persists across resume via
             # living_extra_state; memory-becoming-structure, now countable.
             "consolidation_fires": float(self._consolidation_fire_count),
+            # Effect, not trigger (2026-08-14). `consolidation_fires` alone
+            # cannot distinguish "consolidation is working" from "the
+            # trigger fired a thousand times into an empty store". These
+            # two make that separable: noop_fires == fires means the
+            # mechanism has done nothing at all, however healthy the fire
+            # count looks.
+            "consolidation_replayed_total": float(
+                self._consolidation_replayed_total
+            ),
+            "consolidation_noop_fires": float(self._consolidation_noop_fires),
         }
 
     def clear_forward_cache(self) -> None:

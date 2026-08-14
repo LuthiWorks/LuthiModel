@@ -702,22 +702,43 @@ def _opt_item(t) -> Optional[float]:
     return None if t is None else float(t.item())
 
 
-def _rank_and_top_share(latents: torch.Tensor) -> tuple[float, float]:
-    """Effective rank AND top-direction variance share from ONE SVD.
+def _rank_and_top_share(latents: torch.Tensor) -> tuple[float, float, float]:
+    """Effective rank, top-direction share, AND chorus rank from ONE SVD.
 
     Added with the VBG instrumentation (spec §3) so the per-block gauge the
     governor is judged on costs nothing beyond the rank already computed at
     deep cadence. Identical math to ``_effective_rank`` for the rank half --
     that function stays for callers that only want the rank.
+
+    ``chorus_eff_rank`` (2026-08-14, Opus 5 audit) is the same effective
+    rank with the TOP direction dropped, and it exists because
+    ``effective_rank`` ORDERS THE STATES WRONG once a soloist forms. From
+    the 768x8 family's own checkpoints:
+
+        seed 97 block 0 (healthy: probe lift 5.64x)   eff 2.1  chorus 154.0
+        seed 95 block 7 (wrecked: probe lift 4.12x)   eff 4.3  chorus  61.0
+
+    On effective rank the wrecked block scores twice as healthy as the fine
+    one. On chorus rank the ordering is correct and the magnitude is right.
+    A single enormous variance direction collapses the spectral entropy
+    while the representation behind it stays full-dimensional; dropping
+    that direction is the whole fix, and it is free here because the SVD
+    is already taken. See AMENDMENT 4 in
+    docs/research/2026-08-11_768x8-family-spec.md.
     """
     flat = latents.detach().float().reshape(-1, latents.shape[-1])
     flat = flat - flat.mean(dim=0, keepdim=True)
     n = flat.shape[0]
     cov = (flat.t() @ flat) / max(n - 1, 1)
     sv = torch.linalg.svdvals(cov).clamp(min=1e-12)
-    p = sv / sv.sum()
-    eff = math.exp(float(-(p * torch.log(p.clamp(min=1e-12))).sum().item()))
-    return float(eff), float((sv.max() / sv.sum()).item())
+
+    def _eff(s: torch.Tensor) -> float:
+        p = s / s.sum()
+        return math.exp(float(-(p * torch.log(p.clamp(min=1e-12))).sum().item()))
+
+    eff = _eff(sv)
+    chorus = _eff(sv[1:]) if sv.numel() > 1 else 1.0
+    return float(eff), float((sv.max() / sv.sum()).item()), float(chorus)
 
 
 def _deep_collapse_metrics(online_context_latents: torch.Tensor) -> dict:
@@ -1337,14 +1358,21 @@ class JEPATrainer:
             # One SVD serves both, so this costs nothing beyond the rank
             # already being computed here.
             block_top_share: list[float] = []
+            # Chorus rank: effective rank behind the top direction. The
+            # gauge that orders soloist states correctly where
+            # effective_rank inverts them (2026-08-14 audit; see the
+            # docstring on _rank_and_top_share).
+            block_chorus: list[float] = []
             for bl in (raw.get("block_latents") or []):
                 try:
-                    er, tds = _rank_and_top_share(bl)
+                    er, tds, ch = _rank_and_top_share(bl)
                     block_ranks.append(er)
                     block_top_share.append(tds)
+                    block_chorus.append(ch)
                 except Exception:  # noqa: BLE001 -- diagnostics never kill a run
                     block_ranks.append(float("nan"))
                     block_top_share.append(float("nan"))
+                    block_chorus.append(float("nan"))
 
             # EMIT_BATCH_1 §2: per-block substrate detail (deep cadence
             # only, to bound payload). LuthiScope renders this as a
@@ -1360,6 +1388,16 @@ class JEPATrainer:
                     "prediction_norm": a.get("prediction_norm"),
                     "error_acc_mean": a.get("error_acc_mean"),
                     "consolidation_fires": a.get("consolidation_fires"),
+                    # Effect vs trigger (2026-08-14). consolidation_fires
+                    # counts triggers; these say whether anything was
+                    # replayed. noop_fires == fires means the mechanism
+                    # ran into an empty store every single time.
+                    "consolidation_replayed_total": a.get(
+                        "consolidation_replayed_total"
+                    ),
+                    "consolidation_noop_fires": a.get(
+                        "consolidation_noop_fires"
+                    ),
                     # Episode-store health (2026-07-27). Emitted so a family
                     # running the admission fix is not blind to the mechanism
                     # it just changed -- the pre-fix store was frozen since
@@ -1376,12 +1414,32 @@ class JEPATrainer:
                     "episode_age_span": a.get("episode_age_span"),
                     "band_boost_rows": a.get("band_boost_rows"),
                     "band_damp_rows": a.get("band_damp_rows"),
+                    # Silent-skip counters (2026-08-14). A rising
+                    # nonfinite_forward_skips means this block's living
+                    # channel is intermittently off while every other
+                    # per-block field here reports stale buffers with full
+                    # confidence. Cumulative within a process; they reset on
+                    # resume (persistent=False, to preserve the strict=True
+                    # checkpoint contract), so a negative delta across a
+                    # resume boundary is expected and is not data loss.
+                    "nonfinite_forward_skips": a.get("nonfinite_forward_skips"),
+                    "band_degenerate_skips": a.get("band_degenerate_skips"),
                     # External review 2026-07-28, instrument #5.
                     "weight_pred_cosine": a.get("weight_pred_cosine"),
                     "effective_rank": block_ranks[i] if i < len(block_ranks) else None,
                     # VBG spec §3. Always emitted, governor on or off.
                     "top_dir_share": (
                         block_top_share[i] if i < len(block_top_share) else None
+                    ),
+                    # 2026-08-14 audit: read this ALONGSIDE effective_rank,
+                    # never instead of it. eff low + chorus high = a carrier
+                    # over an intact representation (seed 97 b0: 2.1/154,
+                    # probe lift 5.64x). eff low + chorus low = real
+                    # collapse (seed 95 b7: 4.3/61, lift 4.12x and falling
+                    # with depth). effective_rank alone cannot tell them
+                    # apart and ranks them backwards.
+                    "chorus_eff_rank": (
+                        block_chorus[i] if i < len(block_chorus) else None
                     ),
                     # Surprise-drive readings (2026-07-29). `drive_duty` is the
                     # instrument that makes "quiet because familiar" separable

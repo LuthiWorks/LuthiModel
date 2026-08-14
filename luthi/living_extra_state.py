@@ -66,6 +66,17 @@ def collect_living_extra_state(model: nn.Module) -> dict[str, dict[str, Any]]:
             entry["consolidation_fire_count"] = int(
                 module._consolidation_fire_count
             )
+        # Consolidation EFFECT counters (2026-08-14). Persisted alongside
+        # the trigger count so a resumed run does not lose the only
+        # evidence that its consolidation has been a no-op.
+        if hasattr(module, "_consolidation_replayed_total"):
+            entry["consolidation_replayed_total"] = int(
+                module._consolidation_replayed_total
+            )
+        if hasattr(module, "_consolidation_noop_fires"):
+            entry["consolidation_noop_fires"] = int(
+                module._consolidation_noop_fires
+            )
         if hasattr(module, "_sparse_step_count"):
             entry["sparse_step_count"] = int(module._sparse_step_count)
         tracker = getattr(module, "_consolidation_tracker", None)
@@ -151,6 +162,14 @@ def apply_living_extra_state(
             module._consolidation_fire_count = int(
                 entry["consolidation_fire_count"]
             )
+        # Presence-gated, so checkpoints written before 2026-08-14 simply
+        # start these at 0 rather than failing the restore.
+        for _k, _attr in (
+            ("consolidation_replayed_total", "_consolidation_replayed_total"),
+            ("consolidation_noop_fires", "_consolidation_noop_fires"),
+        ):
+            if _k in entry and hasattr(module, _attr):
+                setattr(module, _attr, int(entry[_k]))
         if "sparse_step_count" in entry and hasattr(
             module, "_sparse_step_count"
         ):
