@@ -64,9 +64,22 @@ class TrendingBand:
     k: float = 4.0
     sustained_cycles: int = 3
     min_warmup: int = 8
+    # 2026-08-14 audit: MAD gets a SCALE-RELATIVE floor, matching the fix
+    # applied to StalenessManager's spike bands and the precedent of
+    # StalenessConfig.consistency_scale_floor (2026-07-04). A bare
+    # absolute floor collapses the band onto its own median whenever the
+    # signal is quiet, so a stable watcher becomes a hair trigger and
+    # these kills fire on noise. Demonstrated on the staleness band: a
+    # 0.0002% move after a constant stretch tripped it.
+    mad_rel_floor: float = 0.05
+    degenerate_abs: float = 1e-12
 
     values: deque = field(default_factory=lambda: deque())
     consecutive_breaches: int = 0
+    # Cycles where the band had neither scale nor spread and declined to
+    # judge. Without this, "never breached because healthy" and "never
+    # breached because blind" are the same reading.
+    degenerate_skips: int = 0
 
     def __post_init__(self):
         self.values = deque(maxlen=self.window)
@@ -79,8 +92,24 @@ class TrendingBand:
         vals = torch.tensor(list(self.values))
         med = float(vals.median().item())
         mad = float((vals - vals.median()).abs().median().item())
-        mad = max(mad, 1e-8)
         latest = float(self.values[-1])
+
+        # Scale-relative floor. Deliberately does NOT suppress the
+        # zero-baseline case: a band sitting at exactly 0 that jumps to 10
+        # is a real breach and must fire (tests/m9/test_kills.py pins
+        # this). What the relative floor kills is the case where a signal
+        # has a real scale but no spread -- 0.5 repeated, then 0.500001 --
+        # where the old absolute floor made a 0.0002% move a breach.
+        # A zero-median band still has no scale to reason about; that is
+        # counted rather than silently tolerated, because only the caller
+        # knows the signal's units well enough to set an absolute floor.
+        if mad <= self.degenerate_abs and abs(med) <= self.degenerate_abs:
+            self.degenerate_skips += 1
+        mad = max(
+            mad,
+            self.mad_rel_floor * abs(med),
+            self.degenerate_abs,
+        )
 
         is_breach = False
         if self.direction in ("max", "both"):

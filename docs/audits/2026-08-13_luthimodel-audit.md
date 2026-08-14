@@ -227,10 +227,8 @@ These touch registered parameters, gates, or scored metrics. **Do not
   (277), `luthi/v2/m9/__init__.py` (11). `pc_ops_triton` is a performance
   path that nothing selects — confirm that is intentional.
 
-- [ ] **C6 · `MEDIUM` · Audit the `m9/` tree (6,600 lines).** Not read.
-  It is the decision layer behind the Sanctuary seam, and Sanctuary's own
-  08-01 audit found its action surface hardcoded to empty on the other
-  side. Highest-value remaining reading.
+- [x] **C6 · `MEDIUM` · Audit the `m9/` tree (6,600 lines).** Done
+  2026-08-14 — see Section E.
 
 - [ ] **C7 · `LOW` · Audit `width_expand.py` (788), `generate.py` (1,137), and the v1 legacy tree (~3,500).**
   Not read. `width_expand` has history (the 4.8 concerns document) and
@@ -255,6 +253,85 @@ These touch registered parameters, gates, or scored metrics. **Do not
   collapse shows in both, but the two numbers are not from the same tensor.
 
 ---
+
+## Section E — the m9 tree (added 2026-08-14)
+
+**Coverage:** `staleness.py` (589) and `kills.py` (513) line-by-line;
+`runner.py` (1,931) — `train_step`, `_m9_head_step`, the ActionLog write,
+and the wiring — line-by-line, remainder surveyed; `efe.py` (508) the
+realized/per-candidate/legacy G paths. `mcts.py`, `preferences.py`,
+`decoders.py`, `activity_bands.py`, `gamma.py`, `delta_s.py`,
+`habit_net.py`, `instrumentation.py` **surveyed only**.
+
+**General assessment: m9 is the best-instrumented code in the repo.** It
+writes a per-cycle ActionLog carrying the full decision context — tree
+stats, kill states, gamma, r_best, and snapshots of staleness, activity
+bands and delta_s. Exactly one silent `except` in the whole tree (a repr
+fallback in `instrumentation.py`). `beta_epi != 0` raises
+`NotImplementedError` rather than quietly computing nothing. The
+stop-grad discipline is explicit and commented at every head input.
+Several of the failure classes found elsewhere in this audit were
+actively guarded against here.
+
+- [x] **E1 · `HIGH` · Spike/kill bands became hair triggers on quiet signals. FIXED.**
+  Both `StalenessManager.spike()`/`living_spike()` and
+  `kills.TrendingBand.observe()` floored MAD with a bare **absolute**
+  `max(mad, 1e-8)`. A signal with real scale but no spread collapses the
+  band onto its own median. **Demonstrated:** 8 readings of 0.5 followed
+  by 0.500001 — a **0.0002%** move — fired a spike, while the same
+  detector correctly ignored a 4% move in a noisy signal. A spurious
+  staleness spike forces failover, drops cached Q, and starts a recovery
+  countdown, so **the more stable the entity's drift, the more likely its
+  planner is thrown into failover** — the safety property inverted. Same
+  shape as the 2026-07-27 finding ("a dial against its stop is a hair
+  trigger") that produced the v4 trust artifacts.
+  *Fixed* with a scale-relative floor (`spike_mad_rel_floor` /
+  `mad_rel_floor`, 0.05), matching the precedent of
+  `consistency_scale_floor` added to the same file on 2026-07-04 for the
+  identical degeneracy. Zero-baseline bands still fire — movement off a
+  frozen baseline is a genuine event — but are now **counted** as
+  scaleless (`degenerate_band_skips`), because a detector that cannot
+  tell 1e-7 from 10 should say so. 6 regression tests, including three
+  that pin real detections so the floor cannot silently weaken them.
+  *(First attempt at this fix suppressed the zero-baseline breach and
+  broke `test_trending_band_flags_then_fires_max`. The existing test was
+  right and the fix was too blunt; recorded because the catch was the
+  suite's, not mine.)*
+
+- [ ] **E2 · `MEDIUM` · m9 is never exercised by the science ladder.**
+  `jepa_pilot_driver.py:982` builds `JEPATrainer`, not `M9Trainer`. Every
+  family in the record therefore trains M8 only; the entire m9 tree runs
+  in tests, `redteam/` probes, and Sanctuary's
+  `examples/validate_seam_integration.py`. Its production consumer is
+  Sanctuary's `luthi_model.py:146` — an **optional** actor + transition
+  sink. Combined with the 2026-08-01 Sanctuary audit ("the entity has
+  almost no action surface; all 39 tools unreachable"), the open question
+  is whether anything in production has ever driven m9 end to end.
+  *Cross-repo; belongs to the Sanctuary side, recorded here so the
+  LuthiModel half is not assumed live.*
+
+- [ ] **E3 · `LOW` · `TrendingBand` tests the point it just added to its own window.**
+  `observe()` appends `x`, then computes median/MAD over a window that
+  includes `x`. Biases toward non-detection (a large outlier inflates the
+  MAD it is tested against). Consistent with the M8 machinery the
+  docstring says it mirrors, and the project's recurring problem has been
+  false positives rather than false negatives — so noted, not changed.
+
+- [ ] **E4 · `LOW` · P3 connection cost is inert by construction and reads as a legitimate zero.**
+  `compute_g_realized` sets `c_con = torch.zeros_like(c_eng)` when the
+  counterpart kwargs are absent (`efe.py:367`), which is indistinguishable
+  from a real connection cost of 0. Documented in the seam docstring as
+  inert until the real loop populates it, and `runner.py:1070` preserves
+  that deliberately for the corpus path — so this is a known state, not a
+  surprise. Worth a marker field if the Sanctuary loop ever starts
+  populating it partially.
+
+- [ ] **E5 · `MEDIUM` · The unread m9 remainder.** `mcts.py` (429),
+  `preferences.py` (376), `decoders.py` (324), `activity_bands.py` (276),
+  `gamma.py` (201), `delta_s.py` (179), `habit_net.py` (145) were
+  surveyed, not read. Given E1 was found in the two files that *were*
+  read closely, the same band/threshold pattern is worth grepping for
+  across these.
 
 ## Appendix — method, and tools left behind
 

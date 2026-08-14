@@ -99,6 +99,29 @@ class StalenessConfig:
     drift_window: int = 32
     # Spike threshold = median + spike_k * MAD. Spike on values past this.
     spike_k: float = 4.0
+    # Finding (2026-08-14 audit): MAD needs the same floor treatment
+    # `consistency_scale_floor` below got on 2026-07-04, for the identical
+    # reason. `max(mad, 1e-8)` is an ABSOLUTE floor, so a quiet signal
+    # collapses the band onto its own median and the detector becomes a
+    # hair trigger. Demonstrated: 8 readings of 0.5 followed by 0.500001
+    # -- a 0.0002% move -- fired a spike and forced failover, while the
+    # same detector correctly ignored a 4% move in a noisy signal. The
+    # safety property was inverted: the more stable the entity's drift,
+    # the more sensitive its spike detector. This is the shape the
+    # 2026-07-27 arc named ("a dial against its stop is a hair trigger"),
+    # which produced the v4 trust events that turned out to be epsilon
+    # artifacts rather than data.
+    #
+    # Relative floor: the band must span at least this fraction of its own
+    # median before a deviation counts. 0.05 => a quiet signal has to move
+    # ~20% (spike_k * 0.05) of its median to spike.
+    spike_mad_rel_floor: float = 0.05
+    # When BOTH median and MAD are degenerate (an identically-constant
+    # signal, e.g. drift of exactly 0 while plasticity is frozen), there is
+    # no scale to normalize against and any epsilon would be arbitrary.
+    # Do not spike; count it instead, so "quiet because stable" stays
+    # separable from "quiet because the detector is blind".
+    spike_degenerate_abs: float = 1e-12
     # Recovery window: how many cycles after a spike before we attempt
     # to return to the live predictor (plan §4.v `N_recover`).
     recovery_cycles: int = 5
@@ -218,6 +241,11 @@ class StalenessManager:
             maxlen=self.config.consistency_window
         )
         self._in_failover = False
+        # 2026-08-14 audit: cycles where a spike band was degenerate (no
+        # median AND no spread) and therefore could not judge. Counted per
+        # band so "no spikes because the entity is stable" stays separable
+        # from "no spikes because the detector had nothing to measure".
+        self._degenerate_band_skips: dict[str, int] = {}
         # Instrumentation: recovery latency on spikes.
         self._last_spike_cycle: int | None = None
         self._spike_recovery_latencies: list[int] = []
@@ -323,29 +351,50 @@ class StalenessManager:
             self.living_drift_source = source
             self.reset_living_band()
 
+    def _band_spike(self, band, *, degenerate_key: str) -> bool:
+        """Shared median+MAD spike test with a SCALE-RELATIVE MAD floor.
+
+        See `spike_mad_rel_floor` in StalenessConfig for why the floor is
+        relative rather than the previous bare `max(mad, 1e-8)`.
+        Degenerate bands (no median AND no spread -- an identically
+        constant signal) do not spike; they increment a counter so the
+        blindness is visible instead of silent.
+        """
+        if not band.is_warm() or not band.values:
+            return False
+        med = band.median()
+        mad = band.mad()
+        scale = abs(med)
+        # A band with neither spread nor scale has no basis for judging
+        # magnitude. It is NOT suppressed -- a drift band pinned at 0 that
+        # starts moving is a genuine plasticity event and should spike --
+        # but it is counted, because only the caller knows the units well
+        # enough to set a meaningful absolute floor, and a detector that
+        # cannot tell 1e-7 from 10 should say so.
+        if mad <= self.config.spike_degenerate_abs and \
+                scale <= self.config.spike_degenerate_abs:
+            self._degenerate_band_skips[degenerate_key] = (
+                self._degenerate_band_skips.get(degenerate_key, 0) + 1
+            )
+        floor = max(
+            self.config.spike_mad_rel_floor * scale,
+            self.config.spike_degenerate_abs,
+        )
+        threshold = med + self.config.spike_k * max(mad, floor)
+        return band.values[-1] > threshold
+
     def living_spike(self) -> bool:
         """True if the latest living-drift reading is past the running
         band (same median+MAD rule as spike()). Query/log only until
         the threshold-tuning pass wires consumption."""
-        if not self.living_band.is_warm() or not self.living_band.values:
-            return False
-        med = self.living_band.median()
-        mad = self.living_band.mad()
-        threshold = med + self.config.spike_k * max(mad, 1e-8)
-        return self.living_band.values[-1] > threshold
+        return self._band_spike(self.living_band, degenerate_key="living")
 
     # ------------------------------------------------------------------
     # (v) Spike detection + handling.
     # ------------------------------------------------------------------
     def spike(self) -> bool:
         """True if the most-recent drift is past the running band."""
-        if not self.drift_band.is_warm() or not self.drift_band.values:
-            return False
-        med = self.drift_band.median()
-        mad = self.drift_band.mad()
-        threshold = med + self.config.spike_k * max(mad, 1e-8)
-        latest = self.drift_band.values[-1]
-        return latest > threshold
+        return self._band_spike(self.drift_band, degenerate_key="drift")
 
     def handle_spike(self, mcts) -> None:
         """High-surprise spike per plan §4.v.
@@ -647,4 +696,8 @@ class StalenessManager:
             "living_drift_median": self.living_band.median(),
             "living_drift_mad": self.living_band.mad(),
             "living_spike": self.living_spike(),
+            # 2026-08-14 audit. Nonzero means a spike band had no scale to
+            # judge against on those cycles and declined to fire. Quiet
+            # detectors and blind detectors look identical without this.
+            "degenerate_band_skips": dict(self._degenerate_band_skips),
         }
