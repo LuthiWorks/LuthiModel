@@ -695,6 +695,18 @@ def _substrate_health_metrics(aliveness: list[dict]) -> dict:
         # >1 = the weighting has something to differentiate.
         "precision_spread": _mean("precision_spread"),
         "consolidation_fires": float(sum(fires)) if fires else float("nan"),
+        # 2026-08-14 audit. `weight_abs_mean` and `error_rms` were added to
+        # aliveness() on 2026-07-28 with an explicit purpose -- "decides
+        # whether an update of 5.3e-9 is ~1.4 ULP (arithmetically dead) or
+        # ~44 ULP ... Without the scale, 'update_ema fell 5 orders of
+        # magnitude' cannot be interpreted at all" -- and were then emitted
+        # NOWHERE, neither here nor in substrate_blocks. The 768x8 family's
+        # update_ema_mean fell 145x (block 0) over its run and the question
+        # the instrument exists to answer could not be asked of the tape.
+        # Computed-but-discarded is the same class as the consolidation
+        # counter; this one was blocking a live design question.
+        "weight_abs_mean": _mean("weight_abs_mean"),
+        "error_rms": _mean("error_rms"),
     }
 
 
@@ -1419,6 +1431,11 @@ class JEPATrainer:
                 {
                     "set_point_drift": a.get("set_point_drift"),
                     "update_ema_mean": a.get("update_ema_mean"),
+                    # Scale for the two above (2026-08-14 audit). An
+                    # update_ema of 3e-7 is meaningless without knowing
+                    # whether the weights it moves are O(1) or O(1e-4).
+                    "weight_abs_mean": a.get("weight_abs_mean"),
+                    "error_rms": a.get("error_rms"),
                     "precision_mean": a.get("precision_mean"),
                     "precision_spread": a.get("precision_spread"),
                     "prediction_norm": a.get("prediction_norm"),
