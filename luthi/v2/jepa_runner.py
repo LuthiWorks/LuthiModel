@@ -358,10 +358,28 @@ class RunnerConfig:
     # Rank veto: an over-limit NMSE with pooled effective rank still at or
     # above this value does not kill (logged loudly; the persistence clock
     # keeps running so a later rank fall kills without restarting the
-    # wait). The rank instruments are the only participants that have
-    # never lied; two independent gauges must agree before a run dies.
+    # wait). Two independent gauges must agree before a run dies.
     # 0 disables.
+    #
+    # 2026-08-14 audit, B3: the comment here used to read "the rank
+    # instruments are the only participants that have never lied." The
+    # POOLED instrument told the truth about the final block and nothing
+    # about the stack -- it read 403 in the 768x8 family while blocks 0-1
+    # sat at 2.0/2.4. It did not lie; it was asked the wrong question.
     divergence_rank_veto_min_eff: float = 100.0
+    # Per-block companion to the veto above (2026-08-14 audit, B3).
+    # When > 0, an otherwise-vetoed kill PROCEEDS if the minimum per-block
+    # `chorus_eff_rank` is below this, i.e. the healthy trunk number is
+    # hiding a collapsing block.
+    #
+    # Ships DISARMED (0.0) on purpose. Gating on minimum per-block
+    # EFFECTIVE rank would be wrong -- audit A7 showed rank-2 blocks
+    # carrying full information -- and chorus rank is the right gauge but
+    # has n=3 runs behind it and no null. Arming it before that
+    # distribution exists would repeat the 2026-07-27 error of registering
+    # a criterion on an unproven observable. Until then the veto site logs
+    # both minima on every veto, so the data accumulates in the tape.
+    divergence_rank_veto_min_chorus: float = 0.0
     # Fast per-step companion to the NMSE guard above. `evaluate_heldout` runs
     # only at epoch end -- at depth 8 that is a check every ~6 hours, far too
     # slow for a divergence that began at step 2250. This watches the training
@@ -952,6 +970,9 @@ class JEPATrainer:
         # the latest pooled effective rank (rank veto's gauge).
         self._div_over_since: dict[str, int] = {}
         self._last_eff_rank: Optional[float] = None
+        # Per-block minima at deep cadence (2026-08-14 audit, B3).
+        self._last_min_block_eff: Optional[float] = None
+        self._last_min_block_chorus: Optional[float] = None
         # Kill-5 solved-not-copying log throttle (2026-07-17 amendment):
         # per-modality, log the healthy cosine crossing once, not per step.
         self._kill5_solved_logged: set[str] = set()
@@ -1378,6 +1399,17 @@ class JEPATrainer:
                     block_top_share.append(float("nan"))
                     block_chorus.append(float("nan"))
 
+            # Per-block minima for the divergence rank veto (2026-08-14
+            # audit, B3). The veto reads `_last_eff_rank`, which is the
+            # POOLED trunk rank -- 403 in the 768 family's seed 97 while
+            # blocks 0-1 sat at effective rank 2. These are cached so the
+            # guard can at minimum REPORT what it was blind to. See the
+            # veto site for why the per-block gate ships disarmed.
+            _finite_eff = [v for v in block_ranks if v == v]
+            _finite_ch = [v for v in block_chorus if v == v]
+            self._last_min_block_eff = min(_finite_eff) if _finite_eff else None
+            self._last_min_block_chorus = min(_finite_ch) if _finite_ch else None
+
             # EMIT_BATCH_1 §2: per-block substrate detail (deep cadence
             # only, to bound payload). LuthiScope renders this as a
             # blocks-x-time heatmap so a single drifting block surfaces
@@ -1445,6 +1477,8 @@ class JEPATrainer:
                     "chorus_eff_rank": (
                         block_chorus[i] if i < len(block_chorus) else None
                     ),
+                    # (per-block minima are cached for the guard just
+                    # below this record's construction)
                     # Surprise-drive readings (2026-07-29). `drive_duty` is the
                     # instrument that makes "quiet because familiar" separable
                     # from "quiet because broken" -- the distinction the whole
@@ -2566,13 +2600,61 @@ class JEPATrainer:
                 veto_eff = float(self.config.divergence_rank_veto_min_eff or 0.0)
                 eff = self._last_eff_rank
                 if veto_eff > 0 and eff is not None and eff >= veto_eff:
-                    logger.error(
-                        "NMSE TRIPPED BUT GEOMETRY HEALTHY: %s nmse=%.4f>%.2f "
-                        "with pooled eff=%.1f >= %.0f -- kill vetoed (rank "
-                        "veto); persistence clock at %d steps keeps running",
-                        modality, float(nmse), limit, eff, veto_eff, sustained,
+                    # 2026-08-14 audit, B3. `eff` is the POOLED trunk rank
+                    # and it is the ONLY gauge this veto has ever consulted.
+                    # In the 768x8 family it read 403 -- the healthiest in
+                    # the project's record -- while blocks 0 and 1 sat at
+                    # effective rank 2.0 and 2.4. The per-block instrument
+                    # that would have seen that was added 2026-07-28 with
+                    # the explicit note that "a pooled rank cannot see one
+                    # block collapsing while another compensates", and this
+                    # guard never read it.
+                    #
+                    # The per-block gate below ships DISARMED (default 0.0)
+                    # deliberately. The obvious gate -- veto only if the
+                    # per-block MINIMUM rank is healthy -- would be WRONG:
+                    # audit item A7 established that seed 97's rank-2 blocks
+                    # were carrying full information (probe lift 5.64x,
+                    # chorus rank 154), so gating on minimum effective rank
+                    # would have turned a healthy run into a false kill,
+                    # which is the failure mode this project keeps paying
+                    # for. `chorus_eff_rank` is the gauge that orders those
+                    # states correctly, but freezing a threshold on it from
+                    # n=3 runs with no null would repeat the 2026-07-27
+                    # mistake (register a criterion on an observable before
+                    # proving it reproduces). So: REPORT now, arm once the
+                    # full-length control family supplies a distribution.
+                    veto_chorus = float(
+                        getattr(self.config, "divergence_rank_veto_min_chorus", 0.0)
+                        or 0.0
                     )
-                    continue
+                    min_eff = self._last_min_block_eff
+                    min_ch = self._last_min_block_chorus
+                    if (
+                        veto_chorus > 0
+                        and min_ch is not None
+                        and min_ch < veto_chorus
+                    ):
+                        logger.error(
+                            "RANK VETO DECLINED: %s nmse=%.4f>%.2f -- pooled "
+                            "eff=%.1f looks healthy but min per-block chorus "
+                            "rank %.1f < %.1f, so the trunk number is hiding a "
+                            "collapsing block. Kill proceeds.",
+                            modality, float(nmse), limit, eff, min_ch,
+                            veto_chorus,
+                        )
+                    else:
+                        logger.error(
+                            "NMSE TRIPPED BUT GEOMETRY HEALTHY: %s nmse=%.4f>%.2f "
+                            "with pooled eff=%.1f >= %.0f (min per-block eff=%s, "
+                            "min per-block chorus=%s) -- kill vetoed (rank "
+                            "veto); persistence clock at %d steps keeps running",
+                            modality, float(nmse), limit, eff, veto_eff,
+                            f"{min_eff:.1f}" if min_eff is not None else "n/a",
+                            f"{min_ch:.1f}" if min_ch is not None else "n/a",
+                            sustained,
+                        )
+                        continue
                 # 3. Persistence: sustained beyond the ruled window kills;
                 # anything shorter is a breath being given its chance.
                 persist = int(self.config.divergence_persist_steps or 0)

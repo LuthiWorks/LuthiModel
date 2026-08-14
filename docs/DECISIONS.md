@@ -157,3 +157,74 @@ killed at nmse 2.41 carrying ppl 500 / lift 4.23x) raise a registered
 suspicion that the divergence guard's 2.0 bound — calibrated on the
 pure-JEPA objective — may need recalibration for the combined objective
 before any "working" verdict is trustworthy in either direction.
+
+---
+
+> **DECISION (2026-08-14, Opus 5 â€” NOT Brian's ruling; recorded for his
+> override and Fable's review): VISReg's shape term will be normalized by
+> N, with lambda re-derived, at the next family's registration.**
+>
+> Finding (audit B1, `docs/audits/2026-08-13_luthimodel-audit.md`): VISReg
+> ran at **98.6-99.99% of the objective by loss share for the whole 768x8
+> family**, and `l_pred` never exceeded 1.4%. Cause: Eq. 5 sums over N
+> while L_scale means over D, so at N = 32x128 the regularizer is four to
+> six orders of magnitude larger than the predictive term, and the convex
+> Eq. 9 mix at the paper's lambda = 0.6 then buries l_pred. Inside the
+> regularizer the nominal 1.0/1.0/1.0 weighting resolved to ~95% shape,
+> ~5% scale, **~0.55% center** â€” and center is the anti-offset term while
+> the observed disease was a soloist.
+>
+> The implementation is faithful to the paper. What was never checked is
+> what the paper's lambda means at our N. Same failure class as the
+> 2026-08-08 NTP dose catastrophe, on the other side of the ledger, and it
+> went uncaught because nobody computed the share.
+>
+> **Decision:** `VISReg(shape_normalize=True)` for the next family, which
+> makes lambda a scale-free mixing weight and removes the batch-size dose
+> distortion the 2026-08-11 smoke measured directly (l_shape 1,461,016 at
+> batch 32 vs 693,472 at batch 16 â€” pure N-scaling). Shipped **opt-in,
+> default False**, per this ladder's standing discipline that no completed
+> family's configuration may silently change meaning.
+>
+> **Binding condition:** turning it on WITHOUT re-deriving lambda is not a
+> correction, it is a different dose. The next registration must record
+> the measured `0.6 * l_reg / (0.4 * l_pred + 0.6 * l_reg)` ratio at step 0
+> and at intervals, and freeze an intended ratio before data. A dose that
+> is not measured is not registered.
+>
+> Not applied to any running or completed arm. The 512 full-length control
+> launched 2026-08-14 deliberately runs the OLD dose, because its whole
+> purpose is to be configuration-matched to the 512 family.
+
+---
+
+> **DECISION (2026-08-14, Opus 5 â€” NOT Brian's ruling; recorded for his
+> override and Fable's review): `adaptive_episodes` ON for the next
+> family.**
+>
+> Finding (audit B4): the 768x8 family â€” the ruled-scale family â€” ran with
+> `adaptive_episodes=False`, i.e. the pre-2026-07-27 episode-admission
+> defect that fix exists to correct. Measured on seed 97 over all 54,000
+> steps: **blocks 0-4 stored zero episodes and fired zero recalls**; only
+> b5/b6/b7 had any activity (200/144/99 writes). CLAUDE.md records the
+> same shape pre-fix ("three of four blocks storing nothing at all").
+>
+> This compounds with audit A9: `consolidation_fires` counted triggers,
+> not consolidations, so those five blocks each logged ~1,000 consolidation
+> fires having replayed nothing. Two-tier memory â€” the v2 architecture's
+> distinguishing feature â€” was inert in five of eight blocks for the
+> entire ruled-scale run, and every counter read healthy.
+>
+> **Decision:** the next family sets `adaptive_episodes=True` (plus the
+> admission-v2 surprise/refractory parameters as registered on
+> 2026-07-28), and its verdict is not scored until
+> `consolidation_noop_fires` is confirmed materially below
+> `consolidation_fires` in every block. The A9 counters make that
+> checkable for the first time.
+>
+> **Alternative Brian may prefer:** register that episode memory is
+> deliberately inert at this stage and stop shipping a config that claims
+> a mechanism it does not deliver. Either is defensible; what is not
+> defensible is the current state, where the flag exists, defaults off,
+> and nothing reports that the store is empty.
+

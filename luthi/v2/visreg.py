@@ -80,6 +80,7 @@ class VISReg(nn.Module):
         lambda_shape: float = 1.0,
         lambda_center: float = 1.0,
         eps: float = 1e-4,
+        shape_normalize: bool = False,
     ):
         super().__init__()
         self.num_proj = int(num_proj)
@@ -87,6 +88,31 @@ class VISReg(nn.Module):
         self.lambda_shape = float(lambda_shape)
         self.lambda_center = float(lambda_center)
         self.eps = float(eps)
+        # 2026-08-14 audit, item B1. Eq. 5 SUMS over N while L_scale means
+        # over D, so l_shape scales with the sample count. At N = 32x128
+        # that made the regularizer four to six orders of magnitude larger
+        # than l_pred, and the convex Eq. 9 mix at the paper's lambda=0.6
+        # put VISReg at 98.6-99.99% of the objective for an entire 54,000-
+        # step run -- l_pred never exceeded 1.4%. Within the regularizer
+        # itself the nominal 1.0/1.0/1.0 weighting resolved to ~95% shape,
+        # ~5% scale, ~0.55% center, and center is the anti-offset term
+        # while the observed disease was a soloist.
+        #
+        # The implementation is faithful to the paper; what was never
+        # checked is what the paper's lambda MEANS at our N. This flag
+        # makes l_shape a mean over N as well as over K, which makes
+        # lambda a scale-free mixing weight and incidentally removes the
+        # batch-size dose distortion the 2026-08-11 smoke measured
+        # directly (l_shape 1,461,016 at batch 32 vs 693,472 at batch 16
+        # -- the predicted ~2x, i.e. pure N-scaling).
+        #
+        # OPT-IN, default False, per this ladder's standing discipline:
+        # every completed family's configuration must keep its meaning.
+        # Turning it on is a registered change; see docs/DECISIONS.md
+        # (2026-08-14) and it MUST be paired with a re-derived lambda,
+        # because the same lambda over a differently-normalized term is a
+        # different dose, not a correction.
+        self.shape_normalize = bool(shape_normalize)
         # Same dedicated-generator discipline as SIGReg (2026-08-01):
         # per-step reproducible projections, global RNG stream untouched.
         self._generator: torch.Generator | None = None
@@ -169,7 +195,13 @@ class VISReg(nn.Module):
         proj = z_tilde @ a                           # (N, K)
         sorted_proj, _ = proj.sort(dim=0)
         q = self._quantiles(n, z.device, z.dtype).unsqueeze(1)  # (N, 1)
-        l_shape = (sorted_proj - q).square().sum(dim=0).mean()
+        # Eq. 5 sums over N and means over K. `shape_normalize` means over
+        # N too -- see the ctor for why the sum makes lambda depend on
+        # batch size and buries l_pred.
+        if self.shape_normalize:
+            l_shape = (sorted_proj - q).square().mean(dim=0).mean()
+        else:
+            l_shape = (sorted_proj - q).square().sum(dim=0).mean()
 
         l_reg = (
             self.lambda_scale * l_scale

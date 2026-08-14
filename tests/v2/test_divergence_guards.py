@@ -38,6 +38,11 @@ class _Guard:
         # Middle-ground guard state (2026-08-11).
         self._div_over_since = {}
         self._last_eff_rank = None
+        # Per-block minima the rank veto reports (2026-08-14 audit, B3).
+        # The veto's health judgement has only ever consulted the POOLED
+        # rank above; these carry what it was blind to.
+        self._last_min_block_eff = None
+        self._last_min_block_chorus = None
 
     _check_loss_divergence = JEPATrainer._check_loss_divergence
     _check_divergence = JEPATrainer._check_divergence

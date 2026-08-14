@@ -157,6 +157,23 @@ def _collect_next_token_pairs(
     return torch.cat(xs, dim=0), torch.cat(ys, dim=0)
 
 
+class _Standardize(nn.Module):
+    """Fixed affine (x - mu) / sd, fitted on the TRAIN split.
+
+    Carried inside the probe so `probe_accuracy` needs no change and the
+    held-out split gets exactly the transform the training split defined
+    (fitting on the holdout would leak).
+    """
+
+    def __init__(self, mu: torch.Tensor, sd: torch.Tensor):
+        super().__init__()
+        self.register_buffer("mu", mu)
+        self.register_buffer("sd", sd)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return (x - self.mu) / self.sd
+
+
 def fit_next_token_probe(
     loss_module: nn.Module,
     train_batches: Iterable[dict],
@@ -166,16 +183,48 @@ def fit_next_token_probe(
     epochs: int = 3,
     lr: float = 1e-2,
     seed: int = 0,
-) -> nn.Linear:
+    standardize: bool = False,
+) -> nn.Module:
     """Train the linear readout on frozen latents from TRAINING batches.
 
     The encoder never updates (latents are collected under the eval
     guard, detached). Deterministic given (seed, batches).
+
+    ``standardize`` (2026-08-14 audit, item B2) fits a per-dimension
+    mean/std on the TRAIN latents and folds it into the returned module.
+    **This is the honest setting and it is not the default**, because
+    ``probe.top1`` is a scored comparison axis in ``pilot_verdict.py``
+    and silently changing it would break comparability with every family
+    on the ladder.
+
+    Why it matters: Adam at lr=1e-2 on unstandardized latents converges
+    for some input scales and not others, and latent RMS varies ~30x
+    across the checkpoints measured on 2026-08-14 (0.30 to 9.06). The
+    consequences are not subtle:
+
+      - The 768x8 family's seed 95 has a RECORDED ``probe.top1`` of
+        0.0004 -- chance. The same checkpoint, same recipe, standardized:
+        **0.0479 at 4.12x lift**. The recorded number measured the
+        optimizer failing, not the model.
+      - An unstandardized per-block sweep read adjacent blocks of a
+        single forward pass as 0.0912 and 0.0013 (chance).
+
+    A linear probe's accuracy is invariant to an invertible affine map of
+    its input in the limit of perfect optimization; standardizing is what
+    lets the optimizer reach that limit, so the number measures content
+    instead of scale. Recorded probe values for large-magnitude runs are
+    biased DOWN.
     """
     x, y = _collect_next_token_pairs(loss_module, train_batches, max_batches)
     d_model = x.shape[-1]
     torch.manual_seed(seed)
-    probe = nn.Linear(d_model, vocab_size)
+    linear = nn.Linear(d_model, vocab_size)
+    if standardize:
+        mu = x.float().mean(dim=0, keepdim=True)
+        sd = x.float().std(dim=0, keepdim=True).clamp(min=1e-6)
+        probe = nn.Sequential(_Standardize(mu, sd), linear)
+    else:
+        probe = linear
     opt = torch.optim.Adam(probe.parameters(), lr=lr)
     probe.train()
     for _ in range(epochs):

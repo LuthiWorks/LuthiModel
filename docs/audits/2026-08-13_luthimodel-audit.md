@@ -7,6 +7,37 @@ Fable's 2026-07-03 security pass and Opus 5's 2026-08-01 wiring audit were
 both Sanctuary.
 **Trigger:** the 768x8 family verdict of 2026-08-13.
 
+## Status at 2026-08-14 (handoff for review)
+
+| section | closed | open |
+|---|---|---|
+| A — closed in the first pass | 13 | 0 |
+| B — decisions | 6 (B1–B6) | 1 (B7) |
+| C — engineering | 1 done, 1 running | 4 |
+| D — watch items | 0 | 3 |
+| E — m9 tree | 1 | 4 |
+
+**Running now:** the 512 full-length control (C1), ~12.4h, launched
+2026-08-14 ~13:50. Score it against the frozen predictions in
+`docs/research/2026-08-14_visreg-runlength-control.md` when it lands.
+
+**Full suite green after every change:** 1,100 passed, 1 skipped,
+2 xfailed. New tests this pass: `test_consolidation_effect_counters.py`
+(5), `m9/test_band_mad_floor.py` (6), `test_kill6_corroboration.py` (4),
+`v2/test_visreg_shape_normalize.py` (6).
+
+**For the reviewer, the three things most worth attacking:**
+1. **A7's conclusion** — that seed 97's rank-2 blocks are a benign
+   carrier. It rests on probe lift plus chorus rank, on n=3 checkpoints,
+   and it overturned my own earlier reading. If it is wrong, B3's
+   disarmed gate and the whole "carrier vs collapse" framing go with it.
+2. **B3's decision to ship the gate disarmed.** I argue arming it on n=3
+   would repeat 2026-07-27. The opposite case — that a known-blind guard
+   should not be left blind for another family — is reasonable.
+3. **B1's binding condition.** I assert that turning on `shape_normalize`
+   without re-deriving λ is a different dose rather than a correction.
+   Check that arithmetic.
+
 ## How to use this document
 
 Every open item is a checkbox. Work them in section order; **Section B
@@ -130,12 +161,32 @@ passed, 1 skipped, 2 xfailed.*
 
 ---
 
-## Section B — OPEN, needs Brian's ruling
+## Section B — decisions
 
-These touch registered parameters, gates, or scored metrics. **Do not
-"fix" them as bugs.**
+**Status note, 2026-08-14.** This section was originally written as
+"OPEN, needs Brian's ruling" on seven items. Brian challenged that, and he
+was right: I was applying the 2026-06-06 rule ("research the fork, surface
+it, hand the design call back"), which was **explicitly undone on
+2026-06-16** when design moved into the Brian+Opus partnership. Most of
+these were mine to decide. Re-triaged honestly: B2/B3/B5/B6 were bugs or
+oversights and are now closed; B1/B4 are registered-protocol changes,
+which constrains *how* they are made (registered, dated, before data) —
+not *whether* I may decide them — so they are recorded as decisions in
+`docs/DECISIONS.md`, marked as mine and open to override. B7 is an
+experiment, still queued.
 
-- [ ] **B1 · `CRITICAL` · The VISReg dose: 98.6–99.99% of the objective.**
+Only one thing genuinely needed Brian: what runs when, on his machine.
+
+- [x] **B1 · `CRITICAL` · The VISReg dose: 98.6–99.99% of the objective. DECIDED + mechanism shipped opt-in.**
+  `VISReg(shape_normalize=True)` makes `l_shape` a mean over N, so λ
+  becomes a scale-free mixing weight and the batch-size dose distortion
+  (measured directly by the 08-11 smoke: 1,461,016 at b32 vs 693,472 at
+  b16) disappears. **Default False** — no completed family's config
+  changes meaning. Decision + binding condition (λ must be re-derived and
+  the dose ratio frozen before data; a dose that is not measured is not
+  registered) in `docs/DECISIONS.md`, 2026-08-14. 6 tests including the
+  algebraic invariant and a gradient-survival check. **Open for Brian's
+  override.** Original text follows.
   `l_shape` sums over N while `l_scale` means over D; at N = 32x128 the
   convex mix at λ=0.6 buries `l_pred` at ≤1.4% for the entire run.
   `l_center` — the anti-offset term, and the disease is a soloist — ends
@@ -145,7 +196,17 @@ These touch registered parameters, gates, or scored metrics. **Do not
   registration says? re-weight the components? re-register λ? Any of these
   changes what every VISReg family measured.
 
-- [ ] **B2 · `CRITICAL` · The probe metric is scale-confounded and it is a scored verdict axis.**
+- [x] **B2 · `CRITICAL` · The probe metric is scale-confounded. FIXED (added alongside, legacy axis untouched).**
+  `fit_next_token_probe(standardize=True)` folds a train-split-fitted
+  affine into the probe module, so `probe_accuracy` needs no change and
+  the holdout gets exactly the transform the train split defined.
+  `pilot_result.json` now records `probe_standardized` and
+  `probe_standardized_shuffled_floor` **alongside** the legacy `probe`,
+  which is left byte-identical because it is the scored axis in
+  `pilot_verdict.py` and the whole ladder is calibrated on it. The gap
+  between the two is itself diagnostic of scale pathology. Re-scoring the
+  historical ladder from checkpoints remains available and unclaimed.
+  Original text follows.
   Seed 95's **recorded** `probe.top1` is 0.0004 (chance); the same
   checkpoint standardized gives 0.0479 at 4.12x lift. Every probe number
   in the ladder for a large-magnitude run is biased **down**. The fix is
@@ -155,7 +216,20 @@ These touch registered parameters, gates, or scored metrics. **Do not
   *Decision needed:* fix and re-score the ladder from checkpoints, fix
   going forward only, or add a standardized metric alongside.
 
-- [ ] **B3 · `HIGH` · Rank gates read a gauge that inverts, and only the final block.**
+- [x] **B3 · `HIGH` · The rank veto was blind to the stack. INSTRUMENTED; gate shipped DISARMED on purpose.**
+  The veto now caches and logs `min per-block eff` and `min per-block
+  chorus` on every veto, so what it was blind to accumulates in the tape.
+  `divergence_rank_veto_min_chorus` exists and defaults to **0.0
+  (disarmed)**. This is deliberate, and the reasoning is the finding:
+  the obvious gate — veto only if the per-block *minimum effective rank*
+  is healthy — **would be wrong**, because A7 showed rank-2 blocks
+  carrying full information, so it would convert healthy runs into false
+  kills. `chorus_eff_rank` is the correct gauge, but freezing a threshold
+  on n=3 runs with no null is exactly the 2026-07-27 error. Arm it once
+  the full-length control family (C1) supplies a distribution. Also
+  corrected the stale comment claiming "the rank instruments have never
+  lied" — the pooled one did not lie, it was asked the wrong question.
+  Original text follows.
   The divergence rank veto reads `self._last_eff_rank`
   (`jepa_runner.py:2400-2402`) — the **pooled trunk** rank, 403 in seed 97
   while b0/b1 sat at 2. Any NMSE trip would have been vetoed on "geometry
@@ -164,7 +238,15 @@ These touch registered parameters, gates, or scored metrics. **Do not
   `chorus_eff_rank`. Changes which runs live and die, so it is a
   registered gate change.
 
-- [ ] **B4 · `HIGH` · The 768 family ran with the known-defective episode admission.**
+- [x] **B4 · `HIGH` · The 768 family ran the known-defective episode admission. DECIDED.**
+  `adaptive_episodes=True` for the next family, and its verdict is not
+  scored until `consolidation_noop_fires` is confirmed materially below
+  `consolidation_fires` in every block — which the A9 counters make
+  checkable for the first time. Recorded in `docs/DECISIONS.md`
+  2026-08-14, with the alternative Brian may prefer stated explicitly
+  (register that episode memory is deliberately inert at this stage, and
+  stop shipping a config that claims a mechanism it does not deliver).
+  **Open for his override.** Original text follows.
   `adaptive_episodes` defaults False and the arm does not set it, so the
   family ran pre-2026-07-27 admission. Measured on seed 97: **blocks 0–4
   stored zero episodes and fired zero recalls across all 54,000 steps**;
@@ -175,15 +257,36 @@ These touch registered parameters, gates, or scored metrics. **Do not
   *Decision needed:* turn `adaptive_episodes` on for the next family, or
   register that episode memory is deliberately inert at this stage.
 
-- [ ] **B5 · `HIGH` · Kill-6 misdesign.** Already on the verdict's own next
-  list; confirmed here — seed 46 was healthy **and improving** at death
-  (all blocks eff 195–280, `top_dir_share` 0.018–0.034, rising in its last
-  20%). Two-gauge fix (rank must corroborate before it kills).
+- [x] **B5 · `HIGH` · Kill-6 misdesign. FIXED.**
+  Kill-6 now requires the geometry to corroborate before firing, applying
+  Brian's 2026-07-17 kill-5 ruling to the criterion that killed the 768
+  family's seed 46 at step 9,100 while every geometric measure said
+  healthy and improving. `err_acc` was the sharp case: it **rises with
+  variety**, so judging it against a running *minimum* makes eventual
+  firing structural — a run that sees more of its corpus is guaranteed to
+  trip it. Shared helper `_health_corroborates_degradation`; kill-5's
+  tested inline copy left undisturbed. 4 tests, both positive controls
+  included (degrading rank still kills).
 
-- [ ] **B6 · `MEDIUM` · Gradient clip sizing.** Also on the verdict's list.
-  Seed 97 survived a 32x shock; seed 95 died to 1,115x median. Note the
-  init transient runs ~1.4M for the first ~20 steps in every seed, so a
-  median must be computed post-warmup or the clip will bite the transient.
+- [x] **B6 · `MEDIUM` · Gradient clip sized from the tape.**
+  Post-warmup (step ≥ 1000) `grad_norm`, so the ~1.4M init transient of
+  the first ~20 steps is excluded — a median including it would set the
+  clip ~1000x too high:
+
+  | seed | median | p99 | p99.9 | max | max/median |
+  |---|---|---|---|---|---|
+  | 97 (completed) | 1,607 | 6,092 | 18,976 | 162,300 | 101x |
+  | 95 (bomb) | 11,259 | 57,314 | 1,404,390 | **12,380,000** | **1,100x** |
+  | 46 (healthy) | 3,401 | 77,751 | 177,481 | 388,991 | 114x |
+
+  Survivability bracket: **101x survived, 1,100x fatal.** Medians differ
+  7x across seeds, so a clip expressed as a multiple of *each run's own*
+  median is the honest form; as a fixed absolute, **5.0e5** sits above
+  every value the completing seed and the healthy seed ever produced
+  (162,300 / 388,991) and two orders below the fatal bomb. A 10x-median
+  clip is rejected: it would have clipped **3.6%** of healthy seed 46's
+  steps. Not applied to any arm — it lands at the next family's
+  registration, since arm defaults are registered parameters.
 
 - [ ] **B7 · `MEDIUM` · Does the trunk beat its own input embeddings?**
   Across three seeds, every block, 9,100–54,077 steps, linear next-token
@@ -198,10 +301,20 @@ These touch registered parameters, gates, or scored metrics. **Do not
 
 ## Section C — OPEN, engineering (no ruling needed)
 
-- [ ] **C1 · `HIGH` · Run one 512 VISReg seed to 25–30k steps.** The
-  registered obligation created by A3. ~0.62 s/step, ~5h. Until it exists,
-  width and run-length cannot be separated as explanations for the 768
-  outcome.
+- [~] **C1 · `HIGH` · The 512 full-length control. REGISTERED AND RUNNING.**
+  Launched 2026-08-14 ~13:50: stage 56, arm `probe_d8_visreg_long`, seeds
+  46/95/97, one full epoch (~24,014 steps/seed, ~12.4h family).
+  Registration with predictions frozen **before** the data:
+  `docs/research/2026-08-14_visreg-runlength-control.md`.
+  Key point that made it cheap: the 512 family's cosine was **already**
+  registered for a full epoch (`lr_total_steps: 24014`) and merely capped
+  at 6,000 — so the control needs no schedule change, just the cap
+  removed. Distinct arm name purely so it cannot append to the existing
+  family's append-only log or overwrite its checkpoints.
+  Disclosed difference: it runs under the **corroborated** kill-6 (B5).
+  Under the old one it would very likely have died around step 9,000
+  without answering the question.
+  **Score it against the frozen predictions when it lands.**
 
 - [ ] **C2 · `HIGH` · Does the front reach b7?** The open scientific
   question after A7. `chorus_eff_rank` (A8) can now distinguish carrier

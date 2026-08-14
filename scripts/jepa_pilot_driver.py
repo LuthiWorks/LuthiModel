@@ -1088,6 +1088,25 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
     probe_floor = probe_accuracy(
         loss_module, probe, heldout_list, shuffled_label_floor=True,
     )
+    # Standardized probe alongside the legacy one (2026-08-14 audit, B2).
+    # The legacy `probe` above stays EXACTLY as it was, because it is a
+    # scored comparison axis in pilot_verdict.py and the whole ladder is
+    # calibrated against it. This second reading is the honest one: the
+    # unstandardized probe's convergence tracks latent scale, which varies
+    # ~30x across checkpoints, and it reported CHANCE (0.0004) for a
+    # 768-family seed whose representation in fact supports 4.12x lift.
+    # Recording both means the next verdict can be scored on either, and
+    # the gap between them is itself diagnostic of scale pathology.
+    probe_std = fit_next_token_probe(
+        loss_module, train_batches,
+        vocab_size=text_ds.vocab_size(),
+        max_batches=args.probe_batches,
+        standardize=True,
+    )
+    probe_std_real = probe_accuracy(loss_module, probe_std, heldout_list)
+    probe_std_floor = probe_accuracy(
+        loss_module, probe_std, heldout_list, shuffled_label_floor=True,
+    )
 
     result = {
         "arm": arm,
@@ -1100,6 +1119,11 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
         "heldout": heldout,
         "probe": probe_real,
         "probe_shuffled_floor": probe_floor,
+        # 2026-08-14 audit B2. Not the scored axis; see the comment at the
+        # call site. A large gap between `probe` and `probe_standardized`
+        # means the legacy number is reporting optimizer failure.
+        "probe_standardized": probe_std_real,
+        "probe_standardized_shuffled_floor": probe_std_floor,
         "wall_clock_seconds": time.time() - started,
         "config": {
             # Effective model shape (the depth arm overrides n_blocks
