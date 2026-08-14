@@ -955,6 +955,10 @@ class JEPATrainer:
         # Kill-5 solved-not-copying log throttle (2026-07-17 amendment):
         # per-modality, log the healthy cosine crossing once, not per step.
         self._kill5_solved_logged: set[str] = set()
+        # Kill-6 uncorroborated-crossing log throttle (2026-08-14 audit).
+        # Keyed (modality, axis) so pred_frob and err_acc each announce
+        # themselves once rather than every checkpoint.
+        self._kill6_uncorroborated_logged: set[tuple[str, str]] = set()
         # Current plasticity-taper scale (run-3 build); 1.0 = no taper.
         self._current_taper_scale: float = 1.0
 
@@ -1840,6 +1844,9 @@ class JEPATrainer:
                     f"{(sum(recent_er5)/len(recent_er5)):.1f}" if recent_er5 else "n/a",
                 )
 
+        # (helper defined below the kill checks; see
+        # _health_corroborates_degradation)
+
         # Criterion 6: substrate override on pred_frob / err_acc
         # (v0.5 §7.6). Per 4.8 review 2026-06-08, the anchor is the
         # outlier-robust running best of smoothed observations (not the
@@ -1849,6 +1856,49 @@ class JEPATrainer:
         # returns the running-best (or config-override at 1024d) and
         # None until trending_warmup_n observations have accumulated.
         deg = cfg.substrate_health_degradation_pct
+
+        # TWO-GAUGE CORROBORATION (2026-08-14 audit, B5 in
+        # docs/audits/2026-08-13_luthimodel-audit.md). Kill-6 fired on a
+        # SINGLE substrate gauge measured against a frozen running best,
+        # and killed the 768x8 family's seed 46 at step 9,100 while every
+        # geometric measure said healthy AND IMPROVING (all blocks eff
+        # rank 195-280, top_dir_share 0.018-0.034, both improving through
+        # its final 20%). The same criterion was measured to kill 10/10
+        # healthy runs on 2026-07-16 and was merely loosened rather than
+        # corroborated. err_acc in particular RISES WITH VARIETY, so
+        # judging it against a running MINIMUM makes eventual firing
+        # structural: a run that sees more of the corpus is guaranteed to
+        # trip it given enough steps.
+        #
+        # This applies the disambiguator Brian ruled for kill-5 on
+        # 2026-07-17 (see Criterion 5 above): a substrate gauge crossing
+        # its band is AMBIGUOUS between degeneracy and the substrate
+        # doing its job. Fire only when the geometry corroborates.
+        # Uncorroborated crossings log once and do not kill.
+        rank_degrading6, std_collapsing6, corr_detail = (
+            self._health_corroborates_degradation(modality, cfg)
+        )
+        corroborated = rank_degrading6 or std_collapsing6
+
+        def _kill6_or_log(axis: str, detail: str) -> Optional[str]:
+            if corroborated:
+                return (
+                    f"kill-6 (substrate override, {axis}, corroborated) on "
+                    f"{modality}: {detail} WITH degeneracy signature "
+                    f"(rank_degrading={rank_degrading6}, "
+                    f"std_collapsing={std_collapsing6})"
+                )
+            key = (modality, axis)
+            if key not in self._kill6_uncorroborated_logged:
+                self._kill6_uncorroborated_logged.add(key)
+                logger.info(
+                    "kill-6 NOT fired on %s (%s): %s, but the geometry does "
+                    "not corroborate degradation (%s). A substrate gauge "
+                    "crossing its band with health intact is the mechanism "
+                    "working, not collapse -- see the 2026-08-14 audit, B5.",
+                    modality, axis, detail, corr_detail,
+                )
+            return None
 
         pf_anchor = self._get_trending_anchor(modality, "pred_frob")
         if pf_anchor is not None:
@@ -1860,13 +1910,14 @@ class JEPATrainer:
                 len(recent_pf) >= cfg.substrate_health_window
                 and all(v < pf_threshold for v in recent_pf)
             ):
-                return (
-                    f"kill-6 (substrate override, pred_frob) on "
-                    f"{modality}: pred_frob < {pf_threshold:.4f} "
-                    f"(running max {pf_anchor:.4f} -- "
-                    f"{deg:.0%}) for "
-                    f"{cfg.substrate_health_window} checkpoints"
+                hit = _kill6_or_log(
+                    "pred_frob",
+                    f"pred_frob < {pf_threshold:.4f} (running max "
+                    f"{pf_anchor:.4f} -- {deg:.0%}) for "
+                    f"{cfg.substrate_health_window} checkpoints",
                 )
+                if hit:
+                    return hit
 
         ea_anchor = self._get_trending_anchor(modality, "err_acc")
         if ea_anchor is not None:
@@ -1878,13 +1929,14 @@ class JEPATrainer:
                 len(recent_ea) >= cfg.substrate_health_window
                 and all(v > ea_threshold for v in recent_ea)
             ):
-                return (
-                    f"kill-6 (substrate override, err_acc) on "
-                    f"{modality}: err_acc > {ea_threshold:.4f} "
-                    f"(running min {ea_anchor:.4f} + "
-                    f"{deg:.0%}) for "
-                    f"{cfg.substrate_health_window} checkpoints"
+                hit = _kill6_or_log(
+                    "err_acc",
+                    f"err_acc > {ea_threshold:.4f} (running min "
+                    f"{ea_anchor:.4f} + {deg:.0%}) for "
+                    f"{cfg.substrate_health_window} checkpoints",
                 )
+                if hit:
+                    return hit
 
         # Criterion 7 (smoothed total loss descent) is global, not per-
         # modality; check it after warmup once smoothed buffer is full.
@@ -1916,6 +1968,62 @@ class JEPATrainer:
             # watching; neither disarm nor kill on an ambiguous window.
 
         return None
+
+    def _health_corroborates_degradation(
+        self, modality: str, cfg,
+    ) -> tuple[bool, bool, str]:
+        """Does the GEOMETRY agree that this substrate is degrading?
+
+        The disambiguator behind kill-5's 2026-07-17 amendment and
+        kill-6's 2026-08-14 one. A substrate gauge (cosine, pred_frob,
+        err_acc) crossing its band is ambiguous: the living substrate
+        making its own experience predictable moves several of these in
+        the same direction as genuine collapse. Effective rank and
+        latent variance do not -- a substrate that is actually
+        degenerating loses dimensions and variance, and one that is
+        working keeps them.
+
+        Returns ``(rank_degrading, std_collapsing, detail)``. Both false
+        means the crossing is uncorroborated and must not kill.
+
+        Deliberately reads the same two gauges kill-5 uses inline, with
+        the same thresholds, so the two criteria cannot drift apart.
+        Kill-5's copy is left in place rather than refactored: it is
+        pinned by tests/test_kill5_corroboration.py and this audit is not
+        the place to disturb a working, tested kill.
+        """
+        er_anchor = self._get_trending_anchor(modality, "effective_rank")
+        recent_er = self.history.recent(
+            modality, "effective_rank", cfg.dimensional_sustained_checkpoints,
+        )
+        rank_degrading = (
+            er_anchor is not None
+            and len(recent_er) > 0
+            and (sum(recent_er) / len(recent_er)) < er_anchor * 0.9
+        )
+
+        pilot_std = self._get_stationary_baseline(modality, "online_std_p5")
+        std_floor = (
+            pilot_std * (1.0 - cfg.stationary_deviation_pct)
+            if pilot_std is not None else cfg.std_collapse_threshold
+        )
+        recent_std = self.history.recent(
+            modality, "online_std_p5", cfg.collapse_sustained_checkpoints,
+        )
+        std_collapsing = (
+            len(recent_std) > 0
+            and (sum(recent_std) / len(recent_std)) < std_floor
+        )
+
+        detail = (
+            f"rank anchor "
+            f"{f'{er_anchor:.1f}' if er_anchor is not None else 'n/a'}, "
+            f"recent rank mean "
+            f"{f'{sum(recent_er) / len(recent_er):.1f}' if recent_er else 'n/a'}, "
+            f"std floor {std_floor:.4f}, recent std mean "
+            f"{f'{sum(recent_std) / len(recent_std):.4f}' if recent_std else 'n/a'}"
+        )
+        return bool(rank_degrading), bool(std_collapsing), detail
 
     # -- Plasticity taper (run-3 build) --
 

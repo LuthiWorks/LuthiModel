@@ -666,6 +666,29 @@ ARM_TAPER["probe_d8_visreg"] = ARM_TAPER["living_v5_4x_d4"]
 ARM_FILELIST["probe_d8_visreg"] = ARM_FILELIST["living_v5_4x_d4"]
 ARM_COSINE["probe_d8_visreg"] = ARM_COSINE["living_v5_4x_d4"]
 
+# FULL-LENGTH 512 CONTROL (2026-08-14, audit item C1). Byte-identical
+# configuration to `probe_d8_visreg`; the ONLY difference is that it is
+# not truncated at 6,000 batches. Registered as a distinct arm name for
+# exactly one reason: the run dir is keyed on (arm, d_model, seed), so
+# reusing the name would append to the existing family's append-only
+# training_log.jsonl and overwrite its checkpoints. The 512 family's
+# record is evidence in an open verdict and must not be touched.
+#
+# Why it exists: the 512 family's cosine was ALREADY set for a full
+# epoch (lr_total_steps 24,014) and the run was capped at 6,000. So the
+# full-length read needs no schedule change at all -- just the cap
+# removed. See docs/research/2026-08-14_visreg-runlength-control.md.
+for _src, _dst in (("probe_d8_visreg", "probe_d8_visreg_long"),):
+    ARM_CONFIGS[_dst] = dict(ARM_CONFIGS[_src])
+    for _table in (
+        ARM_SIGREG_PROJ, ARM_SIGREG, ARM_DEEP_CADENCE, ARM_GUARD_MIN_STEP,
+        ARM_LR_WARMUP, ARM_TAPER, ARM_FILELIST, ARM_COSINE,
+        ARM_VISREG, ARM_VISREG_NUM_PROJ,
+    ):
+        if _src in _table:
+            _table[_dst] = _table[_src]
+STAGES[56] = [("probe_d8_visreg_long", 512)]
+
 for _a in ("probe_d8_llmjepa_v2",):
     ARM_DEEP_CADENCE[_a] = 100
     ARM_GUARD_MIN_STEP[_a] = 1000
