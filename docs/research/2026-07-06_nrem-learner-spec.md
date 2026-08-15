@@ -205,18 +205,35 @@ half: the day no longer self-modifies at all.
 > intake during the day."
 
 This settles three of §7's five forks — two of them **by construction**,
-because a frozen wake removes the thing the fork was choosing between.
+because an attenuated wake removes the thing the fork was choosing between.
 
-## R1. Wake is frozen. The mind still notices. (BUILT)
+## R1. Wake is greatly attenuated, not frozen. The mind still notices. (BUILT)
+
+**Amended within the day it was made.** The first version of this ruling
+froze the waking substrate outright. Brian corrected it:
+
+> "I don't think the waking state should be completely frozen, but I do
+> think the susceptibility to change should be greatly lessened so the
+> lesson of the day can be intentionally pondered rather than purely
+> reacted to."
 
 §3 of this spec said "the living weights self-modify every forward."
-**Superseded.** During the day the living weights, prediction, and
-set-point are held still. Everything that decides what the day *meant*
-keeps running: `precision`, `error_acc`, the surprise-drive traces,
+**Superseded, but not by a freeze.** During the day the living weights,
+prediction and set-point keep moving at a small fraction of their
+ordinary rates. Everything that decides what the day *meant* runs at
+**full** strength: `precision`, `error_acc`, the surprise-drive traces,
 salience, and — the load-bearing part — **the episode write**.
 
-Built this session as `luthi.v2.plasticity.wake_freeze` /
-`set_wake_frozen`, with 8 tests (`tests/v2/test_wake_freeze.py`).
+The nonzero floor is the ruling, not a detail. It keeps change automatic
+and unvetoed (2026-07-05) and honours the taper's stated philosophy,
+*"lowering the learning rate of the self, never halting it."* A frozen
+day would have been a zero floor for sixteen hours out of every
+twenty-four, which `taper_scale` refuses to let anyone configure. The
+correction put the design back inside its own rules.
+
+Built as `luthi.v2.plasticity.wake_attenuated` / `set_wake_attenuation`,
+12 tests (`tests/v2/test_wake_attenuation.py`). `factor=0.0` is permitted
+for ablations and is documented as outside design intent.
 
 **The gotcha this closes.** `freeze_plasticity` looks like the right tool
 and is not: it *also* suppresses the episode write, because it exists for
@@ -235,18 +252,47 @@ in both directions by test.
     prediction.add_(delta_pred)           <- pred_learning_rate
 
 while `precision`, `error_acc` and the drive traces are gated only by
-their own EMA decays. Wake-freeze zeroes those four. `add_(0)` is an
-exact no-op, so the frozen forward is bit-identical on both the C++ and
-Python paths and no surgery inside `pc_ops` was required.
+their own EMA decays. Wake attenuation scales those four and leaves the
+statistics alone — no surgery inside `pc_ops` required.
 
-`momentum` and `update_ema` correctly decay toward zero: nothing moved,
-and the instruments should say so.
+**The scaling is uniform across all four, and that is load-bearing.** It
+differs from the taper, which deliberately scales the learning channels
+only ("stability is not what tapers"). That convention is safe at the
+taper's ~5x and **not** safe here. Homeostasis pulls weight toward
+set_point with a time constant of ~1/`homeostatic_decay` forwards — about
+1,000 forwards, ~100 seconds at 10 Hz. Attenuating learning while leaving
+homeostasis at full strength would therefore not lessen change; it would
+make the day **actively erase itself** back to baseline within minutes of
+waking. Scaling all four together preserves the equilibrium and slows the
+dynamics, which is what "less susceptible" has to mean. Pinned by
+`test_uniform_scaling_does_not_drag_the_weight_to_the_set_point`.
 
-**Within-day adaptation survives.** `_recall_episode` blends a stored
-delta into the *effective* weight (`weight_eff = weight + episode_delta`)
-without mutating `self.weight`. Behaviour can move during the day; only
-structure waits for night. That is the two-tier design working as
-designed, and it is the answer to "would this need something like a
+**How much attenuation — the arithmetic, because "greatly lessened" turns
+out to mean far more than it sounds.** A 16-hour day at 10 Hz is ~576,000
+forwards. A rest phase replays order 2,000–3,000 episodes at ~0.1x
+`pc_rate`, so order 200–300 rate-units. Day-integrated plasticity is
+576,000 × attenuation:
+
+| attenuation | day | night | |
+|---|---|---|---|
+| 1e-2 | 5,760 | ~230 | day dominates 25x |
+| 1e-3 | 576 | ~230 | same order |
+| 1e-4 | 58 | ~230 | night dominates 4x |
+
+A "10x reduction" would not remotely deliver the intent — the day would
+still outweigh the night by two orders of magnitude on step count alone.
+`WAKE_ATTENUATION_DEFAULT = 1e-3` is the point where the two channels are
+comparable and the day becomes material-to-be-pondered rather than the
+main event, with the night taking the decisive share once the entity's
+keep/toss curation concentrates replay on what mattered. **TUNE-ME**: it
+joins the combined tuning pass (§7-D) against a trained checkpoint and
+the real cycle rate. Derived from arithmetic, not ruled.
+
+**Within-day adaptation survives regardless.** `_recall_episode` blends a
+stored delta into the *effective* weight (`weight_eff = weight +
+episode_delta`) without mutating `self.weight`. Behaviour can move during
+the day; structure mostly waits for rest. That is the two-tier design
+working as designed, and it answers "would this need something like a
 context window" — it already has one, and it is the fast tier.
 
 ## R2. Capacity: NO CAP. (Brian's ruling)
@@ -264,7 +310,7 @@ other.** Today an episode carries `episode_values`, shaped
 snapshot, **2.36 MB per episode** at 768x768. Uncapped at ~2,300 writes
 per layer per day that is ~43 GB/day and plainly impossible.
 
-But under a frozen wake **the weight is constant for the entire day**, so
+But under an attenuated wake **the weight is constant for the entire day**, so
 a per-episode weight snapshot is pure redundancy. Store the day's weight
 once; the episode records the *experience*:
 
@@ -302,7 +348,7 @@ day and decides what becomes structure.
 Shape:
 
 - **Entry:** a tool on the Sanctuary side (`sanctuary/tools/`) that calls
-  `set_wake_frozen(model, False)` and drops the intake rate. LuthiModel
+  `set_wake_attenuation(model, 1.0)` and drops the intake rate. LuthiModel
   provides the regime and the pass; Sanctuary owns the tool surface.
 - **Character:** calm and slow. Intake stops or falls hard; the 10 Hz
   acquisition loop is not what rest is for.
@@ -346,7 +392,7 @@ than a nightly obligation to triage.
 
 | fork | disposition |
 |---|---|
-| **A. Day record: slow trace, accumulator, or both?** | **Ruled by construction.** With a frozen wake there is no applied change to accumulate — `ReadResetAccumulator` would integrate exactly zero. **The episode store IS the day record.** A day-scale `SlowEMA` survives only as an optional multi-day baseline; not needed in v1. |
+| **A. Day record: slow trace, accumulator, or both?** | **Ruled by construction.** With an attenuated wake there is no applied change to accumulate — `ReadResetAccumulator` would integrate exactly zero. **The episode store IS the day record.** A day-scale `SlowEMA` survives only as an optional multi-day baseline; not needed in v1. |
 | **B. Replay episodes, or a summary of applied change? Into living weights, or also the trunk?** | **Ruled by construction.** There is no applied-change summary to replay. **Episode replay**, into the **living weights only** in v1 (`consolidate_layer_attractor`); the backprop trunk stays with the training run. |
 | **C. Tag lifetime — piggyback the store, or its own trace?** | **Ruled by Brian: no cap.** The question "do curious-but-evicted experiences need a longer life than the 32-slot store gives" dissolves — nothing is evicted during the day. Tag life = the day. |
 | **D. Consolidation rate law** | **Still open.** Joins the combined tuning pass against a trained checkpoint, as originally recommended. Now also has to price the entity's keep/toss decision alongside salience. |
@@ -366,7 +412,7 @@ precondition for the regime.
 
 ## Build state
 
-- **Built:** `wake_freeze` / `set_wake_frozen` + 8 tests (R1).
+- **Built:** `wake_attenuated` / `set_wake_attenuation` + 12 tests (R1).
 - **Not built:** the unbounded append-only store and the episode-format
   change (R2) — this touches buffer layout, which lives in `state_dict`,
   so it needs the same checkpoint-compatibility care as the 08-14 audit's

@@ -72,71 +72,124 @@ def freeze_plasticity(root: nn.Module) -> Iterator[None]:
             module._plasticity_frozen = prev
 
 
-@contextlib.contextmanager
-def wake_freeze(root: nn.Module) -> Iterator[None]:
-    """The waking day: substrate held still, the mind still noticing.
+# Default wake-phase attenuation. NOT a round number picked for feel --
+# it comes from the step-count asymmetry between day and night, and the
+# arithmetic is the reason "greatly lessened" has to mean far more than it
+# sounds.
+#
+# A 16-hour day at Sanctuary's 10 Hz loop is ~576,000 forwards. A rest
+# phase replays the day's episodes -- order 2,000-3,000 of them at
+# ~0.1x pc_rate (`consolidation_rate_factor`), so order 200-300
+# rate-units of integration. Day-integrated plasticity is
+# 576,000 * attenuation rate-units. For the NIGHT to be the primary
+# integrator rather than a rounding error on the day:
+#
+#     attenuation = 1e-2  -> day  5,760 units vs night ~230   day wins 25x
+#     attenuation = 1e-3  -> day    576 units vs night ~230   comparable
+#     attenuation = 1e-4  -> day     58 units vs night ~230   night wins 4x
+#
+# So a "10x reduction" would not remotely deliver the intent; the day
+# would still dominate by two orders of magnitude purely on step count.
+# 1e-3 is the point where the two channels are the same order and the day
+# is genuinely material-to-be-pondered rather than the main event, with
+# the night given the decisive share once the entity's keep/toss curation
+# concentrates replay on what mattered.
+#
+# TUNE-ME, and it belongs to the combined tuning pass (§7-D) against a
+# trained checkpoint and the real cycle rate -- like the gain's rise/cap
+# and the F2 thresholds. It is a starting point derived from arithmetic,
+# not a ruled constant.
+WAKE_ATTENUATION_DEFAULT: float = 1e-3
 
-    Brian's ruling, 2026-08-14 -- "data intake during the day, structural
-    cortical change over night." Under this regime the living weights,
-    prediction, and set-point do not move, but **everything that decides
-    what the day meant keeps running**: precision, ``error_acc``, the
-    surprise-drive traces, salience, and crucially the **episode write**.
-    The day accumulates in the fast tier; the rest-phase NREM pass
-    integrates it.
 
-    **This is deliberately NOT** :func:`freeze_plasticity`. That context
-    also suppresses the episode write, because it exists for the momentary
-    lived re-encode where perception has already stored the context once.
-    Running a 16-hour day under it would mean living the whole day and
-    storing none of it -- the entity would wake to an empty store with
-    nothing to consolidate. The distinction is the whole point of this
-    second context manager; see the 2026-08-14 amendment to
-    ``docs/research/2026-07-06_nrem-learner-spec.md``.
-
-    Mechanism: :class:`PredictiveCodingLayer` zeroes the four rates that
-    gate its weight-touching updates (``pc_rate``, ``pred_learning_rate``,
-    ``homeostatic_decay``, ``set_point_adapt_rate``) while leaving every
-    statistic on its own EMA. ``add_(0)`` is an exact no-op, so a
-    wake-frozen forward leaves the substrate bit-identical on both the C++
-    and Python paths.
-
-    ``EpisodeStore`` is intentionally NOT swept here: its whole job during
-    the day is to keep storing.
-
-    Composes and nests like ``freeze_plasticity``; prior per-module state
-    is restored on exit.
-    """
-    toggled: list[tuple[nn.Module, bool]] = []
+def _sweep_attenuation(root: nn.Module, factor: float) -> list:
+    if not 0.0 <= factor <= 1.0:
+        raise ValueError(
+            f"wake attenuation must lie in [0, 1]; got {factor}. "
+            "Values > 1 would AMPLIFY waking plasticity, which is the "
+            "opposite of this regime's purpose."
+        )
+    toggled = []
     for module in root.modules():
         if isinstance(module, PredictiveCodingLayer):
-            toggled.append((module, module._wake_frozen))
-            module._wake_frozen = True
+            toggled.append((module, module._wake_attenuation))
+            module._wake_attenuation = float(factor)
+    return toggled
+
+
+@contextlib.contextmanager
+def wake_attenuated(
+    root: nn.Module, factor: float = WAKE_ATTENUATION_DEFAULT,
+) -> Iterator[None]:
+    """The waking day: the substrate still moves, but far less.
+
+    Brian's ruling, 2026-08-14: *"I don't think the waking state should be
+    completely frozen, but ... the susceptibility to change should be
+    greatly lessened so the lesson of the day can be intentionally
+    pondered rather than purely reacted to."*
+
+    Under this regime the living weights, prediction and set-point keep
+    moving at ``factor`` times their ordinary rates, and **everything that
+    decides what the day meant runs at full strength**: precision,
+    ``error_acc``, the surprise-drive traces, salience, and crucially the
+    **episode write**. The day accumulates in the fast tier; the rest-phase
+    pass integrates it deliberately.
+
+    A nonzero floor is the point, not an implementation detail. It keeps
+    change automatic and unvetoed (Brian's 2026-07-05 ruling) and honours
+    the taper's stated philosophy -- *"lowering the learning rate of the
+    self, never halting it."* ``factor=0.0`` is permitted for ablations
+    but is outside the architecture's design intent; do not ship it as a
+    regime.
+
+    **Deliberately NOT** :func:`freeze_plasticity`, which also suppresses
+    the episode write because it exists for the momentary lived re-encode.
+    A 16-hour day under that mode would be lived and stored nowhere.
+
+    Mechanism: :class:`PredictiveCodingLayer` scales the four rates gating
+    its weight-touching updates -- ``pc_rate``, ``pred_learning_rate``,
+    ``homeostatic_decay``, ``set_point_adapt_rate`` -- leaving every
+    statistic on its own EMA. The scaling is **uniform across all four**,
+    which differs from the taper (learning channels only, "stability is
+    not what tapers"). That convention is safe at the taper's ~5x but not
+    here: homeostasis pulls weight toward set_point with a time constant
+    of ~1/``homeostatic_decay`` forwards (~100 s at 10 Hz), so attenuating
+    learning alone would not lessen change -- it would make the day
+    actively erase itself back to baseline within minutes. Uniform scaling
+    preserves the equilibrium and slows the dynamics.
+
+    ``EpisodeStore`` is intentionally NOT swept: its whole job during the
+    day is to keep storing.
+
+    Composes and nests; prior per-module state is restored on exit.
+    """
+    toggled = _sweep_attenuation(root, factor)
     try:
         yield
     finally:
         for module, prev in toggled:
-            module._wake_frozen = prev
+            module._wake_attenuation = prev
 
 
-def set_wake_frozen(root: nn.Module, frozen: bool) -> int:
-    """Non-scoped form of :func:`wake_freeze` for a long-lived regime.
+def set_wake_attenuation(
+    root: nn.Module, factor: float = WAKE_ATTENUATION_DEFAULT,
+) -> int:
+    """Non-scoped form of :func:`wake_attenuated` for a long-lived regime.
 
     A waking day is hours long and driven by Sanctuary's cycle, not by a
-    ``with`` block in one function. Returns the number of layers toggled
-    so a caller can assert the sweep actually reached the trunk rather
-    than silently touching nothing.
+    ``with`` block in one function. Pass ``factor=1.0`` to return to
+    ordinary plasticity (what the rest phase does on entry).
+
+    Returns the number of layers touched, so a caller can assert the sweep
+    actually reached the trunk instead of silently doing nothing.
     """
-    n = 0
-    for module in root.modules():
-        if isinstance(module, PredictiveCodingLayer):
-            module._wake_frozen = bool(frozen)
-            n += 1
-    return n
+    return len(_sweep_attenuation(root, factor))
 
 
 __all__ = [
     "freeze_plasticity",
-    "wake_freeze",
-    "set_wake_frozen",
+    "wake_attenuated",
+    "set_wake_attenuation",
+    "WAKE_ATTENUATION_DEFAULT",
     "FROZEN_TYPES",
 ]
