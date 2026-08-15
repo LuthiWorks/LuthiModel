@@ -582,6 +582,17 @@ class PredictiveCodingLayer(nn.Module):
         # module-tree sweep, not threaded through forward args, so it
         # reaches every living layer in the trunk uniformly.
         self._plasticity_frozen: bool = False
+        # Wake-freeze (2026-08-14, Brian's ruling: "data intake during the
+        # day, structural cortical change over night"). Distinct from
+        # `_plasticity_frozen` above, which also suppresses the episode
+        # write because it exists for the momentary lived re-encode. Under
+        # wake-freeze the substrate is held still but the mind keeps
+        # noticing and keeps WRITING -- the day accumulates in the fast
+        # tier for the rest-phase pass to integrate. Set by a module-tree
+        # sweep (`set_wake_frozen`), never threaded through forward args,
+        # so it reaches every living layer uniformly. Non-persistent: a
+        # regime, not lived state.
+        self._wake_frozen: bool = False
 
         # --- Inverted-U learning gain (momentum-functions foundations,
         #     spec docs/research/2026-07-05_inverted-u-gain-spec.md §8 step 4).
@@ -1200,6 +1211,36 @@ class PredictiveCodingLayer(nn.Module):
                 if self.homeostatic_band_enabled:
                     sparse_gate = self._apply_activity_band(output, sparse_gate)
 
+                # --- Wake-freeze regime (2026-08-14, Brian's ruling) ---
+                # "Data intake during the day, structural change overnight."
+                # The DAY holds the weights still while the mind keeps
+                # noticing: precision, error_acc and the whole surprise-drive
+                # trace stay live, salience is still computed, and the
+                # episode write still fires -- so the day is recorded in the
+                # fast tier and integrated by the NREM pass at rest.
+                #
+                # Implemented as a rate override rather than surgery inside
+                # pc_ops, because each of the four weight-touching updates is
+                # already gated by exactly one rate:
+                #     weight.add_(applied)                  <- pc_rate
+                #     weight.add_(homeostatic_force, ...)   <- homeostatic_decay
+                #     set_point.add_(sp_delta, ...)         <- set_point_adapt_rate
+                #     prediction.add_(delta_pred)           <- pred_learning_rate
+                # while precision / error_acc / drive are gated only by their
+                # own EMA decays. Zeroing those four freezes the substrate
+                # exactly and leaves every statistic running, through the
+                # same tested code path (C++ and Python alike -- add_(0) is
+                # an exact no-op, so the frozen forward is bit-identical).
+                #
+                # NB this is deliberately NOT `_plasticity_frozen`, which
+                # ALSO skips the episode write. That mode exists for the
+                # momentary lived re-encode; using it for a 16-hour day
+                # would mean living the day and storing none of it.
+                # momentum/update_ema correctly decay toward zero here:
+                # nothing moved, and saying so is honest. It also settles
+                # NREM spec fork 7-B by construction -- with no applied
+                # change to summarize, the night must replay EPISODES.
+                _wf = self._wake_frozen
                 result = pc_self_modify(
                     self.weight, self.prediction, self.set_point,
                     self.momentum, self.update_ema, self.precision,
@@ -1210,9 +1251,10 @@ class PredictiveCodingLayer(nn.Module):
                     # schedule lowers the LEARNING channels only --
                     # homeostasis and set-point adaptation stay at their
                     # own rates (stability is not what tapers).
-                    self.pc_rate * self.rate_scale,
-                    self.pred_learning_rate * self.rate_scale,
-                    self.homeostatic_decay, self.set_point_adapt_rate,
+                    0.0 if _wf else self.pc_rate * self.rate_scale,
+                    0.0 if _wf else self.pred_learning_rate * self.rate_scale,
+                    0.0 if _wf else self.homeostatic_decay,
+                    0.0 if _wf else self.set_point_adapt_rate,
                     self.momentum_decay, self.update_ema_decay,
                     self.precision_ema_decay,
                     self.precision_min, self.precision_max,

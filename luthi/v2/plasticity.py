@@ -72,4 +72,71 @@ def freeze_plasticity(root: nn.Module) -> Iterator[None]:
             module._plasticity_frozen = prev
 
 
-__all__ = ["freeze_plasticity", "FROZEN_TYPES"]
+@contextlib.contextmanager
+def wake_freeze(root: nn.Module) -> Iterator[None]:
+    """The waking day: substrate held still, the mind still noticing.
+
+    Brian's ruling, 2026-08-14 -- "data intake during the day, structural
+    cortical change over night." Under this regime the living weights,
+    prediction, and set-point do not move, but **everything that decides
+    what the day meant keeps running**: precision, ``error_acc``, the
+    surprise-drive traces, salience, and crucially the **episode write**.
+    The day accumulates in the fast tier; the rest-phase NREM pass
+    integrates it.
+
+    **This is deliberately NOT** :func:`freeze_plasticity`. That context
+    also suppresses the episode write, because it exists for the momentary
+    lived re-encode where perception has already stored the context once.
+    Running a 16-hour day under it would mean living the whole day and
+    storing none of it -- the entity would wake to an empty store with
+    nothing to consolidate. The distinction is the whole point of this
+    second context manager; see the 2026-08-14 amendment to
+    ``docs/research/2026-07-06_nrem-learner-spec.md``.
+
+    Mechanism: :class:`PredictiveCodingLayer` zeroes the four rates that
+    gate its weight-touching updates (``pc_rate``, ``pred_learning_rate``,
+    ``homeostatic_decay``, ``set_point_adapt_rate``) while leaving every
+    statistic on its own EMA. ``add_(0)`` is an exact no-op, so a
+    wake-frozen forward leaves the substrate bit-identical on both the C++
+    and Python paths.
+
+    ``EpisodeStore`` is intentionally NOT swept here: its whole job during
+    the day is to keep storing.
+
+    Composes and nests like ``freeze_plasticity``; prior per-module state
+    is restored on exit.
+    """
+    toggled: list[tuple[nn.Module, bool]] = []
+    for module in root.modules():
+        if isinstance(module, PredictiveCodingLayer):
+            toggled.append((module, module._wake_frozen))
+            module._wake_frozen = True
+    try:
+        yield
+    finally:
+        for module, prev in toggled:
+            module._wake_frozen = prev
+
+
+def set_wake_frozen(root: nn.Module, frozen: bool) -> int:
+    """Non-scoped form of :func:`wake_freeze` for a long-lived regime.
+
+    A waking day is hours long and driven by Sanctuary's cycle, not by a
+    ``with`` block in one function. Returns the number of layers toggled
+    so a caller can assert the sweep actually reached the trunk rather
+    than silently touching nothing.
+    """
+    n = 0
+    for module in root.modules():
+        if isinstance(module, PredictiveCodingLayer):
+            module._wake_frozen = bool(frozen)
+            n += 1
+    return n
+
+
+__all__ = [
+    "freeze_plasticity",
+    "wake_freeze",
+    "set_wake_frozen",
+    "FROZEN_TYPES",
+]

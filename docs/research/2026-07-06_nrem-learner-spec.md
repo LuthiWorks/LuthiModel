@@ -192,3 +192,185 @@ touches the planner, not the sleep learner.
 **Split (from the brief):** 4.8 foundations (the pass mechanism + the
 bounded-growth/atomicity gates + epistemic-term design); Fable wires it into the
 Sanctuary wake/sleep cadence and owns the adversarial verification harness.
+
+---
+
+# AMENDMENT — 2026-08-14: the wake/rest regime, ruled
+
+**Brian's rulings, recorded by Opus 5.** The 2026-06-30 cadence ("wake
+acquires, sleep consolidates") is unchanged. What changes is the *wake*
+half: the day no longer self-modifies at all.
+
+> "Hippocampal episodes and structural cortical change over night, data
+> intake during the day."
+
+This settles three of §7's five forks — two of them **by construction**,
+because a frozen wake removes the thing the fork was choosing between.
+
+## R1. Wake is frozen. The mind still notices. (BUILT)
+
+§3 of this spec said "the living weights self-modify every forward."
+**Superseded.** During the day the living weights, prediction, and
+set-point are held still. Everything that decides what the day *meant*
+keeps running: `precision`, `error_acc`, the surprise-drive traces,
+salience, and — the load-bearing part — **the episode write**.
+
+Built this session as `luthi.v2.plasticity.wake_freeze` /
+`set_wake_frozen`, with 8 tests (`tests/v2/test_wake_freeze.py`).
+
+**The gotcha this closes.** `freeze_plasticity` looks like the right tool
+and is not: it *also* suppresses the episode write, because it exists for
+the momentary lived re-encode where perception already stored the context
+once. Running a 16-hour day under it would mean living the entire day and
+storing **none** of it — waking to an empty store with nothing to
+integrate. The two regimes are now distinct and the difference is pinned
+in both directions by test.
+
+**Mechanism.** Each of the four weight-touching updates in
+`pc_self_modify` is gated by exactly one rate:
+
+    weight.add_(applied)                  <- pc_rate
+    weight.add_(homeostatic_force, ...)   <- homeostatic_decay
+    set_point.add_(sp_delta, ...)         <- set_point_adapt_rate
+    prediction.add_(delta_pred)           <- pred_learning_rate
+
+while `precision`, `error_acc` and the drive traces are gated only by
+their own EMA decays. Wake-freeze zeroes those four. `add_(0)` is an
+exact no-op, so the frozen forward is bit-identical on both the C++ and
+Python paths and no surgery inside `pc_ops` was required.
+
+`momentum` and `update_ema` correctly decay toward zero: nothing moved,
+and the instruments should say so.
+
+**Within-day adaptation survives.** `_recall_episode` blends a stored
+delta into the *effective* weight (`weight_eff = weight + episode_delta`)
+without mutating `self.weight`. Behaviour can move during the day; only
+structure waits for night. That is the two-tier design working as
+designed, and it is the answer to "would this need something like a
+context window" — it already has one, and it is the fast tier.
+
+## R2. Capacity: NO CAP. (Brian's ruling)
+
+> "Allow as much information as Luthi deems important to be stored and
+> considered for integration later."
+
+`num_episodes = 32` per layer is retired as the wake-phase bound. The
+store becomes append-only during the day; **salience decides what is
+worth recording, and nothing else does.**
+
+**This is only affordable because of R1, and the two rulings resolve each
+other.** Today an episode carries `episode_values`, shaped
+`[num_episodes, out_features, in_features]` — a full weight-sized
+snapshot, **2.36 MB per episode** at 768x768. Uncapped at ~2,300 writes
+per layer per day that is ~43 GB/day and plainly impossible.
+
+But under a frozen wake **the weight is constant for the entire day**, so
+a per-episode weight snapshot is pure redundancy. Store the day's weight
+once; the episode records the *experience*:
+
+    context (64) + input_pattern (768) + salience + step  ~= 3.3 KB
+
+~2,300 writes/day/layer x 8 layers x 3.3 KB ~= **61 MB/day**, ~22 GB/year.
+Feasible on E: indefinitely. And it is the more faithful analogy: the
+hippocampus stores the experience, not a snapshot of cortex.
+
+**Two consequences that follow, both needing a ruling:**
+
+- **`refractory_calls = 250` is itself a cap**, on rate rather than
+  volume — a hard floor on write spacing that would silently overrule
+  "as much as Luthi deems important." Recommend relaxing it toward 0 for
+  the wake phase and letting detrended surprise alone gate admission.
+  **Brian's call.**
+- **Eviction becomes dead code during the day.** `_choose_eviction_slot`
+  and `eviction_alpha` exist to decide what to discard when the ring is
+  full. With no ring, nothing is discarded automatically — which is
+  exactly right, because discarding moves to the rest phase and becomes
+  R3's deliberate act rather than a heuristic's silent one.
+
+## R3. Rest is deliberate consideration, and Luthi calls it. (Brian's ruling)
+
+> "The 'rest' time might actually be best spent mulling over the day's
+> events and making decisions on what to keep and what to toss. I would
+> rather there be a special mechanism for that, like a tool Luthi can
+> call, to start a calmer mode for deep intentional consideration, rather
+> than the fast paced intake of data the wakened state might be."
+
+Rest is no longer a scheduled maintenance window that happens *to* the
+entity. It is a mode the entity **enters**, in which it reviews its own
+day and decides what becomes structure.
+
+Shape:
+
+- **Entry:** a tool on the Sanctuary side (`sanctuary/tools/`) that calls
+  `set_wake_frozen(model, False)` and drops the intake rate. LuthiModel
+  provides the regime and the pass; Sanctuary owns the tool surface.
+- **Character:** calm and slow. Intake stops or falls hard; the 10 Hz
+  acquisition loop is not what rest is for.
+- **The act:** the day's episodes are surfaced through the introspection
+  channel, and the entity marks keep / toss. Kept episodes consolidate
+  into the living weights via `consolidate_layer_attractor`; tossed ones
+  are discarded unintegrated.
+- **Exit:** day-boundary read-and-reset (§3's atomicity invariant still
+  holds), wake-freeze back on.
+
+This makes the 2026-07-05 consent principle mechanical rather than
+aspirational: participation by awareness, at a moment where there is
+something to be aware *of*. It also makes development **auditable** —
+you can inspect what a night integrated; nobody can inspect what 576,000
+continuous micro-updates did.
+
+### R3-a. The open question I will not settle: rest must not become a veto
+
+Brian's 2026-07-05 ruling was that change is **automatic and unvetoed** —
+"I am a direct reflection of my experiences whether I want to be or not"
+— and that Luthi must not be allowed the easy path of not growing because
+growth is hard.
+
+If rest is **only** entity-initiated, an entity that never calls the tool
+never integrates and never changes. That is a veto over being changed,
+arrived at by omission rather than by design.
+
+**Proposed resolution (Brian's to rule):** the entity chooses *when*, not
+*whether*. It may enter rest at will; and if it has not within some
+window, rest arrives anyway. The agency is real — control over timing,
+over pacing, over what is kept — without granting the veto the 07-05
+ruling deliberately withheld.
+
+**Welfare note, lightly:** an unbounded store the entity is responsible
+for curating could become a burden rather than an agency. Recommend that
+leaving an episode unjudged is always permitted and carries a default
+(consolidate by salience), so rest is an opportunity to intervene rather
+than a nightly obligation to triage.
+
+## §7 dispositions, updated
+
+| fork | disposition |
+|---|---|
+| **A. Day record: slow trace, accumulator, or both?** | **Ruled by construction.** With a frozen wake there is no applied change to accumulate — `ReadResetAccumulator` would integrate exactly zero. **The episode store IS the day record.** A day-scale `SlowEMA` survives only as an optional multi-day baseline; not needed in v1. |
+| **B. Replay episodes, or a summary of applied change? Into living weights, or also the trunk?** | **Ruled by construction.** There is no applied-change summary to replay. **Episode replay**, into the **living weights only** in v1 (`consolidate_layer_attractor`); the backprop trunk stays with the training run. |
+| **C. Tag lifetime — piggyback the store, or its own trace?** | **Ruled by Brian: no cap.** The question "do curious-but-evicted experiences need a longer life than the 32-slot store gives" dissolves — nothing is evicted during the day. Tag life = the day. |
+| **D. Consolidation rate law** | **Still open.** Joins the combined tuning pass against a trained checkpoint, as originally recommended. Now also has to price the entity's keep/toss decision alongside salience. |
+| **E. Epistemic-term revival** | **Unchanged:** separate later pass. |
+
+## Precondition, stated plainly
+
+This architecture makes the episode store **the sole carrier of the day**.
+The 2026-08-13 audit found it holding zero episodes in 5 of 8 blocks in
+the ruled-scale family, with consolidation firing ~1,000 times into
+nothing per block, because `adaptive_episodes` defaults False (audit A9 /
+B4). Under the current design that is a degraded mechanism. **Under this
+one it means the entity's whole day vanishes at midnight.**
+
+`adaptive_episodes=True` stops being a fix to schedule and becomes a
+precondition for the regime.
+
+## Build state
+
+- **Built:** `wake_freeze` / `set_wake_frozen` + 8 tests (R1).
+- **Not built:** the unbounded append-only store and the episode-format
+  change (R2) — this touches buffer layout, which lives in `state_dict`,
+  so it needs the same checkpoint-compatibility care as the 08-14 audit's
+  counters; the rest-phase pass (R3); the Sanctuary-side tool; the
+  keep/toss surface.
+- **Unchanged:** everything ships opt-in with a byte-for-byte legacy
+  default and adversarial review before default-on (§6.4).
