@@ -1,0 +1,71 @@
+{
+  "arm": "probe_d8_visreg_long",
+  "d_model": 512,
+  "seed": 97,
+  "outcome": "completed",
+  "admissible": true,
+  "heldout": {
+    "l_pred_mean": 0.2328435570001602,
+    "nmse_mean": 0.5978810942309241,
+    "l_sigreg_mean": null,
+    "n_batches": 5,
+    "l_visreg_mean": 7.215416145324707
+  },
+  "probe": {
+    "top1": 0.13356299698352814,
+    "top5": 0.18193897604942322,
+    "n_pairs": 20320
+  },
+  "probe_shuffled_floor": {
+    "top1": 0.028297243639826775,
+    "top5": 0.03558070957660675,
+    "n_pairs": 20320
+  },
+  "wall_clock_seconds": 15166.220077514648,
+  "config": {
+    "n_blocks": 8,
+    "epochs": 1,
+    "batch_size": 32,
+    "seq_len": 128,
+    "stride": 64,
+    "lr": 0.0003,
+    "holdout_fraction": 0.02,
+    "data_dir": "C:\\Dev\\LuthiModel\\corpus_build\\gutenberg_100",
+    "file_list": "C:\\Dev\\LuthiModel\\corpus_build\\gutenberg_4x_filelist.txt",
+    "sigreg_lambd": 0.0,
+    "cosine_lr": true,
+    "lr_total_steps": 24014,
+    "model_kwargs": {
+      "vocab_size": 32000,
+      "d_model": 512,
+      "n_blocks": 8,
+      "n_heads": 4,
+      "ffn_expansion": 1,
+      "max_seq_len": 128,
+      "backward_pass_enabled": true,
+      "consolidation_enabled": true,
+      "learning_gain_enabled": true,
+      "episode_recall_threshold": 0.7,
+      "mu_pc_enabled": false,
+      "mu_pc_exponent": 0.25,
+      "relative_trust": true
+    },
+    "device": "privateuseone:0",
+    "torch_version": "2.4.1+cpu",
+    "python": "3.10.11",
+    "grad_clip_norm": 0.0,
+    "taper": true,
+    "deep_interval_batches": 100,
+    "guard_min_step": 1000,
+    "lr_warmup_steps": 1000,
+    "divergence_ppl_veto": 0.0,
+    "interior_sigreg_alpha": 0.0,
+    "w_ntp": 0.0,
+    "visreg_lambda": 0.6,
+    "visreg_num_proj": 1024,
+    "sigreg_projection": "none",
+    "divergence_persist_steps": 500,
+    "divergence_hard_ceiling_mult": 10.0,
+    "divergence_rank_veto_min_eff": 100.0
+  }
+}

@@ -230,3 +230,36 @@ exists.
 
 Recorded per the house rule that supersession notices are cheap and
 documented conclusions read as more final than they were.
+
+### FOLLOW-UP — the control ran, 2026-08-15
+
+The 25–30k-step obligation this notice created is discharged:
+`docs/research/2026-08-14_visreg-runlength-control.md`. Three seeds at
+512d, one full epoch (24,000 steps) each, configuration-identical to this
+family.
+
+**This notice is vindicated on its central point.** At step 6,000 — this
+family's wire — the control's seed 97 read b0 `top_dir_share` 0.071 and
+effective rank 203.7: healthy and improving. By 24,000 it read 0.198,
+with b0 the only block still falling while the other seven gained +13 to
++17. The scored claim *"the soloist never formed in any seed"* was a
+statement about all time drawn from a 6,000-step window, and the soloist
+does form afterwards.
+
+**With one correction to what the notice implied.** It read as though the
+phenomenon at 512 would resemble the 768 one. It does not. At 768 the
+crossing came at step 13,100 and ran to 0.919; at 512 it had not
+sustained a crossing by 24,000 and peaked near 0.198. Run length is
+necessary but not sufficient — width strongly accelerates.
+
+**And the phenomenon itself is not what either document assumed.** In the
+control, block 0's `chorus_eff_rank` **rose** 220 → 275 while its
+`effective_rank` fell 192 → 149, and that seed posted the best probe of
+the three (0.1336). The soloist here is a carrier over a thickening
+chorus, not a collapse.
+
+So this family's scored prediction 2 — *"the soloist never formed in any
+seed. The center term killed the first act in the crib."* — needs a
+second re-reading beyond the one above. It was superseded as untested;
+it now also rests on a premise in doubt, because the "first act" it names
+may not be a pathology at all.

@@ -13,13 +13,25 @@ both Sanctuary.
 |---|---|---|
 | A — closed in the first pass | 13 | 0 |
 | B — decisions | 6 (B1–B6) | 1 (B7) |
-| C — engineering | 1 done, 1 running | 4 |
+| C — engineering | 2 (C1, C6) | 4 |
 | D — watch items | 0 | 3 |
 | E — m9 tree | 1 | 4 |
 
-**Running now:** the 512 full-length control (C1), ~12.4h, launched
-2026-08-14 ~13:50. Score it against the frozen predictions in
-`docs/research/2026-08-14_visreg-runlength-control.md` when it lands.
+**C1 landed 2026-08-15**, scored in
+`docs/research/2026-08-14_visreg-runlength-control.md`. Prediction 1
+refuted; prediction 3 confirmed and it is the most consequential result
+of the audit — see A8.
+
+**Two registry consequences that outlive this audit:**
+1. Every prior verdict that read `effective_rank` alone as collapse is
+   open to re-reading. The 768x8 family is done (A7); earlier families
+   were never instrumented for chorus rank and cannot be re-read without
+   re-encoding their checkpoints.
+2. B3's per-block chorus veto shipped disarmed for want of a
+   distribution. This run supplies the first three seeds of healthy-chorus
+   data at 512d (231–275). Still thin — but it is the start of the null
+   the 2026-07-27 rule requires before freezing a criterion on an
+   observable.
 
 **Full suite green after every change:** 1,100 passed, 1 skipped,
 2 xfailed. New tests this pass: `test_consolidation_effect_counters.py`
@@ -121,9 +133,34 @@ m9" as "not looked at", not as "clean".
   **2.1**, while being 2.5x worse by chorus and 34% worse by probe.
   *AMENDMENT 4.* `dbb124c`
 
-- [x] **A8 · `HIGH` · `chorus_eff_rank` added to the live per-block tape.**
+- [x] **A8 · `HIGH` · `chorus_eff_rank` added to the live per-block tape — and its first deployment justified it.**
   The gauge that orders soloist states correctly, free from the SVD
   already taken. Read alongside `effective_rank`, never instead of it.
+
+  **Live result, 512 control seed 97 (2026-08-15).** Over the same 24,000
+  steps, in the same block:
+
+  | | step 100 | step 24,000 |
+  |---|---|---|
+  | `effective_rank` | 192.1 | **149.0** (−22%) |
+  | `top_dir_share` | 0.075 | **0.198** |
+  | `chorus_eff_rank` | 220.3 | **275.4** (+25%) |
+
+  **The two gauges moved in opposite directions in the same block over
+  the same run.** On the gauge the kill criteria and the divergence rank
+  veto read, block 0 degraded by a fifth. Behind the soloist the
+  representation got a quarter richer — and capability agreed with the
+  chorus, not the rank: seed 97 posted the **best probe of the three**
+  (0.1336) while being the only seed with a soloist.
+
+  **The reframe this forces:** soloist formation is not, by itself, the
+  disease. Since early August the project has read `tds` up / `eff` down
+  as the collapse signature. It is the signature of *a* thing, and chorus
+  rank says which — the 768 family's seed 95 was genuinely fatal (chorus
+  168 → 61 with capability falling in step); this is the benign kind.
+  Two states, identical on both primary instruments, cleanly separated by
+  the third. A7 established this from checkpoints; this observed it
+  prospectively, with the derivative visible.
 
 - [x] **A9 · `HIGH` · `consolidation_fires` counted triggers, not consolidations.**
   Both replay pathways return episodes-replayed and return 0 on an empty
@@ -301,7 +338,24 @@ Only one thing genuinely needed Brian: what runs when, on his machine.
 
 ## Section C — OPEN, engineering (no ruling needed)
 
-- [~] **C1 · `HIGH` · The 512 full-length control. REGISTERED AND RUNNING.**
+- [x] **C1 · `HIGH` · The 512 full-length control. COMPLETE, scored 2026-08-15.**
+  All three seeds completed 24,000 steps un-killed, every one beating the
+  768 family on capability (probe 0.130–0.134 / NMSE 0.566–0.598 against
+  0.1115 / 0.854).
+  **Prediction 1 REFUTED** — no seed sustained b0 `top_dir_share` ≥ 0.20;
+  seed 97 reached 0.1979 and fell back. Stated plainly, per the 07-27
+  rule against hedging a falsification.
+  **But seed 97 is in onset at the wire** (b0 eff 192 → 149, tds 0.075 →
+  0.198, and the only block falling while the other seven gain +13 to
+  +17). At step 6,000 — the original family's wire — it read tds 0.071,
+  healthy. So the supersession notice is **vindicated**: the 512 claim
+  was horizon-limited. And width is a strong accelerant, not the cause —
+  at 768 the crossing came at 13,100 and ran to 0.919.
+  **Prediction 3 CONFIRMED and it is the headline** — see A8 below.
+  Full scoring: `docs/research/2026-08-14_visreg-runlength-control.md`.
+  *(Superseded entry follows.)*
+
+- [x] ~~**C1 · REGISTERED AND RUNNING.**~~
   Launched 2026-08-14 ~13:50: stage 56, arm `probe_d8_visreg_long`, seeds
   46/95/97, one full epoch (~24,014 steps/seed, ~12.4h family).
   Registration with predictions frozen **before** the data:
