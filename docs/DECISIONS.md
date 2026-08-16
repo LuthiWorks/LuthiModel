@@ -228,3 +228,58 @@ before any "working" verdict is trustworthy in either direction.
 > defensible is the current state, where the flag exists, defaults off,
 > and nothing reports that the store is empty.
 
+---
+
+> **RULING (2026-08-15, Brian): 512d is a mechanism smoke tier only. No
+> more 512 evidence runs.**
+>
+> "I don't think 512 has anything left to teach us about where we're
+> going from here. Maybe just basic testing of unimplemented mechanisms
+> on runs that don't take quite as long, but once a mechanism is
+> established as functional, 512 doesn't tell us anything because what
+> works at 512 might not work at 768, as we have already demonstrated."
+>
+> **The permitted use, and its exact limit.** A 512 run may answer *"does
+> this mechanism run at all"* — does it execute, stay numerically stable,
+> emit its instruments, not explode. It may **never** answer *"does this
+> mechanism work."* "Established as functional" means the former and only
+> the former. Blurring the two is the failure this ruling exists to
+> prevent, and the blur is easy: a 512 family that completes 3-of-3 looks
+> exactly like evidence.
+>
+> **The demonstration Brian refers to, stated precisely.** The VISReg
+> family CONFIRMED 2-of-3 HEALTHY at 512d (2026-08-11) with the scored
+> reading *"VISReg did not enable a rescue; it abolished the fall."* The
+> same configuration at the ruled 768x8 scale went **0-of-3**, with a
+> soloist reaching `top_dir_share` 0.919. 512 did not merely fail to
+> replicate — it returned a confidently positive result about a
+> configuration that fails at the scale we build at.
+>
+> **Supporting analysis (Opus 5, recorded because it gives the ruling a
+> mechanism and a direction):** the 2026-08-15 full-length control shows
+> the phenomenon *does* exist at 512 — it is roughly 5x weaker and 2x
+> slower. Seed 97 reached `top_dir_share` 0.198 at step 24,000 and never
+> sustained a crossing, where 768 crossed at 13,100 and ran to 0.919; the
+> other two 512 seeds sat at 0.039 and 0.059.
+>
+> So the error is not noise, it is **biased in a known direction: 512
+> systematically under-shows collapse-class phenomena, and therefore
+> reads optimistic.** A remedy tested at 512 is being asked to prevent
+> something that barely happens there — a clean null is the expected
+> result whether the remedy works or not. That is why the ruling is a
+> prohibition rather than a preference: the failure mode is not "we learn
+> less," it is "we learn something false and feel good about it."
+>
+> **Consequences.**
+> - Audit item B1 (the VISReg dose fix) and every other remedy test go to
+>   768 or they do not count.
+> - `docs/research/2026-08-14_visreg-runlength-control.md` is the **last
+>   512 evidence run**. It discharged its obligation; nothing further is
+>   owed at that scale.
+> - The `probe_d8_visreg_long` arm and stage 56 stay in the driver as
+>   history, not as a template to copy.
+> - The two 768 death modes are now addressed — the uncorroborated kill-6
+>   that killed seed 46 while healthy (audit B5, fixed) and the unclipped
+>   12.4M-gradient step that killed seed 95 (audit B6, sized at 5.0e5,
+>   awaiting application at the next registration). Raising 768 completion
+>   is what makes a 768-only policy affordable at ~32 h/family.
