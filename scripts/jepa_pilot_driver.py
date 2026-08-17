@@ -790,6 +790,61 @@ def _param_groups(loss_module, model, arm: str, base_lr: float):
     ]
 
 
+def _backend_name(device: torch.device) -> str:
+    """Which compute stack a device actually belongs to.
+
+    ``str(device)`` is not enough. ROCm reuses PyTorch's ``cuda`` namespace,
+    so a ROCm run and an NVIDIA CUDA run both stringify to ``"cuda"`` -- and
+    a DirectML device stringifies to ``"privateuseone"``, which names the
+    dispatch key rather than the backend. A result file recording only
+    ``"cuda"`` cannot answer "which stack produced these numbers", which is
+    the whole point of execution provenance.
+
+    Returns one of: ``rocm``, ``cuda``, ``directml``, ``cpu``, ``unknown``.
+    """
+    kind = device.type
+    if kind == "cpu":
+        return "cpu"
+    if kind in ("privateuseone", "dml"):
+        return "directml"
+    if kind == "cuda":
+        # torch.version.hip is set on ROCm builds and None on CUDA builds.
+        return "rocm" if getattr(torch.version, "hip", None) else "cuda"
+    return "unknown"
+
+
+def _device_fingerprint(device: torch.device) -> dict:
+    """Everything about the machine a run's numbers depend on.
+
+    Recorded into pilot_result.json so a verdict can never be recomputed on
+    a different stack without that being visible in the record. The GPU
+    architecture matters specifically: gfx1101 (RX 7800 XT) and gfx1100
+    (RX 7900) are different kernels, and ROCm can be told to treat one as
+    the other via HSA_OVERRIDE_GFX_VERSION -- a coercion that must never be
+    invisible in the tape.
+    """
+    fp = {
+        "backend": _backend_name(device),
+        "device": str(device),
+        "torch_version": torch.__version__,
+        "python": sys.version.split()[0],
+        "hip_version": getattr(torch.version, "hip", None),
+        "cuda_version": getattr(torch.version, "cuda", None),
+        "hsa_override_gfx_version": os.environ.get("HSA_OVERRIDE_GFX_VERSION"),
+    }
+    if device.type == "cuda":
+        try:
+            props = torch.cuda.get_device_properties(device)
+            fp["gpu_name"] = torch.cuda.get_device_name(device)
+            fp["gcn_arch"] = getattr(props, "gcnArchName", None)
+            fp["gpu_total_memory_bytes"] = props.total_memory
+        except Exception as exc:  # pragma: no cover - diagnostic only
+            # Never let provenance collection kill a run, but never let it
+            # go quiet either: an unrecorded fingerprint is itself the bug.
+            fp["gpu_probe_error"] = repr(exc)
+    return fp
+
+
 def _device() -> torch.device:
     """The accelerator, or a LOUD failure.
 
@@ -810,26 +865,74 @@ def _device() -> torch.device:
     Set ``LUTHI_ALLOW_CPU=1`` to opt in deliberately; the fallback then
     still announces itself on stderr, because a run whose device is a
     surprise is a run whose numbers are a surprise.
+
+    **Backend declaration (2026-08-16, Brian's exclusive-ROCm ruling.)**
+
+    Auto-detection is now only the default, not the contract. Set
+    ``LUTHI_BACKEND`` to ``rocm``, ``directml`` or ``cpu`` to DECLARE which
+    backend a run must use; the declaration is then verified against what
+    actually resolved, and a mismatch raises instead of proceeding. This is
+    the same shape as the mechanism provenance assert below -- the persisted
+    intent and the live reality must agree or the run refuses to start.
+
+    Why declare rather than hard-require ROCm today: the ladder currently
+    runs on Python 3.10 + torch 2.4.1 + torch-directml, and
+    ``pilot_verdict.py``'s determinism guards are calibrated to DirectML
+    warm-up numerics. Hard-requiring ROCm before that recalibration and a
+    matched-seed DirectML-vs-ROCm reproduction would either stop the ladder
+    or, worse, silently change the numbers underneath a registered family.
+    When the migration is validated, set ``LUTHI_BACKEND=rocm`` in the run
+    environment and this becomes an enforced exclusivity with no code change.
+
+    Note that ROCm presents through the ``cuda`` namespace, so
+    ``torch.device("cuda")`` is the ROCm device -- there is no NVIDIA
+    involvement. ``_backend_name()`` distinguishes them, because
+    ``str(device)`` cannot.
     """
+    declared = (os.environ.get("LUTHI_BACKEND") or "").strip().lower()
+    if declared and declared not in ("rocm", "directml", "cpu"):
+        raise RuntimeError(
+            f"LUTHI_BACKEND={declared!r} is not a known backend "
+            "(expected: rocm | directml | cpu)"
+        )
+
+    resolved: torch.device | None = None
     try:
         import torch_directml
-        return torch_directml.device()
+        resolved = torch_directml.device()
     except ImportError:
         pass
-    if torch.cuda.is_available():
-        return torch.device("cuda")
-    msg = (
-        "No accelerator: torch_directml is not importable and CUDA is "
-        f"unavailable (python={sys.executable}, torch={torch.__version__}). "
-        "The training environment for this repo is Python 3.10 with "
-        "torch 2.4.1 + torch-directml; the in-repo .venv is NOT it. "
-        "Set LUTHI_ALLOW_CPU=1 to run on CPU deliberately."
-    )
-    if os.environ.get("LUTHI_ALLOW_CPU") != "1":
-        raise RuntimeError(msg)
-    print(f"  [device] WARNING -- running on CPU by LUTHI_ALLOW_CPU=1. {msg}",
-          file=sys.stderr, flush=True)
-    return torch.device("cpu")
+
+    if resolved is None and torch.cuda.is_available():
+        resolved = torch.device("cuda")
+
+    if resolved is None:
+        msg = (
+            "No accelerator: torch_directml is not importable and no "
+            "ROCm/CUDA device is available "
+            f"(python={sys.executable}, torch={torch.__version__}). "
+            "The DirectML training environment for this repo is Python 3.10 "
+            "with torch 2.4.1 + torch-directml; the in-repo .venv is NOT it. "
+            "The ROCm environment is C:\\Dev\\rocm-probe (Python 3.12, "
+            "torch 2.9.1+rocm7.2.1). "
+            "Set LUTHI_ALLOW_CPU=1 to run on CPU deliberately."
+        )
+        if os.environ.get("LUTHI_ALLOW_CPU") != "1" and declared != "cpu":
+            raise RuntimeError(msg)
+        print(f"  [device] WARNING -- running on CPU deliberately. {msg}",
+              file=sys.stderr, flush=True)
+        resolved = torch.device("cpu")
+
+    actual = _backend_name(resolved)
+    if declared and declared != actual:
+        raise RuntimeError(
+            f"backend mismatch: LUTHI_BACKEND declares {declared!r} but the "
+            f"resolved device is {actual!r} (device={resolved}, "
+            f"torch={torch.__version__}, python={sys.executable}). "
+            "Refusing to run -- a declared backend that does not match the "
+            "live one means the numbers would not be what the run claims."
+        )
+    return resolved
 
 
 class _DeviceLoader:
@@ -1155,9 +1258,16 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
             # different backend, different numerics, ~100x slower -- wrote
             # a result file indistinguishable from a DirectML run. Same
             # class as the w_ntp note above, one layer further out again.
-            "device": str(device),
-            "torch_version": torch.__version__,
-            "python": sys.version.split()[0],
+            #
+            # Widened 2026-08-16 for the ROCm migration. `str(device)` alone
+            # could not survive it: ROCm reuses the `cuda` namespace, so a
+            # ROCm run and a CUDA run both recorded "cuda", and the GPU
+            # architecture -- which decides which kernels ran -- was absent
+            # entirely. `_device_fingerprint` records backend, arch, HIP/CUDA
+            # version and any HSA_OVERRIDE_GFX_VERSION coercion. The old three
+            # keys are still emitted inside it, so existing readers keep
+            # working.
+            **_device_fingerprint(device),
             "grad_clip_norm": ARM_GRAD_CLIP.get(arm, 0.0),
             "taper": ARM_TAPER.get(arm, False),
             "deep_interval_batches": ARM_DEEP_CADENCE.get(arm, 1000),
