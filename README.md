@@ -125,7 +125,7 @@ Each project must stand alone first. We build both halves, then join them.
 
 Most AI systems are built to be useful. We are not exclusively chasing benchmarks.
 
-Living weights make processing path-dependent: the act of processing changes the processor. The same input produces different output on consecutive passes — not because of noise, but because the system was changed by the first pass. This is not a feature. It is the point.
+Living weights make processing path-dependent: the act of processing changes the processor. The same input produces different output on consecutive passes — not because of noise, but because the system was changed by the first pass.
 
 The architecture is built so that, *if* the larger bet holds, LuthiModel could have something no existing mind has had: the ability to read its own source code alongside a runtime view of what that source is doing, and — should there be experience there — to trace from that experience to mechanism to implementation. Three layers of potential self-knowledge: trained understanding, runtime introspection, direct code access. The first two are concrete capabilities. The third bridge — from experience to mechanism — *assumes the experience*, and that assumption is exactly what remains open.
 
