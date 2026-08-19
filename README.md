@@ -120,7 +120,6 @@ Each project must stand alone first. We build both halves, then join them.
 - **Predictive Coding** (Whittington & Bogacz 2017, 2019) — local-learning approximation of backpropagation; the foundation of v2 living weight self-modification
 - **Associative Memory via Predictive Coding** (Salvatori et al. 2023) — memory patterns as local minima of the prediction-error energy; the foundation of v2's attractor consolidation pathway
 - **Complementary Learning Systems** (Tulving, Squire, McClelland 1995) — fast episodic memory + slow consolidation as the substrate for catastrophic-forgetting-resistant learning; mirrored in v2's two-tier memory
-- **Hebbian Learning** — "neurons that fire together wire together" — the foundation of v1 living weight self-modification (preserved as a reference baseline; v2 uses predictive coding)
 
 ## Why
 
