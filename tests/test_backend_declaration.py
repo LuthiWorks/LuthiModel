@@ -50,6 +50,20 @@ def _load_helpers():
     ns = {"torch": torch, "os": os, "sys": sys}
     wanted = {"_backend_name", "_device_fingerprint"}
     found = set()
+    # Module-level UPPER_CASE constants too (2026-08-19): the helpers now
+    # reference AOTRITON_ENV, and a loader that took only FunctionDefs
+    # failed with NameError -- the test breaking for a reason that had
+    # nothing to do with the behaviour under test. Taking the constants
+    # from the real source keeps the no-copy property.
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and all(
+            isinstance(t, ast.Name) and t.id.isupper() for t in node.targets
+        ):
+            try:
+                exec(compile(ast.Module(body=[node], type_ignores=[]),
+                             "<drv>", "exec"), ns)
+            except Exception:
+                pass  # constants that need imports we did not provide
     for node in tree.body:
         if isinstance(node, ast.FunctionDef) and node.name in wanted:
             exec(compile(ast.Module(body=[node], type_ignores=[]), "<drv>", "exec"), ns)

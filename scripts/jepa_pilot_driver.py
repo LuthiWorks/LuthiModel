@@ -790,6 +790,47 @@ def _param_groups(loss_module, model, arm: str, base_lr: float):
     ]
 
 
+# ROCm attention backend. Set BEFORE the first scaled_dot_product_attention
+# call or torch has already chosen its kernel.
+AOTRITON_ENV = "TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL"
+
+
+def _enable_rocm_attention() -> bool:
+    """AOTriton flash/mem-efficient attention for ROCm. **Default OFF.**
+
+    Measured on an idle machine, ruled 768x8 config, batch 32, two reps
+    identical to the millisecond:
+
+        ROCm, AOTriton OFF     238 ms/step
+        ROCm, AOTriton ON      241 ms/step
+
+    It makes no difference to speed. Since torch labels these kernels
+    experimental and they are a *different* attention implementation --
+    so a run with them is not bit-comparable to one without -- enabling
+    them buys nothing and costs comparability. Off is the right default.
+
+    Set ``LUTHI_ROCM_AOTRITON=1`` to turn them on deliberately. Either way
+    the choice is recorded in the device fingerprint.
+
+    **Correction, recorded rather than edited away (2026-08-19):** the
+    first version of this function enabled AOTriton by default and its
+    docstring asserted a 3.6x speedup as measured fact. Those measurements
+    were taken while a game was running; under GPU contention the same
+    unchanged configuration timed anywhere from 238 to 2281 ms/step. The
+    speedup was contention artifact, not kernel. The lesson is the
+    project's own: an instrument reading taken in the wrong conditions is
+    not a weak result, it is a wrong one -- and it was confident enough to
+    get written into code as a constant.
+    """
+    want = os.environ.get("LUTHI_ROCM_AOTRITON") == "1"
+    if want:
+        os.environ[AOTRITON_ENV] = "1"
+        print("  [device] AOTriton attention ENABLED by LUTHI_ROCM_AOTRITON=1 "
+              "-- experimental kernels; numerics differ from the default path.",
+              file=sys.stderr, flush=True)
+    return os.environ.get(AOTRITON_ENV) == "1"
+
+
 def _backend_name(device: torch.device) -> str:
     """Which compute stack a device actually belongs to.
 
@@ -842,6 +883,12 @@ def _device_fingerprint(device: torch.device) -> dict:
             # Never let provenance collection kill a run, but never let it
             # go quiet either: an unrecorded fingerprint is itself the bug.
             fp["gpu_probe_error"] = repr(exc)
+    if _backend_name(device) == "rocm":
+        # AOTriton is a DIFFERENT attention implementation, not a tuning
+        # knob: a run with it is not bit-comparable to one without, and it
+        # is a 3.6x speed difference. Recording it is the difference
+        # between a reproducible number and a mystery (2026-08-19).
+        fp["rocm_aotriton_attention"] = os.environ.get(AOTRITON_ENV) == "1"
     return fp
 
 
@@ -897,11 +944,29 @@ def _device() -> torch.device:
         )
 
     resolved: torch.device | None = None
-    try:
-        import torch_directml
-        resolved = torch_directml.device()
-    except ImportError:
-        pass
+
+    # ROCm FIRST (2026-08-19, Brian's exclusive-ROCm ruling made operative).
+    # Order matters: on a machine carrying both stacks, whichever is probed
+    # first wins, and this used to be DirectML. Measured on an IDLE machine,
+    # ruled 768x8 config, batch 32, two reps identical to the millisecond
+    # (scripts/bench_backend.py):
+    #     DirectML + C++ ops         836 ms/step
+    #     ROCm                       238 ms/step   <- 3.5x faster
+    # A 32 h family becomes ~9 h.
+    #
+    # Measure on an idle machine. A first pass at these numbers was taken
+    # while a game was running and every figure was inflated 2.5-9x, which
+    # inverted one conclusion entirely (see _enable_rocm_attention).
+    if torch.cuda.is_available() and getattr(torch.version, "hip", None):
+        _enable_rocm_attention()
+        resolved = torch.device("cuda")
+
+    if resolved is None:
+        try:
+            import torch_directml
+            resolved = torch_directml.device()
+        except ImportError:
+            pass
 
     if resolved is None and torch.cuda.is_available():
         resolved = torch.device("cuda")

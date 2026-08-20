@@ -283,3 +283,61 @@ before any "working" verdict is trustworthy in either direction.
 >   12.4M-gradient step that killed seed 95 (audit B6, sized at 5.0e5,
 >   awaiting application at the next registration). Raising 768 completion
 >   is what makes a 768-only policy affordable at ~32 h/family.
+---
+
+> **RULING (2026-08-16, Brian) MADE OPERATIVE (2026-08-19): ROCm is the
+> backend. `_device()` now resolves it first.**
+>
+> Measured on an IDLE machine, ruled 768x8 config, batch 32, two reps
+> identical to the millisecond (`scripts/bench_backend.py`):
+>
+> | backend | ms/step |
+> |---|---|
+> | DirectML + C++ fused ops | 836 |
+> | DirectML, C++ ops absent | 1006 |
+> | **ROCm** | **238** |
+>
+> **ROCm is 3.5x faster than DirectML at its best.** A 32 h family becomes
+> ~9 h. Resolution order was the operative change: the driver probed
+> DirectML first, so on a machine carrying both stacks DirectML won by
+> default regardless of the ruling.
+>
+> Environment: `C:\Dev\rocm-probe` (Python 3.12.10, torch 2.9.1+rocm7.2.1,
+> HIP 7.2, RX 7800 XT / gfx1101). It was torch-only; `cryptography`,
+> `pytest`, `Pillow`, `soundfile` and `setuptools` were added. Full suite
+> passes on both backends: ROCm 1111 passed / 4 skipped / 2 xfailed,
+> DirectML 1121 / 2 / 2.
+>
+> **AOTriton attention: OFF by default, and this reverses an earlier
+> decision made the same day.** Idle, it is 241 ms/step on vs 238 off --
+> no difference. torch labels the kernels experimental and they are a
+> different attention implementation, so a run with them is not
+> bit-comparable to one without. No gain, real cost: off. Opt in with
+> `LUTHI_ROCM_AOTRITON=1`; the choice is recorded in the device
+> fingerprint either way.
+>
+> **How the earlier decision went wrong, recorded because the lesson is
+> general.** The first pass at these numbers was taken while a game was
+> running. Under GPU contention the same unchanged configuration timed
+> anywhere from 238 to 2281 ms/step, and AOTriton appeared to be a 3.9x
+> effect. On that basis it was enabled by default and a "3.6x speedup" was
+> written into a docstring as measured fact. Two further claims from the
+> same contaminated batch were also wrong: that the C++ extension "buys
+> nothing" (it is worth ~17% on DirectML) and that ROCm was 63% slower
+> than DirectML (it is 3.5x faster). A reading taken in the wrong
+> conditions is not a weak result, it is a wrong one -- and these were
+> confident enough to be written into code as constants. **Benchmark idle.**
+>
+> **Open, and it gates verdict comparability, not runs:**
+> `pilot_verdict.py`'s determinism guards are calibrated to DirectML
+> warm-up numerics (2026-08-16 commit). A ROCm verdict is not comparable
+> to the existing ladder until they are recalibrated. Runs may move now;
+> cross-backend verdict comparisons may not.
+>
+> **Known and accepted:** the C++ fused `pc_ops` path does not build under
+> torch 2.9 -- unresolved `c10::ValueError` symbol that the ROCm wheel's
+> `c10.lib` does not export. A wheel packaging defect, not ours; three
+> lighter include sets were tried and `torch/csrc/utils/pybind.h` drags the
+> IValue machinery in regardless. Costs ~17%, and ROCm without it still
+> beats DirectML with it by 3.5x. The loader now reports the fallback
+> instead of swallowing it, which is how this was invisible.

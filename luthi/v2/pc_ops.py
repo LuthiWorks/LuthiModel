@@ -106,12 +106,41 @@ def _try_load_cpp():
             sources=[src_file],
             verbose=False,
         )
-    except Exception:
+    except Exception as exc:
+        # Record WHY, do not just vanish (2026-08-19 audit). This handler
+        # swallowed every failure and returned None, so a host where the
+        # extension does not build ran the Python reference with nothing
+        # anywhere saying so -- the silent-fallback shape CLAUDE.md forbids.
+        # Found on ROCm/torch 2.9, where the build fails on an unresolved
+        # c10::ValueError symbol that the ROCm wheel's c10.lib does not
+        # export -- a wheel packaging defect, not a defect in this source
+        # (three lighter include sets were tried; torch/csrc/utils/pybind.h
+        # drags the IValue machinery in regardless).
+        #
+        # Measured cost of running without it, IDLE machine, ruled 768x8
+        # config, batch 32: DirectML 836 ms/step with the extension vs
+        # 1006 without -- about 17%. Real but not decisive, and ROCm
+        # without it (238 ms/step) is still 3.5x faster than DirectML with
+        # it. So porting the extension to torch 2.9 is a worthwhile
+        # optimization, not a blocker.
+        #
+        # (An earlier reading of this said the extension "buys nothing",
+        # from numbers taken while a game was running. Benchmark idle.)
+        global _cpp_load_error
+        _cpp_load_error = f"{type(exc).__name__}: {str(exc)[:400]}"
         return None
 
 
+_cpp_load_error: str | None = None
 _cpp_ops = _try_load_cpp()
 _use_cpp = _cpp_ops is not None
+if not _use_cpp:
+    import sys as _sys
+    print(
+        "  [pc_ops] C++ fused path NOT loaded -- running the Python "
+        f"reference. Reason: {_cpp_load_error or 'source missing'}",
+        file=_sys.stderr, flush=True,
+    )
 
 
 def is_cpp_available() -> bool:
