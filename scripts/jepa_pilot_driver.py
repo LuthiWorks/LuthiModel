@@ -804,7 +804,24 @@ def _enable_rocm_attention() -> bool:
         ROCm, AOTriton OFF     238 ms/step
         ROCm, AOTriton ON      241 ms/step
 
-    It makes no difference to speed. Since torch labels these kernels
+    It makes no difference to speed, and NOT merely because our sequences
+    are short. Swept at batch 8 (off / on / ratio):
+
+        seq  128    116 / 115 ms   1.01x
+        seq  512    289 / 294 ms   0.98x
+        seq 1024    641 / 664 ms   0.97x
+
+    Never faster, at 8x the production sequence length. Two things follow.
+    Attention is not this model's bottleneck -- the near-LINEAR scaling
+    with seq_len (2.5x then 2.2x per 4x/2x step, where quadratic attention
+    would show ~4x per doubling) says the FFN and pc_self_modify dominate.
+    And AOTriton is not accelerating attention on this card at any length,
+    most likely because gfx1101 is consumer RDNA3 while these kernels are
+    tuned for CDNA; torch's warning said "experimental on Current AMD GPU",
+    which was specific to the card rather than boilerplate.
+
+    So the default is unconditional, not contingent on seq_len -- it does
+    not need revisiting if contexts grow. Since torch labels these kernels
     experimental and they are a *different* attention implementation --
     so a run with them is not bit-comparable to one without -- enabling
     them buys nothing and costs comparability. Off is the right default.

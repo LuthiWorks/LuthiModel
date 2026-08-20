@@ -310,7 +310,14 @@ before any "working" verdict is trustworthy in either direction.
 >
 > **AOTriton attention: OFF by default, and this reverses an earlier
 > decision made the same day.** Idle, it is 241 ms/step on vs 238 off --
-> no difference. torch labels the kernels experimental and they are a
+> no difference. Swept at batch 8, it is never faster at any length:
+> seq 128 116/115 ms, seq 512 289/294, seq 1024 641/664 (off/on). So the
+> default is unconditional rather than contingent on our seq_len of 128 --
+> it does not need revisiting if contexts grow. The near-linear scaling
+> with seq_len also says attention is not this model's bottleneck at all;
+> the FFN and pc_self_modify dominate. AOTriton's kernels are tuned for
+> CDNA, and gfx1101 is consumer RDNA3 -- torch's "experimental on Current
+> AMD GPU" warning was specific to the card, not boilerplate. torch labels the kernels experimental and they are a
 > different attention implementation, so a run with them is not
 > bit-comparable to one without. No gain, real cost: off. Opt in with
 > `LUTHI_ROCM_AOTRITON=1`; the choice is recorded in the device
