@@ -19,6 +19,7 @@ runs/jepa_pilot/supervisor.log, the witness when no console exists
 from __future__ import annotations
 
 import json
+import os
 import socket
 import subprocess
 import sys
@@ -68,6 +69,13 @@ def main() -> int:
         return 0
 
     _log(f"supervisor start: {len(stages)} stage(s) in queue")
+    # Which interpreter drives the runs is the single fact that decides the
+    # backend (the ROCm stack lives in its own environment). Log it so a
+    # queue that was launched from the wrong python is diagnosable from
+    # supervisor.log alone. The driver enforces: with LUTHI_BACKEND unset it
+    # declares ROCm (2026-08-21 default) and refuses to start anywhere else.
+    _log(f"interpreter: {sys.executable}  "
+         f"LUTHI_BACKEND={os.environ.get('LUTHI_BACKEND') or '<unset -> rocm>'}")
     for entry in stages:
         cmd = [
             sys.executable,

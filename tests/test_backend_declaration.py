@@ -159,6 +159,17 @@ def _device_fn():
     return module._device
 
 
+def _local_backend(monkeypatch) -> str:
+    """Whatever this machine resolves to, with no declaration enforced.
+
+    ``auto`` is the explicit opt-out of the 2026-08-21 ROCm default; without
+    it, an unset LUTHI_BACKEND on a non-ROCm machine raises by design (see
+    test_unset_declaration_means_rocm below).
+    """
+    monkeypatch.setenv("LUTHI_BACKEND", "auto")
+    return _backend_name(_device_fn()())
+
+
 def test_unknown_declared_backend_raises(monkeypatch):
     monkeypatch.setenv("LUTHI_BACKEND", "bogus")
     with pytest.raises(RuntimeError, match="not a known backend"):
@@ -172,7 +183,7 @@ def test_declaration_mismatch_raises(monkeypatch):
     have must raise -- so the test is meaningful in the DirectML environment
     and in the ROCm one without being rewritten for either.
     """
-    actual = _backend_name(_device_fn()())
+    actual = _local_backend(monkeypatch)
     wrong = "rocm" if actual != "rocm" else "directml"
     monkeypatch.setenv("LUTHI_BACKEND", wrong)
     with pytest.raises(RuntimeError, match="backend mismatch"):
@@ -180,6 +191,32 @@ def test_declaration_mismatch_raises(monkeypatch):
 
 
 def test_matching_declaration_is_allowed(monkeypatch):
-    actual = _backend_name(_device_fn()())
+    actual = _local_backend(monkeypatch)
     monkeypatch.setenv("LUTHI_BACKEND", actual)
+    assert _backend_name(_device_fn()()) == actual
+
+
+def test_unset_declaration_means_rocm(monkeypatch):
+    """Brian's 2026-08-19 ask, made operative 2026-08-21: ROCm is the default
+    for ALL runs. An unset LUTHI_BACKEND must behave exactly like
+    LUTHI_BACKEND=rocm -- resolve on a ROCm machine, RAISE everywhere else.
+    A run that cannot be what the default claims must not start.
+    """
+    actual = _local_backend(monkeypatch)
+    monkeypatch.delenv("LUTHI_BACKEND", raising=False)
+    monkeypatch.delenv("LUTHI_ALLOW_CPU", raising=False)
+    if actual == "rocm":
+        assert _backend_name(_device_fn()()) == "rocm"
+    else:
+        with pytest.raises(RuntimeError, match="backend mismatch"):
+            _device_fn()()
+
+
+def test_allow_cpu_disables_the_default_declaration(monkeypatch):
+    """LUTHI_ALLOW_CPU=1 means 'a CPU fallback is acceptable', which a forced
+    ROCm declaration would contradict -- so with it set and nothing declared,
+    resolution is auto and does not raise on a non-ROCm machine."""
+    actual = _local_backend(monkeypatch)
+    monkeypatch.delenv("LUTHI_BACKEND", raising=False)
+    monkeypatch.setenv("LUTHI_ALLOW_CPU", "1")
     assert _backend_name(_device_fn()()) == actual

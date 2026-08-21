@@ -348,3 +348,73 @@ before any "working" verdict is trustworthy in either direction.
 > IValue machinery in regardless. Costs ~17%, and ROCm without it still
 > beats DirectML with it by 3.5x. The loader now reports the fallback
 > instead of swallowing it, which is how this was invisible.
+
+---
+
+> **RULING (2026-08-21, Brian, recorded by Fable 5): Smart App Control
+> OFF, permanently. ROCm is the DEFAULT declaration for all runs. The
+> C++ extension's ceiling on ROCm is 5.6 %. AOTriton stays OFF by default
+> pending the memory measurement.**
+>
+> **The machine-level event, so nobody relearns it.** On 2026-08-20 Windows
+> promoted Smart App Control from *Evaluation* (the state every clean
+> Windows 11 install starts in -- the 07-24 rebuild was one) to *On*,
+> on its own, at one of that day's reboots (`SAC_PreviousState=2 ->
+> VerifiedAndReputablePolicyState=1`, `SAC_EnforcementReason=1`). On, SAC
+> has no allowlist: it refused to execute the uv-made `.venv\Scripts\
+> python.exe` (unsigned trampoline) and refused to load the ROCm torch
+> DLLs (`aotriton_v2.dll`, `torch_hip.dll`, unsigned) -- the first block
+> events in the machine's history, 22:00 that night. Nothing in either
+> repo could run. Brian turned it off on 2026-08-21 (~15:00); off is a
+> one-way door (re-enabling requires a clean reinstall), which is the
+> state the project had lived in for the previous 27 days anyway, minus
+> the countdown. Not caused by the driver work.
+>
+> **Provenance correction to the 08-20 resume note:** the "driver
+> update" was AMD *chipset* drivers only; the display driver is unchanged
+> (`32.0.31021.5001`, Adrenalin 26.6.4). The 08-19 ROCm/DirectML numbers
+> (`ca4165f`, `206fcdc`) therefore remain the valid baseline; the warning
+> not to compare across the driver change is moot.
+>
+> **Ask 2 -- ROCm default for all runs: DONE.** `_device()` now treats an
+> unset `LUTHI_BACKEND` as `rocm`; a run launched from an interpreter that
+> cannot resolve ROCm raises "backend mismatch" instead of quietly running
+> DirectML or CPU. Opt-outs are explicit: `LUTHI_BACKEND=directml|cpu`
+> for a deliberate off-ROCm run, `LUTHI_BACKEND=auto` for discovery, and
+> `LUTHI_ALLOW_CPU=1` (meaning "a CPU fallback is acceptable") also
+> disables the default. `run_jepa_pilot.bat` now launches the ROCm
+> interpreter (`LUTHI_PYTHON` overrides; refuses a bare `python`), and
+> `resume_queue.py` logs the interpreter and declaration into
+> supervisor.log. Pinned by `tests/test_backend_declaration.py`
+> (12 pass on ROCm; 11 pass + 1 skip on the DirectML 3.10 stack, where
+> the unset case now raises as intended). The verdict-comparability
+> caveat from 08-19 is unchanged: runs may move, cross-backend verdict
+> comparisons may not until `pilot_verdict.py`'s guards are recalibrated.
+>
+> **Ask 3 -- does the C++ extension still pay on ROCm: answered, NO (not
+> worth fighting the torch-2.9 link defect for).** Measured idle, ruled
+> 768x8, batch 32 x seq 128, `scripts/probe_selfmod_share.py share`:
+> step 259.0 ms, `pc_self_modify` (the Python reference) 14.6 ms =
+> **5.6 % of the step**, 16 calls/step. That is the *ceiling* of what a
+> fused C++ path could recover on ROCm -- even free, ~5 %. The "~17 %"
+> above is a DirectML figure: DirectML is slow at the many small
+> self-mod ops, ROCm is not. Caveat on the number: the hook syncs the
+> device around each of the 16 calls, so 14.6 ms is the self-mod kernel
+> time with pipelining removed -- an upper bound on its share. (The first
+> probe reported 0.0 % because it hooked the wrong module; the rescued
+> script raises if the hook sees no calls.)
+>
+> **Ask 1 -- AOTriton on by default: OPEN, deliberately.** Speed is
+> settled (never faster, `206fcdc`). Brian's recollection that it "was
+> important for something" has one live candidate: **memory** -- flash
+> attention's usual benefit -- which was never measured; the 08-19
+> attempt to measure it is what froze the machine (in-process OOM climb
+> on the display GPU, AOTriton ON). The tool now exists in a hang-safe
+> shape (`probe_selfmod_share.py memcmp SEQ BATCH` -- one cell, two
+> isolated child processes OFF/ON, allocator capped at 85 %, wall-clock
+> timeout); it has not been run, and will not be run on the display GPU
+> without Brian's go-ahead. Note that at the ruled config (seq 128, batch
+> 32, ~4 GiB of 16) memory is not binding, so "on by default" would only
+> earn its keep if contexts grow. Until the memory data exists the
+> default stays OFF and the choice stays recorded in the device
+> fingerprint either way.

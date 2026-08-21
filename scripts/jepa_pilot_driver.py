@@ -948,17 +948,36 @@ def _device() -> torch.device:
     When the migration is validated, set ``LUTHI_BACKEND=rocm`` in the run
     environment and this becomes an enforced exclusivity with no code change.
 
+    **ROCm is the DEFAULT declaration (2026-08-21, Brian's ask of 08-19:
+    "make ROCm the default for all runs").** An unset ``LUTHI_BACKEND`` now
+    means ``rocm`` -- so a run launched from an interpreter that cannot
+    resolve ROCm (the DirectML Python 3.10 stack, the in-repo CPU venv)
+    RAISES "backend mismatch" instead of quietly running on whatever it
+    found. Opt out explicitly: ``LUTHI_BACKEND=directml`` / ``cpu`` for a
+    deliberate run on those stacks, or ``LUTHI_BACKEND=auto`` for the old
+    resolve-whatever-is-here behaviour (tests that want to discover the
+    local backend use this). ``LUTHI_ALLOW_CPU=1`` with nothing declared
+    also means auto, because that flag's meaning is "a CPU fallback is
+    acceptable here", which a forced-ROCm declaration would contradict.
+
     Note that ROCm presents through the ``cuda`` namespace, so
     ``torch.device("cuda")`` is the ROCm device -- there is no NVIDIA
     involvement. ``_backend_name()`` distinguishes them, because
     ``str(device)`` cannot.
     """
     declared = (os.environ.get("LUTHI_BACKEND") or "").strip().lower()
-    if declared and declared not in ("rocm", "directml", "cpu"):
+    if declared and declared not in ("rocm", "directml", "cpu", "auto"):
         raise RuntimeError(
             f"LUTHI_BACKEND={declared!r} is not a known backend "
-            "(expected: rocm | directml | cpu)"
+            "(expected: rocm | directml | cpu | auto)"
         )
+    if not declared:
+        # Unset means ROCm (2026-08-21 default) -- unless the caller has said
+        # a CPU fallback is acceptable, in which case there is nothing to
+        # enforce and the old auto-resolution applies.
+        declared = "auto" if os.environ.get("LUTHI_ALLOW_CPU") == "1" else "rocm"
+    if declared == "auto":
+        declared = ""
 
     resolved: torch.device | None = None
 
