@@ -675,6 +675,10 @@ class JEPALoss(nn.Module):
             "online_std": online_per_dim_std.detach(),
             "online_context_latents": online_context_latents.detach(),
             "block_latents": online_result.get("block_latents"),
+            # Pre-block stream for the per-block contribution gauge
+            # (A7 carrier-vs-bypass review, 2026-09-29). Passed through
+            # on the same flag as block_latents.
+            "block_inputs": online_result.get("block_inputs"),
             "target_latents": target_full_latents.detach(),
             "predicted_target": predicted_target.detach(),
             "ctx_len": ctx_len,

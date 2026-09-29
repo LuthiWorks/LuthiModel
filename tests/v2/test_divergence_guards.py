@@ -43,6 +43,9 @@ class _Guard:
         # rank above; these carry what it was blind to.
         self._last_min_block_eff = None
         self._last_min_block_chorus = None
+        # Per-block contribution floor the veto reports (2026-09-29,
+        # A7 carrier-vs-bypass review). Mirrors JEPATrainer.__init__.
+        self._last_min_block_contrib_ratio = None
 
     _check_loss_divergence = JEPATrainer._check_loss_divergence
     _check_divergence = JEPATrainer._check_divergence

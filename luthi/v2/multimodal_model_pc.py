@@ -384,8 +384,18 @@ class MultimodalPredictiveCodingLM(nn.Module):
         # blocks 1 and 2 abandoned 10-13% of their input dimensions while
         # block 0 was untouched, which a pooled measure would have hidden.
         block_latents: list[torch.Tensor] = []
+        # Pre-block stream, captured on the same request flag. The runner
+        # measures each block's CONTRIBUTION as block_latents[i] -
+        # block_inputs[i]: output gauges (effective rank, chorus) read the
+        # post-residual stream and cannot distinguish a healthy block from
+        # a collapsed block the residual bypasses (A7 carrier-vs-bypass
+        # review, 2026-09-29). Detached like block_latents -- diagnostics
+        # must not hold the graph.
+        block_inputs: list[torch.Tensor] = []
         interior_latents: dict[int, torch.Tensor] = {}
         for bi, block in enumerate(self.blocks):
+            if collect_block_latents:
+                block_inputs.append(h.detach())
             h = block(h, causal=causal)
             if collect_block_latents:
                 block_latents.append(h.detach())
@@ -409,6 +419,7 @@ class MultimodalPredictiveCodingLM(nn.Module):
         }
         if collect_block_latents:
             out["block_latents"] = block_latents
+            out["block_inputs"] = block_inputs
         if interior_latents:
             out["interior_latents"] = interior_latents
         return out

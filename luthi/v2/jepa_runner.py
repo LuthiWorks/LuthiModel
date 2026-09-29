@@ -771,6 +771,95 @@ def _rank_and_top_share(latents: torch.Tensor) -> tuple[float, float, float]:
     return float(eff), float((sv.max() / sv.sum()).item()), float(chorus)
 
 
+def _block_contribution_metrics(
+    h_in: torch.Tensor, h_out: torch.Tensor
+) -> tuple[float, float]:
+    """What the block ADDS, not what it outputs: c = h_out - h_in.
+
+    Added 2026-09-29 (A7 carrier-vs-bypass review). Output gauges
+    (``effective_rank``, ``chorus_eff_rank``) read the post-residual
+    stream ``h_out = h_in + c`` and cannot distinguish a healthy block
+    from a collapsed block the residual bypasses -- both read rich,
+    because the richness is the residual's. These read the contribution
+    ``c`` directly.
+
+    Returns ``(var_ratio, contrib_chorus)``:
+
+    * ``var_ratio`` = batch-variance of ``c`` / batch-variance of
+      ``h_in``. Variance is taken over the BATCH dim (inputs differ
+      across the batch; a block that computes must vary with them)
+      and averaged over seq/feature dims. ~0 means the block adds
+      nothing batch-varying -- dead, or a batch-constant soloist.
+    * ``contrib_chorus`` = chorus rank of ``c`` (same spectral-entropy
+      math as ``_rank_and_top_share``): whether what the block adds is
+      high-dimensional. NaN when ``var_ratio`` is at the dust floor, and
+      NaN when no tail direction survives a 1e-6-relative noise floor
+      (the contribution is rank-1 -- e.g. a soloist -- and "chorus of
+      one direction" is undefined; without the floor the clamp-dust
+      tail reads as spuriously rich, measured 2026-09-29).
+
+    What it discriminates and what it does not: var_ratio ~ 0 with
+    chorus NaN is a dead/bypassed block, invisible to output gauges.
+    A rank-1 contribution with large var_ratio is the soloist/carrier
+    case -- the gauge reports it as such (rank-1, not rich) where the
+    output gauges report the residual's richness as the block's. But
+    "carrier computed from input" vs "input-independent soloist" needs
+    the per-block contribution PROBE (A7 review) to decide; variance
+    alone cannot see dependence.
+
+    NaN (both) when the input itself has no batch variance: the ratio
+    is undefined, and a silent 0.0 would read as "dead block".
+    """
+    nan = float("nan")
+    try:
+        c = (h_out.detach().float() - h_in.detach().float())
+    except Exception:
+        return nan, nan
+    # Batch variance, averaged over the remaining dims: var over dim 0
+    # (batch), then mean over everything else.
+    def _bvar(t: torch.Tensor) -> float:
+        return float(t.var(dim=0).mean().item())
+
+    try:
+        v_in = _bvar(h_in.detach().float())
+        v_c = _bvar(c)
+    except Exception:
+        return nan, nan
+    if not (v_in > 0.0) or v_in != v_in:  # zero, negative-impossible, or NaN
+        return nan, nan
+    var_ratio = v_c / v_in
+    if not (var_ratio > 1e-6):
+        # Dead contribution (or dust): chorus of ~nothing is meaningless.
+        return float(var_ratio), nan
+    # Chorus of the contribution -- with a RELATIVE noise floor. The raw
+    # _rank_and_top_share clamps singular values at an absolute 1e-12,
+    # so on a rank-1 contribution the tail reads as uniform clamp-dust
+    # and reports chorus ~= D-1 ("rich") for what is one direction.
+    # Measured 2026-09-29: a faithful soloist synthetic (rank-1 c) read
+    # contrib_chorus 16.2 before the floor, NaN after. Keep only tail
+    # directions carrying real variance relative to the top; if none
+    # survive, the contribution is rank-1 and its chorus is undefined.
+    try:
+        flat = c.detach().float().reshape(-1, c.shape[-1])
+        flat = flat - flat.mean(dim=0, keepdim=True)
+        n = flat.shape[0]
+        cov = (flat.t() @ flat) / max(n - 1, 1)
+        sv = torch.linalg.svdvals(cov)
+        smax = float(sv.max().item())
+        if not (smax > 0.0):
+            return float(var_ratio), nan
+        tail = sv[1:][sv[1:] > 1e-6 * smax]
+        if tail.numel() == 0:
+            return float(var_ratio), nan
+        p = tail / tail.sum()
+        contrib_chorus = math.exp(
+            float(-(p * torch.log(p.clamp(min=1e-12))).sum().item())
+        )
+    except Exception:
+        return float(var_ratio), nan
+    return float(var_ratio), float(contrib_chorus)
+
+
 def _deep_collapse_metrics(online_context_latents: torch.Tensor) -> dict:
     """v0.5 §5 deep metrics, per modality.
 
@@ -985,6 +1074,8 @@ class JEPATrainer:
         # Per-block minima at deep cadence (2026-08-14 audit, B3).
         self._last_min_block_eff: Optional[float] = None
         self._last_min_block_chorus: Optional[float] = None
+        # Per-block contribution floor (2026-09-29, A7 review).
+        self._last_min_block_contrib_ratio: Optional[float] = None
         # Kill-5 solved-not-copying log throttle (2026-07-17 amendment):
         # per-modality, log the healthy cosine crossing once, not per step.
         self._kill5_solved_logged: set[str] = set()
@@ -1411,6 +1502,26 @@ class JEPATrainer:
                     block_top_share.append(float("nan"))
                     block_chorus.append(float("nan"))
 
+            # Per-block contribution gauges (2026-09-29, A7 carrier-vs-bypass
+            # review). c_i = block_latents[i] - block_inputs[i]: what the
+            # block ADDS. Output gauges above read the post-residual
+            # stream and are blind to a collapsed block the residual
+            # bypasses; these are not. var_ratio ~ 0 with chorus NaN is
+            # the bypass signature (dead or batch-constant-soloist block).
+            block_contrib_ratio: list[float] = []
+            block_contrib_chorus: list[float] = []
+            _bl_in = raw.get("block_inputs") or []
+            for i, bl in enumerate(raw.get("block_latents") or []):
+                try:
+                    if i < len(_bl_in) and _bl_in[i] is not None:
+                        vr, cc = _block_contribution_metrics(_bl_in[i], bl)
+                    else:
+                        vr, cc = float("nan"), float("nan")
+                    block_contrib_ratio.append(vr)
+                    block_contrib_chorus.append(cc)
+                except Exception:  # noqa: BLE001 -- diagnostics never kill a run
+                    block_contrib_ratio.append(float("nan"))
+                    block_contrib_chorus.append(float("nan"))
             # Per-block minima for the divergence rank veto (2026-08-14
             # audit, B3). The veto reads `_last_eff_rank`, which is the
             # POOLED trunk rank -- 403 in the 768 family's seed 97 while
@@ -1419,8 +1530,15 @@ class JEPATrainer:
             # veto site for why the per-block gate ships disarmed.
             _finite_eff = [v for v in block_ranks if v == v]
             _finite_ch = [v for v in block_chorus if v == v]
+            _finite_cr = [v for v in block_contrib_ratio if v == v]
             self._last_min_block_eff = min(_finite_eff) if _finite_eff else None
             self._last_min_block_chorus = min(_finite_ch) if _finite_ch else None
+            # Contribution floor across blocks (2026-09-29): the smallest
+            # per-block var_ratio, so the guard can report a block that
+            # adds nothing even when every output gauge reads healthy.
+            self._last_min_block_contrib_ratio = (
+                min(_finite_cr) if _finite_cr else None
+            )
 
             # EMIT_BATCH_1 §2: per-block substrate detail (deep cadence
             # only, to bound payload). LuthiScope renders this as a
@@ -1493,6 +1611,22 @@ class JEPATrainer:
                     # apart and ranks them backwards.
                     "chorus_eff_rank": (
                         block_chorus[i] if i < len(block_chorus) else None
+                    ),
+                    # 2026-09-29, A7 carrier-vs-bypass review. Contribution
+                    # gauges: what block i ADDS (h_out - h_in), not what it
+                    # outputs. Output gauges above are blind to a collapsed
+                    # block the residual bypasses; contrib_var_ratio ~ 0
+                    # (with contrib_chorus NaN) is the bypass signature.
+                    # Read alongside effective_rank/chorus, never instead.
+                    "contrib_var_ratio": (
+                        block_contrib_ratio[i]
+                        if i < len(block_contrib_ratio)
+                        else None
+                    ),
+                    "contrib_chorus": (
+                        block_contrib_chorus[i]
+                        if i < len(block_contrib_chorus)
+                        else None
                     ),
                     # (per-block minima are cached for the guard just
                     # below this record's construction)
@@ -2647,6 +2781,7 @@ class JEPATrainer:
                     )
                     min_eff = self._last_min_block_eff
                     min_ch = self._last_min_block_chorus
+                    min_cr = self._last_min_block_contrib_ratio
                     if (
                         veto_chorus > 0
                         and min_ch is not None
@@ -2664,11 +2799,13 @@ class JEPATrainer:
                         logger.error(
                             "NMSE TRIPPED BUT GEOMETRY HEALTHY: %s nmse=%.4f>%.2f "
                             "with pooled eff=%.1f >= %.0f (min per-block eff=%s, "
-                            "min per-block chorus=%s) -- kill vetoed (rank "
+                            "min per-block chorus=%s, min per-block contrib "
+                            "var_ratio=%s) -- kill vetoed (rank "
                             "veto); persistence clock at %d steps keeps running",
                             modality, float(nmse), limit, eff, veto_eff,
                             f"{min_eff:.1f}" if min_eff is not None else "n/a",
                             f"{min_ch:.1f}" if min_ch is not None else "n/a",
+                            f"{min_cr:.2e}" if min_cr is not None else "n/a",
                             sustained,
                         )
                         continue

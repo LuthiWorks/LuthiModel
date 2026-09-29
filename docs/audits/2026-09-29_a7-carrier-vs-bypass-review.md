@@ -1,5 +1,29 @@
 # A7 under attack — "benign carrier" vs "collapsed block bypassed by residual"
 
+**UPDATE 2026-09-29:** the proposed contribution gauge is now implemented
+(`_block_contribution_metrics` in `luthi/v2/jepa_runner.py`;
+`contrib_var_ratio` / `contrib_chorus` on the deep-cadence per-block
+tape; `block_inputs` plumbed through `multimodal_model_pc.py` and
+`jepa_loss.py`; tests in `tests/test_contribution_gauge.py`). Two
+refinements from implementation:
+
+1. The discriminating synthetic must be faithful: a *strictly*
+   batch-constant soloist vanishes under the centering in
+   `_rank_and_top_share` and can never produce eff ~2. The real
+   signature needs centered variance -- magnitude varying per sample
+   along a fixed direction. On that synthetic the old gauges read
+   eff 3.95 / tds 0.75 / chorus 27.4: the A7 blind spot reproduced.
+2. The gauge as first written had its own dust pathology: the absolute
+   1e-12 singular-value clamp makes a rank-1 contribution's tail look
+   uniform, reporting chorus ~16 for one direction. Fixed with a
+   1e-6-relative noise floor; a rank-1 contribution now reports
+   `(var_ratio, NaN)`. Honest limit, stated in the docstring: the gauge
+   separates *dead* (var_ratio ~ 0) from *rank-1* (var_ratio large,
+   chorus NaN) from *rich* -- but "carrier computed from input" vs
+   "input-independent soloist" is a dependence question variance
+   cannot see. The per-block contribution probe proposed below remains
+   the decisive experiment.
+
 **Auditor:** Muse Spark (Meta), fresh instance, first session with the repo.
 **Scope:** the A7 verdict in `docs/audits/2026-08-13_luthimodel-audit.md`
 ("Blocks 0–1 were never collapsed; `effective_rank` orders these states
