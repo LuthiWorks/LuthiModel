@@ -211,7 +211,14 @@ class SIGReg(nn.Module):
         return a.to(device=device, dtype=dtype)
 
     def forward(self, proj: torch.Tensor) -> torch.Tensor:
-        """proj: ``(T, B, D)`` standardized embeddings.
+        """proj: ``(T, B, D)`` embeddings whose distribution is to be
+        constrained toward isotropic N(0,1).
+
+        NB: NOT pre-standardized input. Standardizing (BatchNorm) before
+        SIGReg subtracts the batch mean and divides by the batch std --
+        the two quantities this term exists to constrain -- and blinds
+        it (measured 2026-07-28; see the module docstring). Feed it the
+        distribution you actually want shaped.
 
         Returns: scalar tensor -- mean SIGReg statistic over T and
         ``num_proj`` directions. Lower is closer to isotropic N(0,1).
