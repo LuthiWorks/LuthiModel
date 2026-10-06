@@ -434,6 +434,7 @@ class JEPALoss(nn.Module):
         modality: str,
         modality_inputs: dict,
         collect_block_latents: bool = False,
+        collect_block_activation_scalars: bool = False,
     ) -> dict:
         """Compute the LeJEPA-style loss for one modality's batch.
 
@@ -515,6 +516,7 @@ class JEPALoss(nn.Module):
         online_result = self.online_encoder.encode(
             **online_inputs, causal=False,
             collect_block_latents=collect_block_latents,
+            collect_block_activation_scalars=collect_block_activation_scalars,
         )
         online_context_latents = online_result["per_modality"][modality]
         # [B, ctx_len, D]
@@ -679,6 +681,11 @@ class JEPALoss(nn.Module):
             # (A7 carrier-vs-bypass review, 2026-09-29). Passed through
             # on the same flag as block_latents.
             "block_inputs": online_result.get("block_inputs"),
+            # Light-cadence per-block activation scalars (2026-10-06).
+            # Eagerly computed in encode(); plain floats, no tensors.
+            "block_activation_scalars": online_result.get(
+                "block_activation_scalars"
+            ),
             "target_latents": target_full_latents.detach(),
             "predicted_target": predicted_target.detach(),
             "ctx_len": ctx_len,

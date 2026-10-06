@@ -1167,7 +1167,7 @@ class JEPATrainer:
 
     def train_step(
         self, modality: str, batch: dict, *, will_log: bool = False,
-        will_deep: bool = False,
+        will_deep: bool = False, will_light: bool = False,
     ) -> dict:
         """One per-modality training step.
 
@@ -1197,6 +1197,12 @@ class JEPATrainer:
 
         result = self.loss_module.compute_modality_loss(
             modality, batch, collect_block_latents=will_deep,
+            # Light-cadence per-block activation scalars (2026-10-06,
+            # stage 1 of the activation-monitoring plan). Eagerly
+            # computed in encode() -- plain floats, no tensor retention,
+            # so this is safe to collect at the ~10x light cadence while
+            # block_latents stays deep-only.
+            collect_block_activation_scalars=will_light,
         )
         loss: torch.Tensor = result["loss"]
 
@@ -1460,6 +1466,16 @@ class JEPATrainer:
             )
             record["light"] = light_m
             self.history.push(modality, light_m)
+
+            # EMIT light_blocks: per-block activation scalars at light
+            # cadence (2026-10-06, stage 1 of the activation-monitoring
+            # plan). Eagerly computed in encode() as plain floats -- the
+            # light-cadence counterpart to the deep-cadence
+            # substrate_blocks tape, so LuthiScope can render a
+            # blocks-x-time heatmap at ~10x the deep cadence without the
+            # SVD cost. Field names spec-locked; None when the flag was
+            # off (additive field, no migration).
+            record["light_blocks"] = raw.get("block_activation_scalars")
 
             # Kill-6 source (v0.5 §7.6): substrate health from
             # aliveness_report. Computed every light firing so the same
@@ -2899,6 +2915,7 @@ class JEPATrainer:
 
                 step_out = self.train_step(
                     modality, batch, will_log=will_log, will_deep=deep_due,
+                    will_light=light_due,
                 )
                 # train_step has already advanced both self.global_step
                 # and self.modality_step[modality] -- do NOT increment

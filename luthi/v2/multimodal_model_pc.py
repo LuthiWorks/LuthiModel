@@ -41,6 +41,36 @@ from luthi.v2.hybrid_block_pc import PredictiveCodingBlock
 from luthi.v2.backward_pass_pc import create_initial_signal
 
 
+# Fixed diagnostic thresholds for the light-cadence per-block activation
+# scalars (2026-10-06). These are arbitrary-but-fixed: their value is in
+# the time series (a block drifting toward death or saturation), not in
+# the absolute number. Documented here so the contract stays honest.
+_DEAD_ACT_EPS = 1e-5
+_SAT_ACT_THRESH = 5.0
+
+
+def _block_activation_scalars(h: torch.Tensor) -> dict:
+    """Inexpensive per-block activation summary for light-cadence emission.
+
+    Takes a detached block-output tensor [B, T, D] and returns plain
+    Python floats: mean/std/rms, p50/p99 of |h|, dead fraction
+    (|h| < _DEAD_ACT_EPS) and saturation fraction (|h| > _SAT_ACT_THRESH).
+    All O(elements) reductions -- deliberately cheap next to the
+    deep-cadence SVD gauges. Diagnostics must never kill a run, so the
+    caller wraps this in try/except like the other per-block gauges.
+    """
+    af = h.detach().float().abs().flatten()
+    return {
+        "act_mean": float(h.detach().float().mean().item()),
+        "act_std": float(h.detach().float().std(unbiased=False).item()),
+        "act_rms": float(h.detach().float().pow(2).mean().sqrt().item()),
+        "act_p50": float(af.quantile(0.50).item()),
+        "act_p99": float(af.quantile(0.99).item()),
+        "dead_frac": float((af < _DEAD_ACT_EPS).float().mean().item()),
+        "sat_frac": float((af > _SAT_ACT_THRESH).float().mean().item()),
+    }
+
+
 class MultimodalPredictiveCodingLM(nn.Module):
     """Multimodal predictive-coding language model.
 
@@ -336,6 +366,7 @@ class MultimodalPredictiveCodingLM(nn.Module):
         vision_tokens: torch.Tensor | None = None,
         causal: bool = False,
         collect_block_latents: bool = False,
+        collect_block_activation_scalars: bool = False,
     ) -> dict:
         """Encode multimodal input through the shared PC trunk and return
         per-modality latent streams.
@@ -393,12 +424,21 @@ class MultimodalPredictiveCodingLM(nn.Module):
         # must not hold the graph.
         block_inputs: list[torch.Tensor] = []
         interior_latents: dict[int, torch.Tensor] = {}
+        # Light-cadence per-block activation scalars (2026-10-06, stage 1
+        # of the activation-monitoring plan). Computed eagerly here so the
+        # runner gets per-block vitals at light cadence WITHOUT retaining
+        # full block latents (collect_block_latents stays deep-only). Each
+        # entry is plain floats -- the list, not the tensors, is what
+        # travels downstream.
+        block_activation_scalars: list[dict] = []
         for bi, block in enumerate(self.blocks):
             if collect_block_latents:
                 block_inputs.append(h.detach())
             h = block(h, causal=causal)
             if collect_block_latents:
                 block_latents.append(h.detach())
+            if collect_block_activation_scalars:
+                block_activation_scalars.append(_block_activation_scalars(h))
             # Interior Weak-SIGReg (2026-08-07): NON-detached — the whole
             # point is gradient pressure on the interior stream.
             if bi in self.interior_latent_blocks:
@@ -420,6 +460,8 @@ class MultimodalPredictiveCodingLM(nn.Module):
         if collect_block_latents:
             out["block_latents"] = block_latents
             out["block_inputs"] = block_inputs
+        if collect_block_activation_scalars:
+            out["block_activation_scalars"] = block_activation_scalars
         if interior_latents:
             out["interior_latents"] = interior_latents
         return out
