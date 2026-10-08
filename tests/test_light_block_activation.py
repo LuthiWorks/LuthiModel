@@ -227,3 +227,53 @@ class TestLightBlocksEmission:
             assert len(record["light_blocks"]) == 2
             assert "substrate_blocks" in record
             assert len(record["substrate_blocks"]) == 2
+
+
+# ---------------------------------------------------------------------------
+# 2026-10-08 review fixes: the guard the docstring promised, and bounded
+# quantile cost at scale.
+# ---------------------------------------------------------------------------
+
+
+class TestReviewFixes:
+    def test_helper_failure_does_not_kill_training_step(self, monkeypatch):
+        """Diagnostics must never kill a run. If the helper raises, encode()
+        records an all-NaN entry per block and training proceeds."""
+        import luthi.v2.multimodal_model_pc as mm
+
+        def _boom(h):
+            raise RuntimeError("synthetic diagnostic failure")
+
+        monkeypatch.setattr(mm, "_block_activation_scalars", _boom)
+        with tempfile.TemporaryDirectory() as tmp:
+            trainer = _build_trainer(Path(tmp))
+            batch = trainer.data_loader.next_batch("text")
+            step_out = trainer.train_step(
+                "text", batch, will_log=True, will_light=True,
+            )
+            record = trainer._compute_and_log_diagnostics(
+                step_out, light=True, deep=False,
+            )
+            blocks = record["light_blocks"]
+            assert len(blocks) == 2
+            for b in blocks:
+                assert tuple(b.keys()) == _SCALAR_KEYS
+                assert all(v != v for v in b.values())  # all NaN
+
+    def test_large_tensor_quantiles_subsampled_and_close(self):
+        """Above the cap, p50/p99 come from a strided subsample: still
+        accurate, and exact stats (mean/std/dead/sat) cover every element."""
+        from luthi.v2.multimodal_model_pc import _QUANTILE_MAX_ELEMS
+
+        g = torch.Generator().manual_seed(11)
+        n = _QUANTILE_MAX_ELEMS * 3 + 7
+        h = torch.randn(1, 1, n, generator=g)
+        s = _block_activation_scalars(h)
+        af = h.abs().flatten()
+        # |N(0,1)| median ~0.674, p99 ~2.576
+        assert s["act_p50"] == pytest.approx(0.6745, abs=0.01)
+        assert s["act_p99"] == pytest.approx(2.576, abs=0.03)
+        assert s["act_mean"] == pytest.approx(h.mean().item())
+        assert s["dead_frac"] == pytest.approx(
+            (af < _DEAD_ACT_EPS).float().mean().item()
+        )

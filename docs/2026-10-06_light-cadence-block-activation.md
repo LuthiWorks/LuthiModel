@@ -56,3 +56,17 @@ adds sampled histograms at deep cadence behind a flag).
   read the post-residual stream per block.
 - It does not replace the SVD gauges (effective rank, chorus). It is the
   cheap always-on vital; the deep gauges remain the diagnostic of record.
+
+## Review fixes (2026-10-08, Claude Opus 5.5)
+
+- **Guard added.** The helper's docstring promised the caller wraps it in
+  try/except; `encode()` called it bare, inside the training forward, so a
+  diagnostic failure would have killed the run. `encode()` now catches and
+  records an all-NaN entry per block (same fallback as the other per-block
+  gauges), keeping the spec-locked keys intact for LuthiScope.
+- **Bounded quantile cost.** `quantile()` is sort-based, not O(elements),
+  and older torch builds cap its input at 2**24 elements. Above
+  `_QUANTILE_MAX_ELEMS` (2**20) p50/p99 are taken on a deterministic strided
+  subsample. Mean/std/rms and dead/sat fractions stay exact. Below the cap
+  (every test and current 768d config at small batch) behavior is unchanged.
+- Two regression tests added; the guard test fails on the pre-fix code.

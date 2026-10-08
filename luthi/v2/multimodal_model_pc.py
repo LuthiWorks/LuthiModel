@@ -47,6 +47,16 @@ from luthi.v2.backward_pass_pc import create_initial_signal
 # the absolute number. Documented here so the contract stays honest.
 _DEAD_ACT_EPS = 1e-5
 _SAT_ACT_THRESH = 5.0
+# Quantiles are sort-based (not O(elements)) and older torch builds cap
+# quantile() input at 2**24 elements. Above this size p50/p99 are taken
+# on a deterministic strided subsample, so cost stays flat as width and
+# context grow (2026-10-08 review). Mean/std/rms and the dead/sat
+# fractions remain exact over all elements.
+_QUANTILE_MAX_ELEMS = 1 << 20
+_BLOCK_SCALAR_KEYS = (
+    "act_mean", "act_std", "act_rms",
+    "act_p50", "act_p99", "dead_frac", "sat_frac",
+)
 
 
 def _block_activation_scalars(h: torch.Tensor) -> dict:
@@ -56,16 +66,24 @@ def _block_activation_scalars(h: torch.Tensor) -> dict:
     Python floats: mean/std/rms, p50/p99 of |h|, dead fraction
     (|h| < _DEAD_ACT_EPS) and saturation fraction (|h| > _SAT_ACT_THRESH).
     All O(elements) reductions -- deliberately cheap next to the
-    deep-cadence SVD gauges. Diagnostics must never kill a run, so the
-    caller wraps this in try/except like the other per-block gauges.
+    deep-cadence SVD gauges (quantiles excepted: sort-based, so they run
+    on a strided subsample above _QUANTILE_MAX_ELEMS). Diagnostics must
+    never kill a run, so encode() wraps this in try/except and records
+    an all-NaN entry on failure, like the other per-block gauges.
     """
-    af = h.detach().float().abs().flatten()
+    hf = h.detach().float()
+    af = hf.abs().flatten()
+    n = af.numel()
+    if n > _QUANTILE_MAX_ELEMS:
+        aq = af[:: -(-n // _QUANTILE_MAX_ELEMS)]  # ceil-div stride
+    else:
+        aq = af
     return {
-        "act_mean": float(h.detach().float().mean().item()),
-        "act_std": float(h.detach().float().std(unbiased=False).item()),
-        "act_rms": float(h.detach().float().pow(2).mean().sqrt().item()),
-        "act_p50": float(af.quantile(0.50).item()),
-        "act_p99": float(af.quantile(0.99).item()),
+        "act_mean": float(hf.mean().item()),
+        "act_std": float(hf.std(unbiased=False).item()),
+        "act_rms": float(hf.pow(2).mean().sqrt().item()),
+        "act_p50": float(aq.quantile(0.50).item()),
+        "act_p99": float(aq.quantile(0.99).item()),
         "dead_frac": float((af < _DEAD_ACT_EPS).float().mean().item()),
         "sat_frac": float((af > _SAT_ACT_THRESH).float().mean().item()),
     }
@@ -438,7 +456,17 @@ class MultimodalPredictiveCodingLM(nn.Module):
             if collect_block_latents:
                 block_latents.append(h.detach())
             if collect_block_activation_scalars:
-                block_activation_scalars.append(_block_activation_scalars(h))
+                # Diagnostics must never kill a run: on any failure the
+                # block's entry is all-NaN (same fallback as the other
+                # per-block gauges), keeping the spec-locked keys intact.
+                try:
+                    block_activation_scalars.append(
+                        _block_activation_scalars(h)
+                    )
+                except Exception:
+                    block_activation_scalars.append(
+                        {k: float("nan") for k in _BLOCK_SCALAR_KEYS}
+                    )
             # Interior Weak-SIGReg (2026-08-07): NON-detached — the whole
             # point is gradient pressure on the interior stream.
             if bi in self.interior_latent_blocks:
