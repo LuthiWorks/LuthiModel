@@ -654,6 +654,74 @@ ARM_COSINE["probe_768_visreg"] = ARM_COSINE["living_v5_4x_d4"]
 ARM_FILELIST["probe_768_visreg"] = str(
     REPO_ROOT / "corpus_build" / "gutenberg_768_filelist.txt"
 )
+# ---------------------------------------------------------------------------
+# THE LIVING-CHANNEL PROGRAM, family LC-768 (2026-10-19; registry entry E3 in
+# docs/research/2026-07-15_falsification-preregistration.md, program doc
+# docs/research/2026-10-19_the-living-channel-program.md).
+#
+# The first matched living-vs-dead comparison since 2026-07-21, and the first
+# that decomposes the living channel. Every arm is probe_768_visreg's exact
+# configuration (768x8, heads 8x96, VISReg 0.6 / K 1536 on trunk latents,
+# muPC off, v5 bundle, the 1051-file corpus, one epoch, cosine + taper) plus
+# ONE family-wide change, B6's gradient clip at 5.0e5 (2026-08-14 audit:
+# above every value the completing and healthy seeds ever produced, two
+# orders below seed 95's fatal 1.24e7 bomb). The clip rides in EVERY arm,
+# dead included, so the arms stay matched to each other; the family is NOT
+# poolable with the 2026-08-11 DirectML family (different backend, clip,
+# and kill code), and its own living baseline (lc768_living) is the
+# comparison, never probe_768_visreg's tape.
+#
+# Arms (the decomposition is the point):
+#   lc768_dead           backprop FFN, no stores               (the control)
+#   lc768_living         legacy rule + legacy block store      (= what ran)
+#   lc768_storeoff       legacy rule, block store OFF          (rule alone)
+#   lc768_cov            COVARIANCE rule, block store OFF      (content rule)
+#   lc768_dead_x4        dead, ffn_expansion=4 (GELU MLP)      (oversmoothing)
+#
+#   living - storeoff = what the block output store does
+#   storeoff - dead   = what the mean-field rule does
+#   cov - storeoff    = what content-sensitive writing does
+#   dead_x4 - dead    = what a nonlinear MLP does to token uniformity
+#
+# NOT bundled, by design: B1 (VISReg shape normalization + re-derived lambda)
+# and B4 (adaptive_episodes) stay their own registrations; folding them in
+# would make every difference here unattributable. Seeds 46, 95, 97.
+# ---------------------------------------------------------------------------
+_LC_BASE = "probe_768_visreg"
+_LC_LIVING = {
+    "lc768_living": {},
+    "lc768_storeoff": {"block_episode_store": "off"},
+    "lc768_cov": {"block_episode_store": "off", "write_rule": "covariance"},
+}
+_LC_DEAD = {
+    "lc768_dead": {},
+    "lc768_dead_x4": {"ffn_expansion": 4},
+}
+_LC_TABLES = (
+    ARM_SIGREG_PROJ, ARM_SIGREG, ARM_DEEP_CADENCE, ARM_GUARD_MIN_STEP,
+    ARM_LR_WARMUP, ARM_TAPER, ARM_FILELIST, ARM_COSINE, ARM_VISREG,
+    ARM_VISREG_NUM_PROJ,
+)
+for _arm, _over in {**_LC_LIVING, **_LC_DEAD}.items():
+    _cfg = dict(ARM_CONFIGS[_LC_BASE])
+    if _arm in _LC_DEAD:
+        # A dead FFN has no living weights: consolidation would raise, and
+        # the living-only kwargs are inert on nn.Linear (kept for a byte-
+        # for-byte matched record of everything else).
+        _cfg.pop("consolidation_enabled", None)
+        _cfg["dead_ffn"] = True
+    _cfg.update(_over)
+    ARM_CONFIGS[_arm] = _cfg
+    for _table in _LC_TABLES:
+        if _LC_BASE in _table:
+            _table[_arm] = _table[_LC_BASE]
+    ARM_GRAD_CLIP[_arm] = 5.0e5
+STAGES[60] = [("lc768_dead", 768)]
+STAGES[61] = [("lc768_living", 768)]
+STAGES[62] = [("lc768_storeoff", 768)]
+STAGES[63] = [("lc768_cov", 768)]
+STAGES[64] = [("lc768_dead_x4", 768)]
+
 ARM_CONFIGS["probe_d8_visreg"] = dict(
     ARM_CONFIGS["probe_v5_d8"], mu_pc_enabled=False,
 )
@@ -1146,20 +1214,47 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
         backward_pass_enabled=False,
     )
     model_kwargs.update(ARM_CONFIGS[arm])
-    # Silent-fallback guard (2026-07-21): the C++ extension rebuilds
-    # between families (the running trainer locks the .pyd, so source
-    # changes compile at the NEXT process start). If that rebuild fails,
-    # pc_ops silently falls back to pure Python -- ~50x slower, which
-    # would turn a 9h seed into weeks, unattended. Refuse loudly instead.
-    if model_kwargs.get("relative_trust"):
-        from luthi.v2.pc_ops import is_cpp_available
-        if not is_cpp_available():
-            raise SystemExit(
-                f"[jepa-pilot] {arm}: relative_trust requires the C++ "
-                "pc_ops extension, which failed to load in this process. "
-                "Fix the build (python -c \"from luthi.v2 import pc_ops; "
-                "print(pc_ops.is_cpp_available())\") before running this arm."
-            )
+    # C++ fallback: LOUD, RECORDED, NOT FATAL (rewritten 2026-10-19).
+    #
+    # The 2026-07-21 guard refused any relative_trust arm without the C++
+    # extension, on the premise that the Python path is "~50x slower". That
+    # premise is the 2026-05-10 DirectML-dispatch number and was refuted by
+    # this repo's own measurements: 1.03x (CPU) / 1.16x (DirectML) on
+    # 2026-07-29, ~17% on the idle 768x8 config on 2026-08-19, and a 5.6-5.8%
+    # share of the ROCm step for the whole pc_self_modify (DECISIONS.md,
+    # 2026-08-21). Meanwhile the extension does NOT build on the ROCm wheel
+    # (DECISIONS.md, 2026-08-19) and ROCm is the default backend -- so the
+    # old guard made every living arm in the current lineage (all of them
+    # carry relative_trust) refuse to start on the default stack.
+    #
+    # The silent part of the original complaint was real and stays fixed:
+    # pc_ops announces the fallback on stderr, this prints it again with the
+    # arm name, and pilot_result.json records which path ran
+    # (`pc_ops_backend`). Set LUTHI_REQUIRE_CPP=1 to restore the refusal for
+    # a run that must not take the Python path.
+    from luthi.v2 import pc_ops as _pc_ops
+    # Mirrors pc_self_modify's dispatch condition: C++ runs only for the
+    # mean_field rule with the raw drive and no drive normalization.
+    _cpp_eligible = (
+        model_kwargs.get("write_rule", "mean_field") == "mean_field"
+        and model_kwargs.get("drive_mode", "raw") == "raw"
+        and not model_kwargs.get("drive_normalize", False)
+    )
+    if model_kwargs.get("dead_ffn"):
+        pc_ops_backend = "none (dead arm)"
+    elif _cpp_eligible and _pc_ops.is_cpp_available():
+        pc_ops_backend = "cpp"
+    else:
+        pc_ops_backend = "python_reference"
+    if pc_ops_backend == "python_reference" and _cpp_eligible:
+        reason = getattr(_pc_ops, "_cpp_load_error", None) or "source missing"
+        msg = (
+            f"[jepa-pilot] {arm}: C++ pc_ops NOT loaded; running the Python "
+            f"reference (measured cost 3-17% of a step). Reason: {reason}"
+        )
+        if os.environ.get("LUTHI_REQUIRE_CPP") == "1":
+            raise SystemExit(msg + " -- refusing because LUTHI_REQUIRE_CPP=1.")
+        print(msg, file=sys.stderr, flush=True)
     model = MultimodalPredictiveCodingLM(**model_kwargs).to(device)
     loss_module = JEPALoss(
         online_encoder=model,
@@ -1311,6 +1406,21 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
     probe_std_floor = probe_accuracy(
         loss_module, probe_std, heldout_list, shuffled_label_floor=True,
     )
+    # Embedding baseline (2026-10-19, audit item B7). The same standardized
+    # probe on the stream block 0 RECEIVES. A shuffled-label floor calibrates
+    # chance; this calibrates the input. In the 768x8 family the embedding
+    # stream beat every block's probe in all three seeds -- a trunk number is
+    # evidence of trunk computation only above this line. Recorded, not
+    # scored: no registered axis changes meaning.
+    probe_emb = fit_next_token_probe(
+        loss_module, train_batches,
+        vocab_size=text_ds.vocab_size(),
+        max_batches=args.probe_batches,
+        standardize=True, stream="embedding",
+    )
+    probe_emb_real = probe_accuracy(
+        loss_module, probe_emb, heldout_list, stream="embedding",
+    )
 
     result = {
         "arm": arm,
@@ -1328,6 +1438,12 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
         # means the legacy number is reporting optimizer failure.
         "probe_standardized": probe_std_real,
         "probe_standardized_shuffled_floor": probe_std_floor,
+        # 2026-10-19 (B7): the input baseline. Trunk minus this is what the
+        # trunk added to the readout; <= 0 means nothing measurable.
+        "probe_standardized_embedding_baseline": probe_emb_real,
+        "probe_standardized_trunk_minus_embedding": (
+            probe_std_real["top1"] - probe_emb_real["top1"]
+        ),
         "wall_clock_seconds": time.time() - started,
         "config": {
             # Effective model shape (the depth arm overrides n_blocks
@@ -1369,6 +1485,9 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
             # keys are still emitted inside it, so existing readers keep
             # working.
             **_device_fingerprint(device),
+            # Which pc_self_modify path ran (2026-10-19): "cpp" or
+            # "python_reference". Covariance-rule arms are always Python.
+            "pc_ops_backend": pc_ops_backend,
             "grad_clip_norm": ARM_GRAD_CLIP.get(arm, 0.0),
             "taper": ARM_TAPER.get(arm, False),
             "deep_interval_batches": ARM_DEEP_CADENCE.get(arm, 1000),

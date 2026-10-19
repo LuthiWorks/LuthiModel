@@ -123,35 +123,75 @@ def heldout_latent_prediction(
     return out
 
 
+def _paired(latents: torch.Tensor, tokens: torch.Tensor, offset: int):
+    """Latent at t paired with token t+offset, flattened."""
+    if offset > 0:
+        lat, tok = latents[:, :-offset, :], tokens[:, offset:]
+    elif offset < 0:
+        lat, tok = latents[:, -offset:, :], tokens[:, :offset]
+    else:
+        lat, tok = latents, tokens
+    return lat.reshape(-1, latents.shape[-1]), tok.reshape(-1)
+
+
 def _collect_next_token_pairs(
     loss_module: nn.Module,
     batches: Iterable[dict],
     max_batches: int,
+    *,
+    stream: str = "trunk",
+    offset: int = 1,
+    causal: bool = False,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Frozen full-sequence latents at position t paired with token t+1.
 
     Returns (latents [N, D], targets [N]). Text-only for round 1 — the
     probe task needs discrete labels, which text supplies natively.
+
+    Controls added 2026-10-19 (audit item B7, open since 2026-08-13). The
+    defaults reproduce the registered probe exactly. Two facts make the
+    registered probe hard to read without them: the encode is
+    bidirectional (``causal=False``), so position t has attended to token
+    t+1 and the "next-token" readout can see its answer; and the residual
+    stream carries the input embedding, so a trunk that adds nothing still
+    scores a bigram-level readout. In the 768x8 family the embedding
+    stream topped every block in all three seeds.
+
+    * ``stream="embedding"`` reads the stream block 0 receives (token +
+      positional + modality embedding) -- the BASELINE every trunk number
+      must beat before it counts as something the trunk computed.
+    * ``offset`` pairs t with t+offset (1 = next token, 0 = current, -1 =
+      previous).
+    * ``causal=True`` encodes with a causal mask, so the next-token readout
+      cannot see its answer. Note the trunk was trained bidirectionally, so
+      this is a different (out-of-regime) question, recorded as such.
     """
+    if stream not in ("trunk", "embedding"):
+        raise ValueError(f"stream must be 'trunk' or 'embedding'; got {stream!r}")
     xs: list[torch.Tensor] = []
     ys: list[torch.Tensor] = []
+    enc = loss_module.online_encoder
     with _eval_guard(loss_module):
         for i, batch in enumerate(batches):
             if i >= max_batches:
                 break
             tokens = batch["text_tokens"]
-            result = loss_module.online_encoder.encode(
-                text_tokens=tokens, causal=False,
-            )
-            latents = result["per_modality"]["text"]  # [B, L, D]
+            if stream == "embedding":
+                _v, _a, text_emb = enc._encode_modality_streams(
+                    tokens, None, None, None, None,
+                )
+                h, spans = enc._concatenate_modalities(None, None, text_emb)
+                latents = h[:, spans["text"], :]
+            else:
+                result = enc.encode(text_tokens=tokens, causal=causal)
+                latents = result["per_modality"]["text"]  # [B, L, D]
             # Collected to CPU: the probe is a tiny linear readout, and
             # training it on the accelerator buys nothing while inviting
             # mixed-device graphs (the DirectML shakeout found exactly
             # that: a CPU probe fed DML latents dies in addmm backward).
-            xs.append(
-                latents[:, :-1, :].reshape(-1, latents.shape[-1]).cpu()
-            )
-            ys.append(tokens[:, 1:].reshape(-1).cpu())
+            lat, tok = _paired(latents, tokens, offset)
+            xs.append(lat.cpu())
+            ys.append(tok.cpu())
     if not xs:
         raise ValueError("no batches supplied to the probe collector")
     return torch.cat(xs, dim=0), torch.cat(ys, dim=0)
@@ -184,8 +224,14 @@ def fit_next_token_probe(
     lr: float = 1e-2,
     seed: int = 0,
     standardize: bool = False,
+    stream: str = "trunk",
+    offset: int = 1,
+    causal: bool = False,
 ) -> nn.Module:
     """Train the linear readout on frozen latents from TRAINING batches.
+
+    ``stream`` / ``offset`` / ``causal``: see ``_collect_next_token_pairs``
+    (2026-10-19 B7 controls). Defaults are the registered probe.
 
     The encoder never updates (latents are collected under the eval
     guard, detached). Deterministic given (seed, batches).
@@ -215,7 +261,10 @@ def fit_next_token_probe(
     instead of scale. Recorded probe values for large-magnitude runs are
     biased DOWN.
     """
-    x, y = _collect_next_token_pairs(loss_module, train_batches, max_batches)
+    x, y = _collect_next_token_pairs(
+        loss_module, train_batches, max_batches,
+        stream=stream, offset=offset, causal=causal,
+    )
     d_model = x.shape[-1]
     torch.manual_seed(seed)
     linear = nn.Linear(d_model, vocab_size)
@@ -247,14 +296,24 @@ def probe_accuracy(
     max_batches: int = 20,
     shuffled_label_floor: bool = False,
     seed: int = 0,
+    stream: str = "trunk",
+    offset: int = 1,
+    causal: bool = False,
 ) -> dict:
     """Top-1/top-5 next-token readout accuracy on held-out latents.
 
     ``shuffled_label_floor=True`` scores the SAME predictions against
     permuted targets — the §1 positive-control floor. Report both; a
     probe number without its floor is not admissible for a null.
+
+    A shuffled-label floor calibrates CHANCE, not the input: compare trunk
+    numbers against ``stream="embedding"`` (fit with the same settings)
+    before reading them as something the trunk computed (2026-10-19, B7).
     """
-    x, y = _collect_next_token_pairs(loss_module, heldout_batches, max_batches)
+    x, y = _collect_next_token_pairs(
+        loss_module, heldout_batches, max_batches,
+        stream=stream, offset=offset, causal=causal,
+    )
     if shuffled_label_floor:
         gen = torch.Generator().manual_seed(seed)
         y = y[torch.randperm(y.shape[0], generator=gen)]

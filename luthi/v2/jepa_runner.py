@@ -1538,6 +1538,24 @@ class JEPATrainer:
                 except Exception:  # noqa: BLE001 -- diagnostics never kill a run
                     block_contrib_ratio.append(float("nan"))
                     block_contrib_chorus.append(float("nan"))
+            # Living-change spectrum (2026-10-19). The gauges above read the
+            # representation; this reads the living change itself: the shape
+            # of weight - set_point. top_share ~1 with out_align ~1 is the
+            # mean-field signature (every write shares the batch-mean output
+            # direction). See luthi/v2/living_diagnostics.py.
+            block_living_change: list[dict | None] = []
+            for _blk in getattr(self.loss_module.online_encoder, "blocks", []):
+                _lf = getattr(_blk, "living_ffn", None)
+                try:
+                    from luthi.v2.living_diagnostics import living_change_spectrum
+                    from luthi.v2.living_layer_pc import PredictiveCodingLayer
+                    block_living_change.append(
+                        living_change_spectrum(_lf)
+                        if isinstance(_lf, PredictiveCodingLayer) else None
+                    )
+                except Exception:  # noqa: BLE001 -- diagnostics never kill a run
+                    block_living_change.append(None)
+
             # Per-block minima for the divergence rank veto (2026-08-14
             # audit, B3). The veto reads `_last_eff_rank`, which is the
             # POOLED trunk rank -- 403 in the 768 family's seed 97 while
@@ -1664,6 +1682,22 @@ class JEPATrainer:
                     "drive_gain_mean_fired": a.get("drive_gain_mean_fired"),
                     "drive_fires": a.get("drive_fires"),
                     "drive_calls": a.get("drive_calls"),
+                    # 2026-10-19: the living change itself, and what the
+                    # block-level output store is doing (it blends a stored
+                    # batch-mean output into nearly every forward under the
+                    # legacy configuration; recall_duty ~1 with blend_share
+                    # > 0 is that signature). None for dead blocks.
+                    **{
+                        f"living_change_{k}": (
+                            (block_living_change[i] or {}).get(k)
+                            if i < len(block_living_change) else None
+                        )
+                        for k in ("top_share", "eff_rank", "rel_norm", "out_align")
+                    },
+                    "output_episode_store": a.get("output_episode_store"),
+                    "output_episode_recall_duty": a.get("output_episode_recall_duty"),
+                    "output_episode_blend_share": a.get("output_episode_blend_share"),
+                    "output_episode_last_sim": a.get("output_episode_last_sim"),
                 }
                 for i, a in enumerate(aliveness)
             ]

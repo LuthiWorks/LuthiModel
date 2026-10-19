@@ -141,8 +141,45 @@ class PredictiveCodingLayer(nn.Module):
         resolution_long_decay: float = 0.999,
         resolution_warmup: int = 8,
         buffer_dtypes: dict[str, torch.dtype] | None = None,
+        # --- per-token write rule (2026-10-19) ---
+        # "mean_field" (default) = the rule every run before 2026-10-19 used:
+        # outer product of batch MEANS, blind to every token-level
+        # difference, accumulating ~rank-1 along the mean output. "covariance"
+        # = the same rule from per-token statistics with the batch mean
+        # removed. Opt-in, registered, Python path only. See pc_ops.py and
+        # docs/research/2026-10-19_the-living-write-is-mean-field.md.
+        write_rule: str = "mean_field",
+        # --- episode context (2026-10-19) ---
+        # "mean" (default, legacy): context = normalized batch-mean input
+        # projection. Measured cosine >= 0.9995 between independent batches,
+        # which is why recall fired every step and the store filled with
+        # near-identical slots. "deviation": context = the batch-mean input
+        # MINUS a slow running reference (EMA, `context_ref_decay`), so it
+        # encodes how this input differs from typical. Legacy context during
+        # the first `context_warmup_calls` while the reference converges.
+        context_mode: str = "mean",
+        context_ref_decay: float = 0.01,
+        context_warmup_calls: int = 64,
     ):
         super().__init__()
+        from luthi.v2.pc_ops import WRITE_RULES
+        if write_rule not in WRITE_RULES:
+            raise ValueError(
+                f"write_rule must be one of {WRITE_RULES}; got {write_rule!r}"
+            )
+        if context_mode not in ("mean", "deviation"):
+            raise ValueError(
+                "context_mode must be 'mean' or 'deviation'; got "
+                f"{context_mode!r}"
+            )
+        if not 0.0 < float(context_ref_decay) <= 1.0:
+            raise ValueError(
+                f"context_ref_decay must lie in (0, 1]; got {context_ref_decay}"
+            )
+        self.write_rule = str(write_rule)
+        self.context_mode = str(context_mode)
+        self.context_ref_decay = float(context_ref_decay)
+        self.context_warmup_calls = int(context_warmup_calls)
         self.in_features = in_features
         self.out_features = out_features
         self.pc_rate = pc_rate
@@ -401,6 +438,19 @@ class PredictiveCodingLayer(nn.Module):
 
         proj = torch.randn(in_features, context_dim) / (in_features ** 0.5)
         self.register_buffer("context_proj", proj)
+        # Slow reference for context_mode="deviation" (2026-10-19). A
+        # non-persistent buffer so it follows .to(device) without entering
+        # state_dict (strict=True load contract, see the counters below);
+        # persisted through luthi/living_extra_state.py instead, so a resume
+        # does not re-warm the reference.
+        self.register_buffer(
+            "context_ref", torch.zeros(in_features), persistent=False,
+        )
+        self._context_ref_count: int = 0
+        # Last batch-mean output of a self-modifying forward, for the
+        # living-change spectrum gauge (luthi/v2/living_diagnostics.py):
+        # under the mean-field rule every write's output side is this vector.
+        self._last_output_mean: torch.Tensor | None = None
 
         self.register_buffer(
             "episode_contexts",
@@ -668,7 +718,30 @@ class PredictiveCodingLayer(nn.Module):
         return self
 
     def _compute_context(self, x_flat: torch.Tensor) -> torch.Tensor:
-        ctx = x_flat.mean(dim=0) @ self.context_proj
+        if self.context_mode == "mean":
+            ctx = x_flat.mean(dim=0) @ self.context_proj
+            return ctx / (ctx.norm() + 1e-8)
+        # "deviation" (2026-10-19): how this input differs from typical.
+        x_bar = x_flat.mean(dim=0)
+        frozen = getattr(self, "_plasticity_frozen", False)
+        warm = self._context_ref_count >= self.context_warmup_calls
+        if warm:
+            dev = x_bar - self.context_ref.to(x_bar.dtype)
+        else:
+            # Reference not yet converged: the legacy context, so the store
+            # is never fed a near-zero (meaningless) direction.
+            dev = x_bar
+        if not frozen:
+            # A frozen forward (eval, lived re-encode) must mutate nothing.
+            if self._context_ref_count == 0:
+                self.context_ref.copy_(x_bar.detach().to(self.context_ref.dtype))
+            else:
+                self.context_ref.mul_(1.0 - self.context_ref_decay).add_(
+                    x_bar.detach().to(self.context_ref.dtype),
+                    alpha=self.context_ref_decay,
+                )
+            self._context_ref_count += 1
+        ctx = dev @ self.context_proj
         return ctx / (ctx.norm() + 1e-8)
 
     def _recall_episode(self, context: torch.Tensor) -> torch.Tensor | None:
@@ -1300,7 +1373,10 @@ class PredictiveCodingLayer(nn.Module):
                     learning_gain_rise=self.learning_gain_rise,
                     learning_gain_cap=self.learning_gain_cap,
                     return_applied_change=self.learning_gain_enabled,
+                    write_rule=self.write_rule,
                 )
+                # Observation only (living-change spectrum gauge).
+                self._last_output_mean = output.detach().mean(dim=0)
                 if self.learning_gain_enabled:
                     salience, pred_error, applied = result
                     # Feed the applied-change sinks per inner step (each inner

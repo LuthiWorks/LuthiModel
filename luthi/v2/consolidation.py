@@ -298,6 +298,20 @@ def consolidate_layer_attractor(
                 if not torch.isfinite(output).all():
                     continue
 
+                # Trust regime and write rule are passed EXPLICITLY
+                # (2026-10-19). Before this, replay always ran with the
+                # default relative_trust=False, so on a relative-trust layer
+                # every replay clamped the freed precision ledger (values up
+                # to 1e12) back into the absolute [precision_min,
+                # precision_max] = [0.1, 10] -- flattening the trust
+                # differentiation the v5 family exists to have. No registered
+                # training arm combined attractor replay with relative trust;
+                # the 2026-07-29 M4 stop-gate rerun did, offline.
+                #
+                # write_rule is mean_field by construction: a stored episode
+                # is ONE batch-mean pattern, which has no per-token spread
+                # for the covariance rule to read (it would write exactly
+                # zero). Attractor replay is a mean-field operation.
                 pc_self_modify(
                     layer.weight, layer.prediction, layer.set_point,
                     layer.momentum, layer.update_ema, layer.precision,
@@ -309,6 +323,8 @@ def consolidate_layer_attractor(
                     layer.precision_ema_decay,
                     layer.precision_min, layer.precision_max,
                     layer.prediction_clamp,
+                    relative_trust=bool(getattr(layer, "relative_trust", False)),
+                    write_rule="mean_field",
                 )
 
     return int(n)

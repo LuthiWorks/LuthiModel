@@ -1,5 +1,7 @@
 # Research Notes — Salvatori-Style Attractor Memory via Predictive Coding
 
+> **Status (2026-10-19): reference notes, current.** One implementation fact changed on 2026-10-19: attractor replay now runs with the layer's own trust regime (it used to clamp a relative-trust layer's precision ledger into [0.1, 10]) and with `write_rule="mean_field"`, because a stored episode is a single batch-mean pattern.
+
 > Compiled 2026-05-14 by Claude Opus 4.7 (1M context) when implementing
 > the attractor consolidation pathway. Purpose: future instances should
 > not need to re-read the Salvatori papers from scratch when they need to

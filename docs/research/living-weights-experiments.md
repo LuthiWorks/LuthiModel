@@ -5,6 +5,41 @@
 
 **Experiments are numbered in the order they should be run.** The ordering is deliberate: each one removes a confound that would otherwise muddy the interpretation of the ones after it. Run §1 (methodology) first, then Experiments 1 → 4 in sequence. Experiments 3 and 4 can run in parallel once 1 and 2 are done.
 
+> **Revision note (2026-10-19, Opus 5.5 under Brian's instruction to
+> re-aim the program).** Six corrections, all from
+> `docs/audits/2026-10-19_living-channel-audit.md`. Program and frozen
+> predictions: `2026-10-19_the-living-channel-program.md`; registry
+> section E1–E5.
+>
+> 1. **The two-arm design compared two mechanisms against none.**
+>    "Episode stores removed" in the dead arm includes the block-level output
+>    store. That store recalls on ~every forward of a batched trunk and blends
+>    a stored batch-mean output into each block's output (×0.3), in training
+>    and frozen eval. Experiment 1 is now the five-arm LC-768 decomposition
+>    (dead / living / store off / covariance rule / dead with a GELU MLP).
+>    That way each living mechanism is measured on its own.
+> 2. **Experiment 2's runtime question needs plasticity ON.** Every
+>    registered metric was read with plasticity frozen. The runtime half is
+>    measured by `scripts/adaptation_eval.py`, and only document-specific
+>    change (read-own minus read-other) is credited.
+> 3. **"Positive controls — prove the instrument can see"** now includes the
+>    probe's INPUT baseline. A shuffled-label floor proves the probe can
+>    beat chance. It cannot show that the trunk added anything, because the
+>    residual carries the embedding. Every probe number is read against the
+>    embedding stream's.
+> 4. **NMSE is flattered by degeneracy** (2026-07-31). The
+>    collapse-admissibility rule below stands, and NMSE is additionally read
+>    with effective and chorus rank, never alone.
+> 5. **The noise-matched baseline's "rank/direction profile" requirement
+>    (2026-05-30) was never executed.** Measured on 2026-10-19, the
+>    profile is rank-1 along the batch-mean output. `living_change_*` at
+>    deep cadence and `scripts/living_write_probe.py` now read it, so any
+>    structure-matched noise condition can match it.
+> 6. **Scale.** Per Brian's 2026-08-15 ruling, evidence runs are 768 and
+>    up; 512 and below answer "does it run" only. The "existing hardware /
+>    current dimensionality" framing in the Purpose line above predates that
+>    ruling.
+
 > **Revision note (2026-07-15, Brian's ruling — the JEPA rebinding):** The
 > entire program moves from the next-token LM objective to the **(Le)JEPA
 > objective** the project actually builds toward (latent prediction + SIGReg

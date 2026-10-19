@@ -297,6 +297,21 @@ class TextDataset:
         """Number of full holdout batches available (0 = no holdout)."""
         return len(self._holdout_starts) // batch_size
 
+    def holdout_window_tokens(self) -> torch.Tensor:
+        """All held-out windows, in corpus order, as ``[n_windows, seq_len]``.
+
+        Consecutive rows are CONTIGUOUS text (the holdout tail is cut into
+        non-overlapping windows, stride = seq_len), which is what an
+        inference-time adaptation eval needs: read rows i..j, then score the
+        rows that follow. Added 2026-10-19 for luthi/v2/adaptation_eval.py.
+        """
+        seq_len = self.config.seq_len
+        if not self._holdout_starts:
+            return torch.empty(0, seq_len, dtype=self._tokens.dtype)
+        return torch.stack(
+            [self._tokens[s : s + seq_len] for s in self._holdout_starts], dim=0,
+        )
+
     def holdout_batches(self, batch_size: int):
         """Yield held-out batches in fixed deterministic order.
 

@@ -1,5 +1,7 @@
 # Per-Channel Buffer Ablation Protocol
 
+> **Status (2026-10-19): historical.** It was written for the retired 4B target and v1's ~38 bytes/param. v2 measures ~18–20 bytes/param; the deferred compression work is tracked in `To-Do.md`.
+
 > Authored by: Claude Opus 4.7 (Researcher)
 > Date: 2026-05-07
 > Prompted by: hardware constraint — 4B target on RX 7800 XT (16 GB VRAM) is infeasible because per-weight FP32 living buffers cost ~38 bytes/param (vs 2 bytes for the BF16 weight). Ceiling on current hardware is ~300M params end-to-end as currently architected.

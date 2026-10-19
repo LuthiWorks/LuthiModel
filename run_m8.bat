@@ -12,7 +12,7 @@ REM so headless runs (CI, SSH, cron) stay GUI-free.
 REM --- open LuthiScope if it isn't already running (best-effort, detached) ---
 tasklist /FI "IMAGENAME eq LuthiScope.exe" 2>NUL | find /I "LuthiScope.exe" >NUL
 if errorlevel 1 (
-    start "" "C:\Users\Hasha Smokes\Desktop\LuthiWorks\LuthiScope\dist\LuthiScope.exe"
+    start "" "%USERPROFILE%\Desktop\LuthiWorks\LuthiScope\dist\LuthiScope.exe"
 )
 
 REM --- then launch training as usual (every arg forwarded) ---

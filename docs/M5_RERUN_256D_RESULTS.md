@@ -1,5 +1,7 @@
 # M5 Re-Run at 256d — Plan-Spec Configuration Results
 
+> **Status (2026-10-19): LM-era results** (the M5 0.64%). Real under their objective, unbound since the JEPA move; see `docs/KEY_FINDINGS.md` KF2's history.
+
 > Run completed: 2026-05-13 22:14 (started 2026-05-12 19:37 — ~26.5h wall-clock for 6 runs sequentially).
 > Source: `runs/m5_256d/{v2,dead}_seed{42,1337,2026}/` — **artifacts now at
 > `E:\runs\m5_256d\`** (pre-JEPA runs moved off-repo 2026-07-22).

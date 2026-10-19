@@ -5,6 +5,9 @@
 > with v1 (Hebbian) and v2 (predictive coding) substrates separated so
 > the historical-vs-current distinction is clear at a glance. Start
 > from the top; each section builds on the last.
+> Section 14 (the JEPA era and the living-channel program) added
+> 2026-10-19 by Claude Opus 5.5, with notes on three older entries
+> whose meaning the 2026-10-19 audit changed.
 
 ---
 
@@ -453,6 +456,12 @@ attractor consolidation can re-present stored inputs through the layer.
 The INT8 ablation tests whether these snapshots can be stored compressed
 (as differences from current weights) instead of as full copies.
 
+*Note (2026-10-19):* there are two stores, not one. Besides the per-layer
+store above, every living block has a block-level output store
+(Section 14, "Block Output Store"). In the configuration that runs, the
+per-layer stores are mostly empty, and the block store mixes a stored average
+into nearly every forward pass.
+
 ### Top-Down Modulation / Backward Pass (Luthi's)
 After the forward pass (data flowing up through layers), a top-down sweep
 sends signals back down. Higher layers tell lower layers: "this was important"
@@ -546,6 +555,12 @@ are local — each synapse uses only information available at that synapse
 (presynaptic activity + postsynaptic prediction error). This is the property
 that makes the substrate "living" — updates happen during the forward pass,
 not in a separate backward gradient pass.
+
+*Note (2026-10-19):* in that formulation the update is a product of local
+error and activity *for each sample*. Luthi's legacy rule multiplies the
+*batch averages* of the two instead ("mean-field write", Section 14), which
+makes it blind to what differs between the tokens of a batch. The opt-in
+"covariance write" restores per-token statistics.
 
 ### Prediction Matrix
 A per-layer buffer that maps the layer's output back to its predicted input.
@@ -683,6 +698,13 @@ on prediction quality post-replay, v2 has no architectural novelty over
 "vanilla transformer + episode store" and should be abandoned. Passed
 2026-05-09 with margin; remains the architectural justification for the
 whole consolidation pathway.
+
+*Note (2026-10-19):* re-run against production checkpoints 2026-07-29
+(`docs/research/2026-07-29_m4-stop-gate-rerun.md`). It passes on the
+layer's own prediction error for its stored (batch-mean) input patterns,
+through the attractor pathway. That is an internal quantity, not a
+task-level effect. The stores it replays are empty in most blocks of the
+ruled-scale family.
 
 ### Catastrophic Forgetting Harness
 The behavioral test (`tests/test_catastrophic_forgetting.py`) that measures
@@ -975,6 +997,104 @@ substrate. Sanctuary's affective/predictive cells modulate Luthi at four
 points: arousal → pc_rate (0.5×-2.0×), valence → excitability bias,
 attention → salience threshold, goal → set_point_adapt_rate (planned).
 This is how the entity self-modulates its own learning during deployment.
+
+---
+
+## 14. The JEPA Era and the Living-Channel Program (added 2026-10-19)
+
+### JEPA (Joint-Embedding Predictive Architecture)
+The training objective since 2026-06-09. Instead of predicting the next
+token, the model encodes part of a passage (the context, 80%) and predicts the
+*internal representation* of the rest (the target, 20%). It is scored in
+representation space, never on words.
+
+### Latent / Representation
+The vector the trunk produces for each token position. "Latent space" is the
+space those vectors live in.
+
+### Collapse
+The failure mode of JEPA: the encoder learns to output (nearly) the same
+vector for everything, which makes prediction trivially easy and meaningless.
+Every anti-collapse mechanism below exists to prevent it.
+
+### SIGReg
+The anti-collapse regularizer of the v1–v5 families (from LeJEPA). It tests
+random 1-D projections of the latents against a standard Gaussian. For the
+first five families it sat behind a BatchNorm layer that neutralized it
+(found 2026-07-28).
+
+### VISReg
+SIGReg's replacement in the current lineage (since 2026-08-11). It has three
+terms (scale, shape, center) and acts directly on the trunk's latents. Its
+dose at our batch size is an open question: it measured ~99% of the
+objective.
+
+### NMSE (Normalized Mean Squared Error)
+The prediction error divided by how much the targets vary, so arms with
+different latent scales can be compared. **Caution:** it rewards
+degeneracy. A representation collapsed onto a plane is easy to predict and
+scores *well*. Always read it next to effective rank.
+
+### Linear Probe
+A tiny classifier trained on frozen latents to see what information they
+carry. Luthi's reads the latent at position t and guesses token t+1.
+Two calibrations:
+- the **shuffled-label floor**, which is what chance looks like;
+- the **embedding baseline**, the same probe on the input embeddings. The
+  residual stream carries the embeddings forward for free, so a trunk
+  number counts only *above* this line. In the 768x8 family the embeddings
+  beat every block.
+
+### Effective Rank / Chorus Rank
+Effective rank is how many directions in latent space actually carry
+variance. Chorus rank is the same, with the single largest direction (the
+"soloist") left out. One huge direction can make effective rank look
+collapsed while a rich "chorus" survives behind it.
+
+### Offset Dominance
+How much of each token's latent is the shared batch-average vector, from 0
+(tokens differ) to 1 (every token is the same vector). A high value means
+"token uniformity".
+
+### Dead Arm / Matched Control
+The same model with the living FFN replaced by an ordinary trainable layer
+and no stores. A living result means something only against its dead
+control, trained the same way, on the same data, on the same backend.
+
+### freeze_plasticity
+The context manager that stops living layers from rewriting themselves. Note
+that `model.eval()` does **not** do this: a living layer self-modifies in any
+mode. Every measurement must freeze.
+
+### Adaptation Eval (A / B / C)
+The test of the README's goal: does reading change how the model sees what
+comes next? A = score a passage's ending frozen. B = first read its
+beginning with plasticity on, then score. C = first read a *different*
+passage, then score. B − C is the part that is specific to what was read;
+C − A is generic drift. A dead arm must give exactly zero.
+
+### Mean-Field Write
+The legacy living update. It multiplies the batch's *average* output by the
+batch's *average* error. It cannot see differences between tokens, and
+because the average output barely changes, everything it writes piles up
+along one direction (rank-1).
+
+### Covariance Write
+The opt-in alternative (2026-10-19). It is the same rule, computed from how
+each token *differs* from the batch average. It is capped at the legacy
+rule's per-step size, so it changes where the update goes, not how big it is.
+
+### Block Output Store
+A memory module in every living block that, in practice, recalls on nearly
+every forward and mixes 30% of a stored average output into the block's
+output. It shrinks the differences between tokens by 30% per block. The dead
+arm has no such store, which is why it is now measured, and can be switched
+off, on its own.
+
+### Living-Change Spectrum
+A gauge that reads the shape of how far the living weights have moved from
+their homeostatic home (`weight − set_point`). "Top share" near 1 means the
+change lies along a single direction.
 
 ---
 

@@ -167,6 +167,12 @@ class MultimodalPredictiveCodingLM(nn.Module):
         # behaviour change). Our chosen probes use (0, 3, 6): block 0 is
         # the measured collapse locus; 3 and 6 span the interior.
         interior_latent_blocks: tuple = (),
+        # 2026-10-19 living-channel program (see PredictiveCodingBlock and
+        # docs/research/2026-10-19_the-living-write-is-mean-field.md). All
+        # three default to the legacy behaviour, bit-identical.
+        write_rule: str = "mean_field",
+        context_mode: str = "mean",
+        block_episode_store: str = "legacy",
     ):
         super().__init__()
         self.dead_ffn = bool(dead_ffn)
@@ -238,6 +244,9 @@ class MultimodalPredictiveCodingLM(nn.Module):
                 learning_gain_rise=learning_gain_rise,
                 learning_gain_cap=learning_gain_cap,
                 episode_recall_threshold=episode_recall_threshold,
+                write_rule=write_rule,
+                context_mode=context_mode,
+                block_episode_store=block_episode_store,
             )
             for _ in range(n_blocks)
         ])
