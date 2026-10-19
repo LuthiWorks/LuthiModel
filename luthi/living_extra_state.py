@@ -79,6 +79,18 @@ def collect_living_extra_state(model: nn.Module) -> dict[str, dict[str, Any]]:
             )
         if hasattr(module, "_sparse_step_count"):
             entry["sparse_step_count"] = int(module._sparse_step_count)
+        # Deviation-context reference (2026-10-19). A non-persistent buffer
+        # (strict=True load contract), carried here so a resume does not
+        # re-warm what "typical input" means to this layer. Only written
+        # once the reference exists, so legacy layers add nothing.
+        if (
+            getattr(module, "_context_ref_count", 0)
+            and getattr(module, "context_ref", None) is not None
+        ):
+            entry["context_ref"] = [
+                float(v) for v in module.context_ref.detach().cpu().tolist()
+            ]
+            entry["context_ref_count"] = int(module._context_ref_count)
         tracker = getattr(module, "_consolidation_tracker", None)
         if tracker is not None:
             entry["consolidation_tracker"] = {
@@ -174,6 +186,19 @@ def apply_living_extra_state(
             module, "_sparse_step_count"
         ):
             module._sparse_step_count = int(entry["sparse_step_count"])
+        if "context_ref" in entry and getattr(module, "context_ref", None) is not None:
+            import torch
+            ref = torch.tensor(entry["context_ref"], dtype=module.context_ref.dtype)
+            if ref.shape == module.context_ref.shape:
+                module.context_ref.copy_(ref.to(module.context_ref.device))
+                module._context_ref_count = int(entry.get("context_ref_count", 1))
+            else:
+                logger.warning(
+                    "%s %s for %r carries a context_ref of shape %s but the "
+                    "layer expects %s; reference not restored (re-warms).",
+                    source, KEY, path, tuple(ref.shape),
+                    tuple(module.context_ref.shape),
+                )
 
         tracker_state = entry.get("consolidation_tracker")
         tracker = getattr(module, "_consolidation_tracker", None)

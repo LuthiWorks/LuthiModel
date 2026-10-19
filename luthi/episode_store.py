@@ -9,6 +9,24 @@ The episode store carries most of the recall weight — in-weight memory
 is weak by comparison (proven in the research phase). The two mechanisms
 are complementary: living weights provide temporal dynamics, the episode
 store provides accurate recall.
+
+WHAT THIS STORE ACTUALLY DOES IN A BATCHED TRUNK (measured 2026-10-19,
+docs/research/2026-10-19_the-living-write-is-mean-field.md). The context
+is the input pooled over BATCH and SEQUENCE, and the stored value is the
+output pooled the same way. With shuffled training batches those pools are
+near-identical from batch to batch, salience (mean |output|) clears the
+0.1 threshold on every call, and the best match clears the recall gate on
+every call. So in every living v2 block this store fills within its first
+`num_episodes` forwards and then, on nearly every forward (measured duty
+1.000 on a trained smoke checkpoint) -- training and eval, frozen or not --
+replaces the block output with
+``(1 - blend) * output + blend * (a stored batch-mean output)``: it shrinks
+every token's deviation from the mean by ``1 - blend`` (0.7 at the default
+0.3) and re-injects a batch-constant vector, once per block. The dead-FFN
+control arm has no such store, so this is an uncontrolled difference in
+every living-vs-dead comparison the registry has made. The counters below
+make it observable; ``PredictiveCodingBlock(block_episode_store="off")``
+removes it for a clean comparison.
 """
 
 import torch
@@ -67,6 +85,19 @@ class EpisodeStore(nn.Module):
         self.register_buffer("episode_saliences", torch.zeros(num_episodes))
         self.register_buffer("episode_count", torch.tensor(0, dtype=torch.long))
 
+        # Observational counters (2026-10-19). Plain Python, deliberately not
+        # buffers: the v2 loader is strict=True and a new persistent buffer
+        # would break every existing checkpoint. Per-process, so they reset
+        # on resume -- they are differenced between records to get rates.
+        self.forward_calls: int = 0
+        self.recall_fires: int = 0
+        self.store_writes: int = 0
+        self.last_recall_sim: float = float("nan")
+        # Share of the blended output's mean token norm contributed by the
+        # recalled vector: blend * ||recalled|| / mean_t ||output_t||.
+        self.last_blend_share: float = 0.0
+        self._last_best_sim: float = float("nan")
+
     def compute_context(self, x: torch.Tensor) -> torch.Tensor:
         """Compute context signature from input via random projection.
 
@@ -104,6 +135,7 @@ class EpisodeStore(nn.Module):
         sims = torch.mm(stored_contexts, context.unsqueeze(-1)).squeeze(-1)  # [n]
         best_idx = sims.argmax()
         best_sim = sims[best_idx]
+        self._last_best_sim = float(best_sim.item())
 
         if best_sim < self.recall_similarity_threshold:
             return None
@@ -140,6 +172,7 @@ class EpisodeStore(nn.Module):
         self.episode_contexts[idx] = context.detach()
         self.episode_outputs[idx] = output.detach()
         self.episode_saliences[idx] = salience
+        self.store_writes += 1
 
     def forward(
         self, x_input: torch.Tensor, x_output: torch.Tensor
@@ -158,7 +191,9 @@ class EpisodeStore(nn.Module):
             salience = x_output.detach().abs().mean().item()
 
             # Recall
+            self.forward_calls += 1
             recalled = self.recall(context)
+            self.last_recall_sim = self._last_best_sim
 
             # Store the current output (mean-pooled) as a new episode.
             # Skipped under frozen plasticity (Item #6): the lived
@@ -174,6 +209,15 @@ class EpisodeStore(nn.Module):
             # Broadcast recalled [d_model] to match output shape
             blend = recalled.unsqueeze(0).unsqueeze(0)  # [1, 1, d_model]
             x_output = (1 - self.blend_factor) * x_output + self.blend_factor * blend
+            self.recall_fires += 1
+            with torch.no_grad():
+                tok_norm = x_output.detach().norm(dim=-1).mean()
+                self.last_blend_share = float(
+                    (self.blend_factor * recalled.detach().norm()
+                     / tok_norm.clamp(min=1e-12)).item()
+                )
+        else:
+            self.last_blend_share = 0.0
 
         return x_output
 
@@ -186,4 +230,16 @@ class EpisodeStore(nn.Module):
                 if self.episode_count > 0
                 else 0.0
             ),
+            # 2026-10-19: recall duty and blend share. recall_fires ==
+            # forward_calls with blend_share > 0 is the "blends a constant
+            # into every forward" signature.
+            "forward_calls": int(self.forward_calls),
+            "recall_fires": int(self.recall_fires),
+            "store_writes": int(self.store_writes),
+            "recall_duty": (
+                self.recall_fires / self.forward_calls
+                if self.forward_calls else float("nan")
+            ),
+            "last_recall_sim": float(self.last_recall_sim),
+            "last_blend_share": float(self.last_blend_share),
         }

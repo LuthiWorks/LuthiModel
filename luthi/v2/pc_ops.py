@@ -9,14 +9,41 @@ of in-place tensor ops, just executed in one extension call).
 The C++ path was added on 2026-05-10 after the M3 sanity check at
 production scale (128d/2 blocks/4934 batches/epoch on Gutenberg-100)
 showed the pure-Python path running at ~5 hours/epoch on DirectML —
-~50× slower than v1's C++-accelerated baseline. The plan's "C++
-deferred — Python-first for pilot" assumption broke down at the
-production-scale forward pass; the per-op DirectML dispatch overhead
-dominates when there are ~25 tensor ops per layer per batch.
+~50× slower than v1's C++-accelerated baseline. That figure is HISTORICAL:
+later measurements put the Python fallback at 1.03-1.17x (2026-07-29 and
+2026-08-19, see the dispatch comment in `pc_self_modify`), and the C++ path
+does not build on the ROCm wheel at all (docs/DECISIONS.md, 2026-08-19).
+
+Write rules (2026-10-19, `write_rule`)
+--------------------------------------
+``"mean_field"`` (default, bit-identical to every run before 2026-10-19)
+writes ``outer(mean_t(output), f(mean_t(input) - mean_t(output) @ P))``:
+an outer product of BATCH MEANS. Two consequences, both measured
+(docs/research/2026-10-19_the-living-write-is-mean-field.md):
+
+  * the write is blind to everything that differs between the tokens of a
+    batch -- the per-token covariance it discards was measured at 0.6-4.3x
+    the term it keeps;
+  * every write's output side is the batch-mean output, which barely moves
+    between batches (cosine >= 0.9996), so the accumulated living change
+    is ~rank-1 along one direction (96-99.5% of its energy).
+
+``"covariance"`` computes the same rule from per-token statistics: the
+write is ``mean_t(out_c[t] (x) clamp(drive * err_c[t] * trust))`` with the
+batch mean removed from both sides, the prediction matrix learns from the
+per-token error (its true gradient), and precision tracks per-token error
+energy. Everything else -- drive modes, trust, sparse gate, metaplasticity,
+learning gain, homeostasis, set point, error_acc, the returned mean
+pred_error -- is shared with the legacy rule, so ``write_rule`` is a single
+attributable lever. Python reference only; requesting it forces the
+Python path, never a silent C++ run of the legacy rule.
 """
 
 import os
 import torch
+
+#: Recognized write rules. See the module docstring.
+WRITE_RULES: tuple[str, ...] = ("mean_field", "covariance")
 
 
 # ---------------------------------------------------------------------------
@@ -194,8 +221,10 @@ def _pc_self_modify_python(
     learning_gain_rise: float = 2.0,
     learning_gain_cap: float = 3.0,
     return_applied_change: bool = False,
+    write_rule: str = "mean_field",
 ) -> tuple[float, torch.Tensor] | tuple[float, torch.Tensor, float]:
-    """Pure Python implementation. Identical math to the C++ extension.
+    """Pure Python implementation. Identical math to the C++ extension
+    for ``write_rule="mean_field"``; ``"covariance"`` exists only here.
 
     All buffers modified in-place. Returns (salience, pred_error), or
     (salience, pred_error, applied_change) when ``return_applied_change`` is
@@ -299,7 +328,15 @@ def _pc_self_modify_python(
     # distinction is only credible if it is observable, so `drive_gain_out` and
     # `drive_fire_count` are emitted per layer -- the discriminator the
     # 2026-07-29 review asked for.
+    if write_rule not in WRITE_RULES:
+        raise ValueError(
+            f"write_rule must be one of {WRITE_RULES}; got {write_rule!r}"
+        )
     drive_error = pred_error
+    # Scalar factor each drive mode applies to the error, recorded separately
+    # so the covariance rule can apply the SAME drive to per-token errors.
+    # None means 1. The legacy arithmetic below is untouched (bit-identity).
+    drive_scale: torch.Tensor | None = None
     mode = drive_mode
     if mode == "raw" and drive_normalize:
         mode = "rms"  # back-compat for the 2026-07-28 flag
@@ -307,6 +344,8 @@ def _pc_self_modify_python(
         rms_now = pred_error.detach().pow(2).mean().sqrt()
         error_rms.mul_(1.0 - drive_rms_decay).add_(rms_now, alpha=drive_rms_decay)
         drive_error = pred_error / error_rms.clamp(min=1e-12)
+        if write_rule != "mean_field":
+            drive_scale = 1.0 / error_rms.clamp(min=1e-12)
     elif mode == "surprise" and drive_ref is not None:
         if not relative_trust:
             raise ValueError(
@@ -348,6 +387,11 @@ def _pc_self_modify_python(
             drive_error = (
                 pred_error / forecast.clamp(min=1e-12).to(pred_error.dtype)
             ) * gain.to(pred_error.dtype)
+            if write_rule != "mean_field":
+                drive_scale = (
+                    gain.to(pred_error.dtype)
+                    / forecast.clamp(min=1e-12).to(pred_error.dtype)
+                )
         if drive_gain_out is not None:
             drive_gain_out.copy_(gain.detach().reshape(()))
         # Count fires only POST-warmup. Warmup holds gain at 1.0 to stay
@@ -396,15 +440,55 @@ def _pc_self_modify_python(
         )
         weighted_error = (drive_error * trust).clamp(-1.0, 1.0)  # [in]
     else:
+        trust = precision
         weighted_error = (drive_error * precision).clamp(-1.0, 1.0)  # [in]
 
-    # d. Weight delta — outer product of output_mean and weighted error,
-    #    scaled by per-input plasticity and the global PC rate.
-    delta_w = (
-        torch.outer(output_mean, weighted_error)  # [out, in]
-        * plasticity                              # broadcasts as [1, in]
-        * pc_rate
-    )
+    # Per-token statistics for the covariance rule (2026-10-19). Computed
+    # only when requested, so the legacy path pays nothing and stays
+    # bit-identical.
+    err_tok: torch.Tensor | None = None
+    if write_rule == "covariance":
+        # out_c / err_c: per-token deviations from the batch means. The
+        # batch-mean error err_tok.mean(0) equals `pred_error` up to float
+        # association, by linearity of the prediction.
+        err_tok = x_flat - output @ prediction        # [N, in]
+        out_c = output - output_mean                  # [N, out]
+        err_c = err_tok - err_tok.mean(dim=0, keepdim=True)
+        if drive_scale is not None:
+            err_c = err_c * drive_scale
+        # Same trust and the same per-element +/-1 bound as the legacy rule,
+        # applied per token before averaging, so no single token can write
+        # more than the legacy rule's whole batch could.
+        w_err = (err_c * trust).clamp(-1.0, 1.0)      # [N, in]
+        n_tok = max(int(output.shape[0]), 1)
+        write = (out_c.transpose(0, 1) @ w_err) / n_tok   # [out, in]
+        # SAME BUDGET, DIFFERENT DIRECTION. The write is capped at the
+        # Frobenius norm of the mean-field write this batch would have
+        # produced, so the rule changes only WHERE plasticity goes (the
+        # directions along which tokens differ) and never HOW MUCH. Two
+        # reasons, both load-bearing:
+        #   * attribution -- an arm comparison cannot then be explained by
+        #     "the covariance arm simply writes more";
+        #   * stability -- uncapped, the centered Hebbian term feeds back
+        #     on itself while the prediction matrix lags (out_c grows with
+        #     the weight it is writing): measured runaway 3.0 -> 1.3e10 in
+        #     3,000 steps on 20x-scaled structured input at 10x the
+        #     production pc_rate, where the legacy rule peaks at 154. Capped,
+        #     the same stress peaks at 1,580; at production rates it grows
+        #     less than the legacy rule (tests/test_living_write_rule.py,
+        #     docs/research/2026-10-19_the-living-write-is-mean-field.md).
+        mf_norm = torch.outer(output_mean, weighted_error).norm()
+        cv_norm = write.norm()
+        write = write * (mf_norm / cv_norm.clamp(min=1e-30)).clamp(max=1.0)
+        delta_w = write * plasticity * pc_rate
+    else:
+        # d. Weight delta — outer product of output_mean and weighted error,
+        #    scaled by per-input plasticity and the global PC rate.
+        delta_w = (
+            torch.outer(output_mean, weighted_error)  # [out, in]
+            * plasticity                              # broadcasts as [1, in]
+            * pc_rate
+        )
 
     # Sparse PC gate: zero out delta_w rows for gated-off outputs.
     # Per-output mask shape [out]; unsqueeze to [out, 1] so it broadcasts
@@ -468,10 +552,21 @@ def _pc_self_modify_python(
     #    large jumps while the weight matrix couldn't. The per-element
     #    prediction.clamp_ below is a hard backstop but doesn't bound
     #    per-step velocity. Same clamped error for both updates.
-    pred_error_clamped = pred_error.clamp(-1.0, 1.0)
-    delta_pred = (
-        torch.outer(output_mean, pred_error_clamped) * pred_learning_rate
-    )
+    if err_tok is not None:
+        # Covariance rule: the prediction matrix is a generative model of the
+        # ACTUAL per-token input, so it descends the per-token error
+        # (mean of outer products, same +/-1 bound per element). Under the
+        # mean-field update it could only ever learn the mean->mean mapping,
+        # leaving every per-token deviation "unexplained" forever.
+        n_tok = max(int(output.shape[0]), 1)
+        delta_pred = (
+            (output.transpose(0, 1) @ err_tok.clamp(-1.0, 1.0)) / n_tok
+        ) * pred_learning_rate
+    else:
+        pred_error_clamped = pred_error.clamp(-1.0, 1.0)
+        delta_pred = (
+            torch.outer(output_mean, pred_error_clamped) * pred_learning_rate
+        )
     prediction.add_(delta_pred)
     # Refinement 6: per-element clamp prevents the runaway prediction growth
     # that the bounded-growth test surfaced at large input magnitudes
@@ -483,7 +578,13 @@ def _pc_self_modify_python(
     #    The target's denominator floor (1e-3) prevents 1/eps -> inf when
     #    error is small for some input dims; without it, the EMA can
     #    inherit inf even though the running buffer is clamped.
-    err_sq = pred_error.pow(2)
+    # Covariance rule: reliability of an input dimension is its per-token
+    # error energy, not the square of the batch-mean error (which averages
+    # token-level disagreement away before it can be measured).
+    err_sq = (
+        err_tok.pow(2).mean(dim=0) if err_tok is not None
+        else pred_error.pow(2)
+    )
     if relative_trust:
         # The eps was the first-stage differentiation destroyer (measured
         # 2026-07-21: err^2 runs 40-1000x SMALLER than the legacy 1e-3
@@ -577,6 +678,7 @@ def pc_self_modify(
     learning_gain_rise: float = 2.0,
     learning_gain_cap: float = 3.0,
     return_applied_change: bool = False,
+    write_rule: str = "mean_field",
 ) -> tuple[float, torch.Tensor] | tuple[float, torch.Tensor, float]:
     """One PC self-modification step.
 
@@ -619,7 +721,17 @@ def pc_self_modify(
     # Note for whoever ports it: `precision.median()` in the relative-trust
     # branch has no DML kernel and silently falls back to CPU every call. That
     # applies to the whole v5 family too, not just this path.
-    if _use_cpp and not drive_normalize and drive_mode == "raw":
+    #
+    # The covariance write rule (2026-10-19) is likewise Python-only and
+    # forces this path; the C++ kernel implements mean_field alone.
+    if write_rule not in WRITE_RULES:
+        raise ValueError(
+            f"write_rule must be one of {WRITE_RULES}; got {write_rule!r}"
+        )
+    if (
+        _use_cpp and not drive_normalize and drive_mode == "raw"
+        and write_rule == "mean_field"
+    ):
         salience_tensor, pred_error, applied_change = _cpp_ops.pc_self_modify(
             weight, prediction, set_point, momentum, update_ema,
             precision, error_acc, plasticity, x_flat, output,
@@ -669,4 +781,5 @@ def pc_self_modify(
         learning_gain_rise=learning_gain_rise,
         learning_gain_cap=learning_gain_cap,
         return_applied_change=return_applied_change,
+        write_rule=write_rule,
     )

@@ -71,8 +71,24 @@ class PredictiveCodingBlock(nn.Module):
         learning_gain_rise: float = 2.0,
         learning_gain_cap: float = 3.0,
         episode_recall_threshold: float = 0.5,
+        # 2026-10-19 (docs/research/2026-10-19_the-living-write-is-mean-field.md).
+        # write_rule / context_mode pass through to the living layer.
+        write_rule: str = "mean_field",
+        context_mode: str = "mean",
+        # The block-level output episode store. "legacy" (default) keeps it
+        # exactly as every living run has had it. "off" removes it, so a
+        # living block differs from the dead control in the FFN rule ALONE
+        # -- the store blends a batch-constant vector into every forward and
+        # the dead arm has never had one.
+        block_episode_store: str = "legacy",
     ):
         super().__init__()
+        if block_episode_store not in ("legacy", "off"):
+            raise ValueError(
+                "block_episode_store must be 'legacy' or 'off'; got "
+                f"{block_episode_store!r}"
+            )
+        self.block_episode_store = str(block_episode_store)
         # Dead-encoder arm (Experiment 1 / JEPA pilot control, 2026-07-15):
         # dead_ffn=True swaps the PC living layer for a standard trainable
         # nn.Linear and removes the block-level episode store — the same
@@ -244,6 +260,8 @@ class PredictiveCodingBlock(nn.Module):
                 learning_gain_rise=learning_gain_rise,
                 learning_gain_cap=learning_gain_cap,
                 episode_recall_threshold=episode_recall_threshold,
+                write_rule=write_rule,
+                context_mode=context_mode,
             )
 
         # Apply Depth-μP re-init AFTER all sub-modules constructed. We
@@ -258,6 +276,10 @@ class PredictiveCodingBlock(nn.Module):
             # No block-level episode store either: the episode machinery is
             # living-channel state, and the control isolates the whole
             # living channel, not just the PC update rule.
+            self.episode_store = None
+        elif self.block_episode_store == "off":
+            # Living FFN without the output store: the arm that differs from
+            # the dead control in the self-modification rule alone.
             self.episode_store = None
         else:
             self.episode_store = EpisodeStore(
@@ -424,9 +446,21 @@ class PredictiveCodingBlock(nn.Module):
             # skips absent keys), so a sparse dict is safe by construction.
             return {"dead_ffn": 1.0}
         living = self.living_ffn.aliveness()
+        if self.episode_store is None:
+            # block_episode_store="off": report the absence, never a zero
+            # that could be read as "present but idle".
+            living["output_episode_store"] = 0.0
+            return living
         episodes = self.episode_store.stats()
+        living["output_episode_store"] = 1.0
         living["output_episodes_stored"] = episodes["episodes_stored"]
         living["output_episodes_mean_salience"] = episodes["mean_salience"]
+        # 2026-10-19: what the store is doing, not just what it holds.
+        living["output_episode_recall_duty"] = episodes["recall_duty"]
+        living["output_episode_recall_fires"] = episodes["recall_fires"]
+        living["output_episode_store_writes"] = episodes["store_writes"]
+        living["output_episode_last_sim"] = episodes["last_recall_sim"]
+        living["output_episode_blend_share"] = episodes["last_blend_share"]
         return living
 
 
