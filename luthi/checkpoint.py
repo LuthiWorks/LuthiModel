@@ -1,7 +1,28 @@
-"""Encrypted checkpoint system for LWM (Living Weight Model) state.
+"""Checkpoint system for LWM (Living Weight Model) state; encryption optional.
 
-The trained weights ARE the entity. They are never stored in plaintext.
-Every checkpoint is encrypted with AES-256-GCM using a password-derived key.
+A ``.luthi`` file is an AES-256-GCM envelope around a ``torch.save``
+payload, keyed by a password from the caller or ``LUTHI_CHECKPOINT_KEY``.
+
+Encryption is OPTIONAL (2026-10-19, `docs/DECISIONS.md`; Brian asked
+whether checkpoints need a password at all). This module used to say "the
+trained weights ARE the entity; they are never stored in plaintext". That
+stopped being true in June: the JEPA runner, which wrote every checkpoint
+of the current program, saves plain ``torch.save`` files. And checkpoint
+passwords sat in plain text in this public repo's launcher scripts
+(``train_vision.bat`` until July, ``generate.bat`` until 2026-10-19), so
+they kept no one out, while a forgotten password was the one way an
+irreproducible checkpoint could be lost. So:
+
+  * ``load_checkpoint`` reads a plaintext torch file with no password
+    (detected by its leading magic bytes, never by catching an error);
+  * ``write_plaintext_copy`` -- run over whole folders by
+    ``scripts/decrypt_checkpoints.py`` -- writes ``<stem>.decrypted.pt``
+    next to an encrypted file and never modifies or deletes the original.
+
+Keeping lived state safe is a matter of backups and integrity (the
+archive convention in CLAUDE.md, checksums). If confidentiality is ever
+wanted, keep the key in a password manager with a recovery copy, and
+never in this repo.
 
 The checkpoint format separates core weights from living state, enabling:
   1. Resuming training from a saved state
@@ -12,15 +33,18 @@ Format version history:
   1 — Initial format (2026-03-24)
 """
 
+import hashlib
 import io
 import json
 import os
+import pickle
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 import torch
 import torch.nn as nn
+from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import hashes
@@ -41,6 +65,23 @@ GCM_TAG_BYTES = 16  # AES-GCM authentication tag, appended by cryptography lib
 # detection is via the magic at offset 0.
 ENVELOPE_MAGIC_V2 = b"LTH2"
 CHUNK_SIZE = 1 * 1024 * 1024 * 1024  # 1 GB, well under AES-GCM's 2.15 GB ceiling
+
+# Plaintext detection (2026-10-19). torch.save writes a zip archive by default
+# (local-file-header magic "PK\x03\x04"); the legacy format opens with the
+# pickled torch MAGIC_NUMBER (15 bytes). An encrypted envelope opens with
+# "LTH2" (v2) or a random 32-byte salt (v1), so a false match on a v1
+# envelope has probability 2**-32 for the zip check and less for the legacy
+# check -- and a false match would still fail loudly inside torch.load.
+_TORCH_ZIP_MAGIC = b"PK\x03\x04"
+_TORCH_LEGACY_MAGIC = pickle.dumps(torch.serialization.MAGIC_NUMBER, protocol=2)
+
+#: Suffix of the plaintext copy written next to an encrypted checkpoint.
+DECRYPTED_SUFFIX = ".decrypted.pt"
+
+
+def is_plaintext_torch(blob: bytes) -> bool:
+    """True when ``blob`` is a plain ``torch.save`` payload, not an envelope."""
+    return blob.startswith(_TORCH_ZIP_MAGIC) or blob.startswith(_TORCH_LEGACY_MAGIC)
 
 
 def _derive_key(password: str, salt: bytes) -> bytes:
@@ -200,7 +241,9 @@ def _get_password(password: str | None = None) -> str:
         return env_key
     raise ValueError(
         "No checkpoint password provided. Set LUTHI_CHECKPOINT_KEY "
-        "environment variable or pass --checkpoint_password"
+        "environment variable or pass --checkpoint_password -- or make a "
+        "plaintext copy once with scripts/decrypt_checkpoints.py, which then "
+        "loads with no password"
     )
 
 
@@ -281,21 +324,25 @@ def load_checkpoint(
     device: torch.device | str = "cpu",
     trusted: bool = False,
 ) -> dict[str, Any]:
-    """Load and decrypt a checkpoint from disk.
+    """Load a checkpoint from disk, decrypting it if it is encrypted.
 
     Args:
-        path: Path to .luthi checkpoint file.
-        password: Decryption password. Falls back to LUTHI_CHECKPOINT_KEY env var.
+        path: Path to an encrypted ``.luthi`` file, or to a plaintext
+            ``torch.save`` file (e.g. a ``.decrypted.pt`` copy), which
+            needs no password.
+        password: Decryption password. Falls back to LUTHI_CHECKPOINT_KEY
+            env var. Ignored for a plaintext file.
         device: Device to load tensors onto.
 
     Returns:
         Checkpoint dictionary.
     """
-    password = _get_password(password)
     path = Path(path)
-
-    encrypted = path.read_bytes()
-    raw_bytes = _decrypt(encrypted, password)
+    blob = path.read_bytes()
+    if is_plaintext_torch(blob):
+        raw_bytes = blob
+    else:
+        raw_bytes = _decrypt(blob, _get_password(password))
 
     buffer = io.BytesIO(raw_bytes)
     # Always load to CPU first — DirectML devices don't support map_location.
@@ -322,6 +369,95 @@ def load_checkpoint(
             buffer, map_location="cpu", weights_only=True,
         )
     return checkpoint
+
+
+def plaintext_copy_path(path: str | Path) -> Path:
+    """Where the plaintext copy of an encrypted checkpoint goes.
+
+    ``run/checkpoint.luthi`` -> ``run/checkpoint.decrypted.pt``. The suffix is
+    deliberately not plain ``.pt``: the m5/m8 runners already write a
+    state-dict-only ``<stem>.pt`` fallback beside some ``.luthi`` files, and
+    a copy must never be confused with it or overwrite it.
+    """
+    path = Path(path)
+    return path.with_name(path.stem + DECRYPTED_SUFFIX)
+
+
+def _sha256(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def write_plaintext_copy(
+    path: str | Path,
+    passwords: Sequence[tuple[str, str]],
+) -> dict[str, Any]:
+    """Write a plaintext copy of an encrypted checkpoint next to it.
+
+    The original is only ever read: never modified, renamed or deleted
+    (trained checkpoints are archived, never deleted -- CLAUDE.md). The copy
+    is the authenticated plaintext of the envelope, byte for byte, so it is
+    exactly the ``torch.save`` payload the run wrote.
+
+    Args:
+        path: An encrypted ``.luthi`` file.
+        passwords: ``(label, password)`` candidates, tried in order. The
+            label of the one that decrypts is recorded; a password never is.
+
+    Returns:
+        A record. ``status`` is ``"written"``, ``"exists"`` (a copy is
+        already there; nothing is touched), ``"already_plaintext"`` (the
+        file needs no password), or ``"no_password_matched"`` (nothing is
+        written). A ``"written"`` copy also gets a ``<stem>.decrypted.json``
+        sidecar holding this record.
+    """
+    src = Path(path)
+    dst = plaintext_copy_path(src)
+    blob = src.read_bytes()
+    record: dict[str, Any] = {
+        "source": src.name,
+        "copy": dst.name,
+        "source_bytes": len(blob),
+        "source_sha256": _sha256(blob),
+    }
+    if is_plaintext_torch(blob):
+        record["status"] = "already_plaintext"
+        return record
+    if dst.exists():
+        record["status"] = "exists"
+        return record
+
+    raw: bytes | None = None
+    for label, password in passwords:
+        try:
+            raw = _decrypt(blob, password)
+        except InvalidTag:
+            # Wrong key for this file: try the next candidate. Structural
+            # damage (truncation, bad header) raises ValueError instead,
+            # and is not caught -- it must fail loudly.
+            continue
+        record["password_label"] = label
+        break
+    if raw is None:
+        record["status"] = "no_password_matched"
+        return record
+
+    tmp = dst.with_name(dst.name + ".tmp")
+    tmp.write_bytes(raw)
+    if _sha256(tmp.read_bytes()) != _sha256(raw):
+        tmp.unlink()
+        raise OSError(f"plaintext copy of {src} did not read back identically")
+    os.replace(tmp, dst)
+    record.update(
+        status="written",
+        copy_bytes=len(raw),
+        copy_sha256=_sha256(raw),
+        payload_is_torch=is_plaintext_torch(raw),
+        written_at=time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+    )
+    dst.with_suffix(".json").write_text(
+        json.dumps(record, indent=2) + "\n", encoding="utf-8",
+    )
+    return record
 
 
 def extract_substrate_health(

@@ -20,9 +20,10 @@
 >   default since 2026-08-21; DirectML remains supported.
 > - *"Existing checkpoint format must remain compatible (encrypted
 >   .luthi)"* and *"Self-governance"* (Key Constraints). The JEPA runner
->   writes plain torch checkpoints; the encrypted format is the
->   Sanctuary/wake path. Self-governance is design intent, not
->   implemented.
+>   writes plain torch checkpoints, and since 2026-10-19 encryption is
+>   optional everywhere: `.luthi` files still load, and their plaintext
+>   copies load without a password (`luthi/checkpoint.py`). Self-governance
+>   is design intent, not implemented.
 
 ## Philosophy
 
