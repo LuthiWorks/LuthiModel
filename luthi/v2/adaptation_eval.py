@@ -143,11 +143,18 @@ def _summ(vals: Sequence[float]) -> dict:
 
 def holdout_documents(
     windows: torch.Tensor, *, n_read: int, n_score: int, n_docs: int,
+    phase: int = 0,
 ) -> list[torch.Tensor]:
     """Cut consecutive held-out windows into ``n_docs`` non-overlapping
     documents of ``n_read + n_score`` windows, spread evenly over the tail.
     Raises if the holdout is too short -- a silent short eval would fake a
-    precise one."""
+    precise one.
+
+    ``phase`` (2026-10-19) shifts every document by ``phase`` document
+    lengths inside its stride, so phases 0, 1, 2... are mutually DISJOINT
+    document sets. E1 counts a checkpoint only when its effect replicates on
+    a disjoint set (registry, 2026-10-19 amendment). Phase 0 is the original
+    selection, bit for bit."""
     per = n_read + n_score
     total = windows.shape[0]
     if n_docs * per > total:
@@ -156,7 +163,14 @@ def holdout_documents(
             f"need {n_docs * per}. Lower n_docs or n_read/n_score."
         )
     stride = total // n_docs
-    return [windows[i * stride : i * stride + per] for i in range(n_docs)]
+    if phase < 0 or (phase + 1) * per > stride:
+        raise ValueError(
+            f"phase {phase} does not fit: each of the {n_docs} documents has a "
+            f"stride of {stride} windows and needs {(phase + 1) * per} for "
+            f"phase {phase}. Lower n_docs or the phase."
+        )
+    off = phase * per
+    return [windows[i * stride + off : i * stride + off + per] for i in range(n_docs)]
 
 
 def adaptation_eval(

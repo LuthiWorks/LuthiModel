@@ -83,3 +83,24 @@ def test_holdout_documents_refuses_a_short_holdout():
 def test_needs_two_documents():
     with pytest.raises(ValueError, match="at least 2"):
         adaptation_eval(_loss(), _docs()[:1], n_read=2)
+
+
+def test_document_phases_are_disjoint_and_phase0_is_unchanged():
+    # Window i holds the value i, so a document's windows name themselves.
+    windows = torch.arange(96).unsqueeze(1).expand(96, L).clone()
+    base = dict(n_read=4, n_score=2, n_docs=4)          # stride 24, per 6
+    stride, per = 24, 6
+    legacy = [windows[i * stride: i * stride + per] for i in range(4)]
+    p0 = holdout_documents(windows, **base)
+    assert all(torch.equal(a, b) for a, b in zip(p0, legacy))
+    seen = []
+    for phase in range(4):                               # 4 * 6 = 24 fits
+        ids = {int(d[w, 0]) for d in holdout_documents(windows, **base, phase=phase)
+               for w in range(per)}
+        assert len(ids) == 4 * per
+        seen.append(ids)
+    for a in range(4):
+        for b in range(a + 1, 4):
+            assert not (seen[a] & seen[b]), (a, b)
+    with pytest.raises(ValueError, match="does not fit"):
+        holdout_documents(windows, **base, phase=4)

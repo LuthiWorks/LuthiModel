@@ -5,24 +5,33 @@ at inference, with behavioral consequence -- measured on a trained
 checkpoint, no training. Wraps ``luthi.v2.adaptation_eval``; see its module
 docstring for the A / B / C protocol (frozen / read-own / read-other).
 
-Usage:
+Usage (two runs per checkpoint -- the second is the replication):
     python scripts/adaptation_eval.py --run-dir E:\\runs\\jepa_pilot\\<run> \\
         --docs 32 --read 4 --score 2
+    python scripts/adaptation_eval.py --run-dir E:\\runs\\jepa_pilot\\<run> \\
+        --docs 32 --read 4 --score 2 --doc-phase 1
 
 Pre-registered reading (frozen 2026-10-19, before any production checkpoint
 was evaluated; registry entry E1 in
-docs/research/2026-07-15_falsification-preregistration.md):
+docs/research/2026-07-15_falsification-preregistration.md, as amended the
+same day before any result was seen):
 
   * Dead arms: summary.exact_null is True. Anything else = harness defect.
-  * The living-channel claim "reading produces document-specific change with
-    behavioral consequence" is SUPPORTED for a run iff nmse B_minus_C has
-    mean < 0 with |t| >= 2 over >= 32 documents AND target_eff_rank
+  * A run MEETS the criterion on one document set iff nmse B_minus_C has
+    mean < 0 with t <= -2 over >= 32 documents AND target_eff_rank
     B_minus_C mean > -5% of its A mean (the improvement is not bought by the
-    representation degenerating during reading). Otherwise NOT SUPPORTED for
-    that run. Generic drift (C_minus_A) is reported, never credited.
+    representation degenerating during reading).
+  * The living-channel claim "reading produces document-specific change
+    with behavioral consequence" is SUPPORTED for a run iff it meets the
+    criterion on BOTH phase 0 and the disjoint phase 1. One set alone is a
+    candidate, not a finding: t <= -2 occurs by chance with p ~ 0.027 per
+    set, so over 20 checkpoints at least one chance hit is ~42% likely;
+    requiring both sets brings that to ~1.5%. Generic drift (C_minus_A) is
+    reported, never credited.
 
-Writes ``adaptation_eval.json`` next to the checkpoint's run dir (or --out);
-never modifies the checkpoint or any training artifact.
+Writes ``adaptation_eval.json`` (phase 0) or ``adaptation_eval_phase<k>.json``
+into the run dir (or --out); never modifies the checkpoint or any training
+artifact.
 """
 
 from __future__ import annotations
@@ -49,6 +58,9 @@ def main() -> int:
                     help="read in train mode (adds the top-down sweep)")
     ap.add_argument("--rate-scale", type=float, default=None,
                     help="living rate_scale during reads (default: as loaded, 1.0)")
+    ap.add_argument("--doc-phase", type=int, default=0,
+                    help="0 = the primary documents; 1 = a disjoint replication "
+                         "set (E1 counts a checkpoint only if both agree)")
     ap.add_argument("--out", default="")
     args = ap.parse_args()
 
@@ -60,23 +72,28 @@ def main() -> int:
     run = rebuild_run(args.run_dir, device=device, ckpt_name=args.ckpt or None)
     windows = run.text_ds.holdout_window_tokens().to(device)
     docs = holdout_documents(windows, n_read=args.read, n_score=args.score,
-                             n_docs=args.docs)
+                             n_docs=args.docs, phase=args.doc_phase)
     res = adaptation_eval(
         run.loss_module, docs, n_read=args.read, read_repeats=args.repeats,
         read_train_mode=args.read_train_mode, rate_scale=args.rate_scale,
     )
     res["run"] = {"arm": run.result["arm"], "seed": run.result["seed"],
                   "checkpoint": run.checkpoint.name, "global_step": run.global_step}
+    res["documents"] = {"n_docs": args.docs, "n_read": args.read,
+                        "n_score": args.score, "phase": args.doc_phase,
+                        "holdout_windows": int(windows.shape[0])}
     s = res["summary"]
     print(f"arm={run.result['arm']} seed={run.result['seed']} "
-          f"docs={s['n_docs']} exact_null={s['exact_null']}")
+          f"docs={s['n_docs']} phase={args.doc_phase} exact_null={s['exact_null']}")
     for metric in ("nmse", "l_pred", "target_eff_rank"):
         m = s[metric]
         print(f"  {metric:<16} A={m['A_mean']:.5f}  "
               f"B-A={m['B_minus_A']['mean']:+.5f} (t={m['B_minus_A']['t']:+.2f})  "
               f"C-A={m['C_minus_A']['mean']:+.5f} (t={m['C_minus_A']['t']:+.2f})  "
               f"B-C={m['B_minus_C']['mean']:+.5f} (t={m['B_minus_C']['t']:+.2f})")
-    out = Path(args.out) if args.out else Path(args.run_dir) / "adaptation_eval.json"
+    default_name = ("adaptation_eval.json" if args.doc_phase == 0
+                    else f"adaptation_eval_phase{args.doc_phase}.json")
+    out = Path(args.out) if args.out else Path(args.run_dir) / default_name
     out.write_text(json.dumps(res, indent=2), encoding="utf-8")
     print(f"wrote {out}")
     return 0
