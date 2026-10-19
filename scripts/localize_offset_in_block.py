@@ -104,7 +104,13 @@ def main() -> int:
             hooks.append(blk.norm2.register_forward_pre_hook(pre_norm2))
             hooks.append(blk.register_forward_hook(post_block))
 
-        with torch.no_grad():
+        # freeze_plasticity (2026-10-19): eval() does not stop living layers
+        # from self-modifying. Note also that "x2_post_ffn" is the BLOCK
+        # output, i.e. after the block-level output episode store's blend --
+        # the "ffn delta" column therefore includes the store, not the FFN
+        # alone (run with block_episode_store="off" to separate them).
+        from luthi.v2.plasticity import freeze_plasticity
+        with torch.no_grad(), freeze_plasticity(model):
             model.encode(text_tokens=real.clamp(max=vocab - 1))
         for h in hooks:
             h.remove()

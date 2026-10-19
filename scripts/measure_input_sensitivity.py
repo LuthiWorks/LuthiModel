@@ -97,7 +97,10 @@ def main() -> int:
         model.eval()
 
         def cos(tokens):
-            with torch.no_grad():
+            # freeze_plasticity (2026-10-19): an eval-mode living layer still
+            # self-modifies; unfrozen, each call changed the next one's model.
+            from luthi.v2.plasticity import freeze_plasticity
+            with torch.no_grad(), freeze_plasticity(model):
                 lat = model.encode(text_tokens=tokens)["latents"]
             a = lat.reshape(-1, lat.shape[-1]).float()
             half = min(200, a.shape[0] // 2)

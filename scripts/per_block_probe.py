@@ -40,8 +40,13 @@ Reads reported per block
                            gauge of the collapse's measured "first act".
 
 Block index -1 is the pre-trunk embedding stream (the input to block 0),
-included as the reference ceiling: it is the information the trunk was
-handed. Every later block is measured against it.
+included as the reference BASELINE (corrected 2026-10-19; this said
+"ceiling"). For the default next-token probe it is a bigram-grade readout
+that cannot see the answer, while every trunk block -- encoded
+bidirectionally -- has attended to token t+1. A block below the embedding
+row has added nothing measurable on this axis; only rows above it count as
+something the trunk computed (audit B7; in the 768x8 family the embedding
+row topped every block in all three seeds).
 
 Read-only: loads a checkpoint, writes a JSON report, never trains the
 model or touches the run directory.
@@ -168,16 +173,31 @@ def _encode_all_blocks(model, tokens: torch.Tensor) -> list[torch.Tensor]:
 
     The embedding stream is obtained through the model's own modality
     encode + concatenate, i.e. exactly the tensor block 0 receives.
+
+    Runs under freeze_plasticity (2026-10-19). ``model.eval()`` does NOT
+    stop a living layer from self-modifying -- there is no self.training
+    gate -- so before this fix every probe batch rewrote the living weights
+    (and the block episode stores) that the next batch was measured on: the
+    20 train batches and the 5 holdout batches were read from 25 slightly
+    different models. ``CAUSAL`` (module flag, set by --causal) encodes with
+    a causal mask -- the B7 control in which position t cannot see token t+1.
     """
+    from luthi.v2.plasticity import freeze_plasticity
+
     vision_emb, audio_emb, text_emb = model._encode_modality_streams(
         tokens, None, None, None, None,
     )
     h, _spans = model._concatenate_modalities(vision_emb, audio_emb, text_emb)
     out = [h.detach().to("cpu", torch.float16)]
-    for block in model.blocks:
-        h = block(h, causal=False)
-        out.append(h.detach().to("cpu", torch.float16))
+    with freeze_plasticity(model):
+        for block in model.blocks:
+            h = block(h, causal=CAUSAL)
+            out.append(h.detach().to("cpu", torch.float16))
     return out
+
+
+CAUSAL = False
+OFFSET = 1
 
 
 def _collect(model, batches, device, max_batches: int):
@@ -191,11 +211,14 @@ def _collect(model, batches, device, max_batches: int):
         blocks = _encode_all_blocks(model, tokens)
         if not per_block:
             per_block = [[] for _ in blocks]
+        from luthi.v2.eval_heldout import _paired
         for bi, h in enumerate(blocks):
-            # positions :-1 pair with tokens 1:, matching
-            # eval_heldout._collect_next_token_pairs exactly.
-            per_block[bi].append(h[:, :-1, :].reshape(-1, h.shape[-1]))
-        ys.append(batch["text_tokens"][:, 1:].reshape(-1).cpu())
+            # Latent at t paired with token t+OFFSET; OFFSET=1 is positions
+            # :-1 with tokens 1:, matching eval_heldout exactly.
+            lat, _tok = _paired(h, tokens.to(h.device), OFFSET)
+            per_block[bi].append(lat)
+        _lat, tok = _paired(blocks[0], batch["text_tokens"].to(blocks[0].device), OFFSET)
+        ys.append(tok.reshape(-1).cpu())
     if not ys:
         raise ValueError("no batches collected -- check batch counts")
     return [torch.cat(c, dim=0) for c in per_block], torch.cat(ys, dim=0)
@@ -283,7 +306,15 @@ def main() -> int:
     ap.add_argument("--lr", type=float, default=1e-2)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", default="", help="report path; default = run-dir/per_block_probe.json")
+    # B7 controls (2026-10-19). --causal: position t cannot attend to t+1, so
+    # the next-token readout cannot see its answer. --offset: 1 next token,
+    # 0 current token, -1 previous token. Compare every row against the
+    # "emb" row: the embedding stream is the input baseline, not a ceiling.
+    ap.add_argument("--causal", action="store_true")
+    ap.add_argument("--offset", type=int, default=1)
     args = ap.parse_args()
+    global CAUSAL, OFFSET
+    CAUSAL, OFFSET = bool(args.causal), int(args.offset)
 
     from scripts.jepa_pilot_driver import _device
 
@@ -373,6 +404,9 @@ def main() -> int:
             "epochs": args.epochs,
             "lr": args.lr,
             "seed": args.seed,
+            "causal": CAUSAL,
+            "offset": OFFSET,
+            "plasticity_frozen": True,
         },
         "verdict_reference": {
             "probe_top1": result["probe"]["top1"],

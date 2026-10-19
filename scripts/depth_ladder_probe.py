@@ -88,7 +88,11 @@ def main() -> int:
             resid = model.blocks[0].residual_scale
             torch.manual_seed(1)
             tokens = torch.randint(0, args.vocab, (args.batch, args.seq))
-            with torch.no_grad():
+            # freeze_plasticity: eval() does not stop a living layer from
+            # self-modifying (no self.training gate), so an unfrozen
+            # measurement rewrites what it measures (2026-10-19).
+            from luthi.v2.plasticity import freeze_plasticity
+            with torch.no_grad(), freeze_plasticity(model):
                 out = model.encode(
                     text_tokens=tokens, collect_block_latents=True
                 )

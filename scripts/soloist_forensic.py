@@ -60,7 +60,10 @@ def analyze(run_name: str) -> None:
     batch = ds.next_batch()
     tokens = batch["text_tokens"]
 
-    with torch.no_grad():
+    # freeze_plasticity (2026-10-19): eval() does not stop living layers from
+    # self-modifying during the measurement forward.
+    from luthi.v2.plasticity import freeze_plasticity
+    with torch.no_grad(), freeze_plasticity(model):
         out = model.encode(text_tokens=tokens, collect_block_latents=True)
     z = out["block_latents"][-1].float()
     B, S, D = z.shape

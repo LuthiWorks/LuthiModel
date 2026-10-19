@@ -84,7 +84,10 @@ def main() -> int:
         per_block = [[] for _ in range(n_blocks)]
         embed_od = []
         torch.manual_seed(0)
-        with torch.no_grad():
+        # freeze_plasticity (2026-10-19): eval() does not stop living layers
+        # from self-modifying across the measurement batches.
+        from luthi.v2.plasticity import freeze_plasticity
+        with torch.no_grad(), freeze_plasticity(model):
             for _ in range(args.batches):
                 tokens = torch.randint(
                     0, vocab, (args.batch_size, min(args.seq_len, max_seq))
