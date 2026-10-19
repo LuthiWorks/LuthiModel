@@ -215,3 +215,7 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Claude Code local settings: per-machine permissions and paths (untracked 2026-10-19;
+# the committed copy exposed a local username and session-log paths).
+.claude/settings.local.json
