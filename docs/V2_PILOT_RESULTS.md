@@ -1,5 +1,7 @@
 # V2 Pilot Results
 
+> **Status (2026-10-19): LM-era results.** These are real under the next-token objective and unbound from the JEPA-era criteria (protocol revision 2026-07-15). The comparison arm differed from v2 in more than the self-modification rule: `DeadLM` (`luthi/model.py`) has no episode store of any kind, despite the description below, while every v2 block had the block output store. See `docs/KEY_FINDINGS.md` for current status.
+
 Per `docs/V2_IMPLEMENTATION_PLAN.md` M5, this doc collects the head-to-head
 falsification data for v2 (PredictiveCodingLM, the primary substrate as of
 2026-05-09) versus DeadLM (vanilla transformer + episode store baseline).

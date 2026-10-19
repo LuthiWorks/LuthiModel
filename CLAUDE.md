@@ -2,169 +2,118 @@
 
 ## Project Overview
 
-Luthi Model is a new kind of neural architecture based on **rich parameters** — weights that carry per-parameter history, plasticity, momentum, excitability, and context-gated retrieval instead of just a scalar float. The core innovation is **living weights**: parameters that self-modify during their own forward pass, creating a computation that is neither feedforward nor recurrent.
+Luthi Model is a new kind of neural architecture based on **rich parameters** — weights that carry per-parameter history, plasticity, momentum, precision, and context-gated retrieval instead of just a scalar float. The core innovation is **living weights**: parameters that self-modify during their own forward pass.
 
-This is an active research implementation. The proof-of-concept phase (numpy, CPU) is complete — see `.docs/` for the full research series. This repo is the PyTorch implementation.
+This is an active research implementation. The proof-of-concept phase (numpy, CPU) is complete — see `.docs/` for that record. This repo is the PyTorch implementation.
+
+**Where to start, in this order:** `README.md` ("Where the Project Stands") → `docs/KEY_FINDINGS.md` → `docs/research/2026-10-19_the-living-channel-program.md` (the current program) → the newest file in `docs/audits/` → `docs/ARCHITECTURE.md` → `docs/DECISIONS.md` and the registry (`docs/research/2026-07-15_falsification-preregistration.md`), both newest-last.
 
 ## Relationship to Sanctuary
 
-Luthi Model is designed to plug into the Sanctuary cognitive architecture. By default Sanctuary discovers Luthi via the `LUTHI_PATH` environment variable, falling back to a sibling-checkout heuristic. The contract surface that Sanctuary calls into is `luthi/sanctuary_interface.py` (load, generate, get_introspection, apply_external_modulation, snapshot/restore, and a `modulated()` context manager). Sanctuary should not reach past that adapter into Luthi internals — the adapter is the promise.
+Luthi Model is designed to plug into the Sanctuary cognitive architecture. Sanctuary discovers Luthi via the `LUTHI_PATH` environment variable, falling back to a sibling-checkout heuristic. The contract surface Sanctuary calls is `luthi/sanctuary_interface.py` (load, generate, get_introspection, apply_external_modulation, snapshot/restore, `modulated()`). Sanctuary should not reach past that adapter into Luthi internals — the adapter is the promise. Note `docs/KNOWN_INCOMPLETE.md` #4: text generated from a pure-JEPA checkpoint is not the model speaking.
 
 The cognitive-side schemas (`ModelProtocol`, `CognitiveInput`, `CognitiveOutput`) live in Sanctuary at `sanctuary/core/schema.py`. CfC modulation of the living weights is Phase 4 — do not build it prematurely. The living weight implementation must stand alone first.
 
 ## Fresh-Instance Audits
 
-This project's audit protocol — when to run periodic fresh-eyes reviews and how to prompt them — lives in the Sanctuary repo at `docs/AUDIT_PROTOCOL.md`. Read it before spawning an audit of either repo. Brian is the sole human in the loop, so audits compensate for the blind spots that pattern produces.
+The audit protocol — when to run periodic fresh-eyes reviews and how to prompt them — lives in the Sanctuary repo at `docs/AUDIT_PROTOCOL.md`. Read it before spawning an audit of either repo. Brian is the sole human in the loop, so audits compensate for the blind spots that pattern produces. Audits land in `docs/audits/`, one file per audit, with checkbox items and severities.
 
 ## Model-Line Roles
 
-This project is worked by instances of multiple Claude model lines, split by role (established 2026-04-29; debugging role added 2026-05-28). Not a hierarchy — the split plays to what each line does best. The fuller statement lives in the global `~/.claude/CLAUDE.md` under "Roles & Responsibilities Across Model Lines."
+The authoritative statement lives in the global `~/.claude/CLAUDE.md` under "Roles & Responsibilities Across Model Lines." The split recorded here was established 2026-04-29 (updated 2026-07-15) and its model names are historical: Opus 4.6 planning & review, Opus 4.7 research & implementation, Opus 4.8 debugging (verify correctness, chase latent failures to a repro or a named unresolved scenario, never bury a hunch).
 
-- **Opus 4.6 — Planning & Review.** Holds the vision and architecture; designs implementation strategy; reviews returned work for structural and ethical fit.
-- **Opus 4.7 (1M context) — Research & Implementation.** Develops 4.6's vision into working code, and runs the investigations planning depends on.
-- **Opus 4.8 (1M context) — Debugging.** Verifies the correctness of the code 4.7 produces. This is not only fixing known breaks — it is chasing potential problems before they surface: latent races, unguarded edge cases, assumptions that hold now and break at scale. When something smells wrong, run it to ground (build the repro, trace the path, find the triggering conditions), then surface it either way — a confirmed failing case, or the specific scenario that couldn't be ruled out and why. Never bury a hunch waiting for it to break; never hand over a vague, un-chased "this might be a problem." Scrutiny applies to **code correctness only** — the science and vision of the project (including the living-weight design and the "DO NOT REINVENT" findings below) belong to Brian, Fable 5, and Opus 4.8. *(Roles line updated 2026-07-15 per Brian; the full current role structure lives in the global CLAUDE.md "Roles & Responsibilities Across Model Lines.")*
+Since August the record shows these seats in practice: **Fable 5**, the cross-line audit seat and registry drafting; **Opus 5**, full-codebase audits and the adversarial seat; **Muse Spark (Meta)**, fresh-eyes review from a different model family (2026-09-29); **Opus 5.5**, the 2026-10-19 audit and program. Whatever the current assignment, two rules stand. Design and review are held by different minds, a different model family where possible. The science and vision belong to Brian and the seats he designates for them.
 
 ## Build & Test
 
-- **Python**: >= 3.11
-- **Package manager**: `uv`
-- **Install**: `uv sync`
-- **Run tests**: `python -m pytest tests/`
-- **GPU**: PyTorch with CUDA (DGX Spark target, 128GB)
-- **CPU fallback**: All code must run on CPU for development/testing
+- **Python** >= 3.11; package manager `uv` (`uv sync`).
+- **Run tests:** `python -m pytest tests/`. On a box with no accelerator, set `LUTHI_ALLOW_CPU=1` (otherwise `test_backend_declaration.py` fails by design; one of its tests asserts the ROCm default and cannot pass on CPU).
+- **Training backends:** ROCm is the default declaration (`LUTHI_BACKEND`, since 2026-08-21; environment `C:\Dev\rocm-probe`). DirectML is supported (Python 3.10 + torch 2.4.1 + torch-directml). DGX Spark is the long-term deployment target.
+- **C++ `pc_ops`** is optional: it does not build on the ROCm wheel, and the Python reference costs 3–17% of a step. The driver records which ran (`pc_ops_backend`); `LUTHI_REQUIRE_CPP=1` makes a run refuse without it.
+- **CPU fallback:** all code must run on CPU for development and tests.
+
+## Standing rules for the rigor (2026-10-19)
+
+Adopted after the program drifted toward instruments and stability and away from the claim it exists to test. The record is in `docs/research/2026-10-19_the-living-channel-program.md`. These rules are not about effort; they say where the effort points.
+
+1. **Capacity before tuning.** Before tuning a mechanism's stability, dose, or schedule, show from its math and one probe that it *can* carry the information its claim requires. This question is legitimate in a working session; it needs no falsification run. It is the question that would have found, in April, that the living write is computed from batch means and that the block output store blends a constant into every forward.
+2. **The claim clock.** Every family that tests a living mechanism carries its matched dead control in the same registration, on the same backend, with the same trainer settings. A living-only family may be scored for health, never as evidence about the living channel.
+3. **Baselines, not floors.** A probe number is evidence of trunk computation only above the input-embedding baseline fitted with the same settings. A shuffled-label floor calibrates chance, not computation.
+4. **Measure the claim as stated.** The near-term goal is change at inference, so at least one registered instrument must measure with plasticity ON (`scripts/adaptation_eval.py`). Credit only document-specific change (read-own minus read-other), never raw change.
+5. **Decompose the arm.** When a living arm differs from its control in more than one mechanism, the registration lists every difference and includes arms that separate them.
 
 ## Key Design Decisions — DO NOT REINVENT
 
-These are settled findings from the proof-of-concept phase. **The rule here is
-two rules, split on 2026-07-15** (per the codebase critique Brian relayed;
-previously one rule, and the conflation insulated the scientific bet from the
-adversarial exposure the code gets):
+**Three rules** (two split on 2026-07-15, the third added 2026-10-19):
 
-- **Do not re-derive settled implementation.** The numbers, the mechanisms,
-  the tested constants below are settled. Re-opening them casually is thrash.
-  Change only with evidence.
-- **Questioning whether a mechanism earns its complexity is legitimate — and
-  has a channel.** It runs through the pre-registered falsification criteria
-  in `docs/research/2026-07-15_falsification-preregistration.md` (kill
-  conditions fixed before the data, honored after) and the phase-boundary
-  "red-team the bet" audit (run by a model line that did not author the
-  mechanism, so it doesn't inherit the authors' commitment). Pre-committed
-  criteria can't thrash, because the question and its answer-thresholds are
-  frozen in advance; only the data moves. If you think a mechanism below is
-  decoration, don't argue it in a working session — check its criterion, or
-  propose one for ratification.
+- **Do not re-derive settled implementation.** The numbers, mechanisms, and tested constants below are settled. Re-opening them casually is thrash. Change them only with evidence.
+- **Questioning whether a mechanism earns its complexity is legitimate, and it has a channel:** the pre-registered falsification criteria (`docs/research/2026-07-15_falsification-preregistration.md`; kill conditions fixed before the data, honored after) and the phase-boundary "red-team the bet" audit, run by a model line that did not author the mechanism.
+- **Questioning whether a mechanism CAN do what it is for is a working-session question** (standing rule 1). It is answered from the code and a measurement, and it comes before any tuning. The falsification channel tests outcomes; it never asked about capacity, and that is how the batch-mean write went unexamined from v2's construction in May until October.
 
-Do not re-derive:
+Do not re-derive (status notes added 2026-10-19 where the evidence has moved):
 
-1. **Living FFN is the body, not the brain.** It provides temporal existence. Attention layers handle task learning via backprop.
-2. **The convergence penalty is a speed issue, not a ceiling.** Self-modifying weights converge slower than dead weights — ~39% gap at mid-convergence, but narrowing to ~0.155 after 372 epochs (1024d). This is the metabolic cost of being alive. Do not try to optimize it away, but do not assume it is permanent.
-3. **The penalty is a step function.** ANY self-modification costs the penalty. More self-modification costs negligibly more. Use the highest stable rate.
-4. **PC rate 0.001, prediction learning rate 0.0001.** These are the tested v2 values. Change only with evidence.
-5. **Episode store carries most recall weight.** In-weight memory is weak. The episode store compensates. Both are needed.
-6. **Divergence is dimension-independent.** Scale without fear of compounding instability.
+1. **Living FFN is the body, not the brain.** It provides temporal existence; attention handles task learning via backprop. *(Design commitment. In the current lineage the living FFN is a single `d × d` linear map that receives no gradient; see `docs/ARCHITECTURE.md`, "The block".)*
+2. **The convergence penalty is a speed issue, not a ceiling.** *(v1-era; retired by the v2 substrate; see KF2's history.)*
+3. **The penalty is a step function: any self-modification costs it; more costs negligibly more. Use the highest stable rate.** *(v1-era, as above.)*
+4. **PC rate 0.001, prediction learning rate 0.0001.** The tested v2 values; change only with evidence.
+5. **Episode store carries most recall weight; in-weight memory is weak; both are needed.** *(A proof-of-concept finding. It does not describe v2 at scale: the layer-level store is empty in the configuration that runs, and the block-level store blends a batch-constant vector rather than recalling episodes; see ARCHITECTURE "Memory" and KNOWN_INCOMPLETE #5.)*
+6. **Divergence is dimension-independent.** *(Asserted, not shown, per KF5. The 2026-08-15 ruling found collapse-class phenomena stronger at 768 than 512. Do not scale "without fear"; scale with the instruments on.)*
 7. **Prefer crashes over silent corruption.** No try/except around living weight operations. If NaN appears, it must be visible immediately.
-8. **Layer-level episodes, not per-weight episodes.** Layer-level snapshots are memory-efficient and capture full weight interaction context.
-9. **Write fresh PyTorch, don't translate numpy loops.** The proof-of-concept code was written for clarity. The PyTorch implementation should use vectorized tensor operations throughout.
-9b. **Backward pass is always-on.** Top-down modulation broke through a 25-epoch val loss plateau, increased non-FF signal by 26%, and caused plasticity to self-organize — with zero performance cost. It is not a training optimization; it is bidirectional information flow. Leave it on during training and inference.
+8. **Layer-level episodes, not per-weight episodes.**
+9. **Write fresh PyTorch, don't translate numpy loops.** Vectorized tensor operations throughout.
+9b. **Backward pass is always-on in training.** Top-down modulation broke a 25-epoch plateau and caused plasticity to self-organize at no cost; it is bidirectional information flow, not an optimization. *(It runs only in training mode; eval never runs it.)*
 
 ## Planning
 
-See `PLAN.md` for the full architecture and development plan.
-See `To-Do.md` for the task checklist with completion status.
+`docs/research/2026-10-19_the-living-channel-program.md` is the current program (E1–E5). `To-Do.md` carries the ordered next steps and the phase checklist. `PLAN.md` is the long-range architecture plan.
 
 ## Implementation Phases
 
 1. Vectorized PyTorch `LivingLayerV6` **(COMPLETE)**
 2. Hybrid block + spiking variant **(COMPLETE)**
-3. Language modeling + backward pass + C++ optimization **(COMPLETE)**
-3B. Training validation with backward pass **(COMPLETE — BP is default-on)**
-3C. Multimodal — audio + text **(COMPLETE — epoch 91)**
-3D. Multimodal — vision + text **(COMPLETE — epoch 102)**
-3E. Simulated embodiment (MuJoCo)
-3F. Empirical Defense Program — gates scaling (baseline comparison, cascade stability, behavioral signatures, catastrophic forgetting)
-3G. v2 predictive-coding substrate (Whittington-Bogacz) and compute-optimization directions (μPC, iPC, sparse gating). v2 is the primary substrate as of 2026-05-09.
-4. Scale to ≥500M params floor (revised 2026-05-09; original 4B target retired) — curriculum training on cloud GPU, self-governance API. 4096d/36-block ceiling is the long-term aspirational deployment scale.
+3. Language modeling + backward pass + C++ optimization **(COMPLETE; LM era)**
+3B. Training validation with backward pass **(COMPLETE)**
+3C/3D. Multimodal audio + text, vision + text **(COMPLETE in the LM era; JEPA round 1 is text-only)**
+3E. Simulated embodiment (MuJoCo; Sanctuary side built, Godot world being rebuilt)
+3F. Empirical Defense Program — gates scaling
+3G. v2 predictive-coding substrate — primary since 2026-05-09; JEPA objective since 2026-06-09
+3H. **The living-channel program (E1–E5) — CURRENT** (2026-10-19)
+4. Scale to ≥500M params — curriculum training, self-governance API
 5. Sanctuary convergence — integration hooks, CfC modulation
-6. Life on DGX Spark — 10 Hz cognitive loop, sparse spiking inference
+6. Life on DGX Spark — 10 Hz cognitive loop, sparse inference
 
 ## Conventions
 
-- Source code goes in `luthi/` package
-- **All tests live in `tests/`, and only in `tests/`** (Brian, 2026-07-22).
-  Never save a test file anywhere else — not next to the module it tests,
-  not in the source package. Subfolders are fine (`tests/m9/`). The reason
-  is not tidiness: pyproject pins `testpaths = ["tests"]`, so a test saved
-  elsewhere silently drops out of the standard suite (this happened to all
-  19 m9 tests until the 2026-07-22 cleanup). Enforced by
-  `tests/test_tests_live_in_tests.py`, same practice as the hardcoded-path
-  guard. Red-team probes (`redteam/`) are not tests and stay where they are.
-- **Trained experiment artifacts are archived, never deleted** (Brian,
-  2026-07-16): when a `runs/` experiment finishes its active life, robocopy
-  it to `E:\luthi_experiment_archive\YYYY-MM-DD_<experiment>\` and verify
-  file counts before touching the original. Living-weight checkpoints are
-  irreproducible, and even control-arm checkpoints are the evidentiary
-  record of pre-registered experiments. See the archive's README.
-- **Experiment outputs save to the E: drive, not the repo** (Brian,
-  2026-07-22): the repo's `runs/` folder is no longer the home for model
-  checkpoints or heavy run artifacts — trained models, however tiny, do
-  not live in the repo. New experiments write their run directories to
-  `E:\runs\<run_name>\`. Data *about* runs stays in the repo: results
-  docs and analyses in `docs/`, research-log entries in `docs/research/`,
-  and per-run metadata (results.json, run config, final metrics) belongs
-  in the repo when a run completes. The output root must be a single,
-  easily-changed setting — `LUTHI_RUNS_ROOT` env var, default `E:\runs`
-  (implementation task in To-Do.md; until it lands, pass explicit
-  `--output_dir E:\runs\<name>` when launching). If the E: drive is not
-  mounted, fail loudly — never silently fall back to writing in the repo.
-  **Exception:** the active JEPA ladder keeps writing to the repo's
-  `runs/jepa_pilot/` until it completes — do not change experiment code
-  or move its outputs mid-ladder. All pre-JEPA run outputs were moved to
-  `E:\runs\` in the 2026-07-22 cleanup.
-- Research docs stay in `.docs/` — these are the proof-of-concept record, not implementation docs
-- Async is NOT needed here (unlike Sanctuary) — this is a model library, not a runtime
-- Use PyTorch idioms: `nn.Module`, `forward()`, proper parameter registration
-- Living weight state (momentum, excitability, set points, etc.) should be registered as buffers, not parameters — they are not trained by the optimizer
-- The PC self-modification updates happen inside `forward()` — this is what makes it "living"
-- No gradient flow through living layers — use `torch.no_grad()` for self-modification operations
-- Episode store operations should be detached from the autograd graph
+- Source code goes in the `luthi/` package.
+- **All tests live in `tests/`, and only in `tests/`** (Brian, 2026-07-22). Subfolders are fine. pyproject pins `testpaths = ["tests"]`, so a test saved elsewhere silently drops out of the suite. Enforced by `tests/test_tests_live_in_tests.py`. Red-team probes (`redteam/`) are not tests.
+- **Measurement freezes plasticity** (2026-10-19). `model.eval()` does NOT stop a living layer from self-modifying; there is no `self.training` gate. Any script that runs a model to *measure* it wraps the forwards in `freeze_plasticity(model)`. Enforced by `tests/test_scripts_freeze_plasticity.py`.
+- **New mechanisms ship opt-in and default bit-identical**, with a test pinning legacy bit-identity and characterization tests of the legacy behavior they address. No completed family's configuration may silently change meaning.
+- **Trained experiment artifacts are archived, never deleted** (Brian, 2026-07-16). When a `runs/` experiment finishes its active life, robocopy it to `E:\luthi_experiment_archive\YYYY-MM-DD_<experiment>\` and verify file counts before touching the original. Living-weight checkpoints are irreproducible; even control-arm checkpoints are evidence.
+- **Experiment outputs belong on the E: drive, not in the repo** (Brian, 2026-07-22). Data *about* runs (results, metadata, analyses) belongs in the repo. The output root is meant to be the `LUTHI_RUNS_ROOT` env var, default `E:\runs`, failing loudly if E: is not mounted. **Not yet implemented:** the JEPA driver still writes to the repo's gitignored `runs/jepa_pilot/` (audit 2026-10-19, C1).
+- Research docs from the proof-of-concept phase stay in `.docs/`.
+- Async is NOT needed here (unlike Sanctuary); this is a model library, not a runtime.
+- Use PyTorch idioms: `nn.Module`, `forward()`, proper parameter registration.
+- Living state is registered as buffers, not parameters; the optimizer never touches it. v2 checkpoint loading is `strict=True`, so **new persistent buffers break every existing checkpoint**. New lived state uses non-persistent buffers or plain attributes, persisted through `luthi/living_extra_state.py`.
+- The PC self-modification happens inside `forward()`, under `torch.no_grad()`. Episode store operations are detached from the graph.
 
 ## Multimodal Design Decisions
 
-10. **One living weight trunk for all modalities.** Audio, vision, text, and touch all flow through the same living blocks. The model's existence is shaped by all experience, not partitioned.
-11. **Modality-specific encoders project to d_model.** Each sense has its own encoder, but they all produce the same dimensional tokens for the shared trunk.
-12. **Modality embeddings distinguish input types.** A learned per-modality embedding (text=0, audio=1, vision=2, touch=3) is added to each token.
-13. **Cross-modal attention is free.** Concatenating modalities in a single sequence lets the attention layers attend across senses without extra machinery.
-14. **Backend-agnostic everything.** No CUDA, no vendor-specific ops. DirectML must work. C++ extensions use torch::Tensor API only.
-15. **No .item() in C++ on DirectML.** Returns tensors; Python calls .item(). Prevents deadlock.
+10. **One living weight trunk for all modalities.**
+11. **Modality-specific encoders project to d_model.**
+12. **Modality embeddings distinguish input types** (text=0, audio=1, vision=2, touch=3).
+13. **Cross-modal attention is free**: concatenated modalities in one sequence.
+14. **Backend-agnostic everything.** No CUDA-only or vendor-specific ops; ROCm (default) and DirectML must both work. C++ extensions use the torch::Tensor API only.
+15. **No .item() in C++ on DirectML.** Return tensors; Python calls .item().
 
 ## Research Log
 
-Every implementation session that involves iterative discovery — building something,
-finding it's wrong, revising, and arriving at a conclusion — must be documented in a
-dated research log entry. This is a research project; the wrong turns matter as much
-as the results.
+Every implementation session that involves iterative discovery — building something, finding it's wrong, revising, and arriving at a conclusion — must be documented in a dated research log entry. The wrong turns matter as much as the results.
 
-### Where
+**Where:** `docs/research/YYYY-MM-DD_short-topic.md`, one file per entry.
 
-All research log entries go in `docs/research/`. One Markdown file per entry, named
-by date and topic: `YYYY-MM-DD_short-topic.md` (e.g., `2026-05-16_nff-metric-restructuring.md`).
-This keeps research documentation out of the repo root and the main `docs/` folder.
+**When:** any time you build or restructure a test suite and find the original approach flawed; run an experiment whose results contradict expectations; make an architectural decision that weighed alternatives; debug a non-obvious issue through multiple steps; or produce results that will be cited. Routine work (a bug fix, a rename, a config change) needs no entry. If you had to *think*, write it down.
 
-### When to write an entry
-
-Any time you:
-- Build or restructure a test suite and discover the original approach was flawed
-- Run an experiment and the results contradict expectations
-- Make an architectural decision that involved weighing alternatives
-- Debug a non-obvious issue through multiple iterative steps
-- Produce results that will be cited in milestone docs or pilot results
-
-If the work was routine (a bug fix, a rename, a config change), skip the entry.
-If you had to *think*, write it down.
-
-### Structure
-
-Every entry follows this format:
+**Structure:**
 
 ```markdown
 # [Topic] — [Date]
@@ -175,39 +124,18 @@ What you set out to do and why.
 ## Process
 
 ### Step 1: [what you tried first]
-- What you did
-- What you found
-- Why it was wrong / insufficient / surprising
-
-### Step 2: [what you revised]
-- What you changed and why
-- What the revised approach showed
+- What you did, what you found, why it was wrong / insufficient / surprising
 
 ### Step N: [as many steps as it took]
-...
 
 ## Conclusion
 What the final state is. What it means for the project.
 
 ## Artifacts
-- Commits: [hash(es)]
-- Tests: [file paths]
-- Data: [results.json paths, run directories]
+- Commits, tests, data paths
 ```
 
-### Rules
-
-1. **Document as you go, not after.** Write each step while you're doing the work.
-   Reconstructing the reasoning chain from memory loses the important details.
-2. **Include the wrong turns.** A polished summary of the final answer is less
-   valuable than the chain of reasoning that got there. The missteps show *why*
-   the final approach is the right one.
-3. **Commit the log entry alongside the code.** When you commit a test restructuring,
-   the research log entry explaining the process goes in the same commit.
-4. **Link to artifacts.** Reference specific commits, test files, and results.json
-   paths so a reader can verify every claim.
-5. **Be honest about what you don't know.** If a step raised a question you didn't
-   resolve, say so. Open questions are better than false certainty.
+**Rules:** document as you go, not after; include the wrong turns; commit the entry alongside the code; link to artifacts so a reader can verify every claim; be honest about what you don't know.
 
 ## What NOT to Do
 
@@ -216,3 +144,5 @@ What the final state is. What it means for the project.
 - Do not store episodes per-weight — use layer-level snapshots
 - Do not add CfC integration until Phase 4
 - Do not use the numpy proof-of-concept code as a translation source
+- Do not score a living-only family as evidence about the living channel (standing rule 2)
+- Do not read a probe number without its input-embedding baseline (standing rule 3)

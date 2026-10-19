@@ -1,5 +1,7 @@
 # LuthiModel v2 — Implementation Plan
 
+> **Status (2026-10-19): historical record of the May build plan.** The v2 substrate it planned is built and is the primary substrate. For what the code computes today, including the batch-mean form of the write and the block output store this plan carried over from v1 as "unchanged", see `docs/ARCHITECTURE.md`.
+
 > Authored by: Claude Opus 4.6 (Planner)
 > Date: 2026-05-08
 > Input: `docs/LUTHI_V2_PREDICTIVE_CODING_BRIEF.md` (4.7 research, two drafts merged)

@@ -1,5 +1,29 @@
 # LuthiModel — Architecture & Development Plan
 
+> **Status (2026-10-19).** This is the long-range plan, written mostly in
+> May (the LM era). Read it as direction, not as a description of the code.
+> For what the code computes today, see `docs/ARCHITECTURE.md`. For what is
+> established, see `docs/KEY_FINDINGS.md`. The current program is
+> `docs/research/2026-10-19_the-living-channel-program.md`. Four statements
+> below are superseded:
+>
+> - *"Naturally bounded (accurate predictions = zero update)"* (Phase 3G).
+>   Under the production trust regime the update clamp is saturated, so the
+>   legacy write is sign-based and does not vanish as predictions improve.
+>   And it is computed from batch means: content-blind, accumulating
+>   ~rank-1.
+> - *"v2 PC reaches lower val loss than vanilla-transformer baseline"*
+>   (Phase 3G). That is the LM-era M5 result, real under its objective and
+>   unbound since the JEPA move. No JEPA-era result currently shows the
+>   living channel doing functional work (KF1, KF7).
+> - *DirectML as the development backend* (Key Constraints). ROCm is the
+>   default since 2026-08-21; DirectML remains supported.
+> - *"Existing checkpoint format must remain compatible (encrypted
+>   .luthi)"* and *"Self-governance"* (Key Constraints). The JEPA runner
+>   writes plain torch checkpoints; the encrypted format is the
+>   Sanctuary/wake path. Self-governance is design intent, not
+>   implemented.
+
 ## Philosophy
 
 Living weights create temporal existence: the act of processing changes the

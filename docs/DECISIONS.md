@@ -160,7 +160,7 @@ before any "working" verdict is trustworthy in either direction.
 
 ---
 
-> **DECISION (2026-08-14, Opus 5 â€” NOT Brian's ruling; recorded for his
+> **DECISION (2026-08-14, Opus 5 — NOT Brian's ruling; recorded for his
 > override and Fable's review): VISReg's shape term will be normalized by
 > N, with lambda re-derived, at the next family's registration.**
 >
@@ -171,7 +171,7 @@ before any "working" verdict is trustworthy in either direction.
 > six orders of magnitude larger than the predictive term, and the convex
 > Eq. 9 mix at the paper's lambda = 0.6 then buries l_pred. Inside the
 > regularizer the nominal 1.0/1.0/1.0 weighting resolved to ~95% shape,
-> ~5% scale, **~0.55% center** â€” and center is the anti-offset term while
+> ~5% scale, **~0.55% center** — and center is the anti-offset term while
 > the observed disease was a soloist.
 >
 > The implementation is faithful to the paper. What was never checked is
@@ -182,7 +182,7 @@ before any "working" verdict is trustworthy in either direction.
 > **Decision:** `VISReg(shape_normalize=True)` for the next family, which
 > makes lambda a scale-free mixing weight and removes the batch-size dose
 > distortion the 2026-08-11 smoke measured directly (l_shape 1,461,016 at
-> batch 32 vs 693,472 at batch 16 â€” pure N-scaling). Shipped **opt-in,
+> batch 32 vs 693,472 at batch 16 — pure N-scaling). Shipped **opt-in,
 > default False**, per this ladder's standing discipline that no completed
 > family's configuration may silently change meaning.
 >
@@ -198,11 +198,11 @@ before any "working" verdict is trustworthy in either direction.
 
 ---
 
-> **DECISION (2026-08-14, Opus 5 â€” NOT Brian's ruling; recorded for his
+> **DECISION (2026-08-14, Opus 5 — NOT Brian's ruling; recorded for his
 > override and Fable's review): `adaptive_episodes` ON for the next
 > family.**
 >
-> Finding (audit B4): the 768x8 family â€” the ruled-scale family â€” ran with
+> Finding (audit B4): the 768x8 family — the ruled-scale family — ran with
 > `adaptive_episodes=False`, i.e. the pre-2026-07-27 episode-admission
 > defect that fix exists to correct. Measured on seed 97 over all 54,000
 > steps: **blocks 0-4 stored zero episodes and fired zero recalls**; only
@@ -211,8 +211,8 @@ before any "working" verdict is trustworthy in either direction.
 >
 > This compounds with audit A9: `consolidation_fires` counted triggers,
 > not consolidations, so those five blocks each logged ~1,000 consolidation
-> fires having replayed nothing. Two-tier memory â€” the v2 architecture's
-> distinguishing feature â€” was inert in five of eight blocks for the
+> fires having replayed nothing. Two-tier memory — the v2 architecture's
+> distinguishing feature — was inert in five of eight blocks for the
 > entire ruled-scale run, and every counter read healthy.
 >
 > **Decision:** the next family sets `adaptive_episodes=True` (plus the
@@ -418,3 +418,35 @@ before any "working" verdict is trustworthy in either direction.
 > earn its keep if contexts grow. Until the memory data exists the
 > default stays OFF and the choice stays recorded in the device
 > fingerprint either way.
+
+---
+
+> **RULING (2026-10-19, Brian): correct the program's direction.**
+>
+> Brian, after the 2026-10-19 audit: *"I would like for you to build and
+> implement fixes to problems you find, rewrite any and all supporting
+> documentation, and correct the narrow direction we let the rigor take."*
+>
+> **What was done under it (Opus 5.5, same day):** the fixes and instruments
+> itemized in `docs/audits/2026-10-19_living-channel-audit.md`; the governing
+> docs rewritten (README, ARCHITECTURE, KEY_FINDINGS, KNOWN_INCOMPLETE,
+> CLAUDE.md, To-Do state header, PLAN status, the protocol's revision note);
+> the program re-aimed in `docs/research/2026-10-19_the-living-channel-program.md`.
+>
+> **Operational sequence proposed for Brian's ratification** (the
+> registrations themselves are in the registry, section "E1–E5"; DECISIONS
+> holds only the order):
+>
+> 1. **E2, then E1, then E4** — on existing E: checkpoints, inference only.
+>    No training budget needed; the 7800 XT runs each in minutes to an hour.
+>    E2 first because if the production living change is NOT rank-1, E1's and
+>    E3's predictions are revised before either runs.
+> 2. **E3, the LC-768 decomposition family** (stages 60–64, seeds 46/95/97,
+>    ROCm), when compute allows: ~55 GPU-hours. `lc768_dead` first — it is the
+>    obligation the registry has carried since 07-24.
+> 3. **E5 rungs** (deviation context, adaptive episodes, VISReg's
+>    shape-normalized dose, the ordered curriculum) only after E3 reads.
+>
+> **Parked, not cancelled:** the 2026-08-14 Opus 5 decisions (VISReg shape
+> normalization, `adaptive_episodes` on) — behind E3, so the LC family stays
+> attributable.

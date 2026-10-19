@@ -1238,3 +1238,158 @@ is the entire point. Honor them after.
 >
 > Supporting detail: `2026-07-25_greek-window-schedule-by-seed.md`
 > (method, per-seed serving schedules, addenda 1–5).
+
+---
+
+> # 2026-10-19 — RE-READING NOTICE, and REGISTRATIONS E1–E5 (the living-channel program)
+>
+> **Drafted by Claude Opus 5.5 under Brian's instruction of 2026-10-19**
+> ("correct the narrow direction we let the rigor take"). **Ratification is
+> Brian's.** Every prediction and threshold below is frozen as of the commit
+> that adds it — written before any production checkpoint was read with the
+> instruments it names. Program rationale:
+> `2026-10-19_the-living-channel-program.md`; the diagnosis and its
+> measurements: `2026-10-19_the-living-write-is-mean-field.md`; itemized
+> audit: `docs/audits/2026-10-19_living-channel-audit.md`.
+>
+> ## Re-reading notice (no criterion amended; what the evidence rests on is)
+>
+> Two mechanism facts, established 2026-10-19 by code reading and CPU smoke
+> measurement, bear on every living-vs-dead verdict above:
+>
+> 1. **The block output store** (`luthi/episode_store.py`) is present in every
+>    living arm and absent in every dead arm. In a batched trunk it recalls on
+>    ~every forward and replaces each block's output with
+>    `0.7 * output + 0.3 * (stored batch-mean output)`, in training AND in
+>    frozen eval. Every living-vs-dead comparison in this registry therefore
+>    compared two mechanisms (the PC rule and this store) against neither.
+> 2. **The mean-field write** (`pc_ops.py`) is an outer product of batch
+>    means: blind to every token-level difference in a batch, and
+>    accumulating ~rank-1 along the batch-mean output.
+>
+> Consequences, recorded here rather than by editing the verdicts above:
+>
+> - **KF2's kill stands** — it was a null for the living arm, and the store
+>   confound cannot convert a null into the claim it killed. Its surviving
+>   sentence ("self-modification is not more costly than equivalent static
+>   capacity") now reads "the living arm, store included, was not more
+>   costly…".
+> - **KF7 is SUSPENDED pending E3** (proposed status; ratification is
+>   Brian's — audit item B2). KF7's structure-axis gap was read on NMSE at
+>   2026-07-21, before the BN head was removed (07-28) and the target was
+>   detached (07-28/29) — i.e. while anti-collapse was disconnected and the
+>   loss could shrink its own target — and before NMSE was shown to reward
+>   degeneracy (07-31). Its probe axis disagreed on raw top-1, the probe's
+>   input baseline was never measured (B7), and the living arm carried the
+>   store. The pre-registered kill condition was never tripped; the
+>   measurement the finding rests on is no longer trusted.
+> - **The dead control obligation (2026-07-24 amendment; dead-d8 per the
+>   07-27 ruling) is discharged by E3's `lc768_dead`,** not cancelled. Until
+>   E3 completes, no claim rests on depth or on the living channel.
+>
+> ## E1 — inference-time adaptation on existing checkpoints (no training)
+>
+> **Instrument:** `scripts/adaptation_eval.py` (`luthi/v2/adaptation_eval.py`).
+> Per held-out document (consecutive held-out windows; read 4, score 2;
+> 32 documents spread over the holdout tail): A = score frozen; B = read own
+> head with plasticity ON (B=1, eval mode, rate_scale as loaded), score
+> frozen; C = read another document's head (shift = 16), score frozen.
+> Exact restoration between conditions.
+>
+> **Applies to:** every completed checkpoint on E: from the v3/v4/v5 512d
+> families, the depth-8 probes, and the 768x8 family (seed 97 final), plus
+> `dead_4x` checkpoints as positive controls.
+>
+> - **Positive control:** every dead checkpoint: `summary.exact_null` true.
+>   Otherwise the harness is defective and no living read counts.
+> - **Prediction (from the mean-field diagnosis):** no legacy-rule checkpoint
+>   shows document-specific adaptation — `nmse.B_minus_C.mean < 0` with
+>   `t <= -2` does NOT occur.
+> - **Kill condition for the diagnosis:** any legacy checkpoint with
+>   `nmse.B_minus_C.mean < 0`, `t <= -2`, and
+>   `target_eff_rank.B_minus_C.mean > -0.05 * target_eff_rank.A_mean`. Then
+>   "the mean-field write cannot produce document-specific change" is false
+>   as stated and is revised in public.
+> - **Reported, never credited:** `C_minus_A` (generic drift).
+>
+> ## E2 — the living write and the block store, read off existing checkpoints
+>
+> **Instrument:** `scripts/living_write_probe.py`.
+>
+> - **Predictions for every legacy living block of the 768x8 family:**
+>   `living_change.top_share >= 0.9` and `out_align >= 0.9`;
+>   training-batch `batch_mean_stationarity >= 0.99`; block store
+>   `recall_duty >= 0.9` and `blend_share > 0.05`.
+> - **Descriptive only:** `write_diversity` (the CPU smoke showed shared
+>   output sides with varying input sides; a cosine threshold would test the
+>   wrong thing).
+> - **Kill condition for the diagnosis at scale:** any living block missing
+>   any prediction. Each miss is entered here as a finding against the
+>   diagnosis, and E3's predictions are revised BEFORE E3 runs.
+>
+> ## E3 — the LC-768 decomposition family (training)
+>
+> **Arms** (driver stages 60–64; seeds 46, 95, 97; ROCm; one epoch of the
+> 1051-file corpus): `lc768_dead`, `lc768_living`, `lc768_storeoff`,
+> `lc768_cov`, `lc768_dead_x4`. Each is `probe_768_visreg`'s configuration
+> plus B6's gradient clip (5.0e5) in every arm; the matching is pinned by
+> `tests/test_living_channel_program_arms.py`. Not poolable with the
+> 2026-08-11 family.
+>
+> **Admissibility:** completed runs only (2026-07-15 ratification). "k of 3"
+> counts admissible seeds; a killed seed is reported, never counted.
+>
+> **Reads** (all with plasticity frozen except E1's): held-out NMSE
+> (`heldout_latent_prediction`, 50 batches) read WITH the final pooled
+> effective rank; `probe_standardized` minus
+> `probe_standardized_embedding_baseline`; per-block offset dominance on
+> held-out real text (blocks 0–6); E1 and E2 on each final checkpoint.
+> Arm comparisons use this registry's 1σ rule (pooled per-condition sd).
+>
+> - **P1 (the store):** mean offset dominance over blocks 0–6 is lower in
+>   `lc768_storeoff` than `lc768_living` by >= 0.1 in >= 2 of 3 seeds.
+> - **P2 (the mean-field rule):** `lc768_storeoff` ties `lc768_dead` (within
+>   1σ) on NMSE AND on probe-minus-embedding.
+> - **P3 (the covariance rule):** `lc768_cov` meets E1's adaptation criterion
+>   in >= 2 of 3 seeds and `lc768_storeoff` in none; `lc768_cov`'s
+>   living-change `top_share < 0.5` in every block.
+> - **P4 (a nonlinear MLP):** `lc768_dead_x4` has lower mean offset dominance
+>   over blocks 0–6 than `lc768_dead` in >= 2 of 3 seeds, and a positive
+>   probe-minus-embedding margin.
+>
+> **Kill conditions:**
+>
+> - `lc768_cov` fails P3 → the covariance rule does not rescue the
+>   inference-time claim at the ruled scale. Recorded as a null with the
+>   power caveat (3 seeds x 32 documents).
+> - `lc768_storeoff` AND `lc768_cov` both tie `lc768_dead` on both capability
+>   axes AND neither meets E1's criterion → "the living channel does
+>   functional work" (KF1's living half) has no support at the ruled scale,
+>   and the README's near-term goal is recorded as unmet.
+> - P2 fails in the living arm's favor (storeoff beats dead by > 1σ on both
+>   axes) → the mean-field rule does more than the diagnosis allows; the
+>   diagnosis is revised.
+>
+> ## E4 — does the next-token probe see the trunk?
+>
+> **Instrument:** `scripts/per_block_probe.py` (now under
+> `freeze_plasticity`) on the 768x8 family's final checkpoints, at
+> `--offset 1`, `--offset -1`, `--offset 0`, and `--offset 1 --causal`.
+>
+> - **Prediction:** at offsets +1 and -1 (bidirectional), no block's top-1
+>   exceeds the embedding row's in any seed.
+> - **If confirmed:** B7 closes as "the next-token probe reads the residual's
+>   copy of the input, not trunk computation"; it is retired as a capability
+>   axis (kept as a health gauge), and a replacement probe for continuations
+>   the encoder could not see gets its own registration.
+> - **If refuted** (some block beats the embedding by more than the
+>   shuffled-floor spread): the trunk carries linearly decodable neighbor
+>   information beyond the bigram baseline; B7 closes the other way, and A7's
+>   "carrier" reading gains the support it lacked.
+>
+> ## E5 — conditional rungs (not yet registered)
+>
+> `context_mode="deviation"`, `adaptive_episodes` (08-14 B4), the
+> shape-normalized VISReg dose (08-14 B1), and the ordered-curriculum family
+> each get their own registration, and only after E3 shows which living
+> mechanism, if any, carries signal.

@@ -1,124 +1,82 @@
 # LuthiModel — To-Do
 
-> ## STATE OF THE BUILD - 2026-07-27 (Fable 5)
+> ## STATE OF THE BUILD — 2026-10-19 (Opus 5.5, under Brian's 2026-10-19 instruction)
 >
-> **The queue is EMPTY and every scheduled run is complete.** Nothing is
-> training. `runs/jepa_pilot/queue.json` still lists stages 7/9/10/11, all
-> of which are done (drivers skip completed seeds, so leaving them is
-> harmless).
+> **Nothing is training.** Experiments have been paused since ~2026-08-21
+> (hardware budget). The last training run was the 512 VISReg full-length
+> control (08-15). The last living-vs-dead comparison was 2026-07-21.
 >
-> ### What finished
+> **What changed today** (audit `docs/audits/2026-10-19_living-channel-audit.md`):
+> two mechanism facts were established. The living write is an outer product
+> of batch means: it is content-blind and accumulates ~rank-1. Every living
+> block blends a stored batch-mean output into nearly every forward, and the
+> dead control has no such store. The program was re-aimed at the question
+> the project exists for (`docs/research/2026-10-19_the-living-channel-program.md`).
+> Opt-in fixes and the missing instruments are built and tested. KF7 is
+> proposed SUSPENDED.
 >
-> - **v5 / relative-trust family, n=5** (seeds 42-46, `living_v5_4x_d4@512`)
->   plus an identical-order **robustness rerun of seed44** (stage 11, arm
->   `living_v5_4x_d4_rerun`). All clean, no kills.
-> - **RUN-7 verdict is ENTERED and ratified** in
->   `docs/research/2026-07-15_falsification-preregistration.md`. Headline:
->   the registered prediction was WRONG - there was no reaction to mark.
->   v4's trust events were a property of the SATURATED epsilon trust regime,
->   not of the data or its order; relative trust reads the same page
->   calmly, and the non-event replicated across a bit-diverged rerun.
-> - **Second finding: `precision_spread` is a chaotic observable.** Two runs
->   of identical config and data order diverge 70.8% late in spread while
->   loss holds within 2.5% and outcomes match to 0.5%. Trust claims need
->   ensemble statistics; single-run spread comparisons carry no weight.
-> - **Capability picture (analysis, no new runs):** v5 vs v4 is a wash on
->   every headline measure (all paired |t| < 1.5, n=5). Living vs dead is
->   split: dead wins raw `l_pred` (largely a representation-scale artifact -
->   living encoder std ~0.28 vs dead ~0.20), living wins **NMSE by 26%**
->   (3/3 seeds, t=-17.4), probe is ~1% apart. Effective rank is
->   indistinguishable (living 349-370, dead 341-382).
+> ### Next, in order (the first three need NO training)
 >
-> ### Where the details live
+> Run from the ROCm environment (`C:\Dev\rocm-probe\Scripts\python.exe`).
+> `<run>` is a completed jepa_pilot run dir on E:. Each writes its JSON next
+> to the run and never modifies the checkpoint.
 >
-> - Registry (questions, predictions, data, verdicts):
->   `docs/research/2026-07-15_falsification-preregistration.md`
-> - Operational decisions (what to run, in what order, what to feed it):
->   `docs/DECISIONS.md` - Brian's ruling 2026-07-27 that these do NOT
->   belong in the registry
-> - Canary method, per-seed serving schedules, addenda 1-5:
->   `docs/research/2026-07-25_greek-window-schedule-by-seed.md`
-> - v6 mechanism design (homeostatic activity bands, floors AND ceilings):
->   `docs/research/2026-07-26_homeostatic-activity-bands-design.md`
+> 1. **E2 — what the living channel writes.** For each living run of the
+>    768x8 family (start with `probe_768_visreg_768d_seed97`), then the
+>    512d v5 seeds:
+>    `python scripts/living_write_probe.py --run-dir <run>`
+>    Frozen predictions (registry E2): `top_share >= 0.9` and
+>    `out_align >= 0.9` in every living block; training-batch stationarity
+>    >= 0.99; store `recall_duty >= 0.9` with `blend_share > 0.05`. Any miss
+>    is a finding against the diagnosis; record it before running E3.
+> 2. **E1 — does reading change what comes next?** Same runs, plus `dead_4x`
+>    runs as positive controls (they must report `exact_null: true`):
+>    `python scripts/adaptation_eval.py --run-dir <run> --docs 32 --read 4 --score 2`
+>    The number that counts is `nmse.B_minus_C` (document-specific change).
+> 3. **E4 — does the probe see the trunk?** On the three 768x8 seeds:
+>    `python scripts/per_block_probe.py --run-dir <run>` (offset 1), then
+>    `--offset -1`, `--offset 0`, and `--causal`. Compare every block against
+>    the `emb` row.
+> 4. **E3 — the LC-768 decomposition family**, when compute allows (~55 GPU-h
+>    on ROCm):
+>    `python scripts/jepa_pilot_driver.py --stage 60 --seeds 46,95,97 --epochs 1`
+>    (dead control first, the obligation the registry has carried since
+>    07-24), then stages 61 (living), 62 (store off), 63 (covariance), and
+>    64 (dead, expansion 4). Arms and frozen predictions: registry E3.
+> 5. **E5 rungs** (deviation context, adaptive episodes, VISReg's
+>    shape-normalized dose, the ordered curriculum) only after E3 reads.
 >
-> ### Next, in ruled order (see docs/DECISIONS.md)
+> ### Open decisions for Brian (audit section B)
 >
-> 1. **dead-v5-matched control** - a REGISTERED OBLIGATION; no claim may
->    rest on depth until it runs. Build-time question to answer first: a
->    dead-FFN arm has no living ledger, so `relative_trust` may have no
->    referent - if the dead-v5 and dead-v4 configs are identical, ONE run
->    serves both families and the label must say so.
-> 2. **v6 at current scale** (512d, d4): the dormant-machinery bundle
->    (sparse gating / iPC / attractor), now with the homeostatic band as
->    the sparse gate's key. The gate freezes collapsed rows without it.
-> 3. **Scale-up: 768d x 8 blocks, bundled**, with the corpus growing to
->    ~113M tokens (data ~ width^2). PG11130 leaves the curriculum;
->    medical/neuroscience and literature come in.
-> 4. **Ordered-corpus family** (curriculum-as-pedagogy) - own registration;
->    kill detectors are calibrated on shuffled statistics and will need
->    recalibration or documented suspension for ordered arms.
+> Ratify E1–E4 and the standing rules; KF7's status; the covariance rule stays
+> opt-in until E3; whether to scrub `.claude/settings.local.json` from history
+> (needs a force-push); retiring the next-token probe as a capability axis if E4
+> confirms; parking the 08-14 decisions behind E3.
 >
-> ### Two open capability leads (2026-07-27, not yet registered)
+> ### Engineering backlog (audit section C)
 >
-> - **The prediction task may be too easy.** `context_fraction = 0.8` means
->   the model reads 102 of 128 tokens and predicts the last 26; the
->   predictor sits at trivial-cosine **0.9975** (near-copy). Field practice
->   masks far more (MAE 75%). Sweeping context_fraction down to ~0.4-0.5 is
->   a one-line change that raises predictive pressure; watch for
->   destabilization at aggressive settings.
-> - **Nothing measures adaptation.** Every metric is a frozen snapshot, yet
->   living weights change while reading. Proposed eval (no training runs,
->   checkpoints only): split a held-out document, read the first half with
->   self-modification ON vs OFF, score the second half. Dead arms must show
->   exactly zero difference by construction. B>A demonstrates the
->   architecture's core claim; B~=A points at the machinery; B<A says
->   adaptation needs bounding.
->
-> ### Instruments (new this weekend)
->
-> - `scripts/harvest_ledgers.py` - read-only harvest of dimension-level
->   trust ledgers from rolling checkpoints (copies each aside, extracts
->   `blocks.N.living_ffn.precision`, writes .pt + .json twins to
->   `runs/jepa_pilot/ledger_harvest_<run>/`). Run it alongside training;
->   it never touches the run's own files.
-> - `scripts/canary_window_replay.py` - exact loader replay: finds a
->   corpus probe's servable sequences and computes the serving step for
->   every seed. Validated against the documented v4 seed44 step-58650
->   attribution.
-> - `scripts/analyze_event_locked.py` - peri-event windows around servings
->   with isolation filtering.
-> - **LuthiScope v0.1.0 is released** (GitHub, single-file Windows exe)
->   with drag-to-pan, a universal metric catalog, event marks (derived
->   from the log; exposures are NOT events), compare-stream overlay,
->   event-locked view, and a trust-ledger window fed by the harvester.
->
-> ### Hazards learned the hard way
->
-> - **`resume_queue.py` reads `queue.json` ONCE at supervisor start.**
->   Editing the queue mid-run does nothing until a fresh supervisor
->   starts - re-trigger the watchdog (`schtasks /run /tn "LuthiModel
->   Queue Watchdog"`). This silently skipped the stage-11 rerun.
-> - **Never edit `luthi/` while a family is queued.** The supervisor
->   imports fresh code for every new run, so a mid-family edit would give
->   the back half different code than the front half.
-> - Run data lives at `C:\Dev\LuthiModel\runs`, mirrored to
->   `D:\LuthiModel_runs_current\` (Archive860); the SSK archive is E:.
->   A USB drive plugged in first can steal E: and break `E:\data` paths.
+> `LUTHI_RUNS_ROOT` (still unimplemented). A loud guard so Sanctuary never
+> presents a pure-JEPA checkpoint's generated text as speech. Measure the
+> block-store counters' host-sync cost at 768. Delete the superseded branch
+> `docs/visreg-readme-sync`.
 
 > ## ⚠️ KNOWN INCOMPLETE — read first
 >
-> Things that exist in the codebase but are NOT functionally complete.
-> See `docs/KNOWN_INCOMPLETE.md` for the full list with safety nets.
->
-> - **Triton kernel for `pc_self_modify`** (`luthi/v2/pc_ops_triton.py`).
->   Kernel body is a no-op `pass`. Entry point raises
->   `NotImplementedError`. Cannot be validated without ROCm-on-Linux or
->   CUDA. Sparse PC gating runs on the Python path only until this lands.
->   The file has a large ASCII banner; the bit-identity test is
->   `xfail strict` to catch any unvalidated fill-in. **Do not assume the
->   Triton path is hot.**
+> Things that exist but are not functionally complete (full list, with safety
+> nets, in `docs/KNOWN_INCOMPLETE.md`): the Triton kernel (skeleton); C++
+> `pc_ops` on ROCm (doesn't build; Python reference runs, recorded); the m9
+> action layer (not on the training path); `generate()` on pure-JEPA
+> checkpoints (untrained output head); layer-level episode memory (inert in the
+> configuration that runs).
 
 ## ⭐ CRITICAL PATH TO THE FIRST FULL-SCALE TRAINING RUN (recorded 2026-07-10)
+
+> **HISTORICAL (banner added 2026-10-19).** This section is the 2026-07-10
+> plan for "the first full-scale run". Its premise was a capability run
+> preceded by a de-risking pilot. The current program puts the living-channel
+> question ahead of any full-scale run (see the state header above). Items
+> are kept as written, for the record.
+
 
 > From the 2026-07-06 readiness audit (Opus 4.8) + Brian's ruling: **the first
 > full-scale run must be JEPA** (multimodal joint-embedding predictive; not a
@@ -743,3 +701,115 @@ sparse spiking. ~71 GB model footprint, ~42 GB free for growth.
 - [ ] Assess Sanctuary codebase for C++ optimization opportunities
 - [ ] Profile Sanctuary's cognitive loop to identify bottlenecks
 - [ ] Implement optimizations where they make sense
+
+
+---
+
+## Archived state notes
+
+Earlier STATE OF THE BUILD headers, moved here verbatim when superseded.
+
+> ## STATE OF THE BUILD - 2026-07-27 (Fable 5)
+>
+> **The queue is EMPTY and every scheduled run is complete.** Nothing is
+> training. `runs/jepa_pilot/queue.json` still lists stages 7/9/10/11, all
+> of which are done (drivers skip completed seeds, so leaving them is
+> harmless).
+>
+> ### What finished
+>
+> - **v5 / relative-trust family, n=5** (seeds 42-46, `living_v5_4x_d4@512`)
+>   plus an identical-order **robustness rerun of seed44** (stage 11, arm
+>   `living_v5_4x_d4_rerun`). All clean, no kills.
+> - **RUN-7 verdict is ENTERED and ratified** in
+>   `docs/research/2026-07-15_falsification-preregistration.md`. Headline:
+>   the registered prediction was WRONG - there was no reaction to mark.
+>   v4's trust events were a property of the SATURATED epsilon trust regime,
+>   not of the data or its order; relative trust reads the same page
+>   calmly, and the non-event replicated across a bit-diverged rerun.
+> - **Second finding: `precision_spread` is a chaotic observable.** Two runs
+>   of identical config and data order diverge 70.8% late in spread while
+>   loss holds within 2.5% and outcomes match to 0.5%. Trust claims need
+>   ensemble statistics; single-run spread comparisons carry no weight.
+> - **Capability picture (analysis, no new runs):** v5 vs v4 is a wash on
+>   every headline measure (all paired |t| < 1.5, n=5). Living vs dead is
+>   split: dead wins raw `l_pred` (largely a representation-scale artifact -
+>   living encoder std ~0.28 vs dead ~0.20), living wins **NMSE by 26%**
+>   (3/3 seeds, t=-17.4), probe is ~1% apart. Effective rank is
+>   indistinguishable (living 349-370, dead 341-382).
+>
+> ### Where the details live
+>
+> - Registry (questions, predictions, data, verdicts):
+>   `docs/research/2026-07-15_falsification-preregistration.md`
+> - Operational decisions (what to run, in what order, what to feed it):
+>   `docs/DECISIONS.md` - Brian's ruling 2026-07-27 that these do NOT
+>   belong in the registry
+> - Canary method, per-seed serving schedules, addenda 1-5:
+>   `docs/research/2026-07-25_greek-window-schedule-by-seed.md`
+> - v6 mechanism design (homeostatic activity bands, floors AND ceilings):
+>   `docs/research/2026-07-26_homeostatic-activity-bands-design.md`
+>
+> ### Next, in ruled order (see docs/DECISIONS.md)
+>
+> 1. **dead-v5-matched control** - a REGISTERED OBLIGATION; no claim may
+>    rest on depth until it runs. Build-time question to answer first: a
+>    dead-FFN arm has no living ledger, so `relative_trust` may have no
+>    referent - if the dead-v5 and dead-v4 configs are identical, ONE run
+>    serves both families and the label must say so.
+> 2. **v6 at current scale** (512d, d4): the dormant-machinery bundle
+>    (sparse gating / iPC / attractor), now with the homeostatic band as
+>    the sparse gate's key. The gate freezes collapsed rows without it.
+> 3. **Scale-up: 768d x 8 blocks, bundled**, with the corpus growing to
+>    ~113M tokens (data ~ width^2). PG11130 leaves the curriculum;
+>    medical/neuroscience and literature come in.
+> 4. **Ordered-corpus family** (curriculum-as-pedagogy) - own registration;
+>    kill detectors are calibrated on shuffled statistics and will need
+>    recalibration or documented suspension for ordered arms.
+>
+> ### Two open capability leads (2026-07-27, not yet registered)
+>
+> - **The prediction task may be too easy.** `context_fraction = 0.8` means
+>   the model reads 102 of 128 tokens and predicts the last 26; the
+>   predictor sits at trivial-cosine **0.9975** (near-copy). Field practice
+>   masks far more (MAE 75%). Sweeping context_fraction down to ~0.4-0.5 is
+>   a one-line change that raises predictive pressure; watch for
+>   destabilization at aggressive settings.
+> - **Nothing measures adaptation.** Every metric is a frozen snapshot, yet
+>   living weights change while reading. Proposed eval (no training runs,
+>   checkpoints only): split a held-out document, read the first half with
+>   self-modification ON vs OFF, score the second half. Dead arms must show
+>   exactly zero difference by construction. B>A demonstrates the
+>   architecture's core claim; B~=A points at the machinery; B<A says
+>   adaptation needs bounding.
+>
+> ### Instruments (new this weekend)
+>
+> - `scripts/harvest_ledgers.py` - read-only harvest of dimension-level
+>   trust ledgers from rolling checkpoints (copies each aside, extracts
+>   `blocks.N.living_ffn.precision`, writes .pt + .json twins to
+>   `runs/jepa_pilot/ledger_harvest_<run>/`). Run it alongside training;
+>   it never touches the run's own files.
+> - `scripts/canary_window_replay.py` - exact loader replay: finds a
+>   corpus probe's servable sequences and computes the serving step for
+>   every seed. Validated against the documented v4 seed44 step-58650
+>   attribution.
+> - `scripts/analyze_event_locked.py` - peri-event windows around servings
+>   with isolation filtering.
+> - **LuthiScope v0.1.0 is released** (GitHub, single-file Windows exe)
+>   with drag-to-pan, a universal metric catalog, event marks (derived
+>   from the log; exposures are NOT events), compare-stream overlay,
+>   event-locked view, and a trust-ledger window fed by the harvester.
+>
+> ### Hazards learned the hard way
+>
+> - **`resume_queue.py` reads `queue.json` ONCE at supervisor start.**
+>   Editing the queue mid-run does nothing until a fresh supervisor
+>   starts - re-trigger the watchdog (`schtasks /run /tn "LuthiModel
+>   Queue Watchdog"`). This silently skipped the stage-11 rerun.
+> - **Never edit `luthi/` while a family is queued.** The supervisor
+>   imports fresh code for every new run, so a mid-family edit would give
+>   the back half different code than the front half.
+> - Run data lives at `C:\Dev\LuthiModel\runs`, mirrored to
+>   `D:\LuthiModel_runs_current\` (Archive860); the SSK archive is E:.
+>   A USB drive plugged in first can steal E: and break `E:\data` paths.

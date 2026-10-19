@@ -17,6 +17,25 @@ resolve any dead `runs/` path there. Entries archived off-repo are listed in
 
 *(newest first)*
 
+- [2026-10-19 — The living write is mean-field, and the block store blends a constant](2026-10-19_the-living-write-is-mean-field.md)
+  — The capacity question asked of the living mechanism itself. The legacy
+  write is an outer product of batch means: content-blind, accumulating
+  ~rank-1 along the mean output. Every living block's output store blends a
+  stored batch-mean output into nearly every forward, and the dead control
+  has no such store. The opt-in covariance rule (and the runaway that taught
+  its cap), the attractor-replay trust bug, and the new instruments run end to
+  end on CPU smoke arms.
+
+- [2026-10-19 — The living-channel program](2026-10-19_the-living-channel-program.md)
+  — Where the rigor went after July, five standing rules to keep it on the
+  claim, and the program E1–E5 in order of cost, with frozen predictions.
+  E1, E2 and E4 need no training.
+
+> **Index gap.** Entries dated 2026-05-20 through 2026-10-18 were never added
+> to this list. Browse the directory by filename date; the registry
+> (`2026-07-15_falsification-preregistration.md`) and `docs/DECISIONS.md`
+> carry the verdicts and rulings from that period.
+
 - [2026-05-19 — Corpus audit against Gemini's suggestions](2026-05-19_corpus-audit-gemini-suggestions.md)
   — Systematic check of the curriculum corpus against Gemini's
   inclusion/exclusion guidance. Findings: narrative-heavy content

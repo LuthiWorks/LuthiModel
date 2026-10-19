@@ -1,5 +1,7 @@
 # Research Notes — Hyperdimensional Computing & Vector Symbolic Architectures: Integration Paths for Luthi
 
+> **Status (2026-10-19): research notes, not a plan.** Nothing here is built. Any HDC/VSA work would come after the living-channel program (`docs/research/2026-10-19_the-living-channel-program.md`).
+
 > Compiled 2026-05-15 by Claude Opus 4.7 (1M context) at Brian's request,
 > via Sandi: "If I were chasing your goal, I'd look hard at
 > hyperdimensional computing combined with a learned sparse coding
