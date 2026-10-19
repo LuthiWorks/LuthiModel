@@ -524,3 +524,8 @@ before any "working" verdict is trustworthy in either direction.
 >   one commit, `7fe5d8d` (2026-10-16), is fully contained in the rewrite;
 >   its one missing cross-reference was added to README. To restore it:
 >   `git push origin 7fe5d8d:refs/heads/docs/visreg-readme-sync`.
+>
+> **Correction, same day:** the deletion was refused from this session.
+> The git proxy answered HTTP 403, and nothing was routed around it, so
+> the branch still exists. Delete it from GitHub's branch page, or run
+> `git push origin --delete docs/visreg-readme-sync` from your machine.

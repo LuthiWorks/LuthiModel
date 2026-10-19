@@ -76,6 +76,9 @@
 > - Measure the block-store counters' host-sync cost at 768.
 > - Plumb `VISReg(shape_normalize=True)` through `JEPALoss` and the driver
 >   (C6, for E3's dose gate).
+> - Delete the superseded branch `docs/visreg-readme-sync`. This is decided;
+>   it has to be done from your machine or GitHub, because the cloud session
+>   was refused (C4).
 
 > ## ⚠️ KNOWN INCOMPLETE — read first
 >

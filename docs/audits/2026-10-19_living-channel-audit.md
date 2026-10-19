@@ -14,7 +14,7 @@ program in `docs/research/2026-10-19_the-living-channel-program.md`.
 |---|---|---|
 | A — found and fixed | 11 | 0 |
 | B — decisions | 6 (decided under Brian's delegation, same day) | 0 |
-| C — engineering | 1 | 5 |
+| C — engineering | 0 | 6 |
 | D — watch items | — | 3 |
 
 **Later the same day:** Brian delegated the section B decisions ("You
@@ -265,10 +265,12 @@ corrections the re-read forced, are in `docs/DECISIONS.md` (2026-10-19,
 - [ ] **C3 · The block-store counters added one host sync per block per
   forward** (two were already there). Measure on ROCm at 768. If it costs
   more than 1% of a step, accumulate on-device and read at aliveness time.
-- [x] **C4 · Delete the superseded remote branch `docs/visreg-readme-sync`**
-  when convenient. Its content is in the rewrite. **Done 2026-10-19.** Its
-  one commit is `7fe5d8d`, and its one missing cross-reference was added to
-  README. To restore it:
+- [ ] **C4 · Delete the superseded remote branch `docs/visreg-readme-sync`**
+  when convenient. Its content is in the rewrite. **Decided 2026-10-19:
+  delete it.** Its one commit is `7fe5d8d`, and its one missing
+  cross-reference was added to README. **Not yet done:** the push from the
+  cloud session was refused (HTTP 403), so the delete has to come from
+  Brian's machine or GitHub's branch page. To restore it afterwards:
   `git push origin 7fe5d8d:refs/heads/docs/visreg-readme-sync`.
 - [ ] **C5 · The covariance rule is Python-only.** That is fine: the Python
   path costs 3–17%, and the C++ path doesn't build on ROCm anyway. Port only
