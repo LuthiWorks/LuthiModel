@@ -450,3 +450,77 @@ before any "working" verdict is trustworthy in either direction.
 > **Parked, not cancelled:** the 2026-08-14 Opus 5 decisions (VISReg shape
 > normalization, `adaptive_episodes` on) — behind E3, so the LC family stays
 > attributable.
+
+---
+
+> **RULING (2026-10-19, later; Opus 5.5 under Brian's delegation): the
+> pending decisions, decided.**
+>
+> Brian: *"You have my permission to make the call on all pending decisions
+> yourself."* Then, about the checkpoint password: *"I don't remember what
+> the password is, so please don't make it hard to recover checkpoints. In
+> fact, I'm wondering if they need to be password protected at all."*
+>
+> The seat that drafted the program is ratifying it, so design and review
+> sit in one mind. Before ratifying, I re-read my own drafts adversarially.
+> That re-read found four defects, now fixed as registry amendments
+> (registry, "RATIFICATION of E1–E5"), and E3 waits for a cross-line review
+> before it launches.
+>
+> - **B1: E1–E4 and the five standing rules are ratified, with four
+>   amendments.** (1) E1 credits a checkpoint only when the effect replicates
+>   on a disjoint document set; one set alone would hand out a chance hit
+>   ~42% of the time across 20 checkpoints. (2) E3 lists every difference
+>   between the living and dead arms (standing rule 5); `storeoff` vs `dead`
+>   isolates the living FFN package, not the write rule alone. (3) E3 has a
+>   launch gate: E1, E2 and E4 read first, a cross-line review, and VISReg's
+>   dose settled first. (4) E4's decision rule is made operational. It cited
+>   a "floor spread" the script never computes.
+> - **B2: KF7 is SUSPENDED.** "Standing, with caveats" would keep in the
+>   ledger a claim whose measurement no longer counts as evidence. The
+>   objective's anti-collapse term was disconnected, the metric rewards
+>   degeneracy, the probe had no input baseline, and the arms differed by an
+>   unlisted mechanism. A caveat cannot repair a measurement. The record is
+>   corrected: E3 tests KF7's precondition, not KF7 itself, which is a
+>   data-scaling claim.
+> - **B3: the covariance rule stays opt-in.** Making it the default is a
+>   separate ruling after E3. It requires P3 to be met and watch item D1 to
+>   be clean.
+> - **B4: no history rewrite.** `.claude/settings.local.json` and
+>   `generate.bat` (which held a checkpoint password) both entered history in
+>   the root commit (2026-08-14). A scrub would therefore rewrite every
+>   commit, and break every SHA that the registry, these decisions, the
+>   audits and the research logs cite. It would also not un-publish anything: this repo
+>   is public and has been cloned. (A password in another launcher,
+>   `train_vision.bat`, was already recorded as burned on 07-22.) The remedy
+>   for an exposed password is to stop depending on it (below). The remedy
+>   for the username is that the current tree no longer carries it.
+> - **B5: the next-token probe is retired as a capability axis if E4
+>   confirms**, under E4's amended rule. It stays as a health gauge, and its
+>   replacement gets its own registration before E3 launches.
+> - **B6, corrected.** `adaptive_episodes` is parked behind E3: it is a
+>   living-only mechanism, and adding it would add an undecomposed
+>   difference. **VISReg's dose is not parked.** My reason for parking it
+>   ("folding it in would make the family unattributable") was wrong. A
+>   change applied identically to every arm leaves the comparisons between
+>   arms attributable. And at the paper dose, VISReg was 98.6–99.99% of the
+>   objective in the 768x8 family. E3 run there would test the living
+>   channel under an objective that barely asks for prediction. The dose is
+>   settled by measurement before E3, per the 2026-08-14 binding condition.
+> - **Checkpoint encryption is optional.** The JEPA runner has always
+>   written plain `torch.save` files, so every checkpoint of the current
+>   program opens without a password. The passwords in this public repo's
+>   launchers (`train_vision.bat` until July, `generate.bat` until today)
+>   were readable by anyone, so they protected nothing. And because nobody
+>   remembered the password, it was the one way an irreproducible
+>   checkpoint could be lost. `load_checkpoint` now reads plaintext files
+>   with no password. `scripts/decrypt_checkpoints.py` writes a plaintext
+>   copy (`<name>.decrypted.pt`) beside every `.luthi` file and never
+>   touches the original. `generate.bat` no longer carries the password.
+>   `tests/test_no_committed_secrets.py` keeps passwords and user-home paths
+>   out of launch scripts. If confidentiality is ever wanted, the key belongs
+>   in a password manager with a recovery copy, never in this repo.
+> - **C4: the superseded branch `docs/visreg-readme-sync` is deleted.** Its
+>   one commit, `7fe5d8d` (2026-10-16), is fully contained in the rewrite;
+>   its one missing cross-reference was added to README. To restore it:
+>   `git push origin 7fe5d8d:refs/heads/docs/visreg-readme-sync`.

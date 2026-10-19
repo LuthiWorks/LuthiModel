@@ -3,9 +3,13 @@
 **Author:** Claude Opus 5.5, at Brian's instruction of 2026-10-19: *"build and
 implement fixes to problems you find, rewrite any and all supporting
 documentation, and correct the narrow direction we let the rigor take."*
-**Status:** program and registrations DRAFTED; ratification is Brian's. The
-predictions below are frozen as of this commit — written before any production
-checkpoint was read with the new instruments.
+**Status:** RATIFIED 2026-10-19, under Brian's delegation ("You have my
+permission to make the call on all pending decisions yourself"), with four
+amendments registered before any result was seen (registry, "RATIFICATION of E1–E5").
+The same seat drafted and ratified this program, so E3 waits for a
+cross-line review before it launches. The predictions are frozen as of their
+commits, written before any production checkpoint was read with the new
+instruments; this document is kept in step with the amendments.
 **Companion records:** the diagnosis and its measurements are in
 `2026-10-19_the-living-write-is-mean-field.md`; the itemized audit is
 `docs/audits/2026-10-19_living-channel-audit.md`; the registry entries are
@@ -100,7 +104,7 @@ on E:, on the 7800 XT, in minutes to an hour. Only E3 costs training time.
 | **E2** | living-write probe on existing checkpoints | inference only | is the production living change rank-1 along the mean output, and does the block store blend into every forward? |
 | **E3** | LC-768 decomposition family | 5 arms × 3 seeds; ~55 GPU-h on ROCm (238 ms/step × ~54k steps per seed, 08-19 measurement) | what the store, the mean-field rule, the covariance rule, and a nonlinear MLP each do, against a matched dead control |
 | **E4** | B7 resolution on existing 768 checkpoints | inference only | does the next-token probe see any trunk computation at all? |
-| **E5** | conditional rungs | depends | only after E3: deviation context, adaptive episodes, B1's dose |
+| **E5** | conditional rungs | depends | only after E3: deviation context, adaptive episodes, the ordered curriculum |
 
 Commands are in `To-Do.md` ("State of the build — 2026-10-19"). The frozen
 predictions and kill conditions for E1–E4 are in the registry; they are
@@ -113,13 +117,17 @@ plasticity ON, then score (B); read a *different* document's head, then score
 (C). The model is restored exactly between conditions.
 
 - Positive control: every dead checkpoint returns `exact_null: true`.
-- Prediction (from the mean-field diagnosis): no legacy-rule checkpoint shows
-  document-specific adaptation, i.e. `nmse.B_minus_C` is not below zero at
-  |t| ≥ 2 over 32 documents.
-- Kill condition for the diagnosis: a legacy checkpoint that does show it (mean
-  < 0, t ≤ −2, with target effective rank within 5%) falsifies "the mean-field
-  write cannot produce document-specific change", and the diagnosis is revised
-  in public.
+- Criterion: on one document set, `nmse.B_minus_C` has mean < 0 with
+  t ≤ −2 over 32 documents, and target effective rank holds within 5%. A
+  checkpoint **meets** it only if both the primary set (`--doc-phase 0`) and
+  a disjoint replication set (`--doc-phase 1`) meet it (amendment 1). One set
+  alone is a candidate: across 20 checkpoints a chance hit on one set is ~42%
+  likely, and on both ~1.5%.
+- Prediction (from the mean-field diagnosis): no legacy-rule checkpoint meets
+  the criterion.
+- Kill condition for the diagnosis: a legacy checkpoint that does meet it
+  falsifies "the mean-field write cannot produce document-specific change",
+  and the diagnosis is revised in public.
 
 ### E2 — living-write probe (`scripts/living_write_probe.py`)
 
@@ -137,18 +145,43 @@ family-wide change (B6's gradient clip, 5.0e5), seeds 46/95/97, on ROCm:
 |---|---|---|---|---|
 | `lc768_dead` | backprop Linear | none | — | the control |
 | `lc768_living` | legacy rule | legacy | storeoff | what the store does |
-| `lc768_storeoff` | legacy rule | off | dead | what the mean-field rule does |
+| `lc768_storeoff` | legacy rule | off | dead | what the living FFN as built does, store aside |
 | `lc768_cov` | covariance rule | off | storeoff | what content-sensitive writing does |
 | `lc768_dead_x4` | GELU MLP (expansion 4) | none | dead | what a nonlinear MLP does to token uniformity |
 
 `tests/test_living_channel_program_arms.py` pins that each pair differs in
-exactly its variable. Predictions:
+exactly its variable at the configuration level. At the mechanism level, the
+living arms differ from `lc768_dead` in five ways (amendment 2):
+1. the FFN rewritten in-forward and never touched by the optimizer;
+2. the PC rule's state (prediction matrix, trust, drive, gate, homeostasis);
+3. top-down modulation of plasticity;
+4. layer-level episodes and consolidation;
+5. the block store, in `living` only.
+
+So `storeoff` vs `dead` tests 1–4 as one package. No arm separates 3 or 4.
+Every living arm reports its episode and consolidation counters per block,
+and the verdict names any block where 4 was active.
+
+**Launch gate (amendment 3).** E3 starts only after all of the following:
+- E1, E2 and E4 have read, and their amendments are registered (including a
+  replacement capability axis if E4 retires the probe);
+- a seat other than the one that drafted and ratified this program has
+  reviewed it;
+- VISReg's dose is settled by measurement, the same for all five arms.
+
+On the dose: at the paper dose, VISReg was 98.6–99.99% of the objective in
+the 768x8 family. Running E3 there would test the living channel under an
+objective that barely asks for prediction. If the dose changes, P1–P4 are
+re-examined against it before launch.
+
+Predictions (as frozen):
 
 - **P1 (store):** mid-stack offset dominance (blocks 0–6, held-out text,
   plasticity frozen) is lower in `storeoff` than in `living` by ≥ 0.1, in at
   least 2 of 3 seeds.
-- **P2 (mean-field rule):** `storeoff` ties `dead` within 1 pooled σ on held-out
-  NMSE *and* on the standardized probe minus its embedding baseline.
+- **P2 (the living FFN with the mean-field rule):** `storeoff` ties `dead`
+  within 1 pooled σ on held-out NMSE *and* on the standardized probe minus its
+  embedding baseline.
 - **P3 (covariance rule):** `cov` shows document-specific adaptation (E1's
   criterion) in at least 2 of 3 seeds and `storeoff` in none; the living change
   in `cov` has `top_share < 0.5` in every block.
@@ -175,9 +208,13 @@ Run on the existing 768x8 checkpoints with `--offset 1`, `--offset -1`,
 `--offset 0` and `--causal` (all now under `freeze_plasticity`; before today
 the script self-modified the model between its own batches).
 
-- Prediction: trunk ≤ embedding at offsets ±1 in every seed. The JEPA objective
-  never asked for neighbor identity, so the residual carries the embedding and
-  attention adds nothing linearly decodable.
+- Prediction: trunk ≤ embedding at offsets ±1. The JEPA objective never asked
+  for neighbor identity, so the residual carries the embedding and attention
+  adds nothing linearly decodable.
+- Decision rule (amendment 4): margin `m = 3·sqrt(p_emb(1 − p_emb)/n_pairs)`
+  from the `emb` row. A block exceeds when its top-1 > `p_emb + m`.
+  **Refuted** if the same block exceeds at the same offset in ≥ 2 of 3 seeds;
+  **confirmed** otherwise.
 - If confirmed, B7 closes as "the next-token probe measures the residual's copy
   of the input, not trunk computation". It is then retired as a capability axis
   (kept as a health gauge), and its replacement — a probe for continuations the
@@ -193,16 +230,23 @@ to stop.
 
 - `context_mode="deviation"` for the layer-level store, built today, opt-in.
 - `adaptive_episodes` (audit B4).
-- VISReg's shape-normalized dose (B1).
 - The ordered-curriculum family.
+
+(VISReg's shape-normalized dose was listed here; it moved into E3's launch
+gate.)
 
 ## What happens to the existing threads
 
 - **Collapse instrumentation** keeps running in every family. It is necessary;
   it is no longer the program.
-- **B1 (VISReg dose) and B4 (adaptive episodes)** are parked behind E3, not
-  cancelled. Folding them into E3 would make every difference in it
-  unattributable.
+- **B4 (adaptive episodes)** is parked behind E3, not cancelled. It is a
+  living-only mechanism, so adding it to E3 would be one more undecomposed
+  difference between arms.
+- **B1 (the VISReg dose) is settled before E3, not after** (corrected at
+  ratification). This document first parked it, on the ground that folding it
+  in would make E3 unattributable. That was wrong: a dose applied identically
+  to every arm leaves the arm comparisons attributable, and E3 at the paper
+  dose would barely ask the trunk to predict.
 - **The 768x8 DirectML family** stays in the record exactly as scored. It is
   not poolable with LC-768 (different backend, clip, and kill code).
 - **m9** is unchanged and still off the training path.

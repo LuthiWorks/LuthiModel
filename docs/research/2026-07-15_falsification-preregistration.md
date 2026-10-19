@@ -1393,3 +1393,126 @@ is the entire point. Honor them after.
 > shape-normalized VISReg dose (08-14 B1), and the ordered-curriculum family
 > each get their own registration, and only after E3 shows which living
 > mechanism, if any, carries signal.
+
+---
+
+> # 2026-10-19 (later the same day) — RATIFICATION of E1–E5, with four AMENDMENTS registered before any result was seen
+>
+> **Ratified by Claude Opus 5.5 under Brian's delegation of 2026-10-19:**
+> *"You have my permission to make the call on all pending decisions
+> yourself."* The same seat drafted E1–E5, so this ratification puts design
+> and review in one mind, which is the pattern the cross-line practice exists
+> to prevent. Two consequences, adopted here. First, before ratifying, the
+> drafts were re-read adversarially, and that re-read produced the four
+> amendments below. Second, **E3 does not launch until a seat other than
+> Opus 5.5 (a different model family where possible) has reviewed this entry
+> and the E3 registration.** That review may add amendments, recorded as
+> such; it may not silently edit frozen text.
+>
+> **When these amendments were written, this seat had seen no
+> E-instrument result.** None of the amendments depends on one: each fixes
+> a procedural defect found by reading the drafts.
+>
+> ## Amendment 1 — E1 counts a checkpoint only when the effect replicates
+>
+> E1 reads every completed checkpoint in the lineage. On one document set,
+> `t <= -2` arises by chance with p ≈ 0.027 (t, 31 df). Across 20 checkpoints,
+> at least one chance hit is about 42% likely. That is enough to trip the
+> diagnosis's kill condition, or to credit P3, on noise. Therefore:
+>
+> - "Meets E1's criterion" now means meeting the frozen thresholds (mean < 0,
+>   `t <= -2`, the effective-rank guard) on the primary document set
+>   (`--doc-phase 0`) **and** on a disjoint replication set
+>   (`--doc-phase 1`). Chance per checkpoint ≈ 0.07%; across 20, ≈ 1.5%.
+> - A checkpoint that meets the criterion on one set only is reported as a
+>   *candidate*. Every E1 report states how many checkpoints were read
+>   (chance accounting, the 07-27 standard).
+> - This definition applies everywhere E1's criterion is used, including
+>   P3 and E3's kill conditions. The thresholds themselves are unchanged.
+>
+> ## Amendment 2 — E3 lists every difference (standing rule 5)
+>
+> The E3 table said `storeoff` vs `dead` isolates "what the mean-field rule
+> does". It isolates more than that. Every living arm differs from
+> `lc768_dead` in:
+>
+> 1. the FFN weight: rewritten inside every forward pass by the PC rule and
+>    never touched by the optimizer (dead: a `Linear` of the same shape,
+>    trained by backprop);
+> 2. the PC rule's state: prediction matrix, precision and the relative-trust
+>    ledger, drive, sparse gate, metaplasticity, homeostasis, set point;
+> 3. top-down modulation of plasticity (training mode only);
+> 4. layer-level episode memory and attractor consolidation
+>    (`adaptive_episodes=False`; in the 768x8 family blocks 0–4 stored
+>    nothing);
+> 5. the block output store (`lc768_living` only).
+>
+> So `living` vs `storeoff` isolates (5), and `cov` vs `storeoff` isolates
+> the write rule within (1)–(2). `storeoff` vs `dead` isolates (1)–(4) as one
+> package, the living FFN as built minus the store, and P2 is read as a
+> statement about that package rather than about the rule alone. No arm
+> separates (3) or (4). (3) acts only through (1)–(2). (4) is reported, not
+> tested: every living arm logs `episodes_stored`, `episode_writes`,
+> `recall_fires`, `consolidation_fires` and `consolidation_noop_fires` per
+> block at deep cadence. The verdict reads their final values and names any
+> block where (4) was active.
+>
+> ## Amendment 3 — E3's launch gate
+>
+> E3 is the only one of these that costs training time (~55 GPU-h). It
+> launches only when all of the following hold:
+>
+> - **E1, E2 and E4 have read** on the existing checkpoints, and every
+>   amendment they require is registered. That includes a replacement
+>   capability axis if E4 retires the next-token probe, since P2, P4 and the
+>   kill conditions would otherwise lose one of their two axes.
+> - **The cross-line review above is done.**
+> - **VISReg's dose is settled by measurement, the same for all five arms.**
+>   In the 768x8 family the paper's dose made VISReg 98.6–99.99% of the
+>   objective (`DECISIONS.md`, 2026-08-14). Run at that dose, E3 would test
+>   the living channel under an objective that barely asks for prediction:
+>   the flaw that suspended KF7, mirrored. The 2026-08-14 binding condition
+>   governs. On a short 768 ROCm smoke with `shape_normalize=True`, measure
+>   the regularizer's share `lam * l_reg / ((1 - lam) * l_pred + lam * l_reg)`
+>   at step 0 and at intervals.
+>   Then freeze the intended ratio, register lambda, and re-examine P1–P4
+>   against the new dose before launch. Any change to a prediction is
+>   registered with its reason. If the corrected dose is unstable at 768, E3
+>   runs at the old dose, and every E3 verdict carries that limitation in
+>   its first sentence.
+>
+> ## Amendment 4 — E4's decision rule, made operational
+>
+> E4 predicted that "no block's top-1 exceeds the embedding row's in any
+> seed", and called it refuted when a block won "by more than the
+> shuffled-floor spread". `per_block_probe.py` computes no such spread. And
+> requiring zero excesses across 48 (block, offset, seed) cells would turn
+> noise into a verdict. Replaced, for both directions:
+>
+> - **Margin**, per checkpoint and offset: `m = 3 * sqrt(p_emb * (1 - p_emb) / n_pairs)`,
+>   from the `emb` row of `per_block_probe.json`.
+> - **Exceeds:** a block exceeds when its `probe_top1 > p_emb + m`.
+> - **Verdict:** **refuted** if the same block exceeds at the same offset
+>   (+1 or −1) in ≥ 2 of 3 seeds; **confirmed** otherwise. The consequences
+>   are unchanged.
+>
+> ## KF7 — precision, not a new status
+>
+> The re-reading notice says "KF7 is SUSPENDED pending E3". E3 tests KF7's
+> precondition: whether any living mechanism differs from a matched dead
+> control at the ruled scale. It does not test KF7 itself, which is a
+> data-scaling claim (1× vs 4× data). **Ratified: KF7 is SUSPENDED.** It is
+> re-tested only by a data-scaling contrast registered after E3, and only if
+> E3 finds a living mechanism that carries signal.
+>
+> ## Ratified
+>
+> - E1, with Amendment 1.
+> - E2, as written.
+> - E3, with Amendments 2 and 3.
+> - E4, with Amendment 4.
+> - E5's deferral. `adaptive_episodes` stays behind E3; VISReg's dose moves
+>   ahead of it, per Amendment 3.
+> - The re-reading notice: KF2's kill stands; KF7 is suspended as above; the
+>   dead-control obligation is discharged when `lc768_dead` completes.
+> - The five standing rules in `CLAUDE.md`.

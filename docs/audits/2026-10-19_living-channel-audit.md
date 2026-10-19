@@ -12,10 +12,16 @@ program in `docs/research/2026-10-19_the-living-channel-program.md`.
 
 | section | closed in this pass | open |
 |---|---|---|
-| A — found and fixed | 10 | 0 |
-| B — decisions (Brian's ruling) | 0 | 6 |
-| C — engineering | 0 | 5 |
+| A — found and fixed | 11 | 0 |
+| B — decisions | 6 (decided under Brian's delegation, same day) | 0 |
+| C — engineering | 1 | 5 |
 | D — watch items | — | 3 |
+
+**Later the same day:** Brian delegated the section B decisions ("You
+have my permission to make the call on all pending decisions yourself").
+They are decided below, and recorded in `docs/DECISIONS.md` and the
+registry. The re-read before ratifying amended four registrations. It also
+found that A8 was incomplete, and it found A11.
 
 **Suite:** before the changes, on a CPU-only box: 1,138 passed, 4 failed
 (`test_backend_declaration.py`; environmental, this box has no accelerator;
@@ -148,6 +154,11 @@ wrong, say so in the item; don't delete it.
 - [x] **A8 · `LOW` · `.claude/settings.local.json` was tracked in a public
   repo.** It contained a local Windows username, local paths, and session-log
   paths. **Fixed:** untracked and ignored. It stays in history; see B4.
+  **Correction, later the same day:** this was incomplete. The same
+  username was also in `generate.bat` and `run_m8.bat`, which
+  `test_no_hardcoded_paths` skips by design (launchers may be
+  machine-specific). Both scripts now use `%~dp0` and `%USERPROFILE%`.
+  `tests/test_no_committed_secrets.py` now covers launch scripts.
   Pulling this change deletes the local copy, and refuses if the copy has
   local edits. To keep it, from the repo root (cmd or PowerShell):
   `ren .claude\settings.local.json settings.local.json.bak`, then
@@ -173,12 +184,40 @@ wrong, say so in the item; don't delete it.
   rewritten. The rewrite incorporates the unmerged 10-16
   `docs/visreg-readme-sync` branch.
 
-## Section B — decisions (Brian's ruling)
+- [x] **A11 · `HIGH` (security) · A checkpoint password sat in plain text in
+  `generate.bat`, in this public repo, from the root commit (2026-08-14).**
+  On 07-22 the To-Do had already recorded the same exposure in another
+  launcher, `train_vision.bat`. That file was removed, but the password in
+  `generate.bat` stayed. Brian no longer remembered the password, so it was
+  also the one way the older `.luthi` checkpoints could be lost.
+  **Fixed:**
+  - `generate.bat` reads no password: it uses a plaintext copy, or
+    `LUTHI_CHECKPOINT_KEY`.
+  - `load_checkpoint` reads plaintext files with no password.
+  - `scripts/decrypt_checkpoints.py` writes `<name>.decrypted.pt` beside every
+    `.luthi` file and never touches the original.
+  - `tests/test_no_committed_secrets.py` guards the launchers.
+  - Encryption is now optional (`docs/DECISIONS.md`, 2026-10-19).
 
-- [ ] **B1 · Ratify E1–E4 and the five standing rules.** Registry section
+  History keeps the old value (B4). JEPA-runner checkpoints were never
+  encrypted.
+
+## Section B — decisions (made 2026-10-19 under Brian's delegation)
+
+Decided by Opus 5.5, the seat that proposed them. The reasons, and the
+corrections the re-read forced, are in `docs/DECISIONS.md` (2026-10-19,
+"the pending decisions, decided"). The amendments are in the registry
+("RATIFICATION of E1–E5").
+
+- [x] **B1 · Ratify E1–E4 and the five standing rules.** Registry section
   "E1–E5"; CLAUDE.md "Standing rules for the rigor". The predictions are frozen
   as written; ratification decides whether they bind.
-- [ ] **B2 · KF7 suspended pending LC-768.** KF7 ("converts additional
+  **Decided: ratified, with four amendments registered before any result was seen.**
+  E1 credits a checkpoint only on replication. E3 lists every difference
+  between arms. E3 has a launch gate: E1, E2 and E4 read first, a
+  cross-line review, and VISReg's dose settled first. E4's decision rule
+  is made operational.
+- [x] **B2 · KF7 suspended pending LC-768.** KF7 ("converts additional
   experience into skill; matched static capacity cannot") rests on NMSE from
   2026-07-21. That was before the BN head was removed (07-28) and before the
   target was detached (07-28/29), so anti-collapse was disconnected and the
@@ -188,17 +227,32 @@ wrong, say so in the item; don't delete it.
   history. The registry entry is a re-reading notice, not a kill: the
   pre-registered kill condition was never tripped, but the measurement it
   rested on is no longer trusted. Brian may prefer "standing, with caveats".
-- [ ] **B3 · The covariance rule is not a default.** It stays opt-in
+  **Decided: SUSPENDED.** Correction: E3 tests KF7's precondition, not KF7,
+  which is a data-scaling claim. KF7 is re-tested only by a data-scaling
+  contrast registered after E3, and only if E3 finds a living mechanism with
+  signal.
+- [x] **B3 · The covariance rule is not a default.** It stays opt-in
   until E3 reads. Whether it becomes the lineage default is a ruling after E3,
-  not before.
-- [ ] **B4 · Scrub `.claude/settings.local.json` from history?** That needs a
+  not before. **Decided: as proposed.** Making it the default needs P3 met
+  and D1 clean.
+- [x] **B4 · Scrub `.claude/settings.local.json` from history?** That needs a
   force-push, which rewrites every SHA the registry cites. Recommendation:
-  don't, unless the username matters.
-- [ ] **B5 · Retire the next-token probe as a capability axis if E4
+  don't, unless the username matters. **Decided: no rewrite.** Both
+  exposures (this file and A11's password) entered history in the root
+  commit, so a scrub would rewrite every commit and every SHA cited
+  anywhere. It would also un-publish nothing, because the repo is public.
+- [x] **B5 · Retire the next-token probe as a capability axis if E4
   confirms.** Keep it as a health gauge, and register a replacement that
-  probes continuations the encoder could not see.
-- [ ] **B6 · The 08-14 decisions (VISReg dose B1, adaptive episodes B4) park
+  probes continuations the encoder could not see. **Decided: as proposed,**
+  under E4's amended decision rule. The replacement is registered before
+  E3 launches.
+- [x] **B6 · The 08-14 decisions (VISReg dose B1, adaptive episodes B4) park
   behind E3.** Folding them into the LC family would make it unattributable.
+  **Decided, corrected.** `adaptive_episodes` is parked; it is living-only and
+  would add an undecomposed difference. **The VISReg dose is not parked.**
+  The reason given above was wrong: a change applied identically to every
+  arm leaves the arm comparisons attributable. At the paper dose, VISReg was
+  98.6–99.99% of the objective, so it is settled by measurement before E3.
 
 ## Section C — open engineering
 
@@ -211,11 +265,18 @@ wrong, say so in the item; don't delete it.
 - [ ] **C3 · The block-store counters added one host sync per block per
   forward** (two were already there). Measure on ROCm at 768. If it costs
   more than 1% of a step, accumulate on-device and read at aliveness time.
-- [ ] **C4 · Delete the superseded remote branch `docs/visreg-readme-sync`**
-  when convenient. Its content is in the rewrite.
+- [x] **C4 · Delete the superseded remote branch `docs/visreg-readme-sync`**
+  when convenient. Its content is in the rewrite. **Done 2026-10-19.** Its
+  one commit is `7fe5d8d`, and its one missing cross-reference was added to
+  README. To restore it:
+  `git push origin 7fe5d8d:refs/heads/docs/visreg-readme-sync`.
 - [ ] **C5 · The covariance rule is Python-only.** That is fine: the Python
   path costs 3–17%, and the C++ path doesn't build on ROCm anyway. Port only
   if a CUDA box ever runs the lineage.
+- [ ] **C6 · `VISReg(shape_normalize=True)` is not plumbed through
+  `JEPALoss` or the driver.** It exists only on the class, and E3's gate
+  needs it for the dose measurement. Add it opt-in, recorded in the
+  provenance contract, alongside the registration that sets lambda.
 
 ## Section D — watch items
 

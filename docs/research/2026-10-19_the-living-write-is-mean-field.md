@@ -250,7 +250,7 @@ that E3 exists to test at 768.
 2. **Every living block blends a stored batch-mean output into ~every
    forward, and the dead control has no such block store.** Every
    living-vs-dead verdict in the registry carries this confound. KF7 is
-   proposed SUSPENDED (audit B2). The store is the leading candidate for the
+   SUSPENDED (proposed here; ratified the same day, audit B2). The store is the leading candidate for the
    "architectural" offset profile of the 768 family (E3 P1).
 3. **The covariance rule removes the rank-1 signature at the same per-step
    budget.** It is stable at production rates, and it is opt-in. Whether it

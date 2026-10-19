@@ -7,7 +7,10 @@ to a kill condition in `docs/research/2026-07-15_falsification-preregistration.m
 the BatchNorm defect, the NMSE-degeneracy finding, the probe-baseline finding
 (B7), and the two 2026-10-19 mechanism facts. Statuses below take all of those
 into account. Changes of status are proposed by the auditing seat; ratification
-is Brian's (audit `docs/audits/2026-10-19_living-channel-audit.md`, section B).*
+is Brian's. For this round he delegated it ("You have my permission to make
+the call on all pending decisions yourself"), and the statuses below were
+ratified on 2026-10-19 (`docs/DECISIONS.md`; registry, "RATIFICATION of
+E1–E5"; audit `docs/audits/2026-10-19_living-channel-audit.md`, section B).*
 
 **Read first — two facts that bear on every living-vs-dead number below**
 (`docs/research/2026-10-19_the-living-write-is-mean-field.md`):
@@ -75,8 +78,8 @@ is Brian's (audit `docs/audits/2026-10-19_living-channel-audit.md`, section B).*
    functional claim (structure beats lookup) is bound to KF6, deferred.*
 
 7. **The living substrate converts additional experience into skill; matched
-   static capacity cannot (2026-07-21, the 4x data program).** — **SUSPENDED
-   pending E3** (proposed 2026-10-19; audit item B2).
+   static capacity cannot (2026-07-21, the 4x data program).** — **SUSPENDED**
+   (ratified 2026-10-19; audit item B2).
    The measurement: at 512d with 4× data, dead NMSE did not move (0.6514 vs
    0.651) while living improved (0.3974 vs 0.429), a 4.8 pooled-σ structure gap.
    Strong-form predictions failed for both arms. The probe axis was mixed:
@@ -88,8 +91,11 @@ is Brian's (audit `docs/audits/2026-10-19_living-channel-audit.md`, section B).*
    never measured, and in the 768 family the embedding stream beat every block
    (B7); (d) the living arm carried the block output store and the dead arm
    did not. The kill condition was never tripped; the measurement it rests on
-   is no longer trusted. E3 is its re-run, at the ruled scale, with a matched
-   control.
+   is no longer trusted. *What re-tests it:* KF7 is a data-scaling claim, and
+   E3 does not vary data. E3 tests its precondition: whether any living
+   mechanism differs from a matched dead control at the ruled scale. KF7 is
+   re-tested only by a data-scaling contrast registered after E3, and only if
+   E3 finds a living mechanism that carries signal.
 
 8. **The legacy living write accumulates ~rank-1 along the batch-mean
    output** (registered 2026-10-19). A claim about the substrate, not a hope

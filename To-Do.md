@@ -12,8 +12,24 @@
 > block blends a stored batch-mean output into nearly every forward, and the
 > dead control has no such store. The program was re-aimed at the question
 > the project exists for (`docs/research/2026-10-19_the-living-channel-program.md`).
-> Opt-in fixes and the missing instruments are built and tested. KF7 is
-> proposed SUSPENDED.
+> Opt-in fixes and the missing instruments are built and tested. **Later
+> the same day, under Brian's delegation, the pending decisions were made**
+> (`docs/DECISIONS.md`, "the pending decisions, decided"):
+> - E1–E4 and the standing rules are ratified, with four amendments
+>   registered before any result was seen.
+> - KF7 is SUSPENDED.
+> - There is no history rewrite.
+> - Checkpoint encryption is optional.
+> - VISReg's dose is settled before E3, not after.
+>
+> ### Once, before anything else: free the old checkpoints from their password
+>
+> `python scripts\decrypt_checkpoints.py E:\runs E:\luthi_experiment_archive`
+> writes `<name>.decrypted.pt` beside every encrypted `.luthi` file. It never
+> touches an original and is safe to re-run. It asks for the password if
+> `LUTHI_CHECKPOINT_KEY` is unset, and different runs may have used different
+> keys: pass each as `--password`. JEPA-runner checkpoints were never
+> encrypted, so nothing below needs a password.
 >
 > ### Next, in order (the first three need NO training)
 >
@@ -32,33 +48,34 @@
 > 2. **E1 — does reading change what comes next?** Same runs, plus `dead_4x`
 >    runs as positive controls (they must report `exact_null: true`):
 >    `python scripts/adaptation_eval.py --run-dir <run> --docs 32 --read 4 --score 2`
->    The number that counts is `nmse.B_minus_C` (document-specific change).
+>    then the same command with `--doc-phase 1` (a disjoint replication set).
+>    The number that counts is `nmse.B_minus_C` (document-specific change),
+>    and a run counts only if both sets meet the criterion (amendment 1).
 > 3. **E4 — does the probe see the trunk?** On the three 768x8 seeds:
 >    `python scripts/per_block_probe.py --run-dir <run>` (offset 1), then
 >    `--offset -1`, `--offset 0`, and `--causal`. Compare every block against
->    the `emb` row.
-> 4. **E3 — the LC-768 decomposition family**, when compute allows (~55 GPU-h
->    on ROCm):
->    `python scripts/jepa_pilot_driver.py --stage 60 --seeds 46,95,97 --epochs 1`
+>    the `emb` row by amendment 4's margin.
+> 4. **E3 — the LC-768 decomposition family** (~55 GPU-h on ROCm). Launch only
+>    when the gate is met (amendment 3):
+>    - E1, E2 and E4 have read, and their amendments are registered;
+>    - a cross-line review is done;
+>    - VISReg's dose is measured and registered (needs C6 first).
+>
+>    Then run `python scripts/jepa_pilot_driver.py --stage 60 --seeds 46,95,97 --epochs 1`
 >    (dead control first, the obligation the registry has carried since
 >    07-24), then stages 61 (living), 62 (store off), 63 (covariance), and
 >    64 (dead, expansion 4). Arms and frozen predictions: registry E3.
-> 5. **E5 rungs** (deviation context, adaptive episodes, VISReg's
->    shape-normalized dose, the ordered curriculum) only after E3 reads.
->
-> ### Open decisions for Brian (audit section B)
->
-> Ratify E1–E4 and the standing rules; KF7's status; the covariance rule stays
-> opt-in until E3; whether to scrub `.claude/settings.local.json` from history
-> (needs a force-push); retiring the next-token probe as a capability axis if E4
-> confirms; parking the 08-14 decisions behind E3.
+> 5. **E5 rungs** (deviation context, adaptive episodes, the ordered
+>    curriculum) only after E3 reads.
 >
 > ### Engineering backlog (audit section C)
 >
-> `LUTHI_RUNS_ROOT` (still unimplemented). A loud guard so Sanctuary never
-> presents a pure-JEPA checkpoint's generated text as speech. Measure the
-> block-store counters' host-sync cost at 768. Delete the superseded branch
-> `docs/visreg-readme-sync`.
+> - `LUTHI_RUNS_ROOT` (still unimplemented).
+> - A loud guard so Sanctuary never presents a pure-JEPA checkpoint's
+>   generated text as speech.
+> - Measure the block-store counters' host-sync cost at 768.
+> - Plumb `VISReg(shape_normalize=True)` through `JEPALoss` and the driver
+>   (C6, for E3's dose gate).
 
 > ## ⚠️ KNOWN INCOMPLETE — read first
 >
@@ -672,10 +689,17 @@ sparse spiking. ~71 GB model footprint, ~42 GB free for growth.
       `E:\runs\m8_multimodal_smoke\model_final.luthi` (2026-07-22, same-day
       reference sweep; `generate.bat`, `scripts/m5_nff_posthoc.py`, and
       `tests/test_pc_vs_dead.py` repointed in the same pass).
-- [ ] **Security follow-up**: `train_vision.bat` (removed 2026-07-22) carried a
+- [x] **Security follow-up**: `train_vision.bat` (removed 2026-07-22) carried a
       plaintext `--checkpoint_password` and this repo is public — the value is
       permanently in git history. Treat it as burned; rotate anywhere it (or its
       pattern) is reused.
+      **Closed 2026-10-19:** `generate.bat` still carried a plaintext password
+      until today (audit A11). It is gone from the tree, and
+      `tests/test_no_committed_secrets.py` guards the launchers. Encryption
+      is now optional, and `scripts/decrypt_checkpoints.py` makes plaintext
+      copies, so no checkpoint depends on remembering a password. History
+      keeps the old values (DECISIONS 2026-10-19, B4). Where the old password
+      or its pattern is reused elsewhere, change it there.
 
 - [ ] **`training_log.jsonl` is append-only across checkpoint-rewind resumes**
       (found 2026-07-22 on v4 seed43: 752 records, 723 unique steps — the
