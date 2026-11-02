@@ -85,7 +85,8 @@
 > Things that exist but are not functionally complete (full list, with safety
 > nets, in `docs/KNOWN_INCOMPLETE.md`): the Triton kernel (skeleton); C++
 > `pc_ops` on ROCm (doesn't build; Python reference runs, recorded); the m9
-> action layer (not on the training path); `generate()` on pure-JEPA
+> action layer (on the training path behind `--m9` since 2026-11-02, never
+> run past CPU smoke); `generate()` on pure-JEPA
 > checkpoints (untrained output head); layer-level episode memory (inert in the
 > configuration that runs).
 
@@ -162,7 +163,9 @@
       abandoned Hebbian substrate). A true multimodal peak run needs these
       wired; a text-only first run is a legitimate scoping choice — **Brian's
       call.**
-- [ ] **5. `M9Trainer(device=)` plumbing + corpus dedup.** (a) `M9Trainer`
+- [ ] **5. `M9Trainer(device=)` plumbing + corpus dedup.** *(a) is done: the
+      §5 device sweep is in `M9Trainer` and tested (`tests/m9/test_runner.py`);
+      noted 2026-11-02.* (a) `M9Trainer`
       builds on CPU → optimizer orphan on GPU = **silent zero-learning**; needs
       device plumbing before any real GPU run (only needed if M9 value/habit
       heads are in run 1). (b) Dedup the ~34 GB corpus against all eval sets —

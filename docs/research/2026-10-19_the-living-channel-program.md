@@ -249,7 +249,9 @@ gate.)
   dose would barely ask the trunk to predict.
 - **The 768x8 DirectML family** stays in the record exactly as scored. It is
   not poolable with LC-768 (different backend, clip, and kill code).
-- **m9** is unchanged and still off the training path.
+- **m9** is unchanged and still off the training path. *(Reversed
+  2026-11-02 by Brian's ruling: opt-in `--m9`, outside E1–E5; see
+  `DECISIONS.md`.)*
 
 ## What would change this plan
 

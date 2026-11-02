@@ -46,6 +46,7 @@ Smoke (CPU, minutes):
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import math
 import os
@@ -1104,35 +1105,9 @@ def _device() -> torch.device:
     return resolved
 
 
-class _DeviceLoader:
-    """Wraps a MultimodalDataLoader; delivers device-local batches."""
-
-    def __init__(self, inner, device: torch.device):
-        self._inner = inner
-        self._device = device
-
-    def _move(self, batch: dict) -> dict:
-        return {k: v.to(self._device) if isinstance(v, torch.Tensor) else v
-                for k, v in batch.items()}
-
-    def next_batch(self, modality: str) -> dict:
-        return self._move(self._inner.next_batch(modality))
-
-    def batch_token_count(self, modality: str, batch: dict) -> int:
-        return self._inner.batch_token_count(modality, batch)
-
-    def state_dict(self) -> dict:
-        return self._inner.state_dict()
-
-    def load_state_dict(self, state: dict) -> None:
-        self._inner.load_state_dict(state)
-
-    def holdout_batch_count(self, modality: str, batch_size: int) -> int:
-        return self._inner.holdout_batch_count(modality, batch_size)
-
-    def holdout_batches(self, modality: str, batch_size: int):
-        for batch in self._inner.holdout_batches(modality, batch_size):
-            yield self._move(batch)
+# Moved into the library on 2026-11-02; same class, old name kept for
+# scripts/pilot_verdict.py.
+from luthi.v2.multimodal_data import DeviceLoader as _DeviceLoader  # noqa: E402
 
 
 def _run_name(arm: str, d_model: int, seed: int) -> str:
@@ -1301,7 +1276,31 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
         corpus_sizes_tokens={"text": text_ds.tokens_per_pass()}, alpha=0.7,
     )
     gen = torch.Generator(device="cpu").manual_seed(seed)
-    trainer = JEPATrainer(
+    # The M9 action layer (Brian, 2026-11-02: "get this on the training
+    # path"). Opt-in; without --m9 the trainer is JEPATrainer exactly as
+    # before. M9Trainer runs the same JEPA step, then trains its heads
+    # (value, habit, decoders, rest action, the text readout) on DETACHED
+    # latents. Its retention gate reads the run's first holdout batch, so
+    # the training stream is not shifted by a batch taken for it.
+    trainer_cls = JEPATrainer
+    m9_kwargs: dict = {}
+    if getattr(args, "m9", False):
+        from luthi.v2.m9.runner import M9Config, M9Trainer
+        retention = next(
+            iter(loader.holdout_batches("text", args.batch_size)), None,
+        )
+        if retention is None:
+            raise RuntimeError(
+                f"{arm}: --m9 needs one holdout batch of {args.batch_size} "
+                "for the retention gate, and the corpus holdout has none."
+            )
+        trainer_cls = M9Trainer
+        m9_kwargs = dict(
+            # M9 on its own random stream, so it cannot move the trunk's.
+            m9_config=M9Config(rng_seed=9000 + seed),
+            retention_batch=retention,
+        )
+    trainer = trainer_cls(
         loss_module=loss_module,
         optimizer=optim.AdamW(
             _param_groups(loss_module, model, arm, args.lr),
@@ -1356,6 +1355,7 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
             ),
         ),
         run_dir=run_dir,
+        **m9_kwargs,
     )
 
     started = time.time()
@@ -1369,6 +1369,8 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
         print(f"[jepa-pilot] {_run_name(arm, d_model, seed)}: resumed "
               f"mid-seed from {loaded.name} (step {trainer.global_step})")
     outcome = trainer.run()
+    if m9_kwargs:
+        trainer.action_log.close()
 
     heldout = heldout_latent_prediction(
         loss_module,
@@ -1517,6 +1519,10 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
             ),
         },
     }
+    if m9_kwargs:
+        # Present only on M9 runs, so a family run's record is unchanged.
+        # Everything M9Trainer was built with, for load_m9_run to rebuild.
+        result["m9"] = dataclasses.asdict(m9_kwargs["m9_config"])
     _result_path(arm, d_model, seed).write_text(json.dumps(result, indent=2))
     return result
 
@@ -1644,7 +1650,18 @@ def main() -> int:
     p.add_argument("--seeds", type=str, default=None,
                    help="Explicit comma-separated seed list (overrides "
                         "--n-seeds), e.g. '44'.")
+    p.add_argument("--m9", action="store_true",
+                   help="Also train the M9 action layer (Brian, 2026-11-02). "
+                        "Runs land in runs/jepa_pilot/m9/, apart from every "
+                        "family, and are never pooled with one.")
     args = p.parse_args()
+
+    if args.m9:
+        # A separate root keeps M9 runs out of every family's resume check
+        # and out of aggregate(), which globs one level under OUTPUT_ROOT.
+        global OUTPUT_ROOT
+        OUTPUT_ROOT = OUTPUT_ROOT / "m9"
+        print(f"[jepa-pilot] M9 action layer ON: runs land in {OUTPUT_ROOT}")
 
     if args.smoke:
         args.epochs = 1

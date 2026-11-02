@@ -529,3 +529,58 @@ before any "working" verdict is trustworthy in either direction.
 > The git proxy answered HTTP 403, and nothing was routed around it, so
 > the branch still exists. Delete it from GitHub's branch page, or run
 > `git push origin --delete docs/visreg-readme-sync` from your machine.
+
+---
+
+> **RULING (2026-11-02, Brian): M9 goes on the training path and is
+> connected to Sanctuary.**
+>
+> Brian, after an explanation of the action layer: *"Ok awesome. Lets get
+> this on the training path and connect it to sanctuary."* This reverses the
+> program's line "m9 is unchanged and still off the training path"
+> (`docs/research/2026-10-19_the-living-channel-program.md`).
+>
+> **What was done under it (Opus 5.5, same day).** The record is
+> `docs/research/2026-11-02_m9-on-the-training-path.md`.
+>
+> - **The switch.** `jepa_pilot_driver.py --m9` trains `M9Trainer` instead of
+>   `JEPATrainer`. It is opt-in, and the default path is unchanged. Runs land
+>   in `runs/jepa_pilot/m9/` and are never pooled with a family. M9 is not
+>   part of E1–E5 and changes none of their registrations.
+> - **M9 rides along without touching the trunk.** Its heads train on
+>   detached latents; it now draws from its own random stream; its retention
+>   batch comes from the holdout. On CPU, the trunk of an `--m9` run is
+>   bit-identical to the same arm without it
+>   (`tests/test_m9_training_path.py`). Only `output_proj`, which M9 trains,
+>   differs.
+> - **The Sanctuary connection.** `sanctuary_interface.load_m9_run` loads a
+>   trained run as actor and learner. `save_life` keeps a life apart from the
+>   run it started from: the run is read, never written, and the life's
+>   checkpoints are never rotated out. `decode_action` says what a selected
+>   action does on each channel. Sanctuary carries out attention and memory
+>   from it, and keeps a trunk with an untrained text readout silent
+>   (KNOWN_INCOMPLETE #4).
+> - **Not built: a learning-settings decoder.** Its consequence (a change in
+>   who the model is, sleeps later) is something EFE cannot predict. A
+>   decoder for it would be an untrained dial logged as the mind's choice.
+>
+> **Open, Brian's call: does the value head's reward fit the
+> demonstration-only rule?** LuthiCode's rule (2026-10-27) excludes reward,
+> preference and penalty training. Sanctuary's learning-modes decision
+> extended it to Luthi: "Luthi's own learning signal is prediction error,
+> which is not a reward." M9's value head is the one place a reward-shaped
+> signal enters. It is trained by TD on a reward defined as minus the
+> planner's best expected free energy under the four built-in preferences
+> (engagement, coherence, connection, truthfulness).
+>
+> - **What it touches.** It trains the action layer's estimate of its own
+>   plans. It never touches the trunk: latents are detached, and the
+>   bit-identity test covers this.
+> - **What it is not.** No one outside administers it. It is not preference
+>   pairs.
+> - **But** it is reward-shaped learning, and the preferences are built-in
+>   drives.
+>
+> The switch exists; whether to flip it, and whether the value head should
+> be replaced by plain distillation of the planner's EFE (no TD and no
+> reward), is Brian's decision. Nothing here has run outside CPU tests.

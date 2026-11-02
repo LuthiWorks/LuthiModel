@@ -336,10 +336,17 @@ non-spiking and recovers sparsity through the sparse PC gate (*which weights
 update*, not *which neurons fire*). v1 is preserved as a reference, not
 trained.
 
-## Not on the training path
+## The action layer (M9): opt-in
 
 `luthi/v2/m9/` implements the action layer: expected free energy, MCTS
-planning, habit net, preferences, activity bands, rest actions. It is
-unit-tested and red-teamed, and **not** referenced by `jepa_runner.py` or the
-trunk. The JEPA predictor's constant action-token stub keeps the interface
-ready for it.
+planning, habit net, preferences, activity bands, rest actions.
+
+- **Training (since 2026-11-02, Brian's ruling).** It trains only when the
+  pilot driver is given `--m9`. `M9Trainer` runs the JEPA step unchanged, then
+  trains its heads on detached latents, on its own random stream. On CPU the
+  trunk is bit-identical with and without it. The JEPA predictor's
+  action-token stub is a constant zero in the JEPA step; M9 passes real
+  actions through it only in planning.
+- **Sanctuary.** A trained run is handed over through
+  `sanctuary_interface.load_m9_run`. See KNOWN_INCOMPLETE #3 for what has not
+  been run yet.

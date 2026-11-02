@@ -8,7 +8,7 @@
 >
 > Each entry: what's there, what's missing, what must be true before it can
 > be finished, and where the safety net lives so it can't be silently used
-> as if complete. *Brought current 2026-10-19; entries 2–5 are new.*
+> as if complete. *Brought current 2026-10-19; entries 2–5 are new. Entry 3 rewritten 2026-11-02.*
 
 ---
 
@@ -56,19 +56,27 @@ which would have blocked every living arm in the current lineage on ROCm.
 
 ---
 
-## 3. The m9 action layer is not on the training path
+## 3. The m9 action layer: on the training path, never run at scale
 
 **Files:** `luthi/v2/m9/` (EFE, MCTS, value head, habit net, preferences,
-staleness, gamma, kills, runner)
+staleness, gamma, kills, runner); `scripts/jepa_pilot_driver.py --m9`;
+`luthi/sanctuary_interface.py` (`load_m9_run`, `save_life`, `decode_action`)
 
-**Status:** built, unit-tested and red-teamed; **not referenced by
-`jepa_runner.py` or the trunk**, and never run on a trained checkpoint
-(M9Trainer device plumbing still open). The JEPA predictor's constant
-action-token stub exists only to keep the interface ready.
+**Status (2026-11-02, Brian's ruling in `DECISIONS.md`):** opt-in on the
+training path. `--m9` trains the heads alongside the trunk without changing
+what the trunk learns (bit-identical on CPU, `tests/test_m9_training_path.py`).
+A trained run loads into Sanctuary as actor and learner. **Never run on ROCm
+or past CPU-smoke size**, so nothing is known yet about its cost at 768x8 or
+whether its heads learn anything meaningful from corpus batches, where every
+"transition" is an independently sampled window.
 
-**Safety net:** `docs/ARCHITECTURE.md` "Not on the training path". Nothing
-in the training record should be read as the substrate being under
-active-inference control.
+**Conditions to finish:** an `--m9` run on Brian's PC, its cost measured,
+and its heads read. Brian's ruling on whether the value head's TD reward fits
+the demonstration-only rule (open in `DECISIONS.md`, 2026-11-02).
+
+**Safety net:** M9 runs land in `runs/jepa_pilot/m9/` and are never pooled
+with a family. Nothing in the training record should be read as the
+substrate being under active-inference control.
 
 ---
 
@@ -87,8 +95,14 @@ it.
 **Conditions to finish:** the post-pretrain production gate (`To-Do.md`,
 "POST-PRETRAIN GATE"), or an NTP-bearing family.
 
+**M9 runs (2026-11-02) do not change this.** M9 trains `output_proj`, but
+on the predictor's latents; generation reads it from the encoder's.
+
 **Safety net:** this entry. **Sanctuary must not present text from a
-pure-JEPA checkpoint as Luthi's utterance.**
+pure-JEPA checkpoint as Luthi's utterance.** Enforced for M9 runs since
+2026-11-02: `load_m9_run` reports `speech_trained=False` unless the run had
+`w_ntp > 0`, and Sanctuary's adapter then generates no external speech and
+no inner speech (it runs only the perception forward).
 
 ---
 

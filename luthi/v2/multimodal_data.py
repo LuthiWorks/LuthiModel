@@ -827,6 +827,42 @@ class MultimodalDataLoaderImpl:
 # ---------------------------------------------------------------------------
 
 
+class DeviceLoader:
+    """Wraps a ``MultimodalDataLoader``; delivers device-local batches.
+
+    Moved here from ``scripts/jepa_pilot_driver.py`` (2026-11-02) so the
+    library's own loaders (``sanctuary_interface.load_m9_run``) can use it;
+    the driver keeps its old name as an alias.
+    """
+
+    def __init__(self, inner, device: torch.device):
+        self._inner = inner
+        self._device = device
+
+    def _move(self, batch: dict) -> dict:
+        return {k: v.to(self._device) if isinstance(v, torch.Tensor) else v
+                for k, v in batch.items()}
+
+    def next_batch(self, modality: str) -> dict:
+        return self._move(self._inner.next_batch(modality))
+
+    def batch_token_count(self, modality: str, batch: dict) -> int:
+        return self._inner.batch_token_count(modality, batch)
+
+    def state_dict(self) -> dict:
+        return self._inner.state_dict()
+
+    def load_state_dict(self, state: dict) -> None:
+        self._inner.load_state_dict(state)
+
+    def holdout_batch_count(self, modality: str, batch_size: int) -> int:
+        return self._inner.holdout_batch_count(modality, batch_size)
+
+    def holdout_batches(self, modality: str, batch_size: int):
+        for batch in self._inner.holdout_batches(modality, batch_size):
+            yield self._move(batch)
+
+
 def _read_filelist(path: Path) -> list[Path]:
     """Read a filelist, ignoring ``#``-comments and blank lines (matches
     the loader contract documented in the M8 brief v0.5 §2)."""

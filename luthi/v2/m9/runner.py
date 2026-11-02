@@ -237,6 +237,18 @@ class M9Config:
     # both confounds the cap A/B and breaks under thrash.
     living_drift_source: str = "momentum"
 
+    # ---- M9's own random stream (2026-11-02) ----
+    # None keeps the legacy behaviour: M9 draws from the global stream the
+    # trunk also draws from, so an M9 run's trunk is a different random
+    # realization of the same arm. An int gives M9 a stream of its own,
+    # seeded here, for construction and the training-path head step: M9 then
+    # cannot move the trunk's stream, and on CPU the trunk of an M9 run is
+    # bit-identical to the same arm trained without M9
+    # (tests/test_m9_training_path.py). That test is the check that the
+    # action layer rides along without touching what the trunk learns.
+    # The pilot driver sets it to 9000 + the run's seed.
+    rng_seed: Optional[int] = None
+
 
 # ---------------------------------------------------------------------------
 # Living-drift eye: per-layer recent-change reading
@@ -322,7 +334,15 @@ class M9Trainer(JEPATrainer):
         run_dir: Path,
         m9_config: Optional[M9Config] = None,
         device: Optional[torch.device | str] = None,
+        retention_batch: Optional[dict] = None,
     ):
+        """`retention_batch` (2026-11-02): the fixed corpus batch the §3
+        retention gate re-measures. Pass one from a held-out split; the
+        pilot driver passes the run's first holdout batch. None keeps the
+        legacy behaviour (take the loader's next training batch), which is
+        only valid for smoke loaders that never re-yield a batch (see the
+        HELD-OUT CONTRACT note below) and shifts the training stream by one
+        batch."""
         super().__init__(
             loss_module=loss_module,
             optimizer=optimizer,
@@ -368,6 +388,49 @@ class M9Trainer(JEPATrainer):
         else:
             self.device = encoder_device
 
+        # M9's own random stream when m9_config.rng_seed is set (2026-11-02).
+        self._m9_rng_state: Optional[dict] = None
+        with self._m9_rng():
+            self._build_m9(loss_module, d_model, vocab_size, retention_batch)
+
+    @contextmanager
+    def _m9_rng(self):
+        """Run the enclosed M9 work on M9's own random stream.
+
+        With `m9_config.rng_seed` None this is a no-op: M9 draws from the
+        global stream, as it always has. With a seed, the global CPU stream
+        (and the trainer device's CUDA/HIP stream) is saved on entry and
+        restored on exit, and M9 draws from a stream of its own that
+        continues from one use to the next. The trunk's stream then never
+        sees M9's draws: module init, MCTS sampling, predictor dropout.
+        """
+        if self.m9_config.rng_seed is None:
+            yield
+            return
+        devices = [self.device] if self.device.type == "cuda" else []
+        with torch.random.fork_rng(devices=devices):
+            if self._m9_rng_state is None:
+                torch.manual_seed(self.m9_config.rng_seed)
+            else:
+                torch.set_rng_state(self._m9_rng_state["cpu"])
+                if devices:
+                    torch.cuda.set_rng_state(
+                        self._m9_rng_state["cuda"], self.device,
+                    )
+            yield
+            self._m9_rng_state = {"cpu": torch.get_rng_state()}
+            if devices:
+                self._m9_rng_state["cuda"] = torch.cuda.get_rng_state(
+                    self.device,
+                )
+
+    def _build_m9(
+        self, loss_module, d_model: int, vocab_size: int,
+        retention_batch: Optional[dict],
+    ) -> None:
+        """The M9 component bag, its optimizers and the lived-path state.
+        Split out of `__init__` (2026-11-02), body unchanged, so that
+        construction can run inside `_m9_rng`."""
         # ---- M9 module bag ----
         # Value head + Polyak target copy (V_target is not gradient-
         # trained; updated via Polyak averaging from V on each step).
@@ -590,8 +653,10 @@ class M9Trainer(JEPATrainer):
         # before production scale, capture this batch from a split the
         # sampler is configured to exclude. Tracked as a scale TODO.
         self._retention_modality = "text"
-        self._retention_batch = self.data_loader.next_batch(
-            self._retention_modality
+        self._retention_batch = (
+            retention_batch
+            if retention_batch is not None
+            else self.data_loader.next_batch(self._retention_modality)
         )
         self._retention_baseline = self.corpus_retention()
         self._lived_step_count = 0
@@ -623,9 +688,17 @@ class M9Trainer(JEPATrainer):
     # ------------------------------------------------------------------
     # Two-phase train_step.
     # ------------------------------------------------------------------
-    def train_step(self, modality: str, batch: dict) -> dict:
+    def train_step(
+        self, modality: str, batch: dict, *, will_log: bool = False,
+        will_deep: bool = False, will_light: bool = False,
+    ) -> dict:
         """Phase 1: M8 core update (super). Phase 2: M9 head update on
         detached latents.
+
+        The logging flags pass through to the parent unchanged. They were
+        added to `JEPATrainer.train_step` after this override was written,
+        so `JEPATrainer.run()` could not drive an M9Trainer until
+        2026-11-02, the first time anything did.
 
         Returns the M8 step result dict augmented with M9 sub-losses
         under the `m9` key. Existing M8 diagnostics + kill plumbing
@@ -645,7 +718,10 @@ class M9Trainer(JEPATrainer):
             for p in self.loss_module.parameters()
             if p.requires_grad
         ]
-        m8_result = super().train_step(modality, batch)
+        m8_result = super().train_step(
+            modality, batch, will_log=will_log, will_deep=will_deep,
+            will_light=will_light,
+        )
         delta_theta_norm = self._compute_delta_theta_norm(param_snapshot)
         # Cache for the action-log writer in _m9_head_step.
         self._last_delta_theta_norm = delta_theta_norm
@@ -655,7 +731,8 @@ class M9Trainer(JEPATrainer):
         self.staleness.observe_drift(delta_theta_norm)
 
         # ---- Phase 2: M9 head update on detached latents ----
-        m9_losses = self._m9_head_step(modality, batch, m8_result["raw"])
+        with self._m9_rng():
+            m9_losses = self._m9_head_step(modality, batch, m8_result["raw"])
         m8_result["m9"] = m9_losses
         m9_losses["delta_theta_norm"] = delta_theta_norm
         m9_losses["theta_version"] = self.staleness.theta_version
@@ -1290,6 +1367,60 @@ class M9Trainer(JEPATrainer):
             )
         finally:
             self._current_cycle_ctx = prev_ctx
+
+    def decode_selection(
+        self,
+        action: torch.Tensor,
+        *,
+        s_t: torch.Tensor,
+        context_latents: torch.Tensor,
+    ) -> dict:
+        """What a selected action does on each output channel, in plain
+        numbers, for a host loop to carry out (2026-11-02; the Luthi half of
+        Sanctuary's 2026-08-01 audit item W1).
+
+        Content is decoded from the action itself, as the truthfulness
+        preference reads it: attention gates per modality and memory-write
+        salience. Whether a channel acts this cycle uses the same test the
+        EFE evaluator applies to emission: the decoder activity of the
+        predicted next state under this action, against the channel's
+        activity band and against the same reading under the rest action
+        ``a_rest(s_t)``. Silent means the action does nothing there that
+        resting would not. The legacy intensity heads are reported, never
+        used to decide (F4: they are arbitrary at init).
+
+        Reads only; nothing here trains or advances any band.
+        """
+        a = action.reshape(1, -1)
+        s_root = s_t.reshape(-1, s_t.shape[-1])[0:1]
+        ctx = (
+            context_latents.unsqueeze(0)
+            if context_latents.dim() == 2
+            else context_latents[0:1]
+        )
+        tgt = self._target_positions_for(ctx.shape[1]).to(a.device)
+        with torch.no_grad():
+            s_hat = self.efe.predict_next(ctx, tgt, a)
+            s_rest = self.efe.predict_next(ctx, tgt, self.rest_action(s_root))
+            silent = self.activity_bands.per_batch_silent(
+                self.decoders.activity(s_hat),
+                rest_activity=self.decoders.activity(s_rest),
+            )
+            outs = self.decoders.decode_all(a)
+        gates = outs["attention"]["gates"][0]
+        return {
+            "active": {m: not bool(v[0].item()) for m, v in silent.items()},
+            "attention_gates": {
+                name: float(gates[i].item())
+                for i, name in enumerate(("text", "audio", "vision"))
+            },
+            "memory_salience": float(outs["memory"]["salience"][0].item()),
+            "intensity": {
+                m: float(outs[m]["intensity"][0].item())
+                for m in ("text", "attention", "memory")
+            },
+            "bands_armed": self.activity_bands.armed_per_modality(),
+        }
 
     # ------------------------------------------------------------------
     # Item #6 §6: staleness-live -- persistent-tree lifecycle, the
@@ -2046,6 +2177,13 @@ class M9Trainer(JEPATrainer):
         existing["m9_rest_action_state_dict"] = self.rest_action.state_dict()
         existing["m9_optimizer_state_dict"] = self.m9_optimizer.state_dict()
         existing["m9_gamma"] = float(self.gamma.gamma.detach().item())
+        # The lived path's own state (2026-11-02), so a life resumed after a
+        # restart continues instead of restarting its lived optimizer and
+        # interleave counters. Absent from older checkpoints; tolerated.
+        existing["m9_lived_optimizer_state_dict"] = self.lived_optimizer.state_dict()
+        existing["m9_lived_step_count"] = self._lived_step_count
+        existing["m9_corpus_replay_accumulator"] = self._corpus_replay_accumulator
+        existing["m9_rng_state"] = self._m9_rng_state
 
         tmp_path = slot_path.with_suffix(".pt.tmp")
         with open(tmp_path, "wb") as f:
@@ -2061,7 +2199,22 @@ class M9Trainer(JEPATrainer):
         into an M9Trainer leaves the M9 heads at their fresh init).
         """
         super().resume(ckpt_path)
-        state = torch.load(ckpt_path, weights_only=False)
+        # map_location as in the parent: load_state_dict copies onto each
+        # module's device, so a GPU-written checkpoint also loads on CPU.
+        state = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+        self.load_m9_state(state)
+        # The state just loaded is the last known good core θ. Without this
+        # the rollback target stays whatever was snapshotted at
+        # construction, and a resumed life's first retention breach would
+        # roll its core back past everything it had lived since.
+        self._last_good_core_theta = self._snapshot_core_theta()
+
+    def load_m9_state(self, state: dict) -> None:
+        """Restore the M9 heads, their optimizer and gamma from a checkpoint
+        dict, tolerating missing keys (an M8-only checkpoint leaves the heads
+        at their fresh init). Split out of `resume` (2026-11-02) so
+        `sanctuary_interface.load_m9_run` can restore trained heads without
+        restoring the trainer's corpus position."""
         if "m9_v_head_state_dict" in state:
             self.v_head.load_state_dict(state["m9_v_head_state_dict"])
         if "m9_v_target_state_dict" in state:
@@ -2087,3 +2240,15 @@ class M9Trainer(JEPATrainer):
         if "m9_gamma" in state:
             with torch.no_grad():
                 self.gamma.gamma.fill_(float(state["m9_gamma"]))
+        if "m9_lived_optimizer_state_dict" in state:
+            self.lived_optimizer.load_state_dict(
+                state["m9_lived_optimizer_state_dict"]
+            )
+        if "m9_lived_step_count" in state:
+            self._lived_step_count = int(state["m9_lived_step_count"])
+        if "m9_corpus_replay_accumulator" in state:
+            self._corpus_replay_accumulator = float(
+                state["m9_corpus_replay_accumulator"]
+            )
+        if state.get("m9_rng_state") is not None:
+            self._m9_rng_state = state["m9_rng_state"]

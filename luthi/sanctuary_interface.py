@@ -42,6 +42,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Iterator
 
 import torch
@@ -59,6 +60,7 @@ from luthi.seam_types import ActionSelection, M9Actor, TransitionSink
 
 __all__ = [
     "LoadedLuthiModel",
+    "LoadedM9Run",
     "ModulationSnapshot",
     "ActionSelection",
     "M9Actor",
@@ -71,6 +73,9 @@ __all__ = [
     "encode_state",
     "select_action",
     "observe_transition",
+    "load_m9_run",
+    "save_life",
+    "decode_action",
     "get_introspection",
     "snapshot_modulatable_state",
     "apply_external_modulation",
@@ -526,6 +531,204 @@ def observe_transition(
         ctx["context_obs"] = context_obs
     ctx.update(extra_ctx)
     return sink.observe_transition(s_t, a_t, s_next, ctx)
+
+
+# ----------------------------------------------------------------------
+# A trained action layer: load an M9 run, read its choices, keep its life
+# (2026-11-02, Brian: "get this on the training path and connect it to
+# sanctuary")
+# ----------------------------------------------------------------------
+
+
+@dataclass
+class LoadedM9Run:
+    """Bundle returned by :func:`load_m9_run`.
+
+    Attributes:
+        model: The trunk (``MultimodalPredictiveCodingLM``) the trainer drives.
+        tokenizer: The run's tokenizer.
+        config: ``d_model``, ``n_blocks`` and ``seq_len``: the keys
+            Sanctuary's adapter reads.
+        trainer: The ``M9Trainer``. Pass it as both actor and sink.
+        loaded_from: The checkpoint the state came from.
+        continuing_life: True when ``loaded_from`` is one of the life's own
+            checkpoints (a restart); False on the first start from the run.
+        speech_trained: Whether text decoded from the trunk is the model
+            speaking. False unless the run trained the trunk's next-token
+            readout (``w_ntp > 0``); see ``docs/KNOWN_INCOMPLETE.md`` #4. An
+            M9 run trains ``output_proj`` on the predictor's latents, but
+            generation reads it from the encoder's, so M9 alone does not
+            make speech real.
+    """
+
+    model: torch.nn.Module
+    tokenizer: Any
+    config: dict
+    trainer: Any
+    loaded_from: Path
+    continuing_life: bool
+    speech_trained: bool
+
+
+def load_m9_run(
+    run_dir: str | Path,
+    *,
+    life_dir: str | Path,
+    device: torch.device | str,
+    ckpt_name: str | None = None,
+    m9_overrides: dict | None = None,
+) -> LoadedM9Run:
+    """Load a run trained with ``scripts/jepa_pilot_driver.py --m9`` as
+    Sanctuary's actor and learner.
+
+    A life is kept apart from the run it started from. The run's directory
+    is read and never written; its checkpoints are irreproducible.
+    Everything the life writes (its action log and its own checkpoints)
+    goes to ``life_dir``. If ``life_dir`` already holds a checkpoint, the
+    life continues from the newest one. Otherwise it starts from the run's
+    checkpoint (``ckpt_name``, default the newest).
+
+    The whole trainer state is restored: trunk, predictor, M9 heads, all
+    three optimizers, the sampler and the corpus position. Corpus replay
+    during life (the anti-forgetting interleave) therefore continues the
+    run's own optimizer. It also needs the run's corpus on disk: the corpus
+    is loaded into memory, as in training.
+
+    The retention baseline is measured on the run's checkpoint before any
+    life checkpoint is applied, so forgetting is always judged against the
+    model as trained.
+
+    Raises:
+        ValueError: The run was not trained with ``--m9``, its checkpoint
+            has no M9 heads (fresh heads must never pass for trained
+            ones), or ``life_dir`` lies inside the run.
+        RuntimeError: The corpus holdout is too small for one retention
+            batch.
+    """
+    from luthi.tokenizer import BPETokenizer
+    from luthi.v2.jepa_runner import (
+        CheckpointConfig,
+        KillCriteriaConfig,
+        ModalitySampler,
+        RunnerConfig,
+        SamplerConfig,
+    )
+    from luthi.v2.m9.runner import M9Config, M9Trainer
+    from luthi.v2.multimodal_data import DeviceLoader, MultimodalDataLoaderImpl
+    from luthi.v2.run_rebuild import REPO_ROOT, rebuild_run
+
+    run_dir = Path(run_dir).resolve()
+    life_dir = Path(life_dir).resolve()
+    if life_dir == run_dir or run_dir in life_dir.parents:
+        raise ValueError(
+            f"life_dir {life_dir} is inside the training run {run_dir}; "
+            "a life never writes into the run it started from."
+        )
+    device = torch.device(device)
+
+    rebuilt = rebuild_run(run_dir, device=device, ckpt_name=ckpt_name)
+    m9_fields = rebuilt.result.get("m9")
+    if m9_fields is None:
+        raise ValueError(
+            f"{run_dir} was not trained with --m9 (its pilot_result.json "
+            "has no 'm9' block)."
+        )
+    cfg = rebuilt.result["config"]
+
+    life_ckpts = sorted((life_dir / "checkpoints").glob("ckpt_*.pt"))
+    source = life_ckpts[-1] if life_ckpts else rebuilt.checkpoint
+    if "m9_v_head_state_dict" not in torch.load(
+        source, map_location="cpu", weights_only=False,
+    ):
+        raise ValueError(f"{source} holds no M9 heads.")
+
+    loader = DeviceLoader(MultimodalDataLoaderImpl(text=rebuilt.text_ds), device)
+    retention = next(iter(loader.holdout_batches("text", cfg["batch_size"])), None)
+    if retention is None:
+        raise RuntimeError(
+            f"the corpus holdout of {run_dir} has no batch of "
+            f"{cfg['batch_size']} for the retention gate."
+        )
+    sampler_cfg = SamplerConfig(
+        corpus_sizes_tokens={"text": rebuilt.text_ds.tokens_per_pass()},
+        alpha=0.7,
+    )
+    life_dir.mkdir(parents=True, exist_ok=True)
+    trainer = M9Trainer(
+        loss_module=rebuilt.loss_module,
+        # The driver's single parameter group. A run trained with per-group
+        # learning rates fails loudly at resume (group count mismatch)
+        # rather than continuing with a different optimizer.
+        optimizer=torch.optim.AdamW(
+            [p for p in rebuilt.loss_module.parameters() if p.requires_grad],
+            lr=cfg["lr"],
+        ),
+        sampler=ModalitySampler(
+            sampler_cfg,
+            generator=torch.Generator(device="cpu").manual_seed(
+                rebuilt.result["seed"]
+            ),
+        ),
+        data_loader=loader,
+        config=RunnerConfig(
+            sampler=sampler_cfg,
+            # A life's checkpoints are written by save_life, never on a
+            # timer, and none is ever rotated out.
+            checkpoint=CheckpointConfig(
+                interval_seconds=10**9, rolling_slots=10**9,
+            ),
+            kill_criteria=KillCriteriaConfig(warmup_batches=10**9),
+        ),
+        run_dir=life_dir,
+        m9_config=M9Config(**{**m9_fields, **(m9_overrides or {})}),
+        retention_batch=retention,
+    )
+    trainer.resume(source)
+
+    model_kwargs = cfg["model_kwargs"]
+    return LoadedM9Run(
+        model=rebuilt.model,
+        tokenizer=BPETokenizer.load(REPO_ROOT / "corpus_build" / "tokenizer_32k.json"),
+        config={
+            "d_model": model_kwargs["d_model"],
+            "n_blocks": model_kwargs["n_blocks"],
+            "seq_len": cfg["seq_len"],
+        },
+        trainer=trainer,
+        loaded_from=source,
+        continuing_life=bool(life_ckpts),
+        speech_trained=float(cfg.get("w_ntp", 0.0)) > 0.0,
+    )
+
+
+def save_life(trainer: Any, reason: str = "life") -> Path:
+    """Write the life's whole state as its next checkpoint, in the life
+    directory :func:`load_m9_run` gave the trainer. Nothing is rotated out:
+    lived state is irreproducible. Returns the path written."""
+    trainer._checkpoint(reason)
+    return sorted((trainer.run_dir / "checkpoints").glob("ckpt_*.pt"))[-1]
+
+
+def decode_action(
+    actor: Any,
+    action: torch.Tensor,
+    *,
+    s_t: torch.Tensor,
+    context_latents: torch.Tensor,
+) -> dict:
+    """What a selected action does on each output channel, as plain numbers.
+
+    Delegates to ``M9Trainer.decode_selection``, which owns the meaning:
+    ``active`` per channel (``text``, ``attention``, ``memory``) by the
+    activity-band test against the rest action; ``attention_gates`` per
+    modality (``text``, ``audio``, ``vision``) in [0, 1];
+    ``memory_salience`` in [0, 1]; the legacy ``intensity`` per channel
+    (reported only); and ``bands_armed`` per channel (a band that has not
+    warmed up cannot call a channel silent).
+    """
+    return actor.decode_selection(
+        action, s_t=s_t, context_latents=context_latents,
+    )
 
 
 # ----------------------------------------------------------------------
