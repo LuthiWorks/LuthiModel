@@ -2144,53 +2144,43 @@ class M9Trainer(JEPATrainer):
     # ------------------------------------------------------------------
     # Checkpoint + resume (extended schema).
     # ------------------------------------------------------------------
-    def _checkpoint(self, reason: str) -> None:
-        """Extend M8's checkpoint with the M9 state.
+    def _extra_checkpoint_state(self) -> dict:
+        """The M9 state, added to every checkpoint the parent writes.
 
-        New keys (per spec §5):
-          v_head_state_dict, v_target_state_dict
-          habit_net_state_dict
-          decoder_state_dicts (attention, memory; text rides M8)
-          m9_optimizer_state_dict
-          gamma (scalar)
-          preference_weights (snapshot for forward-compat)
+        Keys (per spec §5, plus the lived-path state and M9's random
+        stream from 2026-11-02): V and V_target, habit net, decoders
+        (attention, memory, the text decoder's own heads; ``output_proj``
+        rides the encoder), preferences, Δs module, rest action, the M9
+        and lived optimizers, gamma, the lived counters and the RNG state.
 
         Persistent MCTS tree is intentionally NOT persisted (cold
         rebuild on resume; self-heals via recency-decay).
+
+        Until 2026-11-02 this was a `_checkpoint` override that re-loaded
+        the slot the parent had just written (onto the device it was saved
+        from: a second full copy of the model in VRAM) and wrote it again.
+        A crash between the two writes left a checkpoint without M9 keys,
+        which resume would have taken silently as fresh heads. One write
+        now holds everything.
         """
-        # Run M8's checkpoint first, capturing the path it wrote.
-        super()._checkpoint(reason)
-        ckpt_dir = self.run_dir / "checkpoints"
-        slot_path = sorted(ckpt_dir.glob("ckpt_*.pt"))[-1]
-
-        # Re-load the M8 state, attach the M9 keys, atomic-rewrite.
-        existing = torch.load(slot_path, weights_only=False)
-        existing["m9_v_head_state_dict"] = self.v_head.state_dict()
-        existing["m9_v_target_state_dict"] = self.v_target.state_dict()
-        existing["m9_habit_net_state_dict"] = self.habit_net.state_dict()
-        existing["m9_decoder_attention_state_dict"] = self.decoders.attention.state_dict()
-        existing["m9_decoder_memory_state_dict"] = self.decoders.memory.state_dict()
-        existing["m9_decoder_text_intensity_state_dict"] = self.decoders.text.intensity_head.state_dict()
-        existing["m9_decoder_text_reencode_state_dict"] = self.decoders.text.reencode_head.state_dict()
-        existing["m9_preferences_state_dict"] = self.preferences.state_dict()
-        existing["m9_delta_s_state_dict"] = self.delta_s_module.state_dict()
-        existing["m9_rest_action_state_dict"] = self.rest_action.state_dict()
-        existing["m9_optimizer_state_dict"] = self.m9_optimizer.state_dict()
-        existing["m9_gamma"] = float(self.gamma.gamma.detach().item())
-        # The lived path's own state (2026-11-02), so a life resumed after a
-        # restart continues instead of restarting its lived optimizer and
-        # interleave counters. Absent from older checkpoints; tolerated.
-        existing["m9_lived_optimizer_state_dict"] = self.lived_optimizer.state_dict()
-        existing["m9_lived_step_count"] = self._lived_step_count
-        existing["m9_corpus_replay_accumulator"] = self._corpus_replay_accumulator
-        existing["m9_rng_state"] = self._m9_rng_state
-
-        tmp_path = slot_path.with_suffix(".pt.tmp")
-        with open(tmp_path, "wb") as f:
-            torch.save(existing, f)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp_path, slot_path)
+        return {
+            "m9_v_head_state_dict": self.v_head.state_dict(),
+            "m9_v_target_state_dict": self.v_target.state_dict(),
+            "m9_habit_net_state_dict": self.habit_net.state_dict(),
+            "m9_decoder_attention_state_dict": self.decoders.attention.state_dict(),
+            "m9_decoder_memory_state_dict": self.decoders.memory.state_dict(),
+            "m9_decoder_text_intensity_state_dict": self.decoders.text.intensity_head.state_dict(),
+            "m9_decoder_text_reencode_state_dict": self.decoders.text.reencode_head.state_dict(),
+            "m9_preferences_state_dict": self.preferences.state_dict(),
+            "m9_delta_s_state_dict": self.delta_s_module.state_dict(),
+            "m9_rest_action_state_dict": self.rest_action.state_dict(),
+            "m9_optimizer_state_dict": self.m9_optimizer.state_dict(),
+            "m9_gamma": float(self.gamma.gamma.detach().item()),
+            "m9_lived_optimizer_state_dict": self.lived_optimizer.state_dict(),
+            "m9_lived_step_count": self._lived_step_count,
+            "m9_corpus_replay_accumulator": self._corpus_replay_accumulator,
+            "m9_rng_state": self._m9_rng_state,
+        }
 
     def resume(self, ckpt_path: Path) -> None:
         """Extend M8's resume with M9 state restoration.

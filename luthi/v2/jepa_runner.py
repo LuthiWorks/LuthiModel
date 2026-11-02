@@ -1129,6 +1129,11 @@ class JEPATrainer:
 
     # -- Run config archival --
 
+    def _extra_checkpoint_state(self) -> dict:
+        """Keys a subclass adds to every checkpoint, in the same atomic write
+        as the rest. None for JEPATrainer itself."""
+        return {}
+
     def _archive_run_config(self) -> None:
         """Serialize all hyperparameters at launch (v0.5 §6 Gate 5)."""
         config_path = self.run_dir / "run_config.json"
@@ -2422,6 +2427,8 @@ class JEPATrainer:
             "reason": reason,
             "wall_clock_seconds": time.monotonic() - self.run_start_time,
         }
+        # A subclass's own keys go into this same atomic write (2026-11-02).
+        state.update(self._extra_checkpoint_state())
 
         # Atomic write: save -> flush -> fsync -> atomic rename.
         tmp_path = slot_path.with_suffix(".pt.tmp")

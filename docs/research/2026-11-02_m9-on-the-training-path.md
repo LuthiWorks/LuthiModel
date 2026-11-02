@@ -180,10 +180,37 @@ The activity bands were not yet armed, so "silent" was decided by the rest
 reference and the absolute floor alone. The text channel sometimes "acts"
 while speech is untrained, so those choices go nowhere.
 
+### Step 8: opt-out (Brian: "--m9 should be opt-out")
+
+- **The switch.** The driver now trains M9 by default, and `--no-m9`
+  restores `JEPATrainer`. The bit-identity result from step 3 is what makes
+  this safe: no family's measurements change. That test now carries the
+  convention exception and must keep passing.
+- **The `m9/` output subfolder is gone.** With M9 on by default, a separate
+  root would have hidden every completed family from the driver's
+  skip-if-done check. Each already-completed seed would have been re-run,
+  and a mid-seed run would have restarted from zero instead of resuming.
+- **Checkpoint write, fixed.** I re-read M9's checkpoint path with every
+  run in mind. It re-loaded each checkpoint the parent had just written
+  (with no `map_location`, so onto the GPU: a transient second full copy of
+  the model) and wrote it again. That doubled the I/O, and a crash between
+  the writes left a checkpoint that resume would take as fresh heads. A
+  hook, `JEPATrainer._extra_checkpoint_state`, now adds the M9 keys to the
+  parent's one atomic write.
+- **The CLI smoke agrees.** With M9 now on by default, the driver's smoke
+  reproduced the earlier `--no-m9`-equivalent smoke's held-out losses to six
+  decimals: living 1.962885 and dead 2.739044, with the same probes. The
+  first `--m9` smoke in step 3 had differed (living 1.960945).
+- **Left alone.** M9 keeps a device copy of the core parameters for its
+  retention gate, and a per-step copy for the drift band. Moving the first
+  to CPU would break the drift computation, which subtracts on device.
+  Their VRAM cost at 768x8 is unmeasured; `--no-m9` is the escape hatch.
+
 ## Conclusion
 
-- `--m9` trains the action layer alongside the trunk without touching what
-  the trunk learns: bit-identical on CPU, by test.
+- The pilot driver trains the action layer alongside the trunk by default
+  (`--no-m9` opts out), without touching what the trunk learns:
+  bit-identical on CPU, by test.
 - A trained M9 run loads as Sanctuary's actor and learner through the
   adapter, continues across restarts, and never writes into its run.
 - Nothing here has run at scale or on ROCm. That needs Brian's PC.
@@ -209,7 +236,8 @@ What I don't know:
   - `luthi/sanctuary_interface.py`: `LoadedM9Run`, `load_m9_run`,
     `save_life`, `decode_action`;
   - `luthi/v2/multimodal_data.py`: `DeviceLoader`, moved from the driver;
-  - `scripts/jepa_pilot_driver.py`: `--m9`.
+  - `scripts/jepa_pilot_driver.py`: M9 by default, `--no-m9`;
+  - `luthi/v2/jepa_runner.py`: `_extra_checkpoint_state`.
 - Tests: `tests/test_m9_training_path.py` (7). The full suite passes on CPU
   except `test_unset_declaration_means_rocm`, which fails by design without
   ROCm (CLAUDE.md).

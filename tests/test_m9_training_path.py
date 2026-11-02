@@ -1,15 +1,17 @@
 """M9 on the training path, and handed to Sanctuary (Brian, 2026-11-02:
-"get this on the training path and connect it to sanctuary").
+"get this on the training path and connect it to sanctuary", then "--m9
+should be opt-out").
 
 Pins:
-- Without ``--m9`` the pilot driver builds ``JEPATrainer`` exactly as before
-  and writes no ``m9`` block.
-- With ``--m9`` it trains ``M9Trainer`` through ``JEPATrainer.run()`` (which
-  could not drive an M9Trainer before: the logging flags), and the run's
-  checkpoint carries the trained heads.
+- By default the pilot driver trains ``M9Trainer`` through
+  ``JEPATrainer.run()`` (which could not drive an M9Trainer before: the
+  logging flags), and the run's checkpoint carries the trained heads.
+- With ``--no-m9`` it builds ``JEPATrainer`` exactly as before and writes no
+  ``m9`` block.
 - M9 rides along without touching the trunk. On CPU, the trunk at the end
-  of an ``--m9`` run is bit-identical to the same arm without it; only the
-  text readout ``output_proj``, which M9 trains, differs. This is the check
+  of an M9 run is bit-identical to the same arm with ``--no-m9``; only the
+  text readout ``output_proj``, which M9 trains, differs. This is what lets
+  M9 be on by default without changing what any family measures. This is the check
   on the stop-grad discipline, the private random stream and the held-out
   retention batch together: a leak through any of them shows here.
 - ``load_m9_run`` refuses runs without M9, refuses a life directory inside
@@ -48,20 +50,22 @@ WORDS = (
 ).split()
 
 
-def _args(data_dir: Path, *, m9: bool) -> Namespace:
+def _args(data_dir: Path, **switches) -> Namespace:
     return Namespace(
         data_dir=str(data_dir),
         tokenizer=str(REPO_ROOT / "corpus_build" / "tokenizer_32k.json"),
         n_blocks=1, epochs=1, batch_size=4, seq_len=32, stride=32, lr=3e-4,
         holdout_fraction=0.2, heldout_batches=2, probe_batches=2,
         kill_warmup=10**9, checkpoint_interval=900, checkpoint_slots=3,
-        max_batches_per_epoch=6, m9=m9,
+        max_batches_per_epoch=6, **switches,
     )
 
 
 @pytest.fixture(scope="module")
 def runs(tmp_path_factory):
-    """One small run of the same arm and seed, with and without --m9."""
+    """One small run of the same arm and seed: the default (M9 on; the
+    Namespace carries no switch at all, as older callers build it) and
+    --no-m9."""
     root = tmp_path_factory.mktemp("m9_path")
     corpus = root / "corpus"
     corpus.mkdir()
@@ -81,10 +85,10 @@ def runs(tmp_path_factory):
 
     mp.setattr(JEPATrainer, "__init__", recording_init)
     out = {}
-    for name, m9 in (("default", False), ("m9", True)):
+    for name, switches in (("no_m9", {"no_m9": True}), ("m9", {})):
         mp.setattr(driver, "OUTPUT_ROOT", root / name)
         built.clear()
-        result = driver._run_one(ARM, D_MODEL, SEED, _args(corpus, m9=m9))
+        result = driver._run_one(ARM, D_MODEL, SEED, _args(corpus, **switches))
         out[name] = {
             "dir": root / name / driver._run_name(ARM, D_MODEL, SEED),
             "result": result,
@@ -100,15 +104,15 @@ def _ckpt(run_dir: Path) -> dict:
     return torch.load(path, map_location="cpu", weights_only=False)
 
 
-def test_default_path_builds_jepa_trainer_and_records_no_m9(runs):
-    d = runs["default"]
+def test_no_m9_builds_jepa_trainer_and_records_no_m9(runs):
+    d = runs["no_m9"]
     assert d["trainer"] == "JEPATrainer"
     assert "m9" not in d["result"]
     assert not (d["dir"] / "m9_action_log.jsonl").exists()
     assert not any(k.startswith("m9_") for k in _ckpt(d["dir"]))
 
 
-def test_m9_path_trains_the_heads_and_records_them(runs):
+def test_m9_is_on_by_default_and_records_its_heads(runs):
     m = runs["m9"]
     assert m["trainer"] == "M9Trainer"
     assert m["result"]["outcome"] == "completed"
@@ -135,7 +139,7 @@ def _same(a, b) -> bool:
 
 
 def test_m9_rides_along_without_touching_the_trunk(runs):
-    plain, m9 = _ckpt(runs["default"]["dir"]), _ckpt(runs["m9"]["dir"])
+    plain, m9 = _ckpt(runs["no_m9"]["dir"]), _ckpt(runs["m9"]["dir"])
     assert plain["global_step"] == m9["global_step"] == 6
 
     readout = {k for k in plain["online_state_dict"] if k.startswith("output_proj.")}
@@ -155,8 +159,8 @@ def test_m9_rides_along_without_touching_the_trunk(runs):
 
 
 def test_load_refuses_a_run_trained_without_m9(runs, tmp_path):
-    with pytest.raises(ValueError, match="not trained with --m9"):
-        load_m9_run(runs["default"]["dir"], life_dir=tmp_path / "life", device="cpu")
+    with pytest.raises(ValueError, match="trained without M9"):
+        load_m9_run(runs["no_m9"]["dir"], life_dir=tmp_path / "life", device="cpu")
 
 
 def test_load_refuses_a_life_inside_the_run(runs):

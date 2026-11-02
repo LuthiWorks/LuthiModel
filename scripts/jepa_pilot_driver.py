@@ -1277,22 +1277,25 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
     )
     gen = torch.Generator(device="cpu").manual_seed(seed)
     # The M9 action layer (Brian, 2026-11-02: "get this on the training
-    # path"). Opt-in; without --m9 the trainer is JEPATrainer exactly as
-    # before. M9Trainer runs the same JEPA step, then trains its heads
-    # (value, habit, decoders, rest action, the text readout) on DETACHED
-    # latents. Its retention gate reads the run's first holdout batch, so
-    # the training stream is not shifted by a batch taken for it.
+    # path", then "--m9 should be opt-out"). On by default; --no-m9 gives
+    # JEPATrainer exactly as before. M9Trainer runs the same JEPA step, then
+    # trains its heads (value, habit, decoders, rest action, the text
+    # readout) on DETACHED latents, on its own random stream, with its
+    # retention batch from the holdout. The trunk is therefore bit-identical
+    # with and without it (CPU, tests/test_m9_training_path.py), which is
+    # what lets it be the default without changing any family's meaning.
     trainer_cls = JEPATrainer
     m9_kwargs: dict = {}
-    if getattr(args, "m9", False):
+    if not getattr(args, "no_m9", False):
         from luthi.v2.m9.runner import M9Config, M9Trainer
         retention = next(
             iter(loader.holdout_batches("text", args.batch_size)), None,
         )
         if retention is None:
             raise RuntimeError(
-                f"{arm}: --m9 needs one holdout batch of {args.batch_size} "
-                "for the retention gate, and the corpus holdout has none."
+                f"{arm}: M9 needs one holdout batch of {args.batch_size} "
+                "for the retention gate, and the corpus holdout has none. "
+                "Run with --no-m9, or give the corpus a larger holdout."
             )
         trainer_cls = M9Trainer
         m9_kwargs = dict(
@@ -1520,7 +1523,7 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
         },
     }
     if m9_kwargs:
-        # Present only on M9 runs, so a family run's record is unchanged.
+        # Absent with --no-m9, so such a run's record matches the old format.
         # Everything M9Trainer was built with, for load_m9_run to rebuild.
         result["m9"] = dataclasses.asdict(m9_kwargs["m9_config"])
     _result_path(arm, d_model, seed).write_text(json.dumps(result, indent=2))
@@ -1650,18 +1653,12 @@ def main() -> int:
     p.add_argument("--seeds", type=str, default=None,
                    help="Explicit comma-separated seed list (overrides "
                         "--n-seeds), e.g. '44'.")
-    p.add_argument("--m9", action="store_true",
-                   help="Also train the M9 action layer (Brian, 2026-11-02). "
-                        "Runs land in runs/jepa_pilot/m9/, apart from every "
-                        "family, and are never pooled with one.")
+    p.add_argument("--no-m9", dest="no_m9", action="store_true",
+                   help="Do not train the M9 action layer (on by default "
+                        "since 2026-11-02; it leaves the trunk unchanged).")
     args = p.parse_args()
-
-    if args.m9:
-        # A separate root keeps M9 runs out of every family's resume check
-        # and out of aggregate(), which globs one level under OUTPUT_ROOT.
-        global OUTPUT_ROOT
-        OUTPUT_ROOT = OUTPUT_ROOT / "m9"
-        print(f"[jepa-pilot] M9 action layer ON: runs land in {OUTPUT_ROOT}")
+    if args.no_m9:
+        print("[jepa-pilot] M9 action layer OFF (--no-m9)")
 
     if args.smoke:
         args.epochs = 1

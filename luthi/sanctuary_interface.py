@@ -578,8 +578,8 @@ def load_m9_run(
     ckpt_name: str | None = None,
     m9_overrides: dict | None = None,
 ) -> LoadedM9Run:
-    """Load a run trained with ``scripts/jepa_pilot_driver.py --m9`` as
-    Sanctuary's actor and learner.
+    """Load a run trained with M9 (``scripts/jepa_pilot_driver.py``'s
+    default since 2026-11-02) as Sanctuary's actor and learner.
 
     A life is kept apart from the run it started from. The run's directory
     is read and never written; its checkpoints are irreproducible.
@@ -599,7 +599,7 @@ def load_m9_run(
     model as trained.
 
     Raises:
-        ValueError: The run was not trained with ``--m9``, its checkpoint
+        ValueError: The run was trained with ``--no-m9``, its checkpoint
             has no M9 heads (fresh heads must never pass for trained
             ones), or ``life_dir`` lies inside the run.
         RuntimeError: The corpus holdout is too small for one retention
@@ -630,8 +630,8 @@ def load_m9_run(
     m9_fields = rebuilt.result.get("m9")
     if m9_fields is None:
         raise ValueError(
-            f"{run_dir} was not trained with --m9 (its pilot_result.json "
-            "has no 'm9' block)."
+            f"{run_dir} was trained without M9 (--no-m9, or before M9 was "
+            "on the training path): its pilot_result.json has no 'm9' block."
         )
     cfg = rebuilt.result["config"]
 

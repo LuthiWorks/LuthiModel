@@ -85,8 +85,8 @@
 > Things that exist but are not functionally complete (full list, with safety
 > nets, in `docs/KNOWN_INCOMPLETE.md`): the Triton kernel (skeleton); C++
 > `pc_ops` on ROCm (doesn't build; Python reference runs, recorded); the m9
-> action layer (on the training path behind `--m9` since 2026-11-02, never
-> run past CPU smoke); `generate()` on pure-JEPA
+> action layer (on the training path by default since 2026-11-02, `--no-m9` to
+> opt out; never run past CPU smoke); `generate()` on pure-JEPA
 > checkpoints (untrained output head); layer-level episode memory (inert in the
 > configuration that runs).
 

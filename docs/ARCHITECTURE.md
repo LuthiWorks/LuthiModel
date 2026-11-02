@@ -336,13 +336,13 @@ non-spiking and recovers sparsity through the sparse PC gate (*which weights
 update*, not *which neurons fire*). v1 is preserved as a reference, not
 trained.
 
-## The action layer (M9): opt-in
+## The action layer (M9): on by default
 
 `luthi/v2/m9/` implements the action layer: expected free energy, MCTS
 planning, habit net, preferences, activity bands, rest actions.
 
-- **Training (since 2026-11-02, Brian's ruling).** It trains only when the
-  pilot driver is given `--m9`. `M9Trainer` runs the JEPA step unchanged, then
+- **Training (since 2026-11-02, Brian's rulings).** The pilot driver trains it
+  by default; `--no-m9` turns it off. `M9Trainer` runs the JEPA step unchanged, then
   trains its heads on detached latents, on its own random stream. On CPU the
   trunk is bit-identical with and without it. The JEPA predictor's
   action-token stub is a constant zero in the JEPA step; M9 passes real

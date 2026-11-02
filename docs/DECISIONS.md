@@ -584,3 +584,37 @@ before any "working" verdict is trustworthy in either direction.
 > The switch exists; whether to flip it, and whether the value head should
 > be replaced by plain distillation of the planner's EFE (no TD and no
 > reward), is Brian's decision. Nothing here has run outside CPU tests.
+
+---
+
+> **RULING (2026-11-02, later; Brian): M9 is opt-out.**
+>
+> Brian: *"--m9 should be opt-out."* The pilot driver now trains M9 by
+> default. `--no-m9` restores `JEPATrainer` exactly. Runs land in the usual
+> `runs/jepa_pilot/` root; the `m9/` subfolder is gone.
+>
+> - **Why this is safe for the families.** It departs from the
+>   "opt-in and default bit-identical" convention (CLAUDE.md now records the
+>   exception). It changes no family's meaning, because the trunk is
+>   bit-identical with and without M9 on CPU (`tests/test_m9_training_path.py`).
+>   E1–E5 measure exactly what they did. An in-progress run resumed under
+>   the new default keeps its trunk and starts M9's heads fresh at the
+>   resume point.
+> - **What it does change.**
+>   - Every run's wall clock: the M9 step adds planning, small heads and a
+>     per-step parameter copy. The cost on ROCm at 768x8 is unmeasured.
+>   - Its memory: M9 holds a copy of the core parameters for its retention
+>     gate, and the per-step copy needs room too. At 768x8 that is several
+>     hundred MB of VRAM each, also unmeasured. `--no-m9` is the escape hatch
+>     if a family's budget or a 16 GB card needs it.
+> - **Fixed with it.** The M9 keys used to be added by re-loading each
+>   checkpoint (a second full copy of the model, on the device it was saved
+>   from) and writing it again. That doubled checkpoint I/O on every run now,
+>   and a crash between the two writes left a checkpoint whose heads resume
+>   would have taken as fresh. `JEPATrainer._extra_checkpoint_state` now
+>   puts them in the one atomic write. This is a no-op for `JEPATrainer`
+>   itself.
+>
+> **The open question above now applies to every run.** Whether the value
+> head's TD reward fits the demonstration-only rule is still Brian's call.
+> Until he rules, any run without `--no-m9` trains it.

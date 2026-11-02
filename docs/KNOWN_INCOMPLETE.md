@@ -59,24 +59,26 @@ which would have blocked every living arm in the current lineage on ROCm.
 ## 3. The m9 action layer: on the training path, never run at scale
 
 **Files:** `luthi/v2/m9/` (EFE, MCTS, value head, habit net, preferences,
-staleness, gamma, kills, runner); `scripts/jepa_pilot_driver.py --m9`;
+staleness, gamma, kills, runner); `scripts/jepa_pilot_driver.py` (on by
+default, `--no-m9` to opt out);
 `luthi/sanctuary_interface.py` (`load_m9_run`, `save_life`, `decode_action`)
 
-**Status (2026-11-02, Brian's ruling in `DECISIONS.md`):** opt-in on the
-training path. `--m9` trains the heads alongside the trunk without changing
+**Status (2026-11-02, Brian's rulings in `DECISIONS.md`):** on the training
+path by default. The driver trains the heads alongside the trunk without changing
 what the trunk learns (bit-identical on CPU, `tests/test_m9_training_path.py`).
 A trained run loads into Sanctuary as actor and learner. **Never run on ROCm
 or past CPU-smoke size**, so nothing is known yet about its cost at 768x8 or
 whether its heads learn anything meaningful from corpus batches, where every
 "transition" is an independently sampled window.
 
-**Conditions to finish:** an `--m9` run on Brian's PC, its cost measured,
+**Conditions to finish:** an M9 run on Brian's PC, its cost measured,
 and its heads read. Brian's ruling on whether the value head's TD reward fits
 the demonstration-only rule (open in `DECISIONS.md`, 2026-11-02).
 
-**Safety net:** M9 runs land in `runs/jepa_pilot/m9/` and are never pooled
-with a family. Nothing in the training record should be read as the
-substrate being under active-inference control.
+**Safety net:** the trunk is bit-identical with and without M9 (CPU test), so
+M9 being on changes no family's measurements. `--no-m9` turns it off if its
+cost or memory gets in the way. Nothing in the training record should be
+read as the substrate being under active-inference control.
 
 ---
 
