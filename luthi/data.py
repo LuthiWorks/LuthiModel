@@ -26,7 +26,11 @@ from torch.utils.data import Dataset
 # tokenizer fingerprint), so any change to the inputs invalidates the
 # cache by producing a different key — no manual invalidation needed.
 CORPUS_CACHE_DIR_ENV = "LUTHI_CORPUS_CACHE_DIR"
-CORPUS_CACHE_DIR_DEFAULT = Path("corpus_build/cache")
+# Anchored at this repo (2026-11-02), not the working directory: Sanctuary
+# loads M9 runs from its own repo, and a relative default made it
+# re-tokenize the whole corpus into a second cache there. From this repo's
+# root, where every launcher runs, the location is unchanged.
+CORPUS_CACHE_DIR_DEFAULT = Path(__file__).resolve().parents[1] / "corpus_build" / "cache"
 CORPUS_CACHE_FORMAT_VERSION = 1
 
 

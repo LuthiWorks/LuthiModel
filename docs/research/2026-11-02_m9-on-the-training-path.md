@@ -155,6 +155,31 @@ output channel:
   real, and `LoadedM9Run.speech_trained` is False unless the run had
   `w_ntp > 0`. Sanctuary uses that to keep an untrained readout silent.
 
+### Step 7: running it from Sanctuary
+
+The first live run from Sanctuary's working directory re-tokenized the
+corpus and wrote the cache into `sanctuary/corpus_build/cache/`. The
+default cache directory in `luthi/data.py` was relative to the working
+directory.
+
+- On Brian's PC that would have meant hours of tokenization on Luthi's first
+  start, and a second multi-GB cache inside Sanctuary's repo.
+- The default is now anchored at this repo. Every launcher runs from this
+  repo's root, so for training the location is unchanged.
+- Pinned by `test_the_corpus_cache_lives_in_this_repo_wherever_python_runs`.
+
+Run on the smoke M9 run (8 cycles, CPU, 64d), the loop works end to end:
+
+- a lived update every cycle after the first;
+- attention and memory carried out from the decoded action;
+- no speech;
+- about 0.25 s per cycle after the first. The first cycle takes about 18 s,
+  for loading and tokenizing.
+
+The activity bands were not yet armed, so "silent" was decided by the rest
+reference and the absolute floor alone. The text channel sometimes "acts"
+while speech is untrained, so those choices go nowhere.
+
 ## Conclusion
 
 - `--m9` trains the action layer alongside the trunk without touching what

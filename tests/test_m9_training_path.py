@@ -219,3 +219,14 @@ def test_decode_action_reports_each_channel(runs, tmp_path, cache_env):
     assert all(0.0 <= g <= 1.0 for g in decoded["attention_gates"].values())
     assert 0.0 <= decoded["memory_salience"] <= 1.0
     assert set(decoded["bands_armed"]) == {"text", "attention", "memory"}
+
+
+def test_the_corpus_cache_lives_in_this_repo_wherever_python_runs(monkeypatch, tmp_path):
+    """Sanctuary loads M9 runs from its own working directory. A cwd-relative
+    cache default made it re-tokenize the whole corpus into a second cache
+    inside Sanctuary's repo (found 2026-11-02)."""
+    from luthi.data import _corpus_cache_dir
+
+    monkeypatch.delenv("LUTHI_CORPUS_CACHE_DIR", raising=False)
+    monkeypatch.chdir(tmp_path)
+    assert _corpus_cache_dir() == REPO_ROOT / "corpus_build" / "cache"
