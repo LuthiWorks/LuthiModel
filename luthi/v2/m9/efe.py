@@ -110,6 +110,21 @@ class EFEEvaluator(nn.Module):
         self.activity_bands = activity_bands
         self.delta_s_module = delta_s_module
         self.delta_s_band = delta_s_band
+        # Felt valence (2026-11-03): set by M9Trainer when
+        # M9Config.felt_valence is on. None or a zero weight leaves every G
+        # exactly as before.
+        self.felt_valence: nn.Module | None = None
+        self.avoidance_weight: float = 0.0
+
+    def _with_avoidance(self, g: torch.Tensor, s_next: torch.Tensor, out: dict) -> torch.Tensor:
+        """Add predicted unpleasantness of the next state to G, when felt
+        valence is on. Planning never trains the head (no_grad)."""
+        if self.felt_valence is None or self.avoidance_weight <= 0.0:
+            return g
+        with torch.no_grad():
+            c_avoid = self.felt_valence.unpleasantness(s_next).to(g.dtype)
+        out["c_avoid"] = c_avoid.detach()
+        return g + self.avoidance_weight * c_avoid
 
     def has_per_candidate_path(self) -> bool:
         """True iff the F1 per-candidate path is wired and active."""
@@ -244,7 +259,6 @@ class EFEEvaluator(nn.Module):
                 v_hat = self.value_head(s_hat_next).detach()
 
         out = {
-            "G": g,
             "s_hat_next": s_hat_next.detach(),
             "c_eng": c_eng.detach(),
             "c_coh": c_coh.detach(),
@@ -260,6 +274,7 @@ class EFEEvaluator(nn.Module):
             ),
             "delta_s_internal": delta_s_k.detach(),
         }
+        out["G"] = self._with_avoidance(g, s_hat_next, out)
         if v_hat is not None:
             out["v_hat"] = v_hat
         return out
@@ -381,14 +396,15 @@ class EFEEvaluator(nn.Module):
             + w_truth * c_truth
         )
 
-        return {
-            "G": g.detach(),
+        out = {
             "c_eng": c_eng.detach(),
             "c_coh": c_coh.detach(),
             "c_con": c_con.detach(),
             "c_truth": c_truth.detach(),
             "delta_s_internal": delta_s_real.detach(),
         }
+        out["G"] = self._with_avoidance(g, s_next, out).detach()
+        return out
 
     # ------------------------------------------------------------------
     # Legacy single-call API (shared observations across candidates).
@@ -445,7 +461,6 @@ class EFEEvaluator(nn.Module):
                 v_hat = self.value_head(s_hat_next).detach()
 
         out = {
-            "G": g,
             "s_hat_next": s_hat_next.detach(),
             "c_eng": prag["c_eng"],
             "c_coh": prag["c_coh"],
@@ -456,6 +471,7 @@ class EFEEvaluator(nn.Module):
             "w_con": prag["w_con"],
             "w_truth": prag["w_truth"],
         }
+        out["G"] = self._with_avoidance(g, s_hat_next, out)
         if v_hat is not None:
             out["v_hat"] = v_hat
         return out

@@ -74,7 +74,7 @@ class _TextLoader:
         return {"text": 1000}
 
 
-def _build_trainer(run_dir: Path, seed: int = 7) -> M9Trainer:
+def _build_trainer(run_dir: Path, seed: int = 7, **m9) -> M9Trainer:
     torch.manual_seed(seed)
     model = MultimodalPredictiveCodingLM(
         vocab_size=VOCAB, d_model=D, n_blocks=2, n_heads=2,
@@ -103,7 +103,7 @@ def _build_trainer(run_dir: Path, seed: int = 7) -> M9Trainer:
     return M9Trainer(
         loss_module=loss_module, optimizer=optimizer, sampler=sampler,
         data_loader=loader, config=runner_cfg, run_dir=run_dir,
-        m9_config=M9Config(mcts_budget_per_cycle=4),  # tiny budget for speed
+        m9_config=M9Config(mcts_budget_per_cycle=4, **m9),  # tiny budget for speed
     )
 
 

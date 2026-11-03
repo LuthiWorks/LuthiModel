@@ -69,6 +69,7 @@ from luthi.v2.m9.decoders import (
 )
 from luthi.v2.m9.delta_s import DeltaSBand, DeltaSInternal
 from luthi.v2.m9.efe import EFEEvaluator
+from luthi.v2.m9.felt_valence import FeltValenceHead
 from luthi.v2.m9.gamma import GammaInference
 from luthi.v2.m9.habit_net import HabitNet
 from luthi.v2.m9.instrumentation import ActionLog, MIProbe
@@ -248,6 +249,19 @@ class M9Config:
     # action layer rides along without touching what the trunk learns.
     # The pilot driver sets it to 9000 + the run's seed.
     rng_seed: Optional[int] = None
+
+    # ---- Felt valence (2026-11-03, docs/research/2026-11-03_learning-to-avoid.md) ----
+    # Off by default: nothing is built, every G and every checkpoint is as
+    # before. On: a head learns, in life, how states feel from the world's
+    # reports (ctx["valence"] in observe_transition, -1 unpleasant .. +1
+    # pleasant). It starts neutral, so nothing is unpleasant until felt so.
+    # The planner then counts predicted unpleasantness as a cost
+    # (avoidance_weight). A strongly felt moment teaches more: its loss is
+    # weighted 1 + valence_salience_gain * |valence|. Pilot values.
+    felt_valence: bool = False
+    avoidance_weight: float = 1.0
+    valence_salience_gain: float = 4.0
+    valence_lr: float = 1e-3
 
 
 # ---------------------------------------------------------------------------
@@ -684,6 +698,20 @@ class M9Trainer(JEPATrainer):
         # regression check (4.8 round-2 review, 2026-06-15). See
         # observe_transition for the firing condition.
         self._observe_no_snapshot_warned: bool = False
+
+        # ---- Felt valence (2026-11-03) ----
+        # Built last and only when on, so with it off construction draws
+        # exactly what it always did. Its own optimizer, so the M9
+        # optimizer's state (and every checkpoint of it) is unchanged.
+        self.felt_valence: Optional[FeltValenceHead] = None
+        self.valence_optimizer: Optional[Adam] = None
+        if self.m9_config.felt_valence:
+            self.felt_valence = FeltValenceHead(d_model=d_model).to(self.device)
+            self.valence_optimizer = Adam(
+                self.felt_valence.parameters(), lr=self.m9_config.valence_lr,
+            )
+            self.efe.felt_valence = self.felt_valence
+            self.efe.avoidance_weight = float(self.m9_config.avoidance_weight)
 
     # ------------------------------------------------------------------
     # Two-phase train_step.
@@ -1338,6 +1366,8 @@ class M9Trainer(JEPATrainer):
                 "connection_cost": float(g_out["c_con"].item()),
                 "truthfulness_cost": float(g_out["c_truth"].item()),
             }
+            if "c_avoid" in g_out:
+                efe_breakdown["avoidance_cost"] = float(g_out["c_avoid"].item())
 
             # F4 fix (4.8 review 2026-06-15): freeze the plan now, so
             # the transition that consumes it is self-describing.
@@ -2104,6 +2134,8 @@ class M9Trainer(JEPATrainer):
             # is the whole transition for them). `realized_next_state` is
             # the `s_next` positional -- the realized pooled next state --
             # already detached at the top; no separate ctx channel.
+            valence_metrics = self._learn_felt_valence(s_next, ctx.get("valence"))
+
             lived_metrics: dict = {}
             context_obs = ctx.get("context_obs")
             if context_obs is not None:
@@ -2137,9 +2169,33 @@ class M9Trainer(JEPATrainer):
                 "theta_version": self.staleness.theta_version,
             }
             result.update(lived_metrics)
+            result.update(valence_metrics)
             return result
         finally:
             self._current_cycle_ctx = prev_ctx
+
+    def _learn_felt_valence(self, s_next: torch.Tensor, valence) -> dict:
+        """One step of learning how the realized next state felt, when felt
+        valence is on and the world reported a valence for it. A strongly
+        felt moment, pleasant or not, is weighted more: what matters is
+        learned faster."""
+        if self.felt_valence is None or valence is None:
+            return {}
+        target = torch.full(
+            (s_next.shape[0],), float(valence),
+            device=s_next.device, dtype=s_next.dtype,
+        )
+        predicted = self.felt_valence(s_next)
+        weight = 1.0 + self.m9_config.valence_salience_gain * target.abs()
+        loss = (weight * (predicted - target).pow(2)).mean()
+        self.valence_optimizer.zero_grad(set_to_none=True)
+        loss.backward()
+        self.valence_optimizer.step()
+        return {
+            "valence_felt": float(valence),
+            "valence_predicted": float(predicted.detach().mean().item()),
+            "valence_loss": float(loss.item()),
+        }
 
     # ------------------------------------------------------------------
     # Checkpoint + resume (extended schema).
@@ -2180,6 +2236,13 @@ class M9Trainer(JEPATrainer):
             "m9_lived_step_count": self._lived_step_count,
             "m9_corpus_replay_accumulator": self._corpus_replay_accumulator,
             "m9_rng_state": self._m9_rng_state,
+            **(
+                {
+                    "m9_felt_valence_state_dict": self.felt_valence.state_dict(),
+                    "m9_valence_optimizer_state_dict": self.valence_optimizer.state_dict(),
+                }
+                if self.felt_valence is not None else {}
+            ),
         }
 
     def resume(self, ckpt_path: Path) -> None:
@@ -2242,3 +2305,8 @@ class M9Trainer(JEPATrainer):
             )
         if state.get("m9_rng_state") is not None:
             self._m9_rng_state = state["m9_rng_state"]
+        if self.felt_valence is not None and "m9_felt_valence_state_dict" in state:
+            self.felt_valence.load_state_dict(state["m9_felt_valence_state_dict"])
+            self.valence_optimizer.load_state_dict(
+                state["m9_valence_optimizer_state_dict"]
+            )

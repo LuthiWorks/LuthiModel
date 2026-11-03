@@ -75,6 +75,7 @@ __all__ = [
     "observe_transition",
     "load_m9_run",
     "save_life",
+    "keep_recent",
     "decode_action",
     "get_introspection",
     "snapshot_modulatable_state",
@@ -707,6 +708,36 @@ def save_life(trainer: Any, reason: str = "life") -> Path:
     lived state is irreproducible. Returns the path written."""
     trainer._checkpoint(reason)
     return sorted((trainer.run_dir / "checkpoints").glob("ckpt_*.pt"))[-1]
+
+
+def keep_recent(model: torch.nn.Module, fraction: float) -> int:
+    """Keep a share of what the living layers have recently learned.
+
+    Moves each living layer's home (``set_point``) toward its current weight
+    by ``fraction`` (0 to 1). A living layer's recent change is its
+    displacement from home, which homeostasis erases within about a thousand
+    forwards. This captures ``fraction`` of it for good, the same operation
+    Sanctuary's sleep consolidation applies at 1% per NREM cycle. The host
+    calls it when a moment matters: something felt strongly, or something
+    the mind chose to remember (2026-11-03,
+    ``docs/research/2026-11-03_learning-to-avoid.md``).
+
+    What is kept is the layer's whole recent change, not one moment's: the
+    living layer does not separate the last moment from the last minute.
+
+    Returns the number of living layers moved.
+    """
+    from luthi.v2.living_layer_pc import PredictiveCodingLayer
+
+    if not 0.0 <= fraction <= 1.0:
+        raise ValueError(f"fraction must be in [0, 1]; got {fraction}")
+    moved = 0
+    with torch.no_grad():
+        for module in model.modules():
+            if isinstance(module, PredictiveCodingLayer):
+                module.set_point.add_(module.weight - module.set_point, alpha=fraction)
+                moved += 1
+    return moved
 
 
 def decode_action(

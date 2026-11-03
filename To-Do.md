@@ -79,7 +79,17 @@
 >
 > - `LUTHI_RUNS_ROOT` (still unimplemented).
 > - A loud guard so Sanctuary never presents a pure-JEPA checkpoint's
->   generated text as speech.
+>   generated text as speech. *Done for M9 lives (2026-11-02):
+>   `LoadedM9Run.speech_trained` keeps an untrained readout silent.*
+> - **An M9 world-action decoder** (2026-11-03,
+>   `docs/research/2026-11-03_learning-to-avoid.md`). It maps a selected
+>   action to a world action (Minecraft `go_to`, `look`, `stop` and the rest,
+>   as tool requests). It is the missing link in learning to avoid: Luthi
+>   can learn what feels bad and remember it, but cannot yet move away from
+>   it. Waits on Sanctuary's Minecraft bridge.
+> - **Seeding, Stage 0** (`docs/research/2026-11-03_seeding-luthi.md`). The
+>   home is checked (`2026-11-03_stage0-the-home.md`). Next: counted
+>   embeddings (S1), mimetic attention (S2), prenatal procedural data (S4).
 > - Measure the block-store counters' host-sync cost at 768.
 > - Plumb `VISReg(shape_normalize=True)` through `JEPALoss` and the driver
 >   (C6, for E3's dose gate).
