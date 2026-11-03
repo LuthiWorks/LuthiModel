@@ -179,6 +179,16 @@ is the living displacement from home, and the living-change spectrum gauge
 reads exactly that. The plasticity taper (trainer-scheduled `rate_scale`)
 scales the learning channels only.
 
+**The home** (2026-11-03, `docs/research/2026-11-03_stage0-the-home.md`):
+
+- **What it starts as.** `set_point` starts as a copy of the starting weight, so in every legacy run the home is the random draw.
+- **What it keeps.** Of any displacement, the home keeps r(1−h)/(h + r − hr), where h is `homeostatic_decay` and r the follow rate. At legacy values that is 0.1%.
+- **A second job for r.** `set_point_adapt_rate` also scales the top-down push into the home (`apply_top_down`), which is rank-1 by construction.
+- **Two opt-in seeds:**
+  - `living_home` = `"orthogonal"` or `"identity"`: a structured start at the random draw's norm. Identity proved harmful.
+  - `home_follow_rate`: raises only the follow rate, leaving the push alone.
+- **Default:** both off, bit-identical.
+
 ## Memory
 
 ### Layer-level episode store (inside each living layer)

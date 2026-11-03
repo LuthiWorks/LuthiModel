@@ -120,6 +120,12 @@ Each seed is a pre-birth choice and is recorded. Each one gets its own arm (stan
 - **S3c. Inherited.** The home a previous Luthi run consolidated to, perhaps passed through shrink-and-perturb [19]. This only means something if E3 shows the living channel carries signal.
 - **S3d. Evolved.** Homes, or homes plus per-layer rates, searched by evolution strategies [17] for document-specific change on `scripts/adaptation_eval.py` (read-own minus read-other, plasticity on; rule 4). It costs the most and comes last.
 
+**Stage 0 result for S3 (same day; `2026-11-03_stage0-the-home.md`):**
+
+- **Ruled out:** a zero home (it never writes) and an identity home (13× worse held-out NMSE).
+- **Orthogonal** is a viable neutral start.
+- **Grown** is a fifth candidate: the home follows the layer faster before birth. It works once its follow rate is separated from a rank-1 top-down push it shared a constant with (`home_follow_rate`). It then holds 12–24 directions under the covariance rule, but only one under the mean-field rule. So its value depends on E3's P3.
+
 ## 5. The path
 
 ### Stage 0 — capacity checks, on CPU, now (standing rule 1; no registration needed)

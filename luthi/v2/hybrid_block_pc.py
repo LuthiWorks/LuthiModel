@@ -28,6 +28,9 @@ from luthi.v2.backward_pass_pc import (
     mask_signal,
 )
 
+# Starting weights for the living FFN, and so its home (2026-11-03).
+LIVING_HOMES = ("random", "orthogonal", "identity")
+
 
 class PredictiveCodingBlock(nn.Module):
     """One block of the v2 architecture.
@@ -46,6 +49,7 @@ class PredictiveCodingBlock(nn.Module):
         pred_learning_rate: float = 0.0001,
         homeostatic_decay: float = 0.001,
         set_point_adapt_rate: float = 1e-6,
+        home_follow_rate: float | None = None,
         num_episodes: int = 64,
         episode_blend: float = 0.3,
         compressed_episodes: bool = False,
@@ -81,6 +85,15 @@ class PredictiveCodingBlock(nn.Module):
         # -- the store blends a batch-constant vector into every forward and
         # the dead arm has never had one.
         block_episode_store: str = "legacy",
+        # The living FFN's starting weight, and so its home (set_point)
+        # (2026-11-03, docs/research/2026-11-03_seeding-luthi.md). "random"
+        # (default) is the legacy draw, bit-identical. "orthogonal" and
+        # "identity" keep the random draw's Frobenius norm and change only
+        # its directions and spectrum, so magnitude is not a confound. There
+        # is deliberately no "zero": a zero living map outputs nothing, the
+        # PC write is an outer product with the output, and the layer would
+        # stay at zero forever.
+        living_home: str = "random",
     ):
         super().__init__()
         if block_episode_store not in ("legacy", "off"):
@@ -89,6 +102,10 @@ class PredictiveCodingBlock(nn.Module):
                 f"{block_episode_store!r}"
             )
         self.block_episode_store = str(block_episode_store)
+        if living_home not in LIVING_HOMES:
+            raise ValueError(
+                f"living_home must be one of {LIVING_HOMES}; got {living_home!r}"
+            )
         # Dead-encoder arm (Experiment 1 / JEPA pilot control, 2026-07-15):
         # dead_ffn=True swaps the PC living layer for a standard trainable
         # nn.Linear and removes the block-level episode store — the same
@@ -244,6 +261,7 @@ class PredictiveCodingBlock(nn.Module):
                 ),
                 homeostatic_decay=homeostatic_decay,
                 set_point_adapt_rate=set_point_adapt_rate,
+                home_follow_rate=home_follow_rate,
                 num_episodes=num_episodes,
                 episode_blend=episode_blend,
                 compressed_episodes=compressed_episodes,
@@ -272,6 +290,8 @@ class PredictiveCodingBlock(nn.Module):
         # from the sub-modules' default init logic.
         if mu_pc_enabled:
             self._apply_mu_pc_init(n_blocks_total)
+        if living_home != "random":
+            self._apply_living_home(living_home)
         if self.dead_ffn:
             # No block-level episode store either: the episode machinery is
             # living-channel state, and the control isolates the whole
@@ -292,6 +312,26 @@ class PredictiveCodingBlock(nn.Module):
         # Cached state for the top-down sweep — the block's input is needed
         # to compute local salience in compute_block_top_down.
         self._block_input: torch.Tensor | None = None
+
+    def _apply_living_home(self, home: str) -> None:
+        """Replace the living FFN's starting weight with a structured one of
+        the same Frobenius norm, and make it the home (set_point). Applied
+        after any μPC re-init, so the norm matched is whichever draw the
+        configuration would otherwise have used. The dead control's linear
+        gets the same kind of start at its own draw's norm (the two arms
+        have always started from different draws), so a living/dead pair
+        differs as it always has, plus nothing."""
+        w = self.living_ffn.weight
+        with torch.no_grad():
+            norm = w.norm()
+            if home == "orthogonal":
+                shaped = torch.empty_like(w)
+                nn.init.orthogonal_(shaped)
+            else:  # "identity"
+                shaped = torch.eye(w.shape[0], w.shape[1], dtype=w.dtype, device=w.device)
+            w.copy_(shaped * (norm / shaped.norm()))
+            if not self.dead_ffn:
+                self.living_ffn.set_point.copy_(w)
 
     def _apply_mu_pc_init(self, L: int) -> None:
         """Re-initialize all trainable linears and the PC weight buffer

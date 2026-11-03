@@ -58,7 +58,14 @@
 > 4. **E3 — the LC-768 decomposition family** (~55 GPU-h on ROCm). Launch only
 >    when the gate is met (amendment 3):
 >    - E1, E2 and E4 have read, and their amendments are registered;
->    - a cross-line review is done;
+>    - a cross-line review is done. **For the reviewer (found 2026-11-03,
+>      `docs/research/2026-11-03_stage0-the-home.md`, step 4):** without μPC,
+>      E3's living arms and dead controls start their FFNs at different
+>      scales, 2.45× apart. The living layer is `kaiming_uniform_` with gain
+>      √2; the dead control is `nn.Linear`'s default, gain 1/√3. Amendment 2
+>      does not list it. Options: list it, start both arms at one scale, or
+>      separate it with an arm. Also note that E3's runs now carry M9 by
+>      default, which leaves the trunk unchanged (`--no-m9` to drop it);
 >    - VISReg's dose is measured and registered (needs C6 first).
 >
 >    Then run `python scripts/jepa_pilot_driver.py --stage 60 --seeds 46,95,97 --epochs 1`

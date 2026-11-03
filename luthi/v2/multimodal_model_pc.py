@@ -120,6 +120,9 @@ class MultimodalPredictiveCodingLM(nn.Module):
         pred_learning_rate: float = 0.0001,
         homeostatic_decay: float = 0.001,
         set_point_adapt_rate: float = 1e-6,
+        # How fast each living layer's home follows its weight, separately
+        # from the top-down push into the home (2026-11-03). None = legacy.
+        home_follow_rate: float | None = None,
         num_episodes: int = 64,
         episode_blend: float = 0.3,
         compressed_episodes: bool = False,
@@ -173,6 +176,9 @@ class MultimodalPredictiveCodingLM(nn.Module):
         write_rule: str = "mean_field",
         context_mode: str = "mean",
         block_episode_store: str = "legacy",
+        # The living FFN's starting weight and home (2026-11-03); "random"
+        # is the legacy draw, bit-identical. See PredictiveCodingBlock.
+        living_home: str = "random",
     ):
         super().__init__()
         self.dead_ffn = bool(dead_ffn)
@@ -223,6 +229,7 @@ class MultimodalPredictiveCodingLM(nn.Module):
                 pred_learning_rate=pred_learning_rate,
                 homeostatic_decay=homeostatic_decay,
                 set_point_adapt_rate=set_point_adapt_rate,
+                home_follow_rate=home_follow_rate,
                 num_episodes=num_episodes,
                 episode_blend=episode_blend,
                 compressed_episodes=compressed_episodes,
@@ -247,6 +254,7 @@ class MultimodalPredictiveCodingLM(nn.Module):
                 write_rule=write_rule,
                 context_mode=context_mode,
                 block_episode_store=block_episode_store,
+                living_home=living_home,
             )
             for _ in range(n_blocks)
         ])

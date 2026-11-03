@@ -318,7 +318,7 @@ def consolidate_layer_attractor(
                     layer.error_acc, layer.plasticity,
                     stored_input, output,
                     consolidation_pc_rate, consolidation_pred_rate,
-                    layer.homeostatic_decay, layer.set_point_adapt_rate,
+                    layer.homeostatic_decay, layer.follow_rate,
                     layer.momentum_decay, layer.update_ema_decay,
                     layer.precision_ema_decay,
                     layer.precision_min, layer.precision_max,

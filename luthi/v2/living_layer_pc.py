@@ -41,6 +41,14 @@ class PredictiveCodingLayer(nn.Module):
         pred_learning_rate: float = 0.0001,
         homeostatic_decay: float = 0.001,
         set_point_adapt_rate: float = 1e-6,
+        # How fast the home follows the weight (2026-11-03). None keeps the
+        # legacy coupling: set_point_adapt_rate sets BOTH this follow rate
+        # and the top-down push into the home (apply_top_down). The push adds
+        # one error vector to every row, so it is rank-1 by construction; at
+        # a raised shared rate it ran away along one direction in block 0
+        # (docs/research/2026-11-03_stage0-the-home.md). A value here
+        # changes only the follow rate.
+        home_follow_rate: float | None = None,
         momentum_decay: float = 0.99,
         update_ema_decay: float = 0.99,
         precision_ema_decay: float = 0.999,
@@ -186,6 +194,7 @@ class PredictiveCodingLayer(nn.Module):
         self.pred_learning_rate = pred_learning_rate
         self.homeostatic_decay = homeostatic_decay
         self.set_point_adapt_rate = set_point_adapt_rate
+        self.home_follow_rate = home_follow_rate
         self.momentum_decay = momentum_decay
         self.update_ema_decay = update_ema_decay
         self.precision_ema_decay = precision_ema_decay
@@ -1343,7 +1352,7 @@ class PredictiveCodingLayer(nn.Module):
                     self.pc_rate * self.rate_scale * _wa,
                     self.pred_learning_rate * self.rate_scale * _wa,
                     self.homeostatic_decay * _wa,
-                    self.set_point_adapt_rate * _wa,
+                    self.follow_rate * _wa,
                     self.momentum_decay, self.update_ema_decay,
                     self.precision_ema_decay,
                     self.precision_min, self.precision_max,
@@ -1542,6 +1551,15 @@ class PredictiveCodingLayer(nn.Module):
             self.set_point.add_(
                 error_signal * self.set_point_adapt_rate * 10.0 * strength
             )
+
+    @property
+    def follow_rate(self) -> float:
+        """The rate at which the home follows the weight inside
+        pc_self_modify: home_follow_rate when set, else the legacy
+        set_point_adapt_rate."""
+        if self.home_follow_rate is None:
+            return self.set_point_adapt_rate
+        return self.home_follow_rate
 
     # ------------------------------------------------------------------
     # Diagnostics
