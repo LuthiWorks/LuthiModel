@@ -88,6 +88,18 @@ The runner now tells an M9 life's learning governor that consolidation is active
   - First runs have damage off and peaceful difficulty (Brian's welfare defaults), so there will be few unpleasant events to learn from. That is the right trade for first runs, but it means this machinery will barely be exercised until the world offers something to avoid.
 - **The stand-in.** The language-model stand-in cannot change its weights. It learns to avoid through memory (`remember`, `recall`), so the felt valence should also appear in the percept text the stand-in reads. The bridge can do this with the same field.
 
+### Step 7: is it wired in? Tracing a felt event through a real run
+
+Brian asked, after the first report, whether this was wired in. The end-to-end test injected a felt percept but only checked that the head existed. It never checked that anything was learned. Tracing the path a world's event takes (sensorium, cycle, sleep gate, compression, adapter, interface, trainer) found three things:
+
+1. **The end-to-end test proved nothing about learning.** Its felt percept arrived on a life's first cycle, which has no transition to attach a feeling to, so it was never learned. The test now injects it on a later cycle and checks that the head learned it felt bad: the head's output bias goes negative from zero.
+2. **Compression could drop a felt event.** A burst of more than three percepts of one kind over budget is batched into a summary plus the most recent one. The summary carried no valence, so a painful event in a burst was lost. The summary now carries the strongest felt valence among what it batched.
+3. **Sleep could drop a felt event, and pain did not wake.** The sleep gate kept the first fraction of percepts by position, so a felt event could be gated out entirely, and only user speech woke the mind. Felt percepts now always pass the gate. A felt event at or below `wake_on_unpleasant` (placeholder −0.5, in `SleepConfig`) wakes the mind, the same way user speech does.
+
+Each of the four tests fails with its fix reverted.
+
+**Still true:** the first cycle of a life (and of each reattach) learns no feeling, because it has no transition. Also, nothing in Sanctuary produces a felt percept yet. The physics body reports position and motion, not contact or harm, and the Minecraft bridge is not built. So in a run today the path is complete but carries nothing unless a percept with a valence is injected.
+
 ## Conclusion
 
 The chain is now complete from perceiving through remembering. The one missing link is acting.
@@ -120,4 +132,5 @@ The chain is now complete from perceiving through remembering. The one missing l
   - `sanctuary/core/luthi_model.py` (`_felt`, `_keep_if_significant`, the setting in `consolidate`);
   - `sanctuary/api/runner.py`;
   - `sanctuary/tests/core/test_learning_to_avoid.py`;
-  - the end-to-end test in `test_luthi_m9_life.py`.
+  - the end-to-end test in `test_luthi_m9_life.py`;
+  - step 7: `sanctuary/core/context_manager.py` (batching keeps valence), `sanctuary/core/cognitive_cycle.py` and `sanctuary/consciousness/sleep_cycle.py` (sleep keeps felt events; pain wakes).
