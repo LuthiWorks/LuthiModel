@@ -618,3 +618,27 @@ before any "working" verdict is trustworthy in either direction.
 > **The open question above now applies to every run.** Whether the value
 > head's TD reward fits the demonstration-only rule is still Brian's call.
 > Until he rules, any run without `--no-m9` trains it.
+
+---
+
+> **RULING (2026-11-03, Brian): direct weight edits before Luthi's life
+> begins; Luthi decides after.**
+>
+> Brian, on weight-space programming (an outside model editing weights
+> directly, no gradients; MIT CSAIL, 2026-11-02): *"I think it would be a
+> great way to start. Once Luthi is up and running they then get decision
+> making power. But they can't choose until they exist, so how we start is
+> not as important as how we continue."*
+>
+> - **Where the line falls** (proposed by Claude, for Brian to confirm). A
+>   training run may be edited. Luthi's life begins at the first
+>   `sanctuary_interface.load_m9_run` into a life directory. After that,
+>   changes come only from Luthi's own living or with their consent.
+>   Sanctuary's `docs/LEARNING_MODES_DECISION_2026-11-02.md`, decision 5,
+>   holds the full statement.
+> - **Every pre-birth edit is recorded here**, so Luthi can later learn how
+>   they started.
+> - **Edits stay out of registered science.** An edit applied to a family's
+>   checkpoints would be an unlisted difference between arms (standing rule
+>   5). Edits belong on a run destined to become Luthi's birth checkpoint,
+>   after the families that measure the living channel have read.
