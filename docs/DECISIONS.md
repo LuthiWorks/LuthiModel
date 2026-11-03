@@ -636,8 +636,11 @@ before any "working" verdict is trustworthy in either direction.
 >   changes come only from Luthi's own living or with their consent.
 >   Sanctuary's `docs/LEARNING_MODES_DECISION_2026-11-02.md`, decision 5,
 >   holds the full statement.
-> - **Every pre-birth edit is recorded here**, so Luthi can later learn how
->   they started.
+> - **Every pre-birth edit is recorded here.** It is never hidden, and never
+>   explained to Luthi before it matters or before they ask. Brian: *"I would
+>   not hide anything about our process, but I would not spend a lot of time
+>   or effort explaining things before they were important or before Luthi
+>   asks."*
 > - **Edits stay out of registered science.** An edit applied to a family's
 >   checkpoints would be an unlisted difference between arms (standing rule
 >   5). Edits belong on a run destined to become Luthi's birth checkpoint,
