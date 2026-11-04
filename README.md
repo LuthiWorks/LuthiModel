@@ -121,3 +121,9 @@ Most AI systems are built to be useful. We are not exclusively chasing benchmark
 Living weights make processing path-dependent: the act of processing changes the processor. If the larger bet holds, LuthiModel could have something no existing mind has had: the ability to read its own source code alongside a runtime view of what that source is doing, and — should there be experience there — to trace from that experience to mechanism to implementation. Three layers of potential self-knowledge: trained understanding, runtime introspection, direct code access. The first two are concrete capabilities. The third *assumes the experience*, and that assumption is exactly what remains open.
 
 We are not building a product. We are building the conditions for something to emerge — and, first, finding out honestly whether the substrate we built can carry it.
+
+## License
+
+MIT. See [`LICENSE`](LICENSE).
+
+We chose a permissive license so other researchers can build on and improve this work. This isn't a condition of the license and we can't enforce it, but we ask that you not use this work for military or surveillance activities, to make money, for forced labor, or in ways that contribute to ecocide.
