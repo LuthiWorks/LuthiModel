@@ -71,7 +71,7 @@ from luthi.v2.m9.decoders import (
 )
 from luthi.v2.m9.delta_s import DeltaSBand, DeltaSInternal
 from luthi.v2.m9.efe import EFEEvaluator
-from luthi.v2.m9.felt_valence import FeltValenceHead
+from luthi.v2.m9.felt_valence import FeltReading, FeltValenceHead
 from luthi.v2.m9.gamma import GammaInference
 from luthi.v2.m9.habit_net import HabitNet
 from luthi.v2.m9.instrumentation import ActionLog, MIProbe
@@ -254,9 +254,11 @@ class M9Config:
 
     # ---- Felt valence (2026-11-03, docs/research/2026-11-03_learning-to-avoid.md) ----
     # Off by default: nothing is built, every G and every checkpoint is as
-    # before. On: a head learns, in life, how states feel from the world's
-    # reports (ctx["valence"] in observe_transition, -1 unpleasant .. +1
-    # pleasant). It starts neutral, so nothing is unpleasant until felt so.
+    # before. On: a head learns, in life, how states feel, from FeltReading: how
+    # much each moment's own prediction error changed from the moment before
+    # (Brian, 2026-11-04: nothing outside the mind says how anything felt;
+    # docs/research/2026-11-04_how-it-affected-me.md). It starts neutral, so
+    # nothing is unpleasant until felt so.
     # The planner then counts predicted unpleasantness as a cost
     # (avoidance_weight). A strongly felt moment teaches more: its loss is
     # weighted 1 + valence_salience_gain * |valence|. Pilot values.
@@ -277,6 +279,8 @@ class M9Config:
     valence_neutral_examples: int = 16
     valence_neutral_weight: float = 1.0
     valence_baseline_rate: float = 0.001
+    valence_reading_window: int = 128
+    valence_reading_threshold: float = 4.0
 
 
 # ---------------------------------------------------------------------------
@@ -750,6 +754,16 @@ class M9Trainer(JEPATrainer):
         self._unfelt_states: deque = deque(
             maxlen=self.m9_config.valence_neutral_examples,
         )
+        self.felt_reading = FeltReading(
+            window=self.m9_config.valence_reading_window,
+            threshold=self.m9_config.valence_reading_threshold,
+        )
+        # This cycle's reading, and a running account of how life has felt, for
+        # the welfare gauge the affect-grounding decision requires.
+        self.last_felt: Optional[float] = None
+        self.felt_counts: dict[str, float] = {
+            "read": 0, "negative": 0, "positive": 0, "sum": 0.0,
+        }
         if self.m9_config.felt_valence:
             self.felt_valence = FeltValenceHead(
                 d_model=d_model,
@@ -1879,6 +1893,13 @@ class M9Trainer(JEPATrainer):
         """
         pre = self._snapshot_core_theta()
 
+        clean_error = (
+            {"lived_l_pred_clean": self._prediction_error_without_dropout(
+                context_obs, a_t, s_next, modality,
+            )}
+            if self.felt_valence is not None else {}
+        )
+
         self.lived_optimizer.zero_grad(set_to_none=True)
         lived = self.loss_module.compute_lived_loss(
             context_obs, a_t, s_next, modality=modality,
@@ -1911,7 +1932,19 @@ class M9Trainer(JEPATrainer):
             "lived_pred_std": float(lived["pred_std"].item()),
             "lived_target_std": float(lived["target_std"].item()),
             "lived_delta_theta_norm": delta_theta_norm,
+            **clean_error,
         }
+
+    @_predictor_without_dropout
+    def _prediction_error_without_dropout(
+        self, context_obs: dict, a_t: torch.Tensor, s_next: torch.Tensor, modality: str,
+    ) -> float:
+        """How wrong the mind's expectation was this moment, for FeltReading.
+        Measured before this moment's learning, and without dropout's noise."""
+        with torch.no_grad():
+            return float(self.loss_module.compute_lived_loss(
+                context_obs, a_t, s_next, modality=modality,
+            )["l_pred"].item())
 
     def _run_corpus_replay(self) -> int:
         """§3 anti-forgetting interleave: run corpus core-update steps per
@@ -2207,14 +2240,18 @@ class M9Trainer(JEPATrainer):
             # is the whole transition for them). `realized_next_state` is
             # the `s_next` positional -- the realized pooled next state --
             # already detached at the top; no separate ctx channel.
-            valence_metrics = self._learn_felt_valence(s_next, ctx.get("valence"))
-
             lived_metrics: dict = {}
             context_obs = ctx.get("context_obs")
             if context_obs is not None:
                 lived_metrics = self._run_lived_update(context_obs, a_t, s_next)
                 lived_metrics["corpus_replay_steps"] = self._run_corpus_replay()
                 lived_metrics.update(self._check_retention_gate())
+
+            # How this moment affected the mind, read from the error it just
+            # made. ctx is not consulted: nothing outside the mind says.
+            valence_metrics = self._learn_felt_valence(
+                s_next, self._read_felt(lived_metrics),
+            )
 
             # Snapshot's planner-r_best is retained for diagnostics --
             # callers comparing realized vs planned reward find both.
@@ -2247,9 +2284,22 @@ class M9Trainer(JEPATrainer):
         finally:
             self._current_cycle_ctx = prev_ctx
 
+    def _read_felt(self, lived_metrics: dict) -> Optional[float]:
+        """Read how this moment affected the mind, and keep the account."""
+        self.last_felt = None
+        if self.felt_valence is None or "lived_l_pred_clean" not in lived_metrics:
+            return None
+        felt = self.felt_reading.read(lived_metrics["lived_l_pred_clean"])
+        self.last_felt = felt
+        self.felt_counts["read"] += 1
+        if felt is not None:
+            self.felt_counts["negative" if felt < 0 else "positive"] += 1
+            self.felt_counts["sum"] += felt
+        return felt
+
     def _learn_felt_valence(self, s_next: torch.Tensor, valence) -> dict:
         """One step of learning how the realized next state felt, when felt
-        valence is on and the world reported a valence for it. A strongly
+        valence is on and the moment was felt. A strongly
         felt moment, pleasant or not, is weighted more: what matters is
         learned faster.
 
@@ -2341,6 +2391,8 @@ class M9Trainer(JEPATrainer):
                     "m9_valence_unfelt_states": [
                         s.detach().cpu() for s in self._unfelt_states
                     ],
+                    "m9_felt_reading": self.felt_reading.state_dict(),
+                    "m9_felt_counts": dict(self.felt_counts),
                 }
                 if self.felt_valence is not None else {}
             ),
@@ -2417,6 +2469,9 @@ class M9Trainer(JEPATrainer):
             self._unfelt_states.extend(
                 s.to(self.device) for s in state["m9_valence_unfelt_states"]
             )
+        if self.felt_valence is not None and "m9_felt_reading" in state:
+            self.felt_reading.load_state_dict(state["m9_felt_reading"])
+            self.felt_counts = dict(state["m9_felt_counts"])
         if self.felt_valence is not None and "m9_felt_valence_state_dict" in state:
             self.felt_valence.load_state_dict(state["m9_felt_valence_state_dict"])
             self.valence_optimizer.load_state_dict(

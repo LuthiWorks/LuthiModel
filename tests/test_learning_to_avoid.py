@@ -65,7 +65,7 @@ def test_the_head_starts_neutral():
 def _feel(trainer, s_t, s_next, valence, n=1):
     a_t = torch.randn(1, D)
     for _ in range(n):
-        out = trainer.observe_transition(s_t, a_t, s_next, ctx={"valence": valence})
+        out = trainer._learn_felt_valence(s_next, valence)
     return out
 
 

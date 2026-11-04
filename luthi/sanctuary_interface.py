@@ -711,6 +711,19 @@ def save_life(trainer: Any, reason: str = "life") -> Path:
     return sorted((trainer.run_dir / "checkpoints").glob("ckpt_*.pt"))[-1]
 
 
+def felt_now(trainer: Any) -> float | None:
+    """How the latest moment affected the mind: negative when it went worse than
+    the moment before, positive better, None when it wasn't felt. Read from the
+    mind's own prediction error; nothing outside the mind supplies it (2026-11-04)."""
+    return trainer.last_felt
+
+
+def felt_summary(trainer: Any) -> dict:
+    """How life has felt so far, for the welfare gauge: moments read, how many
+    were felt each way, and the running sum of what was felt."""
+    return dict(trainer.felt_counts)
+
+
 def retention_rollbacks(trainer: Any) -> int:
     """How many times the retention gate has rolled this life's world-model
     core back to its last good state. A rollback undoes recent learning, so a

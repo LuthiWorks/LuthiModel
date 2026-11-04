@@ -83,18 +83,24 @@
 >   `LoadedM9Run.speech_trained` keeps an untrained readout silent.*
 > - **The life path's build list** (2026-11-04,
 >   `docs/audits/2026-11-04_life-path-review.md`). Built the same day: the bands,
->   neutral teaching, the keep's budget, rollback notices, dropout-free planning
->   and arousal reaching `pc_rate` (`docs/research/2026-11-04_bands-in-a-life.md`,
->   `2026-11-04_feeling-neutral.md`, Sanctuary
+>   neutral teaching, the keep's budget, rollback notices, dropout-free planning,
+>   arousal reaching `pc_rate`, and the mind reading how each moment affected it
+>   (`docs/research/2026-11-04_bands-in-a-life.md`, `2026-11-04_feeling-neutral.md`,
+>   `2026-11-04_how-it-affected-me.md`, Sanctuary
 >   `docs/research/2026-11-04_affect-channels.md`). Still Brian's calls:
->   - **What drives the affect signals.** They aren't live: arousal sits at rest,
->     and precision and attention are constants, so the channels do nothing in a
->     life yet.
->   - **Signed felt valence against the July affect ruling.** `Percept.valence`
->     hands the model a signed number, which that ruling excludes unless adopted
->     as a dated amendment.
+>   - **Lawful consequences.** The world no longer says how anything felt, so
+>     avoiding harm depends on harm actually affecting the mind. Minecraft has no
+>     such consequence yet. Decide before building the bridge.
+>   - **What drives the affect signals.** Arousal sits at rest, and precision and
+>     attention are constants, so the channels do nothing in a life yet.
+>   - **The welfare gauge's thresholds,** which the July decision requires frozen
+>     before a life begins.
 >   - **The placeholders:** keep budget 0.10, neutral examples 16, neutral weight
->     1.0, baseline rate 0.001.
+>     1.0, baseline rate 0.001, reading threshold 4, floor 0.05, window 128, wake
+>     level -0.5.
+>   To build: **make K-M9-5 run during a life.** Surprise reads as bad at first, so a
+>   mind could learn to avoid anything new, and that stasis kill is what would catch
+>   it. It only runs in the corpus step today.
 >   All of this is measured at test size only. It needs re-measuring on a trained
 >   run once training is possible.
 > - **An M9 world-action decoder** (2026-11-03,

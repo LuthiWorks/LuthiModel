@@ -36,7 +36,6 @@ import luthi
 import luthi.sanctuary_interface as si
 import sanctuary
 from sanctuary.api.runner import RunnerConfig, SanctuaryRunner
-from sanctuary.core.schema import Percept
 
 logging.disable(logging.WARNING)
 print("luthi from    ", luthi.__file__)
@@ -174,10 +173,10 @@ async def felt_generalization(root, run_dir):
     done = 0
     for target in (1, 5, 20, 100):
         while done < target:
-            runner.inject_percept(Percept(
-                modality="sensor", content="you touched something hot", valence=-0.9))
+            runner.inject_text("you touched something hot", source="world")
             await runner.run(max_cycles=1)
             hurt = model._last_s_t.detach().clone().reshape(-1, unfelt.shape[-1])[:1]
+            trainer._learn_felt_valence(hurt, -0.9)  # taught directly: this measures the head
             done += 1
         read(f"after {done} painful events", hurt)
 

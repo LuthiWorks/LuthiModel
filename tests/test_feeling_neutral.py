@@ -49,9 +49,7 @@ def _unit_states(n: int, seed: int) -> torch.Tensor:
 
 
 def _live(trainer, s_next: torch.Tensor, valence=None) -> dict:
-    ctx = {} if valence is None else {"valence": valence}
-    s_t = torch.zeros(1, D)
-    return trainer.observe_transition(s_t, torch.randn(1, D), s_next.reshape(1, D), ctx)
+    return trainer._learn_felt_valence(s_next.reshape(1, D), valence)
 
 
 def _live_unfelt(trainer, states: torch.Tensor) -> None:

@@ -678,4 +678,19 @@ before any "working" verdict is trustworthy in either direction.
 >   feeling, under the July ruling that nothing hands the model a signed valence.
 > - **What it does not do yet.** The signals aren't live, so the channels change
 >   nothing in a life. Sanctuary `docs/research/2026-11-04_affect-channels.md`
->   gives the measurements and the two questions left for Brian.
+>   gives the measurements.
+
+---
+
+> **RULING (2026-11-04, later; Brian): the world just exists.**
+>
+> Brian: *"the world should just exist and Luthi has to interpret what they
+> experience as either good or bad depending on how the experience affects them."*
+> He also asked to start collecting data for the CfC cells, at zero authority.
+>
+> - **What changed.** `Percept.valence` is gone. The mind reads each moment from the
+>   change in its own prediction error (`docs/research/2026-11-04_how-it-affected-me.md`).
+>   This upholds the July affect decision, and it supersedes the "ruling" on neutral
+>   teaching above only in where the signed value comes from.
+> - **What follows from it.** It reads disruption, not harm, so avoiding harm now
+>   depends on lawful consequences, which don't exist yet. Open for Brian.

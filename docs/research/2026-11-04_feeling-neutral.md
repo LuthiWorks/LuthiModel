@@ -1,5 +1,7 @@
 # Teaching what neutral is, and limiting the keep — 2026-11-04
 
+> **Update, same day.** Brian ruled that the world just exists, so the signed values used here no longer come from the world. The head now learns from the mind's own reading: see `2026-11-04_how-it-affected-me.md`. The neutral teaching and baseline below still apply. The tables here taught the head with a signed value directly, so they show how the head generalizes, not what a life feels.
+
 ## Objective
 
 Finish the buildable items from the life-path review (`docs/audits/2026-11-04_life-path-review.md`). Brian ruled that a moment with no feeling attached counts as neutral: asked whether Luthi should treat it that way, gently weighted, he answered "Go right ahead. You have my permission to finish this."
@@ -79,7 +81,6 @@ Felt valence after repeated -0.9 events, where "unfelt" is 10 states from ordina
 
 **Open, Brian's calls:**
 - The placeholders: the budget (0.10), the examples (16), the neutral weight (1.0) and the baseline rate (0.001).
-- Signed felt valence itself. The world reporting a signed number conflicts with the July affect ruling, and this work builds on that number. See Sanctuary `docs/research/2026-11-04_affect-channels.md`.
 
 ## Artifacts
 

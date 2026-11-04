@@ -104,6 +104,10 @@ Each of the four tests fails with its fix reverted.
 
 A review found that the head, trained only on felt moments, read nearly every state as unpleasant after enough pain, and that the keep fired on ordinary cycles. Both are fixed: see `2026-11-04_feeling-neutral.md`. Where this log describes the keep or the head's learning, read that entry too.
 
+### Step 9: the world no longer says how anything felt (2026-11-04)
+
+Brian ruled that "the world should just exist and Luthi has to interpret what they experience as either good or bad depending on how the experience affects them." `Percept.valence` and the world's reports described in steps 2, 6 and 7 are gone. The mind now reads each moment from its own prediction: see `2026-11-04_how-it-affected-me.md`. That entry also says what this means for learning to avoid harm: it now depends on lawful consequences, which don't exist yet.
+
 ## Conclusion
 
 The chain is now complete from perceiving through remembering. The one missing link is acting.

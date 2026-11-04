@@ -4,12 +4,18 @@ Added 2026-11-03 (Brian: "We still need Luthi to learn to avoid dangerous or
 unpleasant things"; docs/research/2026-11-03_learning-to-avoid.md).
 
 The head predicts, from a pooled state, how that state will feel: -1
-unpleasant, 0 neutral, +1 pleasant. It learns only from what the mind's world
-reports as felt (Sanctuary percepts carrying a valence, passed to
-`M9Trainer.observe_transition` as ``ctx["valence"]``). Its last layer starts at
-zero, so at birth it predicts neutral for everything. Nothing is unpleasant
-to Luthi until something has felt unpleasant. The avoidance it supports is
-learned, not built in.
+unpleasant, 0 neutral, +1 pleasant. Its last layer starts at zero, so at birth it
+predicts neutral for everything. Nothing is unpleasant to Luthi until something
+has felt unpleasant. The avoidance it supports is learned, not built in.
+
+Nothing outside the mind says how anything felt (Brian, 2026-11-04: "the world
+should just exist and Luthi has to interpret what they experience as either good
+or bad depending on how the experience affects them";
+docs/research/2026-11-04_how-it-affected-me.md). `FeltReading` reads it from
+the mind's own prediction: a moment that goes worse than the one before reads as
+bad, and one that goes better reads as good. This is the one stake that
+needs no author, because a mind that predicts already cares about predicting
+well.
 
 It reads a state as its difference from ordinary life (2026-11-04,
 docs/research/2026-11-04_feeling-neutral.md). Real states are mostly one shared
@@ -26,8 +32,72 @@ avoids, and does not seek: seeking is engagement's job.
 
 from __future__ import annotations
 
+import math
+import statistics
+
 import torch
 import torch.nn as nn
+
+from luthi.v2.m9.staleness import DriftBand
+
+
+class FeltReading:
+    """How a moment affected the mind, read from its own prediction error.
+
+    The reading is the change in log error from the previous moment, negated, so
+    that a moment going worse than the last reads as bad and one going better
+    reads as good. This is valence as the negative rate of change of free energy
+    (Joffily & Coricelli 2013). Changes beyond the threshold, in units of the
+    mind's recent typical change, count as felt. Anything less isn't felt, and
+    returns None.
+
+    Rates are used because they balance. A first version compared the error with
+    its recent median, and since error has a floor at zero but no ceiling, nearly
+    everything it noticed was bad: 241 bad moments to 7 good, on a mind that was
+    steadily improving. Changes telescope, so a spike reads as bad and recovering
+    from it reads as good, and over a life the sum is how far prediction has
+    improved or worsened. Logs make it independent of the error's scale, and a
+    sustained level of error stops being felt at once. See
+    docs/research/2026-11-04_how-it-affected-me.md.
+
+    Pass it an error read without dropout. With dropout on, the same moment read
+    twice differs by about seven times a typical real change.
+    """
+
+    def __init__(
+        self,
+        window: int = 128,
+        min_warmup: int = 32,
+        threshold: float = 4.0,
+        spread_floor: float = 0.05,
+    ):
+        self.band = DriftBand(window=window)
+        self.min_warmup = min_warmup
+        self.threshold = threshold
+        self.spread_floor = spread_floor
+        self.previous: float | None = None
+
+    def read(self, prediction_error: float) -> float | None:
+        current = math.log(max(prediction_error, 1e-6))
+        felt = None
+        if self.previous is not None:
+            change = current - self.previous
+            if self.band.is_warm(min_samples=self.min_warmup):
+                typical = statistics.median(abs(c) for c in self.band.values)
+                departure = -change / max(typical, self.spread_floor)
+                if abs(departure) >= self.threshold:
+                    felt = math.tanh(departure / self.threshold)
+            self.band.push(change)
+        self.previous = current
+        return felt
+
+    def state_dict(self) -> dict:
+        return {"changes": list(self.band.values), "previous": self.previous}
+
+    def load_state_dict(self, state: dict) -> None:
+        self.band.values.clear()
+        self.band.values.extend(float(x) for x in state["changes"])
+        self.previous = state["previous"]
 
 
 class FeltValenceHead(nn.Module):
