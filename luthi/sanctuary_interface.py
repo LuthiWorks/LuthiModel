@@ -112,8 +112,8 @@ class ModulationSnapshot:
 
     The snapshot covers four channels:
 
-    - ``hebb_rates``: scalar learning rate per block (arousal channel).
-      v1 models use ``hebb_rate``; v2 models use ``pc_rate``.
+    - ``hebb_rates`` / ``pc_rates``: scalar learning rate per block (arousal
+      channel). v1 models use ``hebb_rate``; v2 models use ``pc_rate``.
     - ``spike_thresholds``: scalar spike threshold per block, spiking models
       only (precision channel)
     - ``excitability_biases``: cloned ``[out_features, in_features]`` tensor
@@ -124,6 +124,7 @@ class ModulationSnapshot:
     """
 
     hebb_rates: dict[int, float] = field(default_factory=dict)
+    pc_rates: dict[int, float] = field(default_factory=dict)
     spike_thresholds: dict[int, float] = field(default_factory=dict)
     excitability_biases: dict[int, torch.Tensor] = field(default_factory=dict)
     salience_thresholds: dict[int, float] = field(default_factory=dict)
@@ -841,6 +842,8 @@ def snapshot_modulatable_state(model: torch.nn.Module) -> ModulationSnapshot:
             continue
         if hasattr(ffn, "hebb_rate"):  # v1 backward-compat path
             snap.hebb_rates[i] = ffn.hebb_rate
+        if hasattr(ffn, "pc_rate"):
+            snap.pc_rates[i] = ffn.pc_rate
         if hasattr(ffn, "spike_threshold"):
             snap.spike_thresholds[i] = ffn.spike_threshold
         if hasattr(ffn, "excitability_acc"):
@@ -853,11 +856,14 @@ def snapshot_modulatable_state(model: torch.nn.Module) -> ModulationSnapshot:
 def modulation_channels(model: torch.nn.Module) -> dict[str, bool]:
     """Which channels of :func:`apply_external_modulation` act on this model.
 
-    On a v2 living layer only ``attention`` does (2026-11-04). The attributes
-    behind the others (``hebb_rate``, ``spike_threshold``, ``excitability_acc``)
-    don't exist there, so those requests silently change nothing. Connecting
-    arousal to ``pc_rate`` would change how fast the mind learns, which is
-    Brian's call and not built. A host should report what this returns.
+    On a v2 living layer ``arousal`` (through ``pc_rate``, 2026-11-04) and
+    ``attention`` do. The attributes behind ``precision`` and ``valence``
+    (``spike_threshold``, ``excitability_acc``) don't exist there, because the
+    layer has no spikes and no sigmoid, so those requests change nothing. A host
+    should report what this returns.
+
+    This says only that a channel can act. Whether its signal ever moves is a
+    separate question for the host.
     """
     layers = [
         ffn
@@ -865,12 +871,14 @@ def modulation_channels(model: torch.nn.Module) -> dict[str, bool]:
         if ffn is not None
     ]
     return {
-        channel: bool(layers) and all(hasattr(layer, attr) for layer in layers)
-        for channel, attr in (
-            ("arousal", "hebb_rate"),
-            ("precision", "spike_threshold"),
-            ("valence", "excitability_acc"),
-            ("attention", "salience_threshold"),
+        channel: bool(layers) and all(
+            any(hasattr(layer, attr) for attr in attrs) for layer in layers
+        )
+        for channel, attrs in (
+            ("arousal", ("hebb_rate", "pc_rate")),
+            ("precision", ("spike_threshold",)),
+            ("valence", ("excitability_acc",)),
+            ("attention", ("salience_threshold",)),
         )
     }
 
@@ -888,7 +896,8 @@ def apply_external_modulation(
     This is the surface that Sanctuary's CfC cells use to translate
     affective state into living-weight bias. Four channels:
 
-    - ``plasticity_scale`` → multiplies ``hebb_rate`` on v1 models
+    - ``plasticity_scale`` → multiplies ``hebb_rate`` on v1 models and
+      ``pc_rate`` on v2 models
       (arousal). Higher = faster learning ("alert").
     - ``spike_threshold_scale`` → multiplies ``spike_threshold`` (precision,
       spiking models only). Higher = fewer, more selective spikes.
@@ -908,7 +917,7 @@ def apply_external_modulation(
 
     Args:
         model: A loaded Luthi model.
-        plasticity_scale: Multiplied into each block's ``hebb_rate``
+        plasticity_scale: Multiplied into each block's ``hebb_rate`` or ``pc_rate``
             (v1 backward-compat path).
         spike_threshold_scale: Multiplied into each block's ``spike_threshold``.
         excitability_bias: Added uniformly into each block's
@@ -924,6 +933,8 @@ def apply_external_modulation(
             continue
         if hasattr(ffn, "hebb_rate"):  # v1 backward-compat path
             ffn.hebb_rate *= plasticity_scale
+        if hasattr(ffn, "pc_rate"):
+            ffn.pc_rate *= plasticity_scale
         if hasattr(ffn, "spike_threshold"):
             ffn.spike_threshold *= spike_threshold_scale
         if hasattr(ffn, "excitability_acc") and excitability_bias != 0.0:
@@ -950,6 +961,8 @@ def restore_modulation(
             continue
         if i in snapshot.hebb_rates and hasattr(ffn, "hebb_rate"):  # v1 backward-compat path
             ffn.hebb_rate = snapshot.hebb_rates[i]
+        if i in snapshot.pc_rates and hasattr(ffn, "pc_rate"):
+            ffn.pc_rate = snapshot.pc_rates[i]
         if i in snapshot.spike_thresholds and hasattr(ffn, "spike_threshold"):
             ffn.spike_threshold = snapshot.spike_thresholds[i]
         if i in snapshot.excitability_biases and hasattr(ffn, "excitability_acc"):

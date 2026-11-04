@@ -238,6 +238,76 @@ def test_the_interface_reports_which_affect_channels_act(tmp):
 
     trainer = _build_trainer(tmp)
     assert modulation_channels(trainer.loss_module.online_encoder) == {
-        "arousal": False, "precision": False, "valence": False, "attention": True,
+        "arousal": True, "precision": False, "valence": False, "attention": True,
     }
+    trainer.action_log.close()
+
+
+def _write_size(trainer, scale: float) -> float:
+    """How far one forward moves the first living layer's weight."""
+    from luthi.sanctuary_interface import modulated
+
+    model = trainer.loss_module.online_encoder
+    layer = model.blocks[0].living_ffn
+    tokens = torch.randint(0, VOCAB, (1, SEQ), generator=torch.Generator().manual_seed(0))
+    before = layer.weight.clone()
+    with modulated(model, plasticity_scale=scale):
+        encode_state(model, text_tokens=tokens)
+    return (layer.weight - before).norm().item()
+
+
+def _distance_from_home(trainer, scale: float, forwards: int) -> float:
+    from luthi.sanctuary_interface import modulated
+
+    model = trainer.loss_module.online_encoder
+    layer = model.blocks[0].living_ffn
+    with modulated(model, plasticity_scale=scale):
+        for i in range(forwards):
+            tokens = torch.randint(0, VOCAB, (1, SEQ), generator=torch.Generator().manual_seed(i))
+            encode_state(model, text_tokens=tokens)
+    return (layer.weight - layer.set_point).norm().item()
+
+
+def test_sustained_arousal_changes_how_far_a_living_layer_goes(tmp):
+    """Other terms dominate a single write (2x gives about 1.17x), so this reads
+    the effect where it builds up: about 1.98x and 0.77x at 100 forwards."""
+    distance = {}
+    for scale in (0.75, 1.0, 2.0):
+        trainer = _build_trainer(tmp / str(scale))
+        distance[scale] = _distance_from_home(trainer, scale, 100)
+        trainer.action_log.close()
+    assert distance[2.0] > 1.5 * distance[1.0]
+    assert distance[0.75] < 0.9 * distance[1.0]
+
+
+def test_a_scale_of_one_changes_nothing(tmp):
+    plain = _build_trainer(tmp / "plain")
+    neutral = _build_trainer(tmp / "neutral")
+    tokens = torch.randint(0, VOCAB, (1, SEQ), generator=torch.Generator().manual_seed(0))
+    encode_state(plain.loss_module.online_encoder, text_tokens=tokens)
+    _write_size(neutral, 1.0)
+    assert torch.equal(
+        plain.loss_module.online_encoder.blocks[0].living_ffn.weight,
+        neutral.loss_module.online_encoder.blocks[0].living_ffn.weight,
+    )
+    plain.action_log.close()
+    neutral.action_log.close()
+
+
+def test_modulation_never_accumulates_on_the_rate(tmp):
+    from luthi.sanctuary_interface import (
+        apply_external_modulation,
+        restore_modulation,
+        snapshot_modulatable_state,
+    )
+
+    trainer = _build_trainer(tmp)
+    model = trainer.loss_module.online_encoder
+    base = [b.living_ffn.pc_rate for b in model.blocks]
+    snapshot = snapshot_modulatable_state(model)
+    for _ in range(5):
+        apply_external_modulation(model, plasticity_scale=2.0)
+        assert model.blocks[0].living_ffn.pc_rate == pytest.approx(base[0] * 2.0)
+        restore_modulation(model, snapshot)
+    assert [b.living_ffn.pc_rate for b in model.blocks] == base
     trainer.action_log.close()

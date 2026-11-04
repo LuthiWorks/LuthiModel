@@ -19,7 +19,7 @@ yet, so none of this has affected anyone.
 The relevant test files all pass on this code (Sanctuary 36, LuthiModel 34), so none of the
 findings below is visible to the suite.
 
-**Status:** Brian's framing, which I agree with for most of this: "There aren't any errors, just more to build." The list below is a build list for a path that has not run past CPU tests. Built the same day: findings 1, 2, 3 and 5, and the dropout found on the way (`docs/research/2026-11-04_bands-in-a-life.md`, `2026-11-04_feeling-neutral.md`). Finding 4 is reported at load, and connecting the channels remains Brian's call. The numbers below are from before those changes.
+**Status:** Brian's framing, which I agree with for most of this: "There aren't any errors, just more to build." The list below is a build list for a path that has not run past CPU tests. Built the same day: findings 1, 2, 3 and 5, and the dropout found on the way (`docs/research/2026-11-04_bands-in-a-life.md`, `2026-11-04_feeling-neutral.md`). For finding 4, arousal now reaches the learning rate and the other channels are reported at load, but the signals behind them aren't live (Sanctuary `docs/research/2026-11-04_affect-channels.md`). The numbers below are from before those changes.
 
 ---
 

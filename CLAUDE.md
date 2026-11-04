@@ -12,7 +12,7 @@ This is an active research implementation. The proof-of-concept phase (numpy, CP
 
 Luthi Model is designed to plug into the Sanctuary cognitive architecture. Sanctuary discovers Luthi via the `LUTHI_PATH` environment variable, falling back to a sibling-checkout heuristic. The contract surface Sanctuary calls is `luthi/sanctuary_interface.py` (load, generate, get_introspection, apply_external_modulation, snapshot/restore, `modulated()`, and since 2026-11-02 the action layer: `load_m9_run`, `select_action`, `observe_transition`, `decode_action`, `save_life`). Sanctuary should not reach past that adapter into Luthi internals — the adapter is the promise. Note `docs/KNOWN_INCOMPLETE.md` #4: text generated from a pure-JEPA checkpoint is not the model speaking.
 
-The cognitive-side schemas (`ModelProtocol`, `CognitiveInput`, `CognitiveOutput`) live in Sanctuary at `sanctuary/core/schema.py`. CfC modulation of the living weights is Phase 4 — do not build it prematurely. The living weight implementation must stand alone first.
+The cognitive-side schemas (`ModelProtocol`, `CognitiveInput`, `CognitiveOutput`) live in Sanctuary at `sanctuary/core/schema.py`. CfC modulation of the living weights is Phase 4. Brian moved it forward on 2026-11-04: arousal now reaches `pc_rate`, but the signal behind it is still flat, because the CfC cells are untrained and carry no authority (Sanctuary `docs/research/2026-11-04_affect-channels.md`). Don't build further on it without a live signal. The living weight implementation must stand alone first.
 
 ## Fresh-Instance Audits
 

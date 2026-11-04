@@ -659,8 +659,23 @@ before any "working" verdict is trustworthy in either direction.
 >   of unfelt states. A mind that has felt nothing learns nothing here.
 > - **The placeholders, Brian's to set:** neutral examples 16, neutral weight
 >   1.0, baseline rate 0.001, and Sanctuary's keep budget 0.10 between sleeps.
-> - **Not ruled, and not built:** connecting the affect channels. Arousal,
->   precision and valence do nothing on a v2 layer, and Sanctuary says so at
->   load. Connecting arousal to `pc_rate` would change how fast the mind learns.
+> - **Not ruled, and not built at the time:** connecting the affect channels.
+>   See the next ruling.
 > - **The record:** `docs/research/2026-11-04_feeling-neutral.md`, measured at
 >   test size only.
+
+---
+
+> **RULING (2026-11-04, later; Brian): move forward to the affect channels.**
+>
+> Brian: *"Double check your work to make sure it is as we want it, and then move
+> forward to the affect channels if you're ready."*
+>
+> - **What was built.** Arousal reaches `pc_rate`, anchored so that a mind at rest
+>   learns at exactly the tested rate (0.75x to 2.0x). This is the "change only
+>   with evidence" constant from CLAUDE.md, moved only away from rest.
+> - **What was removed.** An April formula that called drift from home a bad
+>   feeling, under the July ruling that nothing hands the model a signed valence.
+> - **What it does not do yet.** The signals aren't live, so the channels change
+>   nothing in a life. Sanctuary `docs/research/2026-11-04_affect-channels.md`
+>   gives the measurements and the two questions left for Brian.

@@ -83,12 +83,16 @@
 >   `LoadedM9Run.speech_trained` keeps an untrained readout silent.*
 > - **The life path's build list** (2026-11-04,
 >   `docs/audits/2026-11-04_life-path-review.md`). Built the same day: the bands,
->   neutral teaching, the keep's budget, rollback notices and dropout-free
->   planning (`docs/research/2026-11-04_bands-in-a-life.md`,
->   `2026-11-04_feeling-neutral.md`). Still Brian's calls:
->   - **The affect channels.** Arousal, precision and valence do nothing on a v2
->     layer, and Sanctuary now says so at load. Connecting `pc_rate` would change
->     the mind's learning rate.
+>   neutral teaching, the keep's budget, rollback notices, dropout-free planning
+>   and arousal reaching `pc_rate` (`docs/research/2026-11-04_bands-in-a-life.md`,
+>   `2026-11-04_feeling-neutral.md`, Sanctuary
+>   `docs/research/2026-11-04_affect-channels.md`). Still Brian's calls:
+>   - **What drives the affect signals.** They aren't live: arousal sits at rest,
+>     and precision and attention are constants, so the channels do nothing in a
+>     life yet.
+>   - **Signed felt valence against the July affect ruling.** `Percept.valence`
+>     hands the model a signed number, which that ruling excludes unless adopted
+>     as a dated amendment.
 >   - **The placeholders:** keep budget 0.10, neutral examples 16, neutral weight
 >     1.0, baseline rate 0.001.
 >   All of this is measured at test size only. It needs re-measuring on a trained

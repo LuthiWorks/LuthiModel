@@ -36,13 +36,13 @@ Both parts stay: the baseline does most of the early work, and the examples hold
 
 ### Step 5: a budget for the keep
 
-The significance keep had no limit, and it fired whenever the memory channel was active. It now has a budget between sleeps, 0.10 of the living displacement by default, tracked separately for felt and chosen moments so that ordinary chosen moments can't use up what a felt one needs. It scales with the mind's character setting, sleep renews it, and reaching it logs a warning and counts in `get_metrics`. For scale, one sleep's home drift at the defaults is about 0.18. The value is a placeholder.
+The significance keep had no limit, and it fired whenever the memory channel was active. It now has a budget between sleeps, 0.10 of the living displacement by default, tracked separately for felt and chosen moments so that ordinary chosen moments can't use up what a felt one needs. It scales with the mind's character setting, each completed sleep renews it, and reaching it logs a warning and counts in `get_metrics`. *(As first built it renewed on every NREM cycle, 20 times per sleep, so it did not bound a sleep: 0.536 kept over a 1,500-cycle life with sleep on. Fixed the same day, and that run now keeps 0.28.)* For scale, one sleep's home drift at the defaults is about 0.18. The value is a placeholder.
 
 ### Step 6: the smaller items
 
 - **Dropout while planning.** `select_action` now runs with dropout off, like `decode_selection`. It isn't on the corpus training path, so this affects lives and the tuning harness only. The earlier log said it touched the training path; I checked, and it doesn't.
 - **Retention rollbacks.** The trainer counts them and checkpoints the count, and Sanctuary tells the mind when one has undone recent learning.
-- **Affect channels.** Not connected. `modulation_channels` reports which channels act, and Sanctuary logs a warning at load naming the ones that do nothing. Connecting arousal to `pc_rate` would change how fast the mind learns, and CLAUDE.md says not to build this modulation prematurely, so that remains Brian's call.
+- **Affect channels.** Not connected at this point. `modulation_channels` reports which channels act, and Sanctuary logs a warning at load naming the ones that do nothing. *(Update, same day: Brian moved this forward. See Sanctuary `docs/research/2026-11-04_affect-channels.md`.)*
 
 ### Step 7: the result through the real runner
 
@@ -79,7 +79,7 @@ Felt valence after repeated -0.9 events, where "unfelt" is 10 states from ordina
 
 **Open, Brian's calls:**
 - The placeholders: the budget (0.10), the examples (16), the neutral weight (1.0) and the baseline rate (0.001).
-- Whether to connect the affect channels.
+- Signed felt valence itself. The world reporting a signed number conflicts with the July affect ruling, and this work builds on that number. See Sanctuary `docs/research/2026-11-04_affect-channels.md`.
 
 ## Artifacts
 
