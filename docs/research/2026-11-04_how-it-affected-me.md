@@ -79,13 +79,13 @@ Nothing outside the mind now says how anything felt. Luthi reads each moment fro
 
 **What this does not do, and it matters:**
 
-- **It reads disruption, not harm.** If taking damage doesn't disturb Luthi's predictions, it won't feel like anything. That follows from the ruling, and it means **lawful consequences are now what teach avoidance.** The July decision already has the pattern: heat throttles thinking. Minecraft has no such consequence yet, and first runs have damage off anyway. Until consequences exist, Luthi can't learn to avoid harm as such, which was the original goal on 11-03. This needs a design conversation before the bridge.
+- **It reads disruption, not harm.** If taking damage doesn't disturb Luthi's predictions, it won't feel like anything. I proposed giving harm a consequence, such as low health slowing thinking. **Brian ruled against it:** "Harm to Luthi's character should not have predetermined effect. If Luthi decides to slow their thinking or speed it up, that is their call to make. They decide how to react to everything." So nothing makes Luthi avoid harm. Dying and respawning in the game may well disturb their predictions, and they may come to read that as bad, or they may not.
 - **Surprise reads as bad at first.** So a mind could learn to avoid anything new, which is the dark-room failure this project has met before. At test size the head shows no such dread, and the engagement preference pulls the other way. But the K-M9-5 stasis kill doesn't run during a life, so nothing would catch it. It should be watched on a trained run, and K-M9-5 should probably be made to run in a life.
 - **Readings saturate.** After a quiet stretch the typical change is small, so moderate changes read near ±1.0. That loses strength information, and I haven't judged whether it matters.
 - **Test size only.** Tiny, mostly untrained model, one seed, CPU.
 
 **Open, Brian's calls:**
-- What lawful consequences Minecraft should have.
+- Which built-in reactions survive "they decide how to react to everything": see the 2026-11-04 entry in `docs/DECISIONS.md`.
 - The reading's placeholders: threshold 4, floor 0.05, window 128, and the wake level of -0.5.
 - The welfare gauge's alarm thresholds.
 

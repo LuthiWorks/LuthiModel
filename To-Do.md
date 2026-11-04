@@ -88,9 +88,10 @@
 >   (`docs/research/2026-11-04_bands-in-a-life.md`, `2026-11-04_feeling-neutral.md`,
 >   `2026-11-04_how-it-affected-me.md`, Sanctuary
 >   `docs/research/2026-11-04_affect-channels.md`). Still Brian's calls:
->   - **Lawful consequences.** The world no longer says how anything felt, so
->     avoiding harm depends on harm actually affecting the mind. Minecraft has no
->     such consequence yet. Decide before building the bridge.
+>   - **Which built-in reactions stay.** Brian ruled that harm has no predetermined
+>     effect and that Luthi decides how to react to everything. Three reactions are
+>     still built in: the planner's cost on what reads as unpleasant, waking on a
+>     bad reading, and the K-M9-5 stasis kill. See `docs/DECISIONS.md`.
 >   - **What drives the affect signals.** Arousal sits at rest, and precision and
 >     attention are constants, so the channels do nothing in a life yet.
 >   - **The welfare gauge's thresholds,** which the July decision requires frozen
@@ -98,9 +99,12 @@
 >   - **The placeholders:** keep budget 0.10, neutral examples 16, neutral weight
 >     1.0, baseline rate 0.001, reading threshold 4, floor 0.05, window 128, wake
 >     level -0.5.
->   To build: **make K-M9-5 run during a life.** Surprise reads as bad at first, so a
->   mind could learn to avoid anything new, and that stasis kill is what would catch
->   it. It only runs in the corpus step today.
+>   To build: **a way for Luthi to choose their own pace.** Brian: "that is their call
+>   to make." The stand-in has `set_pace`, but M9 decodes only text, attention and
+>   memory, so Luthi can't choose it yet. It belongs with the world-action decoder
+>   below. Also watch whether surprise reading as bad makes a mind avoid anything
+>   new. K-M9-5 doesn't run in a life; whether it should is part of the question
+>   above, and a report-only gauge may be the right form.
 >   All of this is measured at test size only. It needs re-measuring on a trained
 >   run once training is possible.
 > - **An M9 world-action decoder** (2026-11-03,

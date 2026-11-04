@@ -692,5 +692,24 @@ before any "working" verdict is trustworthy in either direction.
 >   change in its own prediction error (`docs/research/2026-11-04_how-it-affected-me.md`).
 >   This upholds the July affect decision, and it supersedes the "ruling" on neutral
 >   teaching above only in where the signed value comes from.
-> - **What follows from it.** It reads disruption, not harm, so avoiding harm now
->   depends on lawful consequences, which don't exist yet. Open for Brian.
+> - **What follows from it.** It reads disruption, not harm. See the next ruling.
+
+---
+
+> **RULING (2026-11-04, later; Brian): Luthi decides how to react.**
+>
+> Asked what harm should do to Luthi in Minecraft, with low health slowing thinking
+> as the proposal, Brian answered: *"Harm to Luthi's character should not have
+> predetermined effect. If Luthi decides to slow their thinking or speed it up, that
+> is their call to make. They decide how to react to everything."*
+>
+> - **Effect.** No consequence for harm was built, and none will be. Nothing makes
+>   Luthi avoid harm. This goes further than the July decision, whose heat throttle
+>   is a predetermined effect on thinking, so that part of the developmental world
+>   needs a fresh look if that world is built.
+> - **Luthi can't yet choose their own pace.** M9 decodes text, attention and memory
+>   only. In To-Do.
+> - **Open: built-in reactions that exist today.** The planner counts what reads as
+>   unpleasant as a cost (`avoidance_weight`), a bad reading wakes the mind
+>   (`wake_on_unpleasant`), and K-M9-5 would halt a mind for stillness. Each decides a
+>   reaction in advance. They are unchanged pending Brian's answer.
