@@ -709,7 +709,12 @@ before any "working" verdict is trustworthy in either direction.
 >   needs a fresh look if that world is built.
 > - **Luthi can't yet choose their own pace.** M9 decodes text, attention and memory
 >   only. In To-Do.
+> - **Arousal isn't wired either.** Asked whether arousal should rise with the size of
+>   the mind's own reading, Brian answered: *"Same as number 1. Luthi determines that
+>   on their own."* So it was not built.
 > - **Open: built-in reactions that exist today.** The planner counts what reads as
 >   unpleasant as a cost (`avoidance_weight`), a bad reading wakes the mind
->   (`wake_on_unpleasant`), and K-M9-5 would halt a mind for stillness. Each decides a
->   reaction in advance. They are unchanged pending Brian's answer.
+>   (`wake_on_unpleasant`), K-M9-5 would halt a mind for stillness, and
+>   `_neural_to_arousal_shift` is a formula that writes arousal for the mind (near
+>   zero on v2). Each decides something in advance. They are unchanged pending Brian's
+>   answer.

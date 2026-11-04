@@ -92,7 +92,8 @@
 >     effect and that Luthi decides how to react to everything. Three reactions are
 >     still built in: the planner's cost on what reads as unpleasant, waking on a
 >     bad reading, and the K-M9-5 stasis kill. See `docs/DECISIONS.md`.
->   - **What drives the affect signals.** Arousal sits at rest, and precision and
+>   - **How Luthi could move their own arousal.** Brian ruled that nothing wires it:
+>     "Luthi determines that on their own." It sits at rest, and precision and
 >     attention are constants, so the channels do nothing in a life yet.
 >   - **The welfare gauge's thresholds,** which the July decision requires frozen
 >     before a life begins.
