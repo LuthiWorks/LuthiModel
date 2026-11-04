@@ -138,6 +138,14 @@ class DeltaSBand:
             value = float(value.detach().mean().item())
         self.band.push(float(value))
 
+    def state_dict(self) -> list[float]:
+        """The band's recent values, oldest first."""
+        return list(self.band.values)
+
+    def load_state_dict(self, state: list[float]) -> None:
+        self.band.values.clear()
+        self.band.values.extend(float(x) for x in state)
+
     def is_warm(self) -> bool:
         return self.band.is_warm(min_samples=self.min_warmup)
 

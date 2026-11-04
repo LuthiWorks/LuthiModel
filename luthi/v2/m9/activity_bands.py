@@ -119,6 +119,24 @@ class ActivityBands:
             self._bands[m].push(pop_mean)
 
     # ------------------------------------------------------------------
+    # Checkpointing.
+    # ------------------------------------------------------------------
+    def state_dict(self) -> dict:
+        """{modality: recent values}, oldest first."""
+        return {m: list(self._bands[m].values) for m in self.modalities}
+
+    def load_state_dict(self, state: dict) -> None:
+        """Restore every band. A record missing a modality raises KeyError:
+        it would otherwise leave that channel uncalibrated without saying so.
+        """
+        missing = [m for m in self.modalities if m not in state]
+        if missing:
+            raise KeyError(f"activity band record has no values for {missing}")
+        for m in self.modalities:
+            self._bands[m].values.clear()
+            self._bands[m].values.extend(float(x) for x in state[m])
+
+    # ------------------------------------------------------------------
     # Per-batch silent / active classification.
     # ------------------------------------------------------------------
     def silent_threshold(self, modality: str) -> float:

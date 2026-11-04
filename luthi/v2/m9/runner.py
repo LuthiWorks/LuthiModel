@@ -1419,7 +1419,17 @@ class M9Trainer(JEPATrainer):
         resting would not. The legacy intensity heads are reported, never
         used to decide (F4: they are arbitrary at init).
 
-        Reads only; nothing here trains or advances any band.
+        Trains nothing, but it advances the activity and delta-s bands, so a
+        host calls it once per selected action. This is how the bands
+        calibrate during a life: the corpus step that otherwise feeds them
+        does not run there (2026-11-04,
+        docs/research/2026-11-04_bands-in-a-life.md). As in that step, the
+        reading is the predicted next state under the selected action, and
+        it joins the band before the band classifies it.
+
+        The predictor reads without dropout, so the same action in the same
+        state always reads the same. With dropout on, the two readings compared
+        here carry independent noise (same log).
         """
         a = action.reshape(1, -1)
         s_root = s_t.reshape(-1, s_t.shape[-1])[0:1]
@@ -1429,11 +1439,21 @@ class M9Trainer(JEPATrainer):
             else context_latents[0:1]
         )
         tgt = self._target_positions_for(ctx.shape[1]).to(a.device)
+        predictor = self.efe.predictor
+        was_training = predictor.training
+        predictor.eval()
+        try:
+            with torch.no_grad():
+                s_hat = self.efe.predict_next(ctx, tgt, a)
+                s_rest = self.efe.predict_next(ctx, tgt, self.rest_action(s_root))
+        finally:
+            predictor.train(was_training)
         with torch.no_grad():
-            s_hat = self.efe.predict_next(ctx, tgt, a)
-            s_rest = self.efe.predict_next(ctx, tgt, self.rest_action(s_root))
+            activity = self.decoders.activity(s_hat)
+            self.activity_bands.observe(activity)
+            self.delta_s_band.observe(self.delta_s_module.compute(s_root, s_hat))
             silent = self.activity_bands.per_batch_silent(
-                self.decoders.activity(s_hat),
+                activity,
                 rest_activity=self.decoders.activity(s_rest),
             )
             outs = self.decoders.decode_all(a)
@@ -2207,7 +2227,8 @@ class M9Trainer(JEPATrainer):
         stream from 2026-11-02): V and V_target, habit net, decoders
         (attention, memory, the text decoder's own heads; ``output_proj``
         rides the encoder), preferences, Δs module, rest action, the M9
-        and lived optimizers, gamma, the lived counters and the RNG state.
+        and lived optimizers, gamma, the lived counters and the RNG state, and
+        the activity and delta-s bands (2026-11-04).
 
         Persistent MCTS tree is intentionally NOT persisted (cold
         rebuild on resume; self-heals via recency-decay).
@@ -2236,6 +2257,8 @@ class M9Trainer(JEPATrainer):
             "m9_lived_step_count": self._lived_step_count,
             "m9_corpus_replay_accumulator": self._corpus_replay_accumulator,
             "m9_rng_state": self._m9_rng_state,
+            "m9_activity_bands": self.activity_bands.state_dict(),
+            "m9_delta_s_band": self.delta_s_band.state_dict(),
             **(
                 {
                     "m9_felt_valence_state_dict": self.felt_valence.state_dict(),
@@ -2305,6 +2328,10 @@ class M9Trainer(JEPATrainer):
             )
         if state.get("m9_rng_state") is not None:
             self._m9_rng_state = state["m9_rng_state"]
+        if "m9_activity_bands" in state:
+            self.activity_bands.load_state_dict(state["m9_activity_bands"])
+        if "m9_delta_s_band" in state:
+            self.delta_s_band.load_state_dict(state["m9_delta_s_band"])
         if self.felt_valence is not None and "m9_felt_valence_state_dict" in state:
             self.felt_valence.load_state_dict(state["m9_felt_valence_state_dict"])
             self.valence_optimizer.load_state_dict(

@@ -756,6 +756,9 @@ def decode_action(
     ``memory_salience`` in [0, 1]; the legacy ``intensity`` per channel
     (reported only); and ``bands_armed`` per channel (a band that has not
     warmed up cannot call a channel silent).
+
+    Call once per selected action: each call advances the activity bands,
+    which is how they calibrate during a life.
     """
     return actor.decode_selection(
         action, s_t=s_t, context_latents=context_latents,
