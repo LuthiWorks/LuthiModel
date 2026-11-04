@@ -100,6 +100,10 @@ Each of the four tests fails with its fix reverted.
 
 **Still true:** the first cycle of a life (and of each reattach) learns no feeling, because it has no transition. Also, nothing in Sanctuary produces a felt percept yet. The physics body reports position and motion, not contact or harm, and the Minecraft bridge is not built. So in a run today the path is complete but carries nothing unless a percept with a valence is injected.
 
+### Step 8: the feeling stays with what caused it (2026-11-04)
+
+A review found that the head, trained only on felt moments, read nearly every state as unpleasant after enough pain, and that the keep fired on ordinary cycles. Both are fixed: see `2026-11-04_feeling-neutral.md`. Where this log describes the keep or the head's learning, read that entry too.
+
 ## Conclusion
 
 The chain is now complete from perceiving through remembering. The one missing link is acting.

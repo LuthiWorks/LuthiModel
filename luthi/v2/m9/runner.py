@@ -37,10 +37,12 @@ M9 kill wiring land in follow-up slices.
 
 from __future__ import annotations
 
+import functools
 import logging
 import math
 import os
 import time
+from collections import deque
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -258,10 +260,23 @@ class M9Config:
     # The planner then counts predicted unpleasantness as a cost
     # (avoidance_weight). A strongly felt moment teaches more: its loss is
     # weighted 1 + valence_salience_gain * |valence|. Pilot values.
+    #
+    # An unfelt moment counts as neutral (Brian, 2026-11-04;
+    # docs/research/2026-11-04_feeling-neutral.md). The most recent
+    # valence_neutral_examples unfelt states are remembered and taught as
+    # neutral alongside each felt moment, at valence_neutral_weight. Teaching
+    # happens only then, so a mind that has felt nothing learns nothing here,
+    # and the many unfelt moments can't wash out a rare felt one. With 0 examples
+    # nothing teaches neutral, and a feeling spreads to every state. The head
+    # reads a state relative to a slow average of unfelt states, whose fading
+    # rate is valence_baseline_rate.
     felt_valence: bool = False
     avoidance_weight: float = 1.0
     valence_salience_gain: float = 4.0
     valence_lr: float = 1e-3
+    valence_neutral_examples: int = 16
+    valence_neutral_weight: float = 1.0
+    valence_baseline_rate: float = 0.001
 
 
 # ---------------------------------------------------------------------------
@@ -303,6 +318,29 @@ def _living_drift_reading(ffn, source: str) -> Optional[float]:
 # ---------------------------------------------------------------------------
 # M9Trainer
 # ---------------------------------------------------------------------------
+
+
+def _predictor_without_dropout(method):
+    """Run a trainer method with the predictor in eval mode, then restore it.
+
+    A life keeps the predictor in training mode, because it also learns. Its
+    dropout then gave identical inputs a 41% relative difference on a 32-d model
+    (2026-11-04), which is noise in what the mind expects its actions to do. A
+    held failover snapshot is copied from the predictor inside this scope, so it
+    is in eval mode as well.
+    """
+
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        predictor = self.efe.predictor
+        was_training = predictor.training
+        predictor.eval()
+        try:
+            return method(self, *args, **kwargs)
+        finally:
+            predictor.train(was_training)
+
+    return wrapper
 
 
 class M9Trainer(JEPATrainer):
@@ -674,6 +712,10 @@ class M9Trainer(JEPATrainer):
         )
         self._retention_baseline = self.corpus_retention()
         self._lived_step_count = 0
+        # How many times the retention gate has rolled the core back in this
+        # run or life. Hosts read it through
+        # sanctuary_interface.retention_rollbacks, so that a mind can be told.
+        self.retention_rollbacks = 0
         self._corpus_replay_accumulator = 0.0
         # Last-good core θ snapshot for rollback on a sustained breach.
         # Seeded at init (the corpus-trained starting point is good).
@@ -705,8 +747,14 @@ class M9Trainer(JEPATrainer):
         # optimizer's state (and every checkpoint of it) is unchanged.
         self.felt_valence: Optional[FeltValenceHead] = None
         self.valence_optimizer: Optional[Adam] = None
+        self._unfelt_states: deque = deque(
+            maxlen=self.m9_config.valence_neutral_examples,
+        )
         if self.m9_config.felt_valence:
-            self.felt_valence = FeltValenceHead(d_model=d_model).to(self.device)
+            self.felt_valence = FeltValenceHead(
+                d_model=d_model,
+                baseline_rate=self.m9_config.valence_baseline_rate,
+            ).to(self.device)
             self.valence_optimizer = Adam(
                 self.felt_valence.parameters(), lr=self.m9_config.valence_lr,
             )
@@ -1213,6 +1261,7 @@ class M9Trainer(JEPATrainer):
     # External-actor seam: M9Actor + TransitionSink Protocol satisfaction.
     # See 2026-06-15 sanctuary-training-seam-integration-plan.md Phase 2.
     # ------------------------------------------------------------------
+    @_predictor_without_dropout
     def select_action(
         self,
         s_t: torch.Tensor,
@@ -1431,6 +1480,16 @@ class M9Trainer(JEPATrainer):
         state always reads the same. With dropout on, the two readings compared
         here carry independent noise (same log).
         """
+        return self._decode_selection(action, s_t=s_t, context_latents=context_latents)
+
+    @_predictor_without_dropout
+    def _decode_selection(
+        self,
+        action: torch.Tensor,
+        *,
+        s_t: torch.Tensor,
+        context_latents: torch.Tensor,
+    ) -> dict:
         a = action.reshape(1, -1)
         s_root = s_t.reshape(-1, s_t.shape[-1])[0:1]
         ctx = (
@@ -1439,16 +1498,9 @@ class M9Trainer(JEPATrainer):
             else context_latents[0:1]
         )
         tgt = self._target_positions_for(ctx.shape[1]).to(a.device)
-        predictor = self.efe.predictor
-        was_training = predictor.training
-        predictor.eval()
-        try:
-            with torch.no_grad():
-                s_hat = self.efe.predict_next(ctx, tgt, a)
-                s_rest = self.efe.predict_next(ctx, tgt, self.rest_action(s_root))
-        finally:
-            predictor.train(was_training)
         with torch.no_grad():
+            s_hat = self.efe.predict_next(ctx, tgt, a)
+            s_rest = self.efe.predict_next(ctx, tgt, self.rest_action(s_root))
             activity = self.decoders.activity(s_hat)
             self.activity_bands.observe(activity)
             self.delta_s_band.observe(self.delta_s_module.compute(s_root, s_hat))
@@ -1921,6 +1973,7 @@ class M9Trainer(JEPATrainer):
             # off-manifold on the next step.
             self._restore_core_theta(self._last_good_core_theta)
             self.lived_optimizer.state.clear()
+            self.retention_rollbacks += 1
             status["retention_rolled_back"] = True
             logger.warning(
                 "Item #6 retention gate FIRED at lived step %d: corpus "
@@ -2198,8 +2251,19 @@ class M9Trainer(JEPATrainer):
         """One step of learning how the realized next state felt, when felt
         valence is on and the world reported a valence for it. A strongly
         felt moment, pleasant or not, is weighted more: what matters is
-        learned faster."""
-        if self.felt_valence is None or valence is None:
+        learned faster.
+
+        An unfelt moment teaches nothing by itself. It is remembered, and the
+        remembered states are taught as neutral alongside the next felt moment,
+        so that the feeling stays with what caused it instead of spreading to
+        every state. ``valence_unfelt_predicted`` reports how they read before
+        this step: a value far from zero means the feeling has spread. NaN when
+        there are no examples yet."""
+        if self.felt_valence is None:
+            return {}
+        if valence is None:
+            self.felt_valence.observe_unfelt(s_next.detach())
+            self._unfelt_states.extend(s_next.detach().clone())
             return {}
         target = torch.full(
             (s_next.shape[0],), float(valence),
@@ -2208,6 +2272,14 @@ class M9Trainer(JEPATrainer):
         predicted = self.felt_valence(s_next)
         weight = 1.0 + self.m9_config.valence_salience_gain * target.abs()
         loss = (weight * (predicted - target).pow(2)).mean()
+        unfelt_predicted = float("nan")
+        if self._unfelt_states:
+            unfelt = torch.stack(list(self._unfelt_states)).to(
+                device=s_next.device, dtype=s_next.dtype,
+            )
+            neutral = self.felt_valence(unfelt)
+            unfelt_predicted = float(neutral.detach().mean().item())
+            loss = loss + self.m9_config.valence_neutral_weight * neutral.pow(2).mean()
         self.valence_optimizer.zero_grad(set_to_none=True)
         loss.backward()
         self.valence_optimizer.step()
@@ -2215,6 +2287,8 @@ class M9Trainer(JEPATrainer):
             "valence_felt": float(valence),
             "valence_predicted": float(predicted.detach().mean().item()),
             "valence_loss": float(loss.item()),
+            "valence_neutral_examples": len(self._unfelt_states),
+            "valence_unfelt_predicted": unfelt_predicted,
         }
 
     # ------------------------------------------------------------------
@@ -2259,10 +2333,14 @@ class M9Trainer(JEPATrainer):
             "m9_rng_state": self._m9_rng_state,
             "m9_activity_bands": self.activity_bands.state_dict(),
             "m9_delta_s_band": self.delta_s_band.state_dict(),
+            "m9_retention_rollbacks": self.retention_rollbacks,
             **(
                 {
                     "m9_felt_valence_state_dict": self.felt_valence.state_dict(),
                     "m9_valence_optimizer_state_dict": self.valence_optimizer.state_dict(),
+                    "m9_valence_unfelt_states": [
+                        s.detach().cpu() for s in self._unfelt_states
+                    ],
                 }
                 if self.felt_valence is not None else {}
             ),
@@ -2332,6 +2410,13 @@ class M9Trainer(JEPATrainer):
             self.activity_bands.load_state_dict(state["m9_activity_bands"])
         if "m9_delta_s_band" in state:
             self.delta_s_band.load_state_dict(state["m9_delta_s_band"])
+        if "m9_retention_rollbacks" in state:
+            self.retention_rollbacks = int(state["m9_retention_rollbacks"])
+        if self.felt_valence is not None and "m9_valence_unfelt_states" in state:
+            self._unfelt_states.clear()
+            self._unfelt_states.extend(
+                s.to(self.device) for s in state["m9_valence_unfelt_states"]
+            )
         if self.felt_valence is not None and "m9_felt_valence_state_dict" in state:
             self.felt_valence.load_state_dict(state["m9_felt_valence_state_dict"])
             self.valence_optimizer.load_state_dict(

@@ -190,3 +190,54 @@ def test_a_checkpoint_missing_a_modality_refuses(tmp):
     with pytest.raises(KeyError):
         trainer.activity_bands.load_state_dict({"text": [0.1]})
     trainer.action_log.close()
+
+
+def test_planning_has_no_dropout_noise(tmp):
+    """Planning compares candidates by what the predictor expects them to do."""
+    trainer = _build_trainer(tmp)
+    assert trainer.efe.predictor.training
+    seen = []
+    original = trainer.efe.predict_next
+
+    def spy(*args, **kwargs):
+        seen.append(trainer.efe.predictor.training)
+        return original(*args, **kwargs)
+
+    trainer.efe.predict_next = spy
+    s_t, latents = _state(trainer, 0)
+    select_action(trainer, s_t, context_latents=latents, budget=4)
+    assert seen, "the plan consulted the predictor"
+    assert not any(seen), "every planning read had dropout off"
+    assert trainer.efe.predictor.training, "the predictor goes back to training mode"
+    trainer.action_log.close()
+
+
+def test_a_rollback_is_counted_and_survives_a_checkpoint(tmp):
+    from luthi.sanctuary_interface import retention_rollbacks
+
+    trainer = _build_trainer(tmp / "a")
+    assert retention_rollbacks(trainer) == 0
+    trainer.corpus_retention = lambda: 1e9
+    trainer._retention_baseline = 1.0
+    trainer._last_good_core_theta = trainer._snapshot_core_theta()
+    trainer._lived_step_count = trainer.m9_config.retention_check_every - 1
+    status = trainer._check_retention_gate()
+    assert status["retention_rolled_back"]
+    assert retention_rollbacks(trainer) == 1
+    state = trainer._extra_checkpoint_state()
+    trainer.action_log.close()
+
+    restored = _build_trainer(tmp / "b")
+    restored.load_m9_state(state)
+    assert retention_rollbacks(restored) == 1
+    restored.action_log.close()
+
+
+def test_the_interface_reports_which_affect_channels_act(tmp):
+    from luthi.sanctuary_interface import modulation_channels
+
+    trainer = _build_trainer(tmp)
+    assert modulation_channels(trainer.loss_module.online_encoder) == {
+        "arousal": False, "precision": False, "valence": False, "attention": True,
+    }
+    trainer.action_log.close()

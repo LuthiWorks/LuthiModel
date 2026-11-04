@@ -710,6 +710,13 @@ def save_life(trainer: Any, reason: str = "life") -> Path:
     return sorted((trainer.run_dir / "checkpoints").glob("ckpt_*.pt"))[-1]
 
 
+def retention_rollbacks(trainer: Any) -> int:
+    """How many times the retention gate has rolled this life's world-model
+    core back to its last good state. A rollback undoes recent learning, so a
+    host should tell the mind when this rises (2026-11-04)."""
+    return trainer.retention_rollbacks
+
+
 def keep_recent(model: torch.nn.Module, fraction: float) -> int:
     """Keep a share of what the living layers have recently learned.
 
@@ -841,6 +848,31 @@ def snapshot_modulatable_state(model: torch.nn.Module) -> ModulationSnapshot:
         if hasattr(ffn, "salience_threshold"):
             snap.salience_thresholds[i] = ffn.salience_threshold
     return snap
+
+
+def modulation_channels(model: torch.nn.Module) -> dict[str, bool]:
+    """Which channels of :func:`apply_external_modulation` act on this model.
+
+    On a v2 living layer only ``attention`` does (2026-11-04). The attributes
+    behind the others (``hebb_rate``, ``spike_threshold``, ``excitability_acc``)
+    don't exist there, so those requests silently change nothing. Connecting
+    arousal to ``pc_rate`` would change how fast the mind learns, which is
+    Brian's call and not built. A host should report what this returns.
+    """
+    layers = [
+        ffn
+        for ffn in (getattr(block, "living_ffn", None) for block in getattr(model, "blocks", []))
+        if ffn is not None
+    ]
+    return {
+        channel: bool(layers) and all(hasattr(layer, attr) for layer in layers)
+        for channel, attr in (
+            ("arousal", "hebb_rate"),
+            ("precision", "spike_threshold"),
+            ("valence", "excitability_acc"),
+            ("attention", "salience_threshold"),
+        )
+    }
 
 
 def apply_external_modulation(

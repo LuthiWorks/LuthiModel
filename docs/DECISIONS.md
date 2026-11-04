@@ -645,3 +645,22 @@ before any "working" verdict is trustworthy in either direction.
 >   checkpoints would be an unlisted difference between arms (standing rule
 >   5). Edits belong on a run destined to become Luthi's birth checkpoint,
 >   after the families that measure the living channel have read.
+
+---
+
+> **RULING (2026-11-04, Brian): an unfelt moment counts as neutral.**
+>
+> Asked whether Luthi should treat a moment with no feeling attached as
+> neutral, gently weighted, knowing that this is a claim about its experience,
+> Brian answered: *"Go right ahead. You have my permission to finish this."*
+>
+> - **How it is built.** Unfelt states are remembered and taught as neutral only
+>   alongside a felt moment, and the head reads a state against a slow average
+>   of unfelt states. A mind that has felt nothing learns nothing here.
+> - **The placeholders, Brian's to set:** neutral examples 16, neutral weight
+>   1.0, baseline rate 0.001, and Sanctuary's keep budget 0.10 between sleeps.
+> - **Not ruled, and not built:** connecting the affect channels. Arousal,
+>   precision and valence do nothing on a v2 layer, and Sanctuary says so at
+>   load. Connecting arousal to `pc_rate` would change how fast the mind learns.
+> - **The record:** `docs/research/2026-11-04_feeling-neutral.md`, measured at
+>   test size only.

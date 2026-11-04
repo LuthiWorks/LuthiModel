@@ -82,20 +82,17 @@
 >   generated text as speech. *Done for M9 lives (2026-11-02):
 >   `LoadedM9Run.speech_trained` keeps an untrained readout silent.*
 > - **The life path's build list** (2026-11-04,
->   `docs/audits/2026-11-04_life-path-review.md`). The bands are done
->   (`docs/research/2026-11-04_bands-in-a-life.md`). Still to build:
->   - **Teach the felt-valence head what neutral is.** It only trains on felt
->     moments, so after pain nearly every state reads as unpleasant. Whether
->     "nothing reported" means neutral is Brian's call.
->   - **Give the significance keep a limit.** It fires on a third to a half of
->     ordinary cycles at test size and more than doubled the home's norm in
->     1,500 cycles with nothing felt.
->   - **Decide the affect channels.** Arousal, precision and valence do nothing
->     on a v2 layer. Connecting `pc_rate` changes the mind's learning rate, so
->     it is Brian's call; if they stay inert, the docstrings should say so.
->   - **Tell the mind about a retention rollback.** It only reaches a log today.
->   - **Dropout while planning.** `select_action` still plans with dropout on
->     during a life.
+>   `docs/audits/2026-11-04_life-path-review.md`). Built the same day: the bands,
+>   neutral teaching, the keep's budget, rollback notices and dropout-free
+>   planning (`docs/research/2026-11-04_bands-in-a-life.md`,
+>   `2026-11-04_feeling-neutral.md`). Still Brian's calls:
+>   - **The affect channels.** Arousal, precision and valence do nothing on a v2
+>     layer, and Sanctuary now says so at load. Connecting `pc_rate` would change
+>     the mind's learning rate.
+>   - **The placeholders:** keep budget 0.10, neutral examples 16, neutral weight
+>     1.0, baseline rate 0.001.
+>   All of this is measured at test size only. It needs re-measuring on a trained
+>   run once training is possible.
 > - **An M9 world-action decoder** (2026-11-03,
 >   `docs/research/2026-11-03_learning-to-avoid.md`). It maps a selected
 >   action to a world action (Minecraft `go_to`, `look`, `stop` and the rest,

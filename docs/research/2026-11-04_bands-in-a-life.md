@@ -47,12 +47,12 @@ With the keep off, the active rate did not fall: 727 before, 766 after. The drop
 ## Conclusion
 
 - **The bands now work in a life.** They arm within 8 cycles and survive a checkpoint.
-- **This does not fix finding 2.** With the keep on, the home still moves about as far and its norm still more than doubles. The keep needs its own limit, as a separate change.
+- **This does not fix finding 2.** With the keep on, the home still moves about as far and its norm still more than doubles. The keep needs its own limit, as a separate change. *(Built the same day: `2026-11-04_feeling-neutral.md`.)*
 - **A trained model is still the open question.** How often the memory channel fires after real training can't be measured here, since nothing is training.
 
 **Still open:**
 
-- **Dropout in planning.** Only `decode_selection` changed. `select_action` and the other `predict_next` callers still plan with dropout on during a life. Whether planning should be noisy there is a design question, and changing it touches the training path, so it wasn't changed here.
+- **Dropout in planning.** Only `decode_selection` changed here. *(Update, same day: `select_action` now plans without dropout, and it turned out not to be on the training path. See `2026-11-04_feeling-neutral.md`.)*
 - **Band self-calibration.** A median-based band always calls roughly the bottom sixth of its own readings silent, however quiet the channel is. The rest comparison remains the main test of silence.
 
 ## Artifacts
