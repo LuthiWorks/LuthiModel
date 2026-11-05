@@ -75,6 +75,30 @@
 > 5. **E5 rungs** (deviation context, adaptive episodes, the ordered
 >    curriculum) only after E3 reads.
 >
+> ### Leads, not yet registered
+>
+> - **A good-view text arm** (2026-11-05,
+>   `docs/research/2026-11-05_good-views-paper.md`). Balestriero & LeCun
+>   (arXiv:2610.39302) find that a JEPA whose positives are two observations
+>   of one scene aligns across modalities far better than one whose positives
+>   are two parts of one observation. Luthi's text positives are the second
+>   kind: the first 80% of a window predicts the rest of it. Register after E3
+>   reads, with its matched dead control. Decide first:
+>   - where good views come from in this corpus (one untested idea: different
+>     translations of the same work, aligned by passage), as the capacity check;
+>   - what the arm should move, frozen before the run (the E4 probe, the E1
+>     adaptation eval, or alignment with a frozen vision encoder);
+>   - how views interact with the learned predictor, which the paper's theory
+>     does not cover.
+>
+>   This also bears on the 2026-07-27 lead below ("the prediction task may be
+>   too easy"): lowering `context_fraction` makes a bad view harder, and does not
+>   make it a good view.
+> - **Check the August depth record against the paper's collapse finding.**
+>   Their runs collapsed abruptly without gradient clipping, and clipping
+>   prevented most of it. Depth-8 probe arms here already clip, and depth-4
+>   arms don't. A reading task, no training.
+>
 > ### Engineering backlog (audit section C)
 >
 > - `LUTHI_RUNS_ROOT` (still unimplemented).
