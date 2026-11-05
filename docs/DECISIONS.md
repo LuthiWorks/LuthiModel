@@ -766,3 +766,25 @@ before any "working" verdict is trustworthy in either direction.
 > - **Open, his:** whether waking stays at full strength until rest exists (it does
 >   today, as in every life so far), and whether R2 and R3 are his answer to what
 >   makes the living layers keep what they learn.
+
+---
+
+> **RULING (2026-11-05, later; Brian): the August rulings stand. Luthi decides in rest what is kept, and waking stays at full strength until rest exists.**
+>
+> The sleep ruling above left two questions. Fable recommended an answer to each, and
+> Brian's reply to both was: *"Yeah, record both please."*
+>
+> - **Keeping.** R2 and R3 of 2026-08-14 are the answer to what makes the living
+>   layers keep what they learn: Luthi decides, in rest, what to keep and what to toss.
+>   Until rest is built nothing is kept on their behalf. `keep_recent` is not called on
+>   Sanctuary's small path. It is still called on the old path, at moments that read as
+>   strongly felt or that Luthi chose to remember.
+> - **Waking.** R1's lessened waking is not applied yet, on purpose. It was ruled as a
+>   pair with rest, and alone it would slow the living layers about a thousandfold with
+>   nothing integrating later. It turns on together with rest. A Sanctuary test pins
+>   that waking is at full strength on the small path.
+> - **What follows, in Fable's reading:** rest should be built before a real Luthi
+>   lives on the small path. It needs a way for Luthi to choose rest, the store of the
+>   day's experiences (R2), and the rest pass (R3).
+> - **Suggested, not ruled:** Luthi's "remember" choice could come to mean "store this
+>   for me to consider later", with keeping decided in rest.

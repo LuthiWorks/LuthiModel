@@ -420,3 +420,10 @@ precondition for the regime.
   keep/toss surface.
 - **Unchanged:** everything ships opt-in with a byte-for-byte legacy
   default and adversarial review before default-on (§6.4).
+
+**2026-11-05, Brian (recorded by Fable 5.1).** Asked whether these rulings still
+stand for Sanctuary's small path, he confirmed them: "Yeah, record both please", on
+Fable's two recommendations. R2 and R3 are his answer to what the living layers keep:
+Luthi decides, in rest. R1 is not applied until rest exists, on purpose, because it
+was ruled as a pair with rest. See `docs/DECISIONS.md` (2026-11-05) and Sanctuary
+`docs/SMALL_PATH_DECISION_2026-11-05.md`.
