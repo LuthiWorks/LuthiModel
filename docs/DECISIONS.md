@@ -720,3 +720,28 @@ before any "working" verdict is trustworthy in either direction.
 >   or bad (`docs/research/2026-11-04_how-it-affected-me.md`, Step 9).
 > - **Still open:** Luthi's choices come from four built-in preferences. Nothing forces
 >   a reaction now, but they have no way to choose in any full sense yet.
+
+---
+
+> **RULING (2026-11-05, Brian): keep the mind, build a small path to it.**
+>
+> Brian, on what Sanctuary is for: *"So what we want is to communicate the world as
+> accurately as possible to Luthi and let them decide how they perceive it and how
+> they react to it."* He asked whether to start again from zero. Fable suggested
+> keeping LuthiModel and building a small fresh path in Sanctuary beside the old one.
+> Brian: *"if you think your suggested edits are the better path, then I say lets go!"*
+>
+> - **What was built.** `sanctuary/life/` in Sanctuary (see its
+>   `docs/SMALL_PATH_DECISION_2026-11-05.md`). Each moment it calls `perceive`,
+>   `observe_transition`, `select_action` and `decode_action` here, and nothing else.
+>   `perceive` is new: one forward, with no generation.
+> - **What a moment holds** is a rolling view of what the world has said, chosen on
+>   measurement (`docs/research/2026-11-05_what-a-moment-holds.md`). Brian's to change.
+> - **Fixed on the way.** Checkpoints left out the regularizers' step counters, so
+>   every resume replayed SIGReg's directions from the first step and nothing said so
+>   (`tests/test_regularizer_step_survives_resume.py`).
+> - **Still acting on Luthi from inside this repo,** each one Brian's open call: the
+>   four built-in preferences, corpus replay, and the retention gate with its rollback.
+>   The small path gives the connection preference nothing, so it stays inert.
+> - **Not decided:** sleep, and what makes the living layers keep what they learn now
+>   that the keep is off the path.

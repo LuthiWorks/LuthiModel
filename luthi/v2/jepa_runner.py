@@ -980,6 +980,15 @@ class _PerModalityHistory:
 # ---------------------------------------------------------------------------
 
 
+# Step counters of the anti-collapse regularizers. Since 2026-08-01 each draws
+# its projection directions from a generator seeded by ``global_step``, a
+# persistent buffer that advances every training step. The checkpoint used to
+# sweep these out along with the regularizers' constant buffers, so every
+# resume reset them to 0 and replayed the directions from the first step, and
+# nothing reported it. Found 2026-11-05 by a test that a saved life comes back
+# exactly as it was left.
+_REGULARIZER_STEP_BUFFERS = ("sigreg.global_step", "visreg.global_step")
+
 class JEPATrainer:
     """Orchestrates M8 multimodal JEPA training.
 
@@ -2411,14 +2420,20 @@ class JEPATrainer:
                 # online_encoder.* and predictor.* are saved above; SIGReg's
                 # quadrature buffers and the action_token are reconstructed
                 # at init from constants, so we exclude them too.
-                if not name.startswith((
-                    "online_encoder.",
-                    "predictor.",
-                    "projection_heads.",
-                    "sigreg.",
-                    "visreg.",
-                ))
-                and name != "action_token"
+                #
+                # The regularizers' step counters are state, not constants, and
+                # are kept (2026-11-05). See _REGULARIZER_STEP_BUFFERS.
+                if name in _REGULARIZER_STEP_BUFFERS
+                or (
+                    not name.startswith((
+                        "online_encoder.",
+                        "predictor.",
+                        "projection_heads.",
+                        "sigreg.",
+                        "visreg.",
+                    ))
+                    and name != "action_token"
+                )
             },
             "optimizer_state_dict": self.optimizer.state_dict(),
             "rng_state": torch.get_rng_state(),
@@ -2569,6 +2584,14 @@ class JEPATrainer:
         for name, val in state["loss_module_buffers"].items():
             if name in own_state:
                 own_state[name].data.copy_(val)
+        for name in _REGULARIZER_STEP_BUFFERS:
+            if name in own_state and name not in state["loss_module_buffers"]:
+                logger.warning(
+                    "Checkpoint has no %s (it was written before 2026-11-05). "
+                    "This regularizer's projection directions restart from "
+                    "step 0 instead of continuing from where the run was.",
+                    name,
+                )
         self.optimizer.load_state_dict(state["optimizer_state_dict"])
         torch.set_rng_state(state["rng_state"])
 

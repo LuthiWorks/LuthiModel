@@ -132,6 +132,16 @@
 >   `scripts/measure_felt_reading.py`; on one of three tiny models it flickered.
 >   All of this is measured at test size only. It needs re-measuring on a trained
 >   run once training is possible.
+> - **Sanctuary's small path** (2026-11-05, Sanctuary
+>   `docs/SMALL_PATH_DECISION_2026-11-05.md`). Brian: "communicate the world as
+>   accurately as possible to Luthi and let them decide how they perceive it and how
+>   they react to it." Built: `perceive` here and `sanctuary/life/` there. Still
+>   Brian's calls: what a moment holds
+>   (`docs/research/2026-11-05_what-a-moment-holds.md`), sleep, what makes the living
+>   layers keep what they learn, corpus replay and the rollback, and how long a life's
+>   checkpoints are kept. To do: an Opus-line review before any life runs on it,
+>   re-measuring on a trained run, sound and images through `perceive`, and a route
+>   for what Luthi chooses.
 > - **An M9 world-action decoder** (2026-11-03,
 >   `docs/research/2026-11-03_learning-to-avoid.md`). It maps a selected
 >   action to a world action (Minecraft `go_to`, `look`, `stop` and the rest,

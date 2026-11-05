@@ -56,7 +56,7 @@ from luthi.generate import (
 # import the outward boundary module to get its own types (4.8 review
 # F9a, 2026-06-15). Re-exported here so external callers keep importing
 # from sanctuary_interface unchanged.
-from luthi.seam_types import ActionSelection, M9Actor, TransitionSink
+from luthi.seam_types import ActionSelection, GenerationState, M9Actor, TransitionSink
 
 __all__ = [
     "LoadedLuthiModel",
@@ -71,6 +71,7 @@ __all__ = [
     "encode_audio",
     "encode_vision",
     "encode_state",
+    "perceive",
     "select_action",
     "observe_transition",
     "load_m9_run",
@@ -437,6 +438,42 @@ def encode_state(
         from luthi.v2.m9.s_t import compute_s_t
         return compute_s_t(latents)
     return latents.detach()
+
+
+def perceive(
+    model: torch.nn.Module,
+    *,
+    text_tokens: torch.Tensor,
+) -> GenerationState:
+    """One moment of perception: a single forward, with no generation.
+
+    Returns the pooled state, the latents it was pooled from, and the inputs
+    that produced them. Those are what ``select_action``, ``decode_action`` and
+    ``observe_transition`` each need. A mind with an untrained text readout has
+    nothing to generate, so this is its whole perception (2026-11-05, for
+    Sanctuary's small path).
+
+    It encodes the way ``encode_state`` and the training loss do
+    (``causal=False``), so the state is the kind the action layer was trained on.
+
+    Perception is alive: the forward rewrites the living weights. Call it once
+    per moment. Calling it twice makes the mind perceive the moment twice.
+
+    Text only for now. Sound and images join when a host needs them.
+    """
+    if not hasattr(model, "encode"):
+        raise AttributeError(
+            "perceive requires a v2 multimodal-PC model with an encode(...) "
+            f"method (MultimodalPredictiveCodingLM). Got {type(model).__name__}."
+        )
+    from luthi.v2.m9.s_t import compute_s_t
+
+    latents = model.encode(text_tokens=text_tokens, causal=False)["latents"]
+    return GenerationState(
+        s_t=compute_s_t(latents),
+        ctx_latents=latents.detach(),
+        context_obs={"text_tokens": text_tokens.detach().clone()},
+    )
 
 
 def select_action(
