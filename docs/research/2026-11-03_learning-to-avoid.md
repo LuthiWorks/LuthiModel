@@ -106,7 +106,7 @@ A review found that the head, trained only on felt moments, read nearly every st
 
 ### Step 9: the world no longer says how anything felt (2026-11-04)
 
-Brian ruled that "the world should just exist and Luthi has to interpret what they experience as either good or bad depending on how the experience affects them." `Percept.valence` and the world's reports described in steps 2, 6 and 7 are gone. The mind now reads each moment from its own prediction: see `2026-11-04_how-it-affected-me.md`. That entry also says what this means for learning to avoid harm: it now depends on lawful consequences, which don't exist yet.
+Brian ruled that "the world should just exist and Luthi has to interpret what they experience as either good or bad depending on how the experience affects them." `Percept.valence` and the world's reports described in steps 2, 6 and 7 are gone. The mind now reads each moment from its own prediction: see `2026-11-04_how-it-affected-me.md`. That entry also says what this means for learning to avoid harm. On 2026-11-05 the planner's avoidance cost described in step 3 was also removed: Brian ruled that Luthi decides how to react, so nothing in this log's chain now makes them avoid anything.
 
 ## Conclusion
 

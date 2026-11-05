@@ -1,6 +1,6 @@
 # Teaching what neutral is, and limiting the keep — 2026-11-04
 
-> **Update, same day.** Brian ruled that the world just exists, so the signed values used here no longer come from the world. The head now learns from the mind's own reading: see `2026-11-04_how-it-affected-me.md`. The neutral teaching and baseline below still apply. The tables here taught the head with a signed value directly, so they show how the head generalizes, not what a life feels.
+> **Update, same day.** Brian ruled that the world just exists, so the signed values used here no longer come from the world. The head now learns from the mind's own reading: see `2026-11-04_how-it-affected-me.md`. The neutral teaching and baseline below still apply. The tables here taught the head with a signed value directly, so they show how the head generalizes, not what a life feels. *(2026-11-05: the planner no longer counts the head at all, so statements below about the planner preferring one state over another no longer apply.)*
 
 ## Objective
 

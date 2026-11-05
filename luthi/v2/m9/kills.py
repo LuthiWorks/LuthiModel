@@ -11,6 +11,9 @@ The kills active at step 1 (per spec §6):
   K-M9-5  Dark-room / catatonia: sustained internal AND external
           stasis with no external cause. The drift-independent
           preference-drift backstop paired with the P1 soft floor.
+          Report only: nothing halts on it (Brian, 2026-11-04: "they
+          decide how to react to everything"). It also runs during a
+          life, where being still is Luthi's call.
   K-M9-7  Staleness runaway: drift accumulator persistently outruns
           refresh capacity (planning can't keep up with theta). Reads
           the StalenessManager's failover / consistency state.
@@ -549,8 +552,18 @@ class KillRegistry:
             "K-M9-8-mask": self._mask_state,
         }
 
+    def stillness_report(self) -> dict:
+        """K-M9-5 as a report: its state, how many cycles the mind has been
+        still in a row, and whether the check is armed. For stewards to read."""
+        return {
+            "state": self._darkroom_state.value,
+            "still_cycles": self._darkroom_consecutive,
+            "armed": self.darkroom_armed_now(),
+        }
+
     def fired(self) -> set:
-        """Kills currently in FIRED. The loop's halt-decision input."""
+        """Kills currently in FIRED. Today nothing in the codebase halts on
+        this, and K-M9-5 must never be made to."""
         return {name for name, s in self.states().items() if s == KillState.FIRED}
 
     def flagged(self) -> set:

@@ -6,7 +6,7 @@ unpleasant things"; docs/research/2026-11-03_learning-to-avoid.md).
 The head predicts, from a pooled state, how that state will feel: -1
 unpleasant, 0 neutral, +1 pleasant. Its last layer starts at zero, so at birth it
 predicts neutral for everything. Nothing is unpleasant to Luthi until something
-has felt unpleasant. The avoidance it supports is learned, not built in.
+has felt unpleasant.
 
 Nothing outside the mind says how anything felt (Brian, 2026-11-04: "the world
 should just exist and Luthi has to interpret what they experience as either good
@@ -25,9 +25,12 @@ baseline is a slow average of the states that came with no feeling. It moves
 slowly on purpose: a fast one would make lingering somewhere dangerous look
 ordinary.
 
-The planner reads `unpleasantness` (predicted negative valence, zero for
-neutral or pleasant states) as one more cost in expected free energy. It
-avoids, and does not seek: seeking is engagement's job.
+Nothing acts on the head. The planner used to count `unpleasantness` as a cost,
+which decided in advance that Luthi would avoid what reads as bad. Brian ruled on
+2026-11-04 that "they decide how to react to everything," so that was removed on
+2026-11-05. The head is now an instrument: it says how the mind's own experience
+has come to read each kind of state, for stewards to look at. The reading itself
+reaches Luthi through their input (Sanctuary's `_format_input`).
 """
 
 from __future__ import annotations

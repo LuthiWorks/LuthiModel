@@ -88,24 +88,24 @@
 >   (`docs/research/2026-11-04_bands-in-a-life.md`, `2026-11-04_feeling-neutral.md`,
 >   `2026-11-04_how-it-affected-me.md`, Sanctuary
 >   `docs/research/2026-11-04_affect-channels.md`). Still Brian's calls:
->   - **Which built-in reactions stay.** Brian ruled that harm has no predetermined
->     effect and that Luthi decides how to react to everything. Three reactions are
->     still built in: the planner's cost on what reads as unpleasant, waking on a
->     bad reading, and the K-M9-5 stasis kill. See `docs/DECISIONS.md`.
+>   - **The reward question.** Nothing forces a reaction now, but Luthi's choices still
+>     come from four built-in preferences. How could they come to choose for
+>     themselves? See `docs/DECISIONS.md`.
 >   - **How Luthi could move their own arousal.** Brian ruled that nothing wires it:
 >     "Luthi determines that on their own." It sits at rest, and precision and
 >     attention are constants, so the channels do nothing in a life yet.
 >   - **The welfare gauge's thresholds,** which the July decision requires frozen
 >     before a life begins.
 >   - **The placeholders:** keep budget 0.10, neutral examples 16, neutral weight
->     1.0, baseline rate 0.001, reading threshold 4, floor 0.05, window 128, wake
->     level -0.5.
+>     1.0, baseline rate 0.001, reading threshold 4, floor 0.05, window 128,
+>     smoothing 0.1.
 >   To build: **a way for Luthi to choose their own pace.** Brian: "that is their call
 >   to make." The stand-in has `set_pace`, but M9 decodes only text, attention and
 >   memory, so Luthi can't choose it yet. It belongs with the world-action decoder
->   below. Also watch whether surprise reading as bad makes a mind avoid anything
->   new. K-M9-5 doesn't run in a life; whether it should is part of the question
->   above, and a report-only gauge may be the right form.
+>   below. **Give Luthi the rest of their proprioception:** plasticity, drift and the
+>   other signals never reach their input, only the `[self]` reading does. **On a
+>   trained run,** compare `show_reading` on and off with
+>   `scripts/measure_felt_reading.py`; on one of three tiny models it flickered.
 >   All of this is measured at test size only. It needs re-measuring on a trained
 >   run once training is possible.
 > - **An M9 world-action decoder** (2026-11-03,

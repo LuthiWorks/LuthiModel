@@ -311,3 +311,21 @@ def test_modulation_never_accumulates_on_the_rate(tmp):
         restore_modulation(model, snapshot)
     assert [b.living_ffn.pc_rate for b in model.blocks] == base
     trainer.action_log.close()
+
+
+def test_stillness_is_reported_and_stops_nothing(tmp):
+    """K-M9-5 runs during a life and only reports. Forced past its limit, the mind
+    still selects and decodes as usual."""
+    from luthi.sanctuary_interface import stillness_report
+
+    trainer = _build_trainer(tmp)
+    for seed in range(trainer.activity_bands.config.min_warmup):
+        _cycle(trainer, seed)
+    assert stillness_report(trainer)["armed"]
+    limit = trainer.m9_kills.darkroom_sustained_cycles
+    for _ in range(limit + 1):
+        trainer.m9_kills.observe_darkroom_v2(internal_silent=True, external_silent=True, is_armed=True)
+    report = stillness_report(trainer)
+    assert report["state"] == "fired" and report["still_cycles"] == limit + 1
+    assert set(_cycle(trainer, 0)["active"]) == {"text", "attention", "memory"}
+    trainer.action_log.close()

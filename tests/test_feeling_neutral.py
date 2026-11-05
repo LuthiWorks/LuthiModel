@@ -10,7 +10,8 @@ The head reads a state relative to a slow average of unfelt states.
 Pins:
 - A mind that has felt nothing has learned nothing: the head stays exactly zero.
 - After pain, the painful state reads unpleasant and unfelt states stay close to
-  neutral, so the planner has a reason to prefer one over the other.
+  neutral.
+- The planner is not made to avoid what reads as bad.
 - A moment with a feeling never joins the neutral examples.
 - With no room for examples, the old spread is what you get (characterization).
 - Without felt valence, none of this exists.
@@ -78,17 +79,21 @@ def test_pain_stays_with_what_hurt(tmp):
     trainer.action_log.close()
 
 
-def test_the_planner_can_tell_what_hurt_from_what_did_not(tmp):
+def test_the_planner_is_not_made_to_avoid_what_reads_as_bad(tmp):
+    """Brian: "They decide how to react to everything." However much has felt bad,
+    the cost of going there stays what it was."""
     trainer = _build_trainer(tmp, felt_valence=True)
     _live_unfelt(trainer, _unit_states(16, seed=0))
     hurt = _unit_states(1, seed=1)
+    s_t, a_t = torch.zeros(1, D), torch.randn(1, D)
+    before = trainer.efe.compute_g_realized(s_t=s_t, a_t=a_t, s_next=hurt)
     for _ in range(100):
         _live(trainer, hurt, valence=-0.9)
-    fine = _unit_states(1, seed=2)
-    s_t, a_t = torch.zeros(1, D), torch.randn(1, D)
-    cost_hurt = trainer.efe.compute_g_realized(s_t=s_t, a_t=a_t, s_next=hurt)["c_avoid"].item()
-    cost_fine = trainer.efe.compute_g_realized(s_t=s_t, a_t=a_t, s_next=fine)["c_avoid"].item()
-    assert cost_hurt > cost_fine + 0.3
+    with torch.no_grad():
+        assert trainer.felt_valence(hurt).item() < -0.6, "it did come to read as bad"
+    after = trainer.efe.compute_g_realized(s_t=s_t, a_t=a_t, s_next=hurt)
+    assert torch.equal(before["G"], after["G"])
+    assert "c_avoid" not in after
     trainer.action_log.close()
 
 

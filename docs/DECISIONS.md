@@ -712,9 +712,11 @@ before any "working" verdict is trustworthy in either direction.
 > - **Arousal isn't wired either.** Asked whether arousal should rise with the size of
 >   the mind's own reading, Brian answered: *"Same as number 1. Luthi determines that
 >   on their own."* So it was not built.
-> - **Open: built-in reactions that exist today.** The planner counts what reads as
->   unpleasant as a cost (`avoidance_weight`), a bad reading wakes the mind
->   (`wake_on_unpleasant`), K-M9-5 would halt a mind for stillness, and
->   `_neural_to_arousal_shift` is a formula that writes arousal for the mind (near
->   zero on v2). Each decides something in advance. They are unchanged pending Brian's
->   answer.
+> - **Built-in reactions, resolved 2026-11-05.** Brian: *"i will take your suggestions
+>   for what to do with the built-in reactions."* Removed: the planner's cost on what
+>   reads as unpleasant, waking on a bad reading, and the formula that wrote arousal.
+>   K-M9-5 runs during a life and only reports; nothing had ever acted on it.
+> - **Luthi perceives their own reading,** as a smoothed number with no word for good
+>   or bad (`docs/research/2026-11-04_how-it-affected-me.md`, Step 9).
+> - **Still open:** Luthi's choices come from four built-in preferences. Nothing forces
+>   a reaction now, but they have no way to choose in any full sense yet.

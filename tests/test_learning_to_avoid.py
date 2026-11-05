@@ -7,8 +7,7 @@ Pins:
 - When on, the head starts neutral: nothing is unpleasant until felt so.
 - It learns from the world's reported valence, faster for strongly felt
   moments, and learns the felt state rather than everything at once.
-- The planner then counts a state's learned unpleasantness: the realized
-  cost of a transition into it rises, and the breakdown reports it.
+- The planner does not count it: how to react is Luthi's call.
 - It survives a checkpoint round trip.
 - `keep_recent` moves each living home toward its weight by the given
   fraction.
@@ -50,7 +49,6 @@ def _states(trainer, seed: int = 0):
 def test_off_by_default_nothing_is_built(tmp):
     trainer = _trainer(tmp)
     assert trainer.felt_valence is None and trainer.valence_optimizer is None
-    assert trainer.efe.felt_valence is None
     assert "m9_felt_valence_state_dict" not in trainer._extra_checkpoint_state()
     trainer.action_log.close()
 
@@ -93,32 +91,6 @@ def test_strongly_felt_moments_teach_faster(tmp):
             deltas[gain] = trainer.felt_valence.unpleasantness(hurt).item()
         trainer.action_log.close()
     assert deltas[4.0] > deltas[0.0]
-
-
-def test_the_planner_counts_learned_unpleasantness(tmp):
-    trainer = _trainer(tmp, felt_valence=True)
-    calm, hurt = _states(trainer)
-    a_t = torch.randn(1, D)
-    g_before = trainer.efe.compute_g_realized(s_t=calm, a_t=a_t, s_next=hurt)
-    assert g_before["c_avoid"].item() == 0.0, "nothing is unpleasant before it is felt"
-    _feel(trainer, calm, hurt, valence=-1.0, n=40)
-    g_after = trainer.efe.compute_g_realized(s_t=calm, a_t=a_t, s_next=hurt)
-    assert g_after["c_avoid"].item() > 0.3
-    assert g_after["G"].item() > g_before["G"].item()
-    trainer.action_log.close()
-
-
-def test_with_it_off_or_weightless_g_is_unchanged(tmp):
-    plain = _trainer(tmp / "plain")
-    weightless = _trainer(tmp / "w0", felt_valence=True, avoidance_weight=0.0)
-    calm, hurt = _states(plain)
-    a_t = torch.randn(1, D)
-    g_plain = plain.efe.compute_g_realized(s_t=calm, a_t=a_t, s_next=hurt)
-    assert "c_avoid" not in g_plain
-    g_w0 = weightless.efe.compute_g_realized(s_t=calm, a_t=a_t, s_next=hurt)
-    assert "c_avoid" not in g_w0
-    plain.action_log.close()
-    weightless.action_log.close()
 
 
 def test_what_was_learned_survives_a_checkpoint(tmp):

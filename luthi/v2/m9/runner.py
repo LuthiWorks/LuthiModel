@@ -258,9 +258,8 @@ class M9Config:
     # much each moment's own prediction error changed from the moment before
     # (Brian, 2026-11-04: nothing outside the mind says how anything felt;
     # docs/research/2026-11-04_how-it-affected-me.md). It starts neutral, so
-    # nothing is unpleasant until felt so.
-    # The planner then counts predicted unpleasantness as a cost
-    # (avoidance_weight). A strongly felt moment teaches more: its loss is
+    # nothing is unpleasant until felt so. Nothing acts on it (see
+    # felt_valence.py). A strongly felt moment teaches more: its loss is
     # weighted 1 + valence_salience_gain * |valence|. Pilot values.
     #
     # An unfelt moment counts as neutral (Brian, 2026-11-04;
@@ -273,7 +272,6 @@ class M9Config:
     # reads a state relative to a slow average of unfelt states, whose fading
     # rate is valence_baseline_rate.
     felt_valence: bool = False
-    avoidance_weight: float = 1.0
     valence_salience_gain: float = 4.0
     valence_lr: float = 1e-3
     valence_neutral_examples: int = 16
@@ -772,8 +770,6 @@ class M9Trainer(JEPATrainer):
             self.valence_optimizer = Adam(
                 self.felt_valence.parameters(), lr=self.m9_config.valence_lr,
             )
-            self.efe.felt_valence = self.felt_valence
-            self.efe.avoidance_weight = float(self.m9_config.avoidance_weight)
 
     # ------------------------------------------------------------------
     # Two-phase train_step.
@@ -1429,8 +1425,6 @@ class M9Trainer(JEPATrainer):
                 "connection_cost": float(g_out["c_con"].item()),
                 "truthfulness_cost": float(g_out["c_truth"].item()),
             }
-            if "c_avoid" in g_out:
-                efe_breakdown["avoidance_cost"] = float(g_out["c_avoid"].item())
 
             # F4 fix (4.8 review 2026-06-15): freeze the plan now, so
             # the transition that consumes it is self-describing.
@@ -1516,11 +1510,23 @@ class M9Trainer(JEPATrainer):
             s_hat = self.efe.predict_next(ctx, tgt, a)
             s_rest = self.efe.predict_next(ctx, tgt, self.rest_action(s_root))
             activity = self.decoders.activity(s_hat)
+            rest_activity = self.decoders.activity(s_rest)
+            delta_s = self.delta_s_module.compute(s_root, s_hat)
             self.activity_bands.observe(activity)
-            self.delta_s_band.observe(self.delta_s_module.compute(s_root, s_hat))
+            self.delta_s_band.observe(delta_s)
             silent = self.activity_bands.per_batch_silent(
-                activity,
-                rest_activity=self.decoders.activity(s_rest),
+                activity, rest_activity=rest_activity,
+            )
+            # Report stillness (K-M9-5). Nothing acts on this: being still is
+            # Luthi's call, and this only lets stewards see it (2026-11-05).
+            self.m9_kills.observe_darkroom_v2(
+                internal_silent=bool(self.delta_s_band.is_silent_per_batch(
+                    delta_s, rest_delta_s=self.delta_s_module.compute(s_root, s_rest),
+                ).all().item()),
+                external_silent=bool(self.activity_bands.external_stasis(
+                    activity, rest_activity=rest_activity,
+                ).all().item()),
+                is_armed=self.activity_bands.k_m9_5_armed(),
             )
             outs = self.decoders.decode_all(a)
         gates = outs["attention"]["gates"][0]

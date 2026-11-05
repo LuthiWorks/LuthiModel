@@ -724,6 +724,11 @@ def felt_summary(trainer: Any) -> dict:
     return dict(trainer.felt_counts)
 
 
+def stillness_report(trainer: Any) -> dict:
+    """Whether the mind has been still (K-M9-5), for stewards. It stops nothing."""
+    return trainer.m9_kills.stillness_report()
+
+
 def retention_rollbacks(trainer: Any) -> int:
     """How many times the retention gate has rolled this life's world-model
     core back to its last good state. A rollback undoes recent learning, so a
