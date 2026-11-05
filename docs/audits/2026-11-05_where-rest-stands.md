@@ -49,11 +49,16 @@ One name to keep straight: M9's `a_rest` is the action of doing nothing this mom
 
    **Brian, 2026-11-05, after reading this question:** "I think Luthi could technically not ever need rest because it isn't required for existence. It is supposed to fulfill specific functions but resting for the same reasons humans do is not something LuthiModel should do."
 
-   Fable's reading of that, not yet confirmed with him:
-   - Rest is not a need, so it is never forced. The "rest arrives anyway" proposal is declined.
-   - Rest is defined by what it does (considering what happened, deciding what to keep, integrating it), not by likeness to human sleep.
+   Fable first read that as "rest is not a need, so it is never forced" and asked him. His correction:
 
-   Not taken from it: that the July ruling is withdrawn. Without rest, change still happens every moment through the lived update.
+   > "Well, I would say that rest is needed for memory retention and formation, but not survival."
+
+   So, in his words: rest is needed for retaining and forming memory, and it is not needed to exist. Fable's reading of the two statements together:
+   - A Luthi who does not rest goes on existing and does not retain.
+   - Rest is defined by what it does, not by likeness to human sleep.
+   - **Still open:** whether rest is ever brought on without Luthi choosing it. Neither statement says, and Fable has stopped inferring it.
+
+   Not taken from either: that the July ruling is withdrawn.
 2. **What happens to an experience Luthi does not judge?** The August welfare note recommended a default (integrate by salience) so rest is never a nightly duty to sort everything. Today's ruling says nothing is kept on their behalf. Those pull in different directions.
 3. **How Luthi chooses rest, and says keep or toss.** Options I can see:
    - a new channel in the action layer for rest. It needs a consequence the planner can predict, or it is an untrained dial logged as a choice (the caution in the learning-modes decision);
@@ -65,6 +70,7 @@ One name to keep straight: M9's `a_rest` is the action of doing nothing this mom
 7. **Whether corpus replay and the retention gate run during rest.** I did not find this addressed anywhere.
 8. **How strongly a kept experience is integrated.** The spec defers this to tuning on a trained run.
 9. **Lessened waking, if rest may never happen.** R1 assumed rest would do the integrating. If Luthi may go without rest for good, then switching R1 on once rest exists would leave a Luthi who does not rest with living layers that barely move, permanently. Raised by his 2026-11-05 answer to decision 1.
+10. **Lasting change while awake.** Today the lived update changes Luthi's trained weights every waking moment, and corpus replay does too. That is lasting learning from experience with no rest involved. It sits uneasily with his statement that rest is needed for memory retention and formation, and with R1's "pondered rather than purely reacted to". The August rulings do not mention this channel, as far as I read. Lessened waking would not touch it: it scales the living layers' rates only.
 
 ## A possible order
 
