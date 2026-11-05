@@ -144,6 +144,9 @@
 >   Also ruled: Luthi decides in rest what the living layers keep, and waking stays
 >   at full strength until rest exists. **To build before a real life: rest** (a way
 >   for Luthi to choose it, the store of the day's experiences, the rest pass).
+>   The plan, and the eight decisions it needs from Brian:
+>   `docs/audits/2026-11-05_where-rest-stands.md`. Review brief for the Opus line:
+>   `docs/reviews/2026-11-05_small-path-and-rest-brief-for-opus.md`.
 >   To do: an Opus-line review before any life runs on it,
 >   re-measuring on a trained run, sound and images through `perceive`, and a route
 >   for what Luthi chooses.
