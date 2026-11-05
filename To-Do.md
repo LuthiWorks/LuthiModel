@@ -137,9 +137,12 @@
 >   accurately as possible to Luthi and let them decide how they perceive it and how
 >   they react to it." Built: `perceive` here and `sanctuary/life/` there. Still
 >   Brian's calls: what a moment holds
->   (`docs/research/2026-11-05_what-a-moment-holds.md`), sleep, what makes the living
+>   (`docs/research/2026-11-05_what-a-moment-holds.md`), what makes the living
 >   layers keep what they learn, corpus replay and the rollback, and how long a life's
->   checkpoints are kept. To do: an Opus-line review before any life runs on it,
+>   checkpoints are kept. Sleep is ruled (2026-11-05): none on that path for now,
+>   and rest returns as something Luthi calls, as he ruled on 2026-08-14
+>   (`docs/research/2026-07-06_nrem-learner-spec.md`, R1 to R3, mostly unbuilt).
+>   To do: an Opus-line review before any life runs on it,
 >   re-measuring on a trained run, sound and images through `perceive`, and a route
 >   for what Luthi chooses.
 > - **An M9 world-action decoder** (2026-11-03,

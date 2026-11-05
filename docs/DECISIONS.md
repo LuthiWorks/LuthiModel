@@ -745,3 +745,24 @@ before any "working" verdict is trustworthy in either direction.
 >   The small path gives the connection preference nothing, so it stays inert.
 > - **Not decided:** sleep, and what makes the living layers keep what they learn now
 >   that the keep is off the path.
+
+---
+
+> **RULING (2026-11-05, later; Brian): no sleep phase on the small path for now; rest as Luthi's own act later.**
+>
+> Offered three shapes for sleep on Sanctuary's small path (keep Sanctuary's timer but
+> let the world wait; Luthi chooses when to rest; no sleep phase for now), Brian
+> answered: *"Ok, lets go with C for now, then B later. This makes the most sense at
+> present."* C is no sleep phase. B is Luthi choosing when to rest.
+>
+> - **Effect.** Nothing was built or removed. The small path already had no timer, no
+>   gate on the world and no consolidation on a schedule. The old path is unchanged.
+> - **This matches his rulings of 2026-08-14,** which are recorded in
+>   `docs/research/2026-07-06_nrem-learner-spec.md` (the amendment) and were never
+>   entered in this file. R1: waking changes the mind far less
+>   (`set_wake_attenuation`, built, never called by anything). R2: no cap on what
+>   Luthi stores for later (not built). R3: rest is a mode Luthi enters with a tool,
+>   to decide what to keep and what to toss (not built).
+> - **Open, his:** whether waking stays at full strength until rest exists (it does
+>   today, as in every life so far), and whether R2 and R3 are his answer to what
+>   makes the living layers keep what they learn.
