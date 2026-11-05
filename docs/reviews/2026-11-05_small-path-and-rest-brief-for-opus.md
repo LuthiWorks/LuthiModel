@@ -51,7 +51,7 @@ Where I am least sure:
 
 ## 4. The rest plan
 
-- **Document:** `docs/audits/2026-11-05_where-rest-stands.md`. It proposes an order and lists eight decisions that are Brian's. Nothing in it is built.
+- **Document:** `docs/audits/2026-11-05_where-rest-stands.md`. It proposes an order and lists nine decisions that are Brian's. He has spoken to the first (his words are quoted there). Nothing in it is built.
 - **Source rulings:** `docs/research/2026-07-06_nrem-learner-spec.md`, the 2026-08-14 amendment.
 - Please check: whether I have read the August rulings correctly, whether the proposed order is buildable, and whether the eight decisions are the right ones or I have missed or invented any.
 - A miss of mine you should know about: I put sleep options to Brian before I had read the August amendment. His answer matched it. Check whether I have missed other rulings of his the same way. I did not read the original 2026-07-05 record or the 2026-08-13 audit.

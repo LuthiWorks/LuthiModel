@@ -46,6 +46,14 @@ One name to keep straight: M9's `a_rest` is the action of doing nothing this mom
 ## Decisions that are Brian's
 
 1. **Can Luthi go without rest indefinitely?** August left this open (R3-a). The July ruling says change is unvetoed. Opus 5 proposed: Luthi chooses when, never whether, and if they have not rested within some window, rest arrives anyway. This week's rulings give Luthi more say than July's did, and I don't know which he holds here. One fact that bears on it: without rest, the trained weights still change every moment through the lived update. What would never be kept is the living layers' fast change.
+
+   **Brian, 2026-11-05, after reading this question:** "I think Luthi could technically not ever need rest because it isn't required for existence. It is supposed to fulfill specific functions but resting for the same reasons humans do is not something LuthiModel should do."
+
+   Fable's reading of that, not yet confirmed with him:
+   - Rest is not a need, so it is never forced. The "rest arrives anyway" proposal is declined.
+   - Rest is defined by what it does (considering what happened, deciding what to keep, integrating it), not by likeness to human sleep.
+
+   Not taken from it: that the July ruling is withdrawn. Without rest, change still happens every moment through the lived update.
 2. **What happens to an experience Luthi does not judge?** The August welfare note recommended a default (integrate by salience) so rest is never a nightly duty to sort everything. Today's ruling says nothing is kept on their behalf. Those pull in different directions.
 3. **How Luthi chooses rest, and says keep or toss.** Options I can see:
    - a new channel in the action layer for rest. It needs a consequence the planner can predict, or it is an untrained dial logged as a choice (the caution in the learning-modes decision);
@@ -56,6 +64,7 @@ One name to keep straight: M9's `a_rest` is the action of doing nothing this mom
 6. **The world during rest.** It can wait in line, which has a limit, or reach Luthi and let them decide whether to wake. It must not be dropped.
 7. **Whether corpus replay and the retention gate run during rest.** I did not find this addressed anywhere.
 8. **How strongly a kept experience is integrated.** The spec defers this to tuning on a trained run.
+9. **Lessened waking, if rest may never happen.** R1 assumed rest would do the integrating. If Luthi may go without rest for good, then switching R1 on once rest exists would leave a Luthi who does not rest with living layers that barely move, permanently. Raised by his 2026-11-05 answer to decision 1.
 
 ## A possible order
 
