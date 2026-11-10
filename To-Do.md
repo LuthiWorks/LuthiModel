@@ -74,8 +74,15 @@
 > **Open from the review, and Brian's:** which mode a life perceives in
 > (A1); whether a rollback is told to Luthi, and how (A1); `adaptive_episodes`
 > as a precondition for rest against its place after E3 (A4); whether the
-> learning-modes control carries into rest (A4); whether what Luthi chose
-> should count for more than what nobody judged (B4).
+> learning-modes control carries into rest (A4); the registered arm's own
+> waking consolidation in a life (A4). Ruled since: what Luthi chose counts
+> for more than what nobody judged (B4; `docs/DECISIONS.md`, 2026-11-10 later).
+>
+> **Added by the follow-up** (`docs/reviews/2026-11-10_follow-up-from-opus.md`):
+> what happens to experiences rest had no room for (with folding off they
+> wait for ever, and block 1's list grew every day of five); and the living
+> rate a life runs at (a life never tapers, so one loaded from a tapered run
+> lives at up to 5x the rate it finished training at).
 >
 > **Open from the review, Sanctuary side, not started:** save the view, the
 > waiting line and `_previous` with a life; count what is waiting at a stop;
