@@ -670,6 +670,10 @@ class PredictiveCodingLayer(nn.Module):
         # constructor argument, so no run's configuration changes meaning.
         # It only listens: see _note_for_the_day.
         self._day_record = None
+        # True while a forward that is not a lived moment runs through this
+        # layer with plasticity on (corpus replay in a life). The record
+        # keeps its contents and takes nothing. See suspend_day_record.
+        self._day_record_suspended = False
 
         # --- Inverted-U learning gain (momentum-functions foundations,
         #     spec docs/research/2026-07-05_inverted-u-gain-spec.md §8 step 4).
@@ -948,7 +952,7 @@ class PredictiveCodingLayer(nn.Module):
         consulted: a moment the full ring turns away is still recorded.
         Reads and changes nothing else. See luthi/v2/day_record.py.
         """
-        if self._day_record is None:
+        if self._day_record is None or self._day_record_suspended:
             return
         self._day_record.append(
             self._sparse_step_count, salience, context, input_pattern,

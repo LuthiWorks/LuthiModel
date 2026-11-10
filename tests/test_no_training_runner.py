@@ -21,7 +21,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from scripts.run_no_training_experiments import (  # noqa: E402
+    drop_copies,
     find_runs,
+    reruns_beside_originals,
     is_dead,
     plan,
     select,
@@ -99,3 +101,28 @@ def test_every_job_writes_its_own_file(tmp_path):
     ]
     for j in jobs:
         assert "--out" in j["cmd"] and str(j["out"]) in j["cmd"]
+
+
+def test_a_copy_of_a_run_is_measured_once_and_said_so(tmp_path):
+    """Opus review, 2026-11-10: with an archive beside the original, the
+    second result overwrote the first and the run counted twice."""
+    _run(tmp_path / "runs", "probe_768_visreg", 768, 46)
+    _run(tmp_path / "archive" / "2026-08-20_visreg", "probe_768_visreg", 768, 46)
+    _run(tmp_path / "runs", "probe_768_visreg", 768, 95)
+    chosen = select(find_runs([tmp_path / "runs", tmp_path / "archive"]), False, "")
+    kept, dropped = drop_copies(chosen)
+    assert len(chosen) == 3 and len(kept) == 2 and len(dropped) == 1
+    assert "archive" in str(dropped[0]["dir"])
+    assert "runs" in str(dropped[0]["same_as"])
+    outs = [str(j["out"]) for j in plan(kept, {"e2", "e1", "e4"})]
+    assert len(outs) == len(set(outs))
+
+
+def test_a_rerun_beside_its_original_is_named(tmp_path):
+    _run(tmp_path, "living_v5_4x_d4", 512, 44)
+    _run(tmp_path, "living_v5_4x_d4_rerun", 512, 44)
+    _run(tmp_path, "living_v5_4x_d4_rerun", 512, 45)
+    chosen = select(find_runs([tmp_path]), False, "")
+    assert reruns_beside_originals(chosen) == [
+        ("living_v5_4x_d4_512d_seed44", "living_v5_4x_d4_rerun_512d_seed44")
+    ]

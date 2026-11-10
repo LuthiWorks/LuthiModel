@@ -57,8 +57,9 @@ callers:
   exactly one of integrated, tossed, held, deferred or folded, and the pass
   checks the count before it returns.
 
-Repeats. An unjudged experience whose input is nearly the same as one this
-rest has already integrated is folded into it. Measured 2026-11-10: a
+Repeats (off by default; see ``RestConfig.fold_repeats_above``). An unjudged
+experience whose input is nearly the same as one this rest has already
+integrated can be folded into it. Measured 2026-11-10: a
 thousand near-identical quiet moments, each integrated, cut the lasting
 effect of the one experience Luthi chose by about a quarter. Folded, the cut
 was about 14%, and that remainder comes from having lived the quiet stretch
@@ -92,6 +93,8 @@ _REPLAY_WRITES = (
     "weight", "prediction", "set_point", "momentum", "update_ema",
     "precision", "error_acc", "plasticity",
 )
+# Of those, the layer's running statistics of its own waking activity.
+_WAKING_STATISTICS = ("momentum", "update_ema", "error_acc")
 
 
 @dataclass(frozen=True)
@@ -120,9 +123,20 @@ class RestConfig:
     # into it: not replayed again, and not kept waiting. This is what keeps a
     # long stretch where nothing happened from being integrated a thousand
     # times over (Brian, 2026-11-10: "so experience is not diluted by
-    # unimportant moments where nothing is happening"). None switches it
-    # off. What Luthi chose is never folded.
-    fold_repeats_above: float | None = 0.99
+    # unimportant moments where nothing is happening"). What Luthi chose is
+    # never folded.
+    #
+    # OFF by default since the Opus review of 2026-11-10. On a day a small
+    # trained trunk lived under the rolling view, one moment's mean input is
+    # almost the next one's (median cosine 0.98 to 0.99), so 0.99 folded
+    # nearly the whole day: 17 and 5 of 300 moments were integrated, and most
+    # of the moments when someone spoke were folded with the quiet ones.
+    # Silently dropping most of a day is worse than the dilution it was
+    # built against. It stays here to be measured against lived days.
+    fold_repeats_above: float | None = None
+    # Put the layer's waking statistics (momentum, update_ema, error_acc)
+    # back as rest found them. See _rest_taken.
+    restore_waking_statistics: bool = True
 
     def __post_init__(self) -> None:
         if self.rate_factor <= 0:
@@ -171,6 +185,9 @@ class LayerRest:
     not_finite: list[int] = field(default_factory=list)
     home_change: float = 0.0     # ||home after - before|| / ||home before||
     weight_change: float = 0.0
+    # Everything else a replay writes, by the same measure. Nothing bounds
+    # these. prediction has no homeostasis, so what rest writes there stays.
+    also_moved: dict[str, float] = field(default_factory=dict)
     # The layer's summed applied change since the last rest (its
     # read-and-reset accumulator). Zero unless the learning gain is on.
     day_applied_change: float = 0.0
@@ -223,6 +240,28 @@ def _rest_layer(
     record = layer._day_record
     taken = record.take()
     out = LayerRest(taken=len(taken))
+    try:
+        return _rest_taken(layer, record, taken, out, keep, toss, unjudged, config)
+    except BaseException:
+        # Whatever raised, the day is not lost with it. What this rest had
+        # already integrated stays integrated. Everything else goes back,
+        # to be considered again (Opus review, 2026-11-10: before this the
+        # layer's whole day was gone).
+        finished = set(out.integrated)
+        record.put_back([e for e in taken if e.moment not in finished])
+        raise
+
+
+def _rest_taken(
+    layer: nn.Module,
+    record,
+    taken: list[Experience],
+    out: LayerRest,
+    keep: set[int],
+    toss: set[int],
+    unjudged: str,
+    config: RestConfig,
+) -> LayerRest:
     out.day_applied_change = float(layer._applied_change_accum.read_and_reset())
 
     decisions = [_decide(e, keep, toss, unjudged) for e in taken]
@@ -240,6 +279,10 @@ def _rest_layer(
     home_before = layer.set_point.detach().clone()
     weight_before = layer.weight.detach().clone()
     home_size = float(home_before.norm())
+    others_before = {
+        name: getattr(layer, name).detach().clone()
+        for name in _REPLAY_WRITES if name not in ("weight", "set_point")
+    }
     pc_rate = layer.pc_rate * config.rate_factor
     pred_rate = layer.pred_learning_rate * config.rate_factor
 
@@ -321,10 +364,27 @@ def _rest_layer(
                 full = True
                 wait(e)
 
+    # The layer's running statistics of its own waking activity advance on
+    # every replay at their waking decay, whatever the rate factor: measured
+    # on a lived day, momentum moved 16% of its size in one rest, update_ema
+    # 15% and error_acc 12% (Opus review, 2026-11-10). error_acc feeds
+    # salience, so that would shift what the layer admits as soon as it
+    # woke. They describe the day's living, not what was kept, so rest puts
+    # them back as it found them.
+    if config.restore_waking_statistics:
+        with torch.no_grad():
+            for name in _WAKING_STATISTICS:
+                getattr(layer, name).copy_(others_before[name])
+
     out.home_change = float((layer.set_point - home_before).norm()) / max(home_size, 1e-30)
     out.weight_change = float((layer.weight - weight_before).norm()) / max(
         float(weight_before.norm()), 1e-30
     )
+    out.also_moved = {
+        name: float((getattr(layer, name) - was).norm())
+        / max(float(was.norm()), 1e-30)
+        for name, was in others_before.items()
+    }
     # Back in the order they were lived, ahead of anything recorded since.
     record.put_back([e for e in taken if id(e) in back])
 

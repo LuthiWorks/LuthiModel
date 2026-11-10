@@ -1960,14 +1960,20 @@ class M9Trainer(JEPATrainer):
         ``self.optimizer`` at base LR); it self-modifies on corpus data,
         which is the point. Accumulator honors fractional ratios. Returns
         the number of corpus steps run."""
+        # Replay is not a lived moment. Its forwards run with plasticity on,
+        # so without this the day's record took corpus text as experience
+        # (Opus review, 2026-11-10). A no-op when nothing is recording.
+        from luthi.v2.day_record import suspend_day_record
+
         self._corpus_replay_accumulator += self.m9_config.corpus_replay_ratio
         n = 0
-        while self._corpus_replay_accumulator >= 1.0:
-            modality = self.sampler.sample()
-            batch = self.data_loader.next_batch(modality)
-            super().train_step(modality, batch)
-            self._corpus_replay_accumulator -= 1.0
-            n += 1
+        with suspend_day_record(self.loss_module.online_encoder):
+            while self._corpus_replay_accumulator >= 1.0:
+                modality = self.sampler.sample()
+                batch = self.data_loader.next_batch(modality)
+                super().train_step(modality, batch)
+                self._corpus_replay_accumulator -= 1.0
+                n += 1
         return n
 
     def _check_retention_gate(self) -> dict:

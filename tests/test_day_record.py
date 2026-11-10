@@ -283,3 +283,57 @@ def test_the_day_survives_a_trainer_checkpoint_and_resume(tmp_path):
         )
     one.action_log.close()
     two.action_log.close()
+
+
+def test_a_suspended_record_takes_nothing_and_the_layer_lives_on():
+    from luthi.v2.day_record import suspend_day_record
+
+    layer = _layer()
+    layer._day_record = DayRecord()
+    _live(layer, 3)
+    weight = layer.weight.detach().clone()
+    with suspend_day_record(layer):
+        _live(layer, 5, seed=2)
+    assert len(layer._day_record) == 3, "nothing recorded while suspended"
+    assert not torch.equal(weight, layer.weight), "and the layer still changed"
+    _live(layer, 2, seed=3)
+    assert layer._day_record.moments() == [1, 2, 3, 9, 10], (
+        "it reopens, and a name is the forward count"
+    )
+
+
+def test_a_raise_inside_reopens_the_record():
+    from luthi.v2.day_record import suspend_day_record
+
+    layer = _layer()
+    layer._day_record = DayRecord()
+    with pytest.raises(RuntimeError):
+        with suspend_day_record(layer):
+            raise RuntimeError("replay failed")
+    _live(layer, 1)
+    assert len(layer._day_record) == 1
+
+
+def test_corpus_replay_in_a_life_is_not_recorded_as_experience(tmp_path):
+    """Opus review, 2026-11-10: two of every three entries in a small-path
+    day were corpus replay."""
+    from tests.test_m9_external_actor import _build_trainer
+
+    t = _build_trainer(tmp_path / "life", seed=7)
+    encoder = t.loss_module.online_encoder
+    for module in encoder.modules():
+        if isinstance(module, PredictiveCodingLayer):
+            module.salience_threshold = 0.0
+    enable_day_record(encoder)
+    weights = {
+        p: m.weight.detach().clone() for p, m in encoder.named_modules()
+        if isinstance(m, PredictiveCodingLayer)
+    }
+    t.m9_config.corpus_replay_ratio = 1.0
+    assert t._run_corpus_replay() == 1
+    assert all(len(r) == 0 for r in day_records(encoder).values())
+    assert any(
+        not torch.equal(w, dict(encoder.named_modules())[p].weight)
+        for p, w in weights.items()
+    ), "replay did run through the living layers"
+    t.action_log.close()

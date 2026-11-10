@@ -32,6 +32,13 @@ Every living layer in one model forwards once per model forward, so the same
 number names the same moment in every layer. Rest (``luthi/v2/rest.py``) uses
 that to keep or toss a moment across the whole mind.
 
+Two limits on that, both from the Opus review of 2026-11-10. A forward that
+is not a lived moment must run inside ``suspend_day_record``, or it is
+recorded as one; a life's corpus replay does. And a layer whose output goes
+non-finite returns before its count advances, so from then on it is one
+behind the layers before it and the same name means different moments. That
+is rare and is a failing run in itself. It is not handled.
+
 The record is lived state. It rides in checkpoints through
 ``luthi/living_extra_state.py``, presence-gated: a checkpoint that carries a
 record switches recording on in the layer it restores into.
@@ -39,6 +46,7 @@ record switches recording on in the layer it restores into.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, Iterator
 
@@ -167,6 +175,35 @@ def enable_day_record(model: nn.Module) -> int:
         if layer._day_record is None:
             layer._day_record = DayRecord()
     return len(layers)
+
+
+@contextmanager
+def suspend_day_record(model: nn.Module):
+    """Run forwards that are not lived moments without recording them.
+
+    A life interleaves corpus replay with living, to keep what the trunk
+    learned in training. Replay forwards with plasticity on, so the layers'
+    admission rule fires on corpus text exactly as it does on the world.
+    Unsuspended, two of every three entries in a small-path day were corpus
+    replay (Opus review, 2026-11-10, B2), and rest would have integrated
+    them as unjudged experience.
+
+    Inside the block the layers live and change as they would anyway. Only
+    the record is closed. It reopens on the way out, raise or not.
+
+    A moment's name is still the layer's forward count, and replay's
+    forwards still advance it. So lived moments are named in order with
+    gaps between them. A name says when, not how many moments ago.
+    """
+    layers = [layer for _, layer in _living_layers(model)]
+    before = [layer._day_record_suspended for layer in layers]
+    for layer in layers:
+        layer._day_record_suspended = True
+    try:
+        yield
+    finally:
+        for layer, was in zip(layers, before):
+            layer._day_record_suspended = was
 
 
 def day_records(model: nn.Module) -> dict[str, DayRecord]:

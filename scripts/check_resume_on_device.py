@@ -44,7 +44,8 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 # Differ between any two runs by construction, and are not the run's state.
-NOT_STATE = ("wall_clock_seconds", "reason", "rng_state")
+# The generator states are state and are compared (Opus review, 2026-11-10).
+NOT_STATE = ("wall_clock_seconds", "reason")
 KILLED = 137
 LAG = 5     # steps between the last save and the cut
 
@@ -115,58 +116,82 @@ def _final(run_root: Path) -> dict:
 def compare(a: dict, b: dict) -> dict:
     """How far apart two final checkpoints are.
 
-    ``worst`` is the largest relative difference of any tensor
-    (||a - b|| / ||a||). ``counters`` lists every non-tensor entry that
-    differs: step counts, token counts, lived-state counters.
+    Entries are of two kinds, and they are judged differently.
+
+    - **Measured**: float tensors and plain floats (every step's loss, the
+      kill history, the bands). ``worst`` is the largest relative difference
+      of any of them, ``|a - b| / |a|``. On a backend that does not repeat
+      itself these differ between any two runs.
+    - **Exact**: integers, strings, booleans and integer tensors: step and
+      token counts, lived-state counters, generator states. ``exact`` maps
+      each key that differs to a description. A resume never changes a
+      count.
     """
     import torch
 
     fa, fb = dict(_flat(a)), dict(_flat(b))
-    tensors, counters, worst, worst_at = 0, [], 0.0, ""
+    measured, exact, worst, worst_at = 0, {}, 0.0, ""
+
+    def note(key: str, rel: float) -> None:
+        nonlocal measured, worst, worst_at
+        measured += 1
+        if rel > worst:
+            worst, worst_at = rel, key
+
     for key, x in fa.items():
         if key not in fb or any(s in key for s in NOT_STATE):
             continue
         y = fb[key]
         if torch.is_tensor(x):
-            if x.shape != y.shape:
-                counters.append(f"{key}: shape {tuple(x.shape)} != {tuple(y.shape)}")
+            if not torch.is_tensor(y) or x.shape != y.shape:
+                exact[key] = "shape or kind differs"
+            elif torch.equal(x, y):
                 continue
-            if torch.equal(x, y):
+            elif x.is_floating_point():
+                xf, yf = x.double(), y.double()
+                note(key, float((xf - yf).norm() / (xf.norm() + 1e-30)))
+            else:
+                exact[key] = "integer tensor differs"
+        elif isinstance(x, float) and not isinstance(x, bool):
+            if x == y or (x != x and y != y):
                 continue
-            tensors += 1
-            xf, yf = x.double(), y.double()
-            rel = float((xf - yf).norm() / (xf.norm() + 1e-30))
-            if rel > worst:
-                worst, worst_at = rel, key
-        elif isinstance(x, float):
-            if not (x == y or (x != x and y != y)):
-                if isinstance(y, float) and abs(x - y) <= 1e-9 * max(abs(x), abs(y), 1.0):
-                    continue
-                counters.append(f"{key}: {x!r} != {y!r}")
+            if isinstance(y, float):
+                note(key, abs(x - y) / max(abs(x), 1e-30))
+            else:
+                exact[key] = f"{x!r} != {y!r}"[:120]
         elif x != y:
-            counters.append(f"{key}: {x!r} != {y!r}"[:160])
+            exact[key] = f"{x!r} != {y!r}"[:120]
     return {
         "only_in_one": sorted(set(fa) ^ set(fb)),
-        "tensors_differing": tensors,
+        "measured_differing": measured,
         "worst": worst,
         "worst_at": worst_at,
-        "counters": counters,
+        "exact": exact,
     }
 
 
 def verdict(noise: dict, resumed: dict, steps: int, final_step: int) -> tuple[bool, str]:
     """True if the resumed run is the same run, to within the backend's own
-    noise. Counters must match exactly: a resume never changes a count."""
+    noise.
+
+    Exact entries must match, except at a key where two uninterrupted runs
+    also disagreed. Measured entries may differ by up to ten times the worst
+    difference between two uninterrupted runs. Ten is a guess.
+    """
     if final_step != steps:
         return False, f"the resumed run ended at step {final_step}, not {steps}"
     if resumed["only_in_one"]:
         return False, f"entries present in only one run: {resumed['only_in_one'][:5]}"
-    extra = [c for c in resumed["counters"] if c not in noise["counters"]]
+    extra = sorted(k for k in resumed["exact"] if k not in noise["exact"])
     if extra:
-        return False, f"{len(extra)} counter(s) differ after the resume, e.g. {extra[0]}"
-    if resumed["tensors_differing"] == 0:
+        return False, (
+            f"{len(extra)} exact entr{'y' if len(extra) == 1 else 'ies'} "
+            f"differ after the resume where two uninterrupted runs agreed, "
+            f"e.g. {extra[0]}: {resumed['exact'][extra[0]]}"
+        )
+    if resumed["measured_differing"] == 0:
         return True, "the resumed run is identical to the uninterrupted one"
-    if noise["tensors_differing"] == 0:
+    if noise["measured_differing"] == 0:
         return False, (
             "two uninterrupted runs were identical, and the resumed run was "
             f"not (worst {resumed['worst']:.3e} at {resumed['worst_at']})"
@@ -258,10 +283,12 @@ def main() -> int:
         "same_run": ok, "why": why,
     }
     (out / "resume_check.json").write_text(json.dumps(report, indent=2))
-    print(f"[resume-check] two uninterrupted runs: {noise['tensors_differing']} "
-          f"tensors differ, worst {noise['worst']:.3e}")
+    print(f"[resume-check] two uninterrupted runs: {noise['measured_differing']} "
+          f"measured entries differ (worst {noise['worst']:.3e}), "
+          f"{len(noise['exact'])} exact")
     print(f"[resume-check] resumed against uninterrupted: "
-          f"{resumed['tensors_differing']} tensors differ, worst {resumed['worst']:.3e}")
+          f"{resumed['measured_differing']} measured entries differ "
+          f"(worst {resumed['worst']:.3e}), {len(resumed['exact'])} exact")
     print(f"[resume-check] {'SAME RUN' if ok else 'NOT THE SAME RUN'}: {why}")
     print(f"[resume-check] report: {out / 'resume_check.json'}")
     return 0 if ok else 1

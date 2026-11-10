@@ -52,9 +52,21 @@ The driver already resumes an interrupted seed from its newest rolling checkpoin
 - Moved the save to that point. Resumed from step 7, retrained steps 7 to 12, identical. The tests now cut three steps after the last save.
 - Kept as a note for anyone adding a save point: a checkpoint is only consistent between loop iterations.
 
+### Step 7: what the Opus review found that I had not (same day)
+
+`docs/reviews/2026-11-10_small-path-resume-and-rest-response-from-opus.md`, section B1. I reran its probe and it reproduced.
+
+- **A resume past the taper's start was not exact.** `rate_scale` is a plain attribute on each living layer, saved nowhere, and `_apply_taper()` ran only after a training step. The first step after a resume therefore ran at `rate_scale = 1.0`, up to five times the tapered rate. My tests were one epoch each and never reached the taper, which starts at half the run. Fixed by calling `_apply_taper()` at the end of `resume()`. A two-epoch test cut in the second epoch pins it, and fails with the call removed.
+- **The on-device check could never have passed on the card.** Two reasons. The checkpoint saved only the CPU generator, and the predictor's dropout draws on the device. And my `compare()` filed every differing float as an exact "counter", when a checkpoint is full of floats. Fixed: `device_rng_state` is saved and restored where the backend has one, and the verdict judges floats like tensors, against the noise of two uninterrupted runs.
+- **I was excluding the generator states from the comparison.** They are the state a lossy resume shows first. They are compared now, in the tests and the script, and they match.
+- **The divergence guards forgot themselves at a resume.** The loss guard re-baselined on its next ten logged losses and the NMSE guard's clock restarted, so a resumed run's kill decisions could differ even with identical weights. Their state is in the checkpoint now.
+- Confirmed by the review and left as it is: a cut between an epoch's held-out eval being logged and the next checkpoint logs that record twice, and retrained steps appear twice in `training_log.jsonl`. Readers should keep the last record per step.
+
+What I take from it: I tested the case I had in mind, a short run cut once. The taper only exists in the second half of a long run, which is exactly the run this work was for.
+
 ## Conclusion
 
-- **Uncapped runs, which is how registered families launch, already resumed exactly** on CPU, through the full driver, on the registered living arm.
+- **Uncapped one-epoch runs cut before the taper already resumed exactly** on CPU, through the full driver, on the registered living arm. **Past the taper's start they did not** (step 7). Any registered family resumed in its second half took one step at untapered living rates.
 - **Capped runs did not.** Any capped run that was interrupted and resumed before today trained past its cap, by the step count of the checkpoint it resumed from. Several August families were capped at 3,000 or 6,000 (the depth-8 probes, the LLM-JEPA family, the first VISReg family).
   - To check an old capped run: its final `global_step` should equal its cap. If it is larger, the run was resumed and ran long. `supervisor.log` in `runs/jepa_pilot/` also records each resume.
   - I have not checked any. The runs are on E:.

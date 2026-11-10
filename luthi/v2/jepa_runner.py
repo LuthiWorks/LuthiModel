@@ -2282,6 +2282,19 @@ class JEPATrainer:
 
     # -- Plasticity taper (run-3 build) --
 
+    def _device_rng_state(self):
+        """The training device's generator state, or None where the backend
+        has none to save. ROCm builds answer to the cuda API."""
+        device = self._training_device()
+        if device.type == "cuda":
+            return torch.cuda.get_rng_state(device)
+        return None
+
+    def _training_device(self) -> torch.device:
+        """Where the model is. JEPATrainer holds no device of its own (the
+        M9 subclass does), so it is read from the parameters."""
+        return next(self.loss_module.parameters()).device
+
     def _apply_taper(self) -> None:
         """Recompute run-progress and sweep rate_scale over the living
         layers. Called per step; a no-op sweep when disabled (scale
@@ -2444,6 +2457,22 @@ class JEPATrainer:
             },
             "optimizer_state_dict": self.optimizer.state_dict(),
             "rng_state": torch.get_rng_state(),
+            # The device's own generator (2026-11-10, Opus review B1). The
+            # line above is the CPU stream only. The predictor's dropout
+            # draws on the device, so without this a resumed run on the card
+            # gets different masks. None where the backend has no such
+            # generator (CPU, DirectML).
+            "device_rng_state": self._device_rng_state(),
+            # The divergence guards' memory (same review). Unsaved, a resume
+            # re-baselined the loss guard on its next ten logged losses and
+            # restarted the NMSE guard's clock, so a resumed run's kill
+            # decisions could differ from the uninterrupted run's.
+            "divergence_guard": {
+                "losses": list(self._div_losses),
+                "baseline": self._div_baseline,
+                "run": int(self._div_run),
+                "over_since": dict(self._div_over_since),
+            },
             "sampler_generator_state": sampler_gen_state,
             "data_loader_state": loader_state,
             "reason": reason,
@@ -2616,6 +2645,35 @@ class JEPATrainer:
                 )
         self.optimizer.load_state_dict(state["optimizer_state_dict"])
         torch.set_rng_state(state["rng_state"])
+        device = self._training_device()
+        if state.get("device_rng_state") is not None:
+            if device.type == "cuda":
+                torch.cuda.set_rng_state(state["device_rng_state"], device)
+            else:
+                logger.warning(
+                    "Checkpoint carries a device RNG state and this run is on "
+                    "%s; it is not restored.", device.type,
+                )
+        elif device.type == "cuda":
+            logger.warning(
+                "Checkpoint has no device_rng_state (it was written before "
+                "2026-11-10). Draws on the device, dropout among them, do "
+                "not continue from where the run was.",
+            )
+        guard = state.get("divergence_guard")
+        if guard is not None:
+            self._div_losses = [float(x) for x in guard["losses"]]
+            self._div_baseline = guard["baseline"]
+            self._div_run = int(guard["run"])
+            self._div_over_since = {
+                str(k): int(v) for k, v in guard["over_since"].items()
+            }
+        else:
+            logger.warning(
+                "Checkpoint has no divergence_guard (it was written before "
+                "2026-11-10). The loss guard re-baselines from here and the "
+                "NMSE guard's clock restarts.",
+            )
 
         # Sampler generator state (C from 4.8 review).
         if state.get("sampler_generator_state") is not None and self.sampler.generator is not None:
@@ -2645,6 +2703,14 @@ class JEPATrainer:
         # The restored epoch_token_baseline is live mid-epoch state;
         # run() must not clobber it with _start_new_epoch().
         self._resumed_mid_epoch = True
+        # The taper's scale lives on the living layers as a plain attribute
+        # that no checkpoint carries, and it was only ever applied after a
+        # training step. So the first step after a resume ran the living
+        # layers at rate_scale = 1.0, up to five times the tapered rate
+        # (Opus review, 2026-11-10, B1). The schedule is derived from the
+        # counters restored above, so applying it here puts the layers
+        # where the uninterrupted run had them.
+        self._apply_taper()
         logger.info(
             "Resumed from %s at step %d, epoch %d",
             ckpt_path, self.global_step, self.epoch,

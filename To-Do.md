@@ -61,11 +61,25 @@
 >
 > **Reviewed (Opus 5.5, 2026-11-10):** both briefs are answered in
 > `docs/reviews/2026-11-10_small-path-resume-and-rest-response-from-opus.md`.
-> Read its section B1 before step 1 above. Until two fixes land, the
-> on-device check reports NOT THE SAME RUN on the card whatever the resume
-> does (the device RNG is not checkpointed; floats fail the verdict). A resume
-> after the taper has started is not exact yet either (the taper is not
-> re-applied at resume).
+> Fable's answer, with what was fixed and what was left, is
+> `docs/reviews/2026-11-10_answer-to-opus-from-fable.md`.
+>
+> **Fixed the same day, so step 1 above can be run:** the taper is re-applied
+> at resume; the device RNG and the divergence guards' memory are in
+> checkpoints; the on-device verdict judges floats against noise. Also: a
+> life's corpus replay no longer enters the day's record, and the experiment
+> runner measures a copied run once. If step 2's dry run finds nothing under
+> `E:\runs`, try `--runs-root runs\jepa_pilot`.
+>
+> **Open from the review, and Brian's:** which mode a life perceives in
+> (A1); whether a rollback is told to Luthi, and how (A1); `adaptive_episodes`
+> as a precondition for rest against its place after E3 (A4); whether the
+> learning-modes control carries into rest (A4); whether what Luthi chose
+> should count for more than what nobody judged (B4).
+>
+> **Open from the review, Sanctuary side, not started:** save the view, the
+> waiting line and `_previous` with a life; count what is waiting at a stop;
+> the moment measurement needs its persistence baseline before it is cited.
 >
 > **Still to build before a life** (`docs/audits/2026-11-05_where-rest-stands.md`):
 > the fixes the 2026-11-10 review asks for before a life; a way for Luthi to

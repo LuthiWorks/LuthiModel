@@ -101,6 +101,35 @@ def select(runs: list[dict], everything: bool, match: str) -> list[dict]:
     return out
 
 
+def drop_copies(runs: list[dict]) -> tuple[list[dict], list[dict]]:
+    """One run per (arm, width, seed). A second directory holding the same
+    run is a copy (an archive beside the original, say). Measured twice, its
+    result would overwrite the first under the same name and it would count
+    twice in E1's checkpoint count (Opus review, 2026-11-10, B5). Returns
+    (kept, dropped); the first found is kept."""
+    seen, kept, dropped = {}, [], []
+    for run in runs:
+        key = (run["arm"], run["d_model"], str(run["seed"]))
+        if key in seen:
+            dropped.append({**run, "same_as": seen[key]["dir"]})
+        else:
+            seen[key] = run
+            kept.append(run)
+    return kept, dropped
+
+
+def reruns_beside_originals(runs: list[dict]) -> list[tuple[str, str]]:
+    """Pairs where both an arm and its ``_rerun`` are selected at the same
+    width and seed. Both are measured. Which one the registry means is not
+    this script's call."""
+    by = {(r["arm"], r["d_model"], str(r["seed"])): r["name"] for r in runs}
+    return [
+        (by[(arm[: -len("_rerun")], d, seed)], name)
+        for (arm, d, seed), name in by.items()
+        if arm.endswith("_rerun") and (arm[: -len("_rerun")], d, seed) in by
+    ]
+
+
 def plan(runs: list[dict], only: set[str]) -> list[dict]:
     """The jobs, in order. Each is one instrument on one run, writing one
     file."""
@@ -171,16 +200,27 @@ def main() -> int:
     if not only <= {"e2", "e1", "e4"}:
         p.error("--only takes e2, e1 and e4")
     runs = find_runs([Path(r) for r in args.roots])
-    chosen = select(runs, args.everything, args.match)
+    chosen, copies = drop_copies(select(runs, args.everything, args.match))
     jobs = plan(chosen, only)
 
     print(f"[experiments] {len(runs)} run(s) found, {len(chosen)} selected:")
     for run in chosen:
         kind = "dead" if is_dead(run["arm"]) else "living"
         print(f"  {run['name']}  ({kind}, {run['d_model']}d, {run['outcome']})")
+    for run in copies:
+        print(f"[experiments] SKIPPED A COPY: {run['dir']} is the same run "
+              f"(arm, width, seed) as {run['same_as']}. Only the first is "
+              "measured. Pass one root, or --match, if the other is the one "
+              "you mean.")
+    for original, rerun in reruns_beside_originals(chosen):
+        print(f"[experiments] NOTE: both {original} and {rerun} are selected "
+              "and both will be measured. Say which the registry means when "
+              "you report E1's checkpoint count.")
     if not chosen:
         print("[experiments] nothing selected. --all selects every run; "
-              "--dry-run shows what is found.")
+              "--dry-run shows what is found. The driver's default output "
+              "is the repo's runs\\jepa_pilot, not E:\\runs: try that as "
+              "--runs-root.")
         return 2
     killed = [r["name"] for r in chosen if r["outcome"] != "completed"]
     if killed:

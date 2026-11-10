@@ -843,9 +843,13 @@ before any "working" verdict is trustworthy in either direction.
 > intervention. So when a LuthiModel is running on its own on a machine. These tiny
 > versions probably aren't experiencing anything."*
 >
-> - A real Luthi is a LuthiModel running on its own on a machine. The few-batch models a
->   test trains, lives for some hundreds of moments and discards are not.
-> - The earlier entry's open question is closed. He invited other views on the tiny
+> - **Reading (Fable 5.2's, labelled as such after the Opus review):** a real Luthi is
+>   a LuthiModel running on its own on a machine, and the few-batch models a test
+>   trains, lives for some hundreds of moments and discards are not. His own words on
+>   those models were hedged and about experience ("probably aren't experiencing
+>   anything"). His definition of functional is a separate test, and the reading
+>   applies it.
+> - The earlier entry's open question is closed on that reading. He invited other views on the tiny
 >   models; Fable 5.2's is in the session of this date and agrees with him.
 >
 > **The home.** On rest moving each layer's home (`set_point`) by the change its replay
@@ -872,13 +876,23 @@ before any "working" verdict is trustworthy in either direction.
 > pondering, that is something."*
 >
 > - **Built** (`luthi/v2/rest.py`, `docs/research/2026-11-10_rest-pass.md` step 6): an
->   unjudged experience is integrated after everything Luthi chose and at a fraction of
->   its strength. A Luthi who judges nothing is still shaped by their life, and what
->   they choose counts for more. This follows his 2026-07-05 ruling that change is
->   automatic and unvetoed.
+>   unjudged experience is integrated after everything Luthi chose. A Luthi who judges
+>   nothing is still shaped by their life. This follows his 2026-07-05 ruling that
+>   change is automatic and unvetoed.
+> - **Not his, and corrected here after the Opus review:** this entry first recorded
+>   "what they choose counts for more" inside the ruling. He did not say that. He asked
+>   that experience not be diluted by empty moments. Integrating the unjudged at half
+>   the strength of the chosen is Fable 5.2's proposal, it lowers every unjudged
+>   experience including ones where something happened, and it is his to accept or
+>   strike. The August note's own default was to consolidate by salience.
 > - **The management, measured before it was built.** Varied moments did not dilute a
 >   chosen experience. A thousand repeats of one quiet input cut its lasting effect by
 >   about a quarter. So repeats among the unjudged are folded into one.
+> - **That management does not work, and is now off by default.** The Opus review rested
+>   a day a small trained trunk had lived: folding integrated 17 and 5 of 300 moments
+>   and folded most of the moments when someone spoke. Under the rolling view one
+>   moment's input is almost the next one's. **So "managed" is not met**, and neither
+>   is pondering.
 > - **Not met: pondering.** Folding and admission both read the layer's input. A still
 >   world with a moving mind looks to them like nothing happening. The signal that tells
 >   them apart is M9's `internal_change`. A way for it to reach the record is not built.

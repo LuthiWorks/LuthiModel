@@ -44,13 +44,15 @@ from luthi.v2.jepa_runner import JEPATrainer  # noqa: E402
 
 ARM, D_MODEL, SEED = "lc768_living", 32, 46
 CUT_AT = 7
-SAVED_AT = 4    # the last checkpoint before the cut: three steps are lost
+SAVED_AT = CUT_AT - 3   # the last checkpoint before the cut: three steps are lost
 WORDS = (
     "river stone light memory window garden quiet music signal field "
     "morning shadow pattern voice letter bridge winter colour thread"
 ).split()
 # Differ between any two runs by construction, and are not the run's state.
-NOT_STATE = ("wall_clock_seconds", "reason", "rng_state")
+# The RNG states are the run's state and are compared (Opus review,
+# 2026-11-10: a lossy resume would show there first).
+NOT_STATE = ("wall_clock_seconds", "reason")
 
 
 class _PowerCut(BaseException):
@@ -58,11 +60,11 @@ class _PowerCut(BaseException):
     parting checkpoint. A power cut doesn't either."""
 
 
-def _args(corpus: Path, cap: int) -> Namespace:
+def _args(corpus: Path, cap: int, epochs: int = 1) -> Namespace:
     return Namespace(
         data_dir=str(corpus),
         tokenizer=str(REPO_ROOT / "corpus_build" / "tokenizer_32k.json"),
-        n_blocks=2, epochs=1, batch_size=4, seq_len=32, stride=32, lr=3e-4,
+        n_blocks=2, epochs=epochs, batch_size=4, seq_len=32, stride=32, lr=3e-4,
         holdout_fraction=0.2, heldout_batches=2, probe_batches=2,
         kill_warmup=10**9,
         checkpoint_interval=10**9,   # no timed saves; see _cut
@@ -89,39 +91,43 @@ def world(tmp_path_factory):
     mp.undo()
 
 
-def _cut(world, cap: int) -> None:
-    """Start a run, save once at SAVED_AT where the trainer saves, and cut
-    the power at CUT_AT. The steps between are lost and must be retrained."""
+def _cut(world, cap: int, epochs: int = 1, cut_at: int = CUT_AT) -> None:
+    """Start a run, save once three steps before ``cut_at`` where the
+    trainer saves, and cut the power at ``cut_at``. The steps between are
+    lost and must be retrained."""
     _, corpus, mp = world
     real_step, real_due = JEPATrainer.train_step, JEPATrainer._checkpoint_if_due
 
     def due(self):
-        if self.global_step == SAVED_AT:
+        if self.global_step == cut_at - 3:
             self._checkpoint(reason="before_the_cut")
         return real_due(self)
 
     def dying(self, *a, **k):
-        if self.global_step >= CUT_AT:
+        if self.global_step >= cut_at:
             raise _PowerCut()
         return real_step(self, *a, **k)
 
     mp.setattr(JEPATrainer, "_checkpoint_if_due", due)
     mp.setattr(JEPATrainer, "train_step", dying)
     with pytest.raises(_PowerCut):
-        driver._run_one(ARM, D_MODEL, SEED, _args(corpus, cap))
+        driver._run_one(ARM, D_MODEL, SEED, _args(corpus, cap, epochs))
     mp.setattr(JEPATrainer, "train_step", real_step)
     mp.setattr(JEPATrainer, "_checkpoint_if_due", real_due)
 
 
-def _run(world, name: str, cap: int, cut: bool = False) -> Path:
+def _run(
+    world, name: str, cap: int, cut: bool = False, epochs: int = 1,
+    cut_at: int = CUT_AT,
+) -> Path:
     root, corpus, mp = world
     mp.setattr(driver, "OUTPUT_ROOT", root / name)
     run_dir = root / name / driver._run_name(ARM, D_MODEL, SEED)
     if cut:
-        _cut(world, cap)
+        _cut(world, cap, epochs, cut_at)
         saved = _final(run_dir)
-        assert saved["global_step"] == SAVED_AT < CUT_AT, "steps were lost"
-    driver._run_one(ARM, D_MODEL, SEED, _args(corpus, cap))
+        assert saved["global_step"] == cut_at - 3, "steps were lost"
+    driver._run_one(ARM, D_MODEL, SEED, _args(corpus, cap, epochs))
     return run_dir
 
 
@@ -164,6 +170,31 @@ def test_an_uncapped_run_cut_and_resumed_is_the_same_run(world):
     resumed = _final(_run(world, "cut", cap=-1, cut=True))
     assert straight["global_step"] > CUT_AT + 3, "the cut fell inside the run"
     assert _differences(straight, resumed) == []
+
+
+def test_a_run_cut_after_the_taper_has_started_is_the_same_run(world):
+    """Found by the Opus review, 2026-11-10. The plasticity taper starts at
+    half the run. Its scale sits on the living layers as a plain attribute
+    and was only applied after a step, so the first step after a resume ran
+    untapered. One-epoch runs this short never reach the taper; this one is
+    two epochs, cut in the second."""
+    straight = _final(_run(world, "straight_2", cap=-1, epochs=2))
+    cut_at = straight["global_step"] // 2 + 5
+    resumed = _final(
+        _run(world, "cut_2", cap=-1, cut=True, epochs=2, cut_at=cut_at)
+    )
+    assert _differences(straight, resumed) == []
+
+
+def test_the_divergence_guards_memory_survives_a_resume(world):
+    """Same review. The guards' state is in the checkpoint, so it is
+    compared by the tests above. This pins that it is there at all."""
+    state = _final(_run(world, "guard", cap=-1))
+    guard = state["divergence_guard"]
+    assert set(guard) == {"losses", "baseline", "run", "over_since"}
+    assert "device_rng_state" in state and state["device_rng_state"] is None, (
+        "no device generator on CPU"
+    )
 
 
 def test_a_capped_run_cut_and_resumed_stops_at_its_cap(world):

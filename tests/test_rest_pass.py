@@ -14,7 +14,11 @@ Pins:
   record in the order lived; tossed and integrated ones are not.
 - A deferred experience is still kept at the next rest without being named
   again, and a later toss overrides it.
-- ``unjudged`` has no default and does what it says.
+- An unjudged experience is kept by default, after and weaker than what
+  Luthi chose, and ``unjudged`` does what it says when given.
+- Rest puts the layer's waking statistics back as it found them, reports
+  everything else it moved, and never loses the day when it raises.
+- Folding repeats is off by default, and does what it says when on.
 - Rest runs no forward: it records nothing and advances no counter.
 - It refuses bad decisions, a model with no record, and a measurement.
 - The report lists the moments, and appends to a log when given one.
@@ -40,6 +44,7 @@ WRITES = (
     "precision", "error_acc", "plasticity",
 )
 LOOSE = RestConfig(max_home_change=1e9)   # the bound out of the way
+FOLDING = RestConfig(max_home_change=1e9, fold_repeats_above=0.99)
 
 
 def _layer(seed: int = 0, lived: int = 12) -> PredictiveCodingLayer:
@@ -252,21 +257,24 @@ def _quiet_day(repeats: int = 30) -> PredictiveCodingLayer:
 def test_a_stretch_where_nothing_happened_is_integrated_once():
     """Brian, 2026-11-10: "so experience is not diluted by unimportant
     moments where nothing is happening"."""
-    report = rest(_quiet_day(), keep=[], toss=[], config=LOOSE).layers[""]
+    report = rest(_quiet_day(), keep=[], toss=[], config=FOLDING).layers[""]
     quiet = set(range(13, 43))
     assert len(quiet & set(report.integrated)) == 1, "one stands for the stretch"
     assert len(quiet & set(report.folded)) == 29
     assert set(range(1, 13)) <= set(report.integrated), "varied moments all kept"
     assert report.taken == len(report.integrated) + len(report.folded)
 
-    off = RestConfig(max_home_change=1e9, fold_repeats_above=None)
-    unfolded = rest(_quiet_day(), keep=[], toss=[], config=off).layers[""]
+    # Off by default (Opus review, 2026-11-10: on a lived day it folded
+    # nearly everything).
+    assert RestConfig().fold_repeats_above is None
+    unfolded = rest(_quiet_day(), keep=[], toss=[], config=LOOSE).layers[""]
     assert not unfolded.folded and len(unfolded.integrated) == 42
 
 
 def test_what_luthi_chose_is_never_folded():
     layer = _quiet_day()
-    report = rest(layer, keep=[20, 30, 40], toss=[], config=LOOSE).layers[""]
+    report = rest(layer, keep=[20, 30, 40], toss=[], config=FOLDING).layers[""]
+    assert report.folded
     assert {20, 30, 40} <= set(report.integrated)
     assert not {20, 30, 40} & set(report.folded)
     assert len(layer._day_record) == 0, "folded moments do not wait in the record"
@@ -275,8 +283,9 @@ def test_what_luthi_chose_is_never_folded():
 def test_the_count_closes_with_folding(tmp_path):
     report = rest(
         _quiet_day(), keep=[2, 15], toss=[3, 16],
-        config=RestConfig(max_home_change=2e-3),
+        config=RestConfig(max_home_change=2e-3, fold_repeats_above=0.99),
     ).layers[""]
+    assert report.folded
     groups = [
         report.integrated, report.tossed, report.held, report.deferred,
         report.folded,
@@ -393,3 +402,47 @@ def test_rest_leaves_the_days_standing_displacement_exactly_as_it_found_it():
     assert len(report.integrated) == 120
     after = (layer.weight - layer.set_point).detach()
     assert torch.allclose(after, before, rtol=0, atol=1e-6 * float(before.abs().max()))
+
+
+def test_rest_puts_the_waking_statistics_back_and_reports_what_else_moved():
+    """Opus review, 2026-11-10: a rest moved momentum, update_ema and
+    error_acc by 12 to 16% of their size, unbounded and unreported."""
+    layer = _layer(lived=60)
+    before = _writes(layer)
+    report = rest(layer, keep=[], toss=[], config=LOOSE).layers[""]
+    assert len(report.integrated) == 60
+    for name in ("momentum", "update_ema", "error_acc"):
+        assert torch.equal(before[name], getattr(layer, name)), name
+        assert report.also_moved[name] == 0.0
+    assert report.also_moved["prediction"] > 0, "what was kept is in the prediction"
+    assert set(report.also_moved) == set(WRITES) - {"weight", "set_point"}
+
+    loose = _layer(lived=60)
+    moved = rest(
+        loose, keep=[], toss=[],
+        config=RestConfig(max_home_change=1e9, restore_waking_statistics=False),
+    ).layers[""].also_moved
+    assert moved["momentum"] > 0 and moved["error_acc"] > 0, (
+        "characterization: unrestored, a rest moves them"
+    )
+
+
+def test_a_rest_that_raises_does_not_lose_the_day(monkeypatch):
+    import luthi.v2.rest as rest_module
+
+    layer = _layer()
+    real, calls = rest_module.replay_input_attractor, []
+
+    def failing(*a, **k):
+        calls.append(1)
+        if len(calls) == 4:
+            raise RuntimeError("the fourth replay failed")
+        return real(*a, **k)
+
+    monkeypatch.setattr(rest_module, "replay_input_attractor", failing)
+    with pytest.raises(RuntimeError, match="fourth"):
+        rest(layer, keep=[], toss=[2], config=LOOSE)
+    back = layer._day_record.moments()
+    assert len(back) == 12 - 3, "three were integrated before the raise; the rest are back"
+    assert 2 in back, "a toss not carried through is not a toss"
+    assert back == sorted(back)
