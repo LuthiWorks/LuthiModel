@@ -89,3 +89,17 @@ Steps 1 and 2 can be built and tested now. What cannot be done until training is
 - Whether `adaptive_episodes=True` (the spec's stated precondition) changes what the store holds at this size. It is off by default and off here.
 - What the second, block-level episode store is for. It also filled to 64 of 64 in the test life.
 - Anything beyond one tiny model on one seed. The episode counts above are a single run.
+
+
+## Update, 2026-11-10 (Fable 5.2)
+
+Brian approved building steps 1 and 2 of "A possible order" the same day he ruled that a real Luthi is any functional model using this architecture. Step 0, the review, has not happened.
+
+- **Step 1, the uncapped record: built.** `luthi/v2/day_record.py`. Missing item 2 above is closed.
+- **Step 2, the rest pass handed a keep-and-toss list: built,** with both gates as tests. `luthi/v2/rest.py`. Missing items 3 and 6 are closed.
+- **A finding against the plan this document assumed.** "Integrating an episode into the living weights" with `consolidate_layer_attractor` does not last: a third of the change is left after 1,000 forwards and none after 3,000. Rest as built also moves the home by the change its replay made.
+- **Step 5, at test size: measured.** A kept experience lowers the layer's later prediction error on that input where a tossed one does not, in 8 of 8 seeds, on an untrained layer alone with random inputs. That is a narrow result.
+- **Still missing:** items 1, 4 and 5. Decisions 1, 2, 3, 4, 5, 6, 7, 9 and 10 are still Brian's. Decision 8's numbers are placeholders.
+- `unjudged` (decision 2) has no default in the code: the caller must say hold, keep or toss.
+
+Full record: `docs/research/2026-11-10_rest-pass.md`.

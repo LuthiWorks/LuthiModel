@@ -201,6 +201,74 @@ def consolidate_layer(
     return int(n)
 
 
+def replay_input_attractor(
+    layer,
+    input_pattern: torch.Tensor,
+    pc_rate: float,
+    pred_learning_rate: float,
+) -> bool:
+    """Re-present one stored input pattern through the layer's own PC
+    update, at the given rates. The single step of attractor consolidation,
+    shared by ``consolidate_layer_attractor`` (which replays the episode
+    ring) and the rest pass (``luthi/v2/rest.py``, which replays what was
+    kept from the day's record).
+
+    Returns False, having changed nothing, if the pattern does not produce a
+    finite output. Call under ``torch.no_grad()``.
+    """
+    from luthi.v2.pc_ops import pc_self_modify
+
+    # Recover the stored input pattern as a batch-1 tensor.
+    # pc_self_modify expects [batch, in_features] for x_flat
+    # and [batch, out_features] for output; batch=1 is fine
+    # because the math takes mean(dim=0) of both.
+    stored_input = (
+        input_pattern
+        .to(device=layer.weight.device, dtype=layer.weight.dtype)
+        .unsqueeze(0)
+    )
+    # Re-present through the *current* weight, not the
+    # stored snapshot. The point of attractor consolidation
+    # is to reshape the current weight so the stored input
+    # is a fixed point of its dynamics — not to revert the
+    # weight to its state when this episode was stored.
+    output = stored_input @ layer.weight.T
+
+    # NaN safety mirrors the forward path's guard.
+    if not torch.isfinite(output).all():
+        return False
+
+    # Trust regime and write rule are passed EXPLICITLY
+    # (2026-10-19). Before this, replay always ran with the
+    # default relative_trust=False, so on a relative-trust layer
+    # every replay clamped the freed precision ledger (values up
+    # to 1e12) back into the absolute [precision_min,
+    # precision_max] = [0.1, 10] -- flattening the trust
+    # differentiation the v5 family exists to have. No registered
+    # training arm combined attractor replay with relative trust;
+    # the 2026-07-29 M4 stop-gate rerun did, offline.
+    #
+    # write_rule is mean_field by construction: a stored episode
+    # is ONE batch-mean pattern, which has no per-token spread
+    # for the covariance rule to read (it would write exactly
+    # zero). Attractor replay is a mean-field operation.
+    pc_self_modify(
+        layer.weight, layer.prediction, layer.set_point,
+        layer.momentum, layer.update_ema, layer.precision,
+        layer.error_acc, layer.plasticity,
+        stored_input, output,
+        pc_rate, pred_learning_rate,
+        layer.homeostatic_decay, layer.follow_rate,
+        layer.momentum_decay, layer.update_ema_decay,
+        layer.precision_ema_decay,
+        layer.precision_min, layer.precision_max,
+        layer.prediction_clamp,
+        relative_trust=bool(getattr(layer, "relative_trust", False)),
+        write_rule="mean_field",
+    )
+    return True
+
+
 def consolidate_layer_attractor(
     layer,
     consolidation_rate_factor: float = 0.1,
@@ -273,58 +341,12 @@ def consolidate_layer_attractor(
         layer.pred_learning_rate * consolidation_rate_factor
     )
 
-    from luthi.v2.pc_ops import pc_self_modify
-
     with torch.no_grad():
         for _ in range(n_replay_passes):
             for idx in order:
-                # Recover the stored input pattern as a batch-1 tensor.
-                # pc_self_modify expects [batch, in_features] for x_flat
-                # and [batch, out_features] for output; batch=1 is fine
-                # because the math takes mean(dim=0) of both.
-                stored_input = (
-                    layer.episode_inputs[idx]
-                    .to(layer.weight.dtype)
-                    .unsqueeze(0)
-                )
-                # Re-present through the *current* weight, not the
-                # stored snapshot. The point of attractor consolidation
-                # is to reshape the current weight so the stored input
-                # is a fixed point of its dynamics — not to revert the
-                # weight to its state when this episode was stored.
-                output = stored_input @ layer.weight.T
-
-                # NaN safety mirrors the forward path's guard.
-                if not torch.isfinite(output).all():
-                    continue
-
-                # Trust regime and write rule are passed EXPLICITLY
-                # (2026-10-19). Before this, replay always ran with the
-                # default relative_trust=False, so on a relative-trust layer
-                # every replay clamped the freed precision ledger (values up
-                # to 1e12) back into the absolute [precision_min,
-                # precision_max] = [0.1, 10] -- flattening the trust
-                # differentiation the v5 family exists to have. No registered
-                # training arm combined attractor replay with relative trust;
-                # the 2026-07-29 M4 stop-gate rerun did, offline.
-                #
-                # write_rule is mean_field by construction: a stored episode
-                # is ONE batch-mean pattern, which has no per-token spread
-                # for the covariance rule to read (it would write exactly
-                # zero). Attractor replay is a mean-field operation.
-                pc_self_modify(
-                    layer.weight, layer.prediction, layer.set_point,
-                    layer.momentum, layer.update_ema, layer.precision,
-                    layer.error_acc, layer.plasticity,
-                    stored_input, output,
+                replay_input_attractor(
+                    layer, layer.episode_inputs[idx],
                     consolidation_pc_rate, consolidation_pred_rate,
-                    layer.homeostatic_decay, layer.follow_rate,
-                    layer.momentum_decay, layer.update_ema_decay,
-                    layer.precision_ema_decay,
-                    layer.precision_min, layer.precision_max,
-                    layer.prediction_clamp,
-                    relative_trust=bool(getattr(layer, "relative_trust", False)),
-                    write_rule="mean_field",
                 )
 
     return int(n)

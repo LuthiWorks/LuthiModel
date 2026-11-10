@@ -663,6 +663,13 @@ class PredictiveCodingLayer(nn.Module):
         # it reaches every living layer uniformly. Non-persistent: a
         # regime, not lived state.
         self._wake_attenuation: float = 1.0
+        # The day's record (2026-11-10; R2 of the 2026-08-14 wake/rest
+        # regime): an append-only list of what this layer noticed, for rest
+        # to consider. None = not recording, and nothing reads it. Switched
+        # on by luthi.v2.day_record.enable_day_record, never by a
+        # constructor argument, so no run's configuration changes meaning.
+        # It only listens: see _note_for_the_day.
+        self._day_record = None
 
         # --- Inverted-U learning gain (momentum-functions foundations,
         #     spec docs/research/2026-07-05_inverted-u-gain-spec.md §8 step 4).
@@ -827,6 +834,7 @@ class PredictiveCodingLayer(nn.Module):
             # Legacy path, kept for A/B against the pre-2026-07-27 behaviour.
             if salience < self.salience_threshold:
                 return
+            self._note_for_the_day(context, salience, input_pattern)
             n = self.episode_count.item()
             if n < self.num_episodes:
                 idx = n
@@ -865,6 +873,7 @@ class PredictiveCodingLayer(nn.Module):
         if filled < self.salience_window.numel() or step < self.episode_warmup_steps:
             if salience < self.salience_threshold:
                 return
+            self._note_for_the_day(context, salience, input_pattern)
             n = self.episode_count.item()
             if n < self.num_episodes:
                 idx = n
@@ -917,6 +926,7 @@ class PredictiveCodingLayer(nn.Module):
         if not surprising:
             return
 
+        self._note_for_the_day(context, salience, input_pattern)
         n = self.episode_count.item()
         if n < self.num_episodes:
             idx = n
@@ -924,6 +934,25 @@ class PredictiveCodingLayer(nn.Module):
         else:
             idx = self._choose_eviction_slot(n, step)
         self._write_episode_slot(idx, context, salience, input_pattern, step)
+
+    def _note_for_the_day(
+        self,
+        context: torch.Tensor,
+        salience: float,
+        input_pattern: torch.Tensor,
+    ) -> None:
+        """Append this moment to the day's record, if one is being kept.
+
+        Called where the layer's admission rule has just said this moment's
+        salience is worth writing, and before the ring's capacity is
+        consulted: a moment the full ring turns away is still recorded.
+        Reads and changes nothing else. See luthi/v2/day_record.py.
+        """
+        if self._day_record is None:
+            return
+        self._day_record.append(
+            self._sparse_step_count, salience, context, input_pattern,
+        )
 
     def _apply_activity_band(
         self, output: torch.Tensor, gate: torch.Tensor | None

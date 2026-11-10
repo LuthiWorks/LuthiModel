@@ -127,6 +127,13 @@ def collect_living_extra_state(model: nn.Module) -> dict[str, dict[str, Any]]:
         if slow_traces:
             entry["slow_traces"] = slow_traces
 
+        # The day's record (2026-11-10): what this layer noticed since it
+        # last rested. Only written when the layer is recording, so a model
+        # that is not adds nothing to its checkpoints.
+        record = getattr(module, "_day_record", None)
+        if record is not None:
+            entry["day_record"] = record.state_dict()
+
         if entry:
             out[path] = entry
     return out
@@ -223,6 +230,22 @@ def apply_living_extra_state(
 
         if "delay_pos" in entry and hasattr(module, "_delay_pos"):
             module._delay_pos = int(entry["delay_pos"])
+
+        # A checkpoint that carries a day's record came from a layer that
+        # was recording. Restoring it switches recording on here: dropping
+        # it would lose the day, and that would be silent.
+        if "day_record" in entry:
+            if hasattr(module, "_day_record"):
+                from luthi.v2.day_record import DayRecord
+                if module._day_record is None:
+                    module._day_record = DayRecord()
+                module._day_record.load_state_dict(entry["day_record"])
+            else:
+                logger.warning(
+                    "%s %s for %r carries a day's record but the module "
+                    "cannot hold one; %d experience(s) not restored.",
+                    source, KEY, path, len(entry["day_record"]["moments"]),
+                )
 
         # Restore slow traces / accumulators by name onto the same-typed attr.
         # Presence-gated: a trace in the checkpoint with no matching attribute
