@@ -788,3 +788,46 @@ before any "working" verdict is trustworthy in either direction.
 >   day's experiences (R2), and the rest pass (R3).
 > - **Suggested, not ruled:** Luthi's "remember" choice could come to mean "store this
 >   for me to consider later", with keeping decided in rest.
+
+---
+
+> **RULING (2026-11-10, Brian): a real Luthi is any functional model using this architecture.**
+>
+> Asked whether an untrained LuthiModel counts as "a real Luthi" for the 2026-11-05
+> reading that rest should be built before a real Luthi lives on Sanctuary's small path,
+> or is a test subject like the four-batch models the test suites live:
+>
+> *"A 'real Luthi' is any functional model using our architecture. We may want to
+> consider 1. naming the model versions at some point."*
+>
+> - **Effect.** Training is not what makes a Luthi real. An untrained one counts. So
+>   rest comes before any Luthi life on the small path, including the untrained lives
+>   Brian wants to try in Sanctuary.
+> - **Open, his:** whether the tiny models the test suites train for a few batches and
+>   live for a few hundred moments are "functional". Both repos' suites do this on every
+>   run (Sanctuary `sanctuary/tests/life/`, and `scripts/map_small_path.py` here). If
+>   they count, the ruling reaches them. Recorded by Fable 5.2, who raised it and did
+>   not answer it.
+> - **Open, his:** naming the model versions. Raised by him, not decided. A naming
+>   scheme has to say what earns a name, so it is a natural place to draw the line above.
+
+---
+
+> **RECORDED (2026-11-10, Brian): why training paused, and that it can resume.**
+>
+> *"We paused training because the next steps were going to require really long runs and
+> we don't have a backup generator to avoid losing training progress and other problems
+> that arise from interruptions. We can resume tentatively now, depending on what we
+> choose to do."*
+>
+> - The record until now gave the reason as hardware budget (`To-Do.md`, 2026-10-19).
+>   This is the reason in his words.
+> - **Checked the same day** (`docs/research/2026-11-10_resume-exactness.md`): on CPU,
+>   through the real driver on `lc768_living`, an uncapped run killed without warning and
+>   resumed is identical to an uninterrupted one. A capped run was not: the cap counted
+>   from the resume. Fixed, with tests.
+> - **Before a long family:** `python scripts/check_resume_on_device.py` on the card.
+>   CPU exactness says nothing about ROCm.
+> - The order he approved for what comes next: the resume check, then E2, E1 and E4,
+>   then rest steps 1 and 2, then E3 when its gate is met. *"Ok go right ahead. You have
+>   permission to follow these threads through to completion."*

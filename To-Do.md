@@ -22,6 +22,48 @@
 > - Checkpoint encryption is optional.
 > - VISReg's dose is settled before E3, not after.
 >
+> ### UPDATE 2026-11-10 (Fable 5.2, under Brian's go-ahead of that day)
+>
+> - **Why training paused, in Brian's words:** long runs with no protection
+>   against power loss. He says training can resume tentatively
+>   (`docs/DECISIONS.md`, 2026-11-10).
+> - **A resumed run is the same run, on CPU.** Checked through the real driver
+>   on `lc768_living`. One defect found and fixed: `--max-batches-per-epoch`
+>   counted from the resume, so an interrupted capped run trained past its cap
+>   (`docs/research/2026-11-10_resume-exactness.md`).
+> - **Rest, steps 1 and 2, are built** and unreviewed: the day's record and the
+>   rest pass (`docs/research/2026-11-10_rest-pass.md`). The August plan's
+>   consolidation into the weight alone fades in ~1,000 forwards, so rest moves
+>   the home.
+> - **A real Luthi is any functional model using this architecture** (Brian).
+>   So rest comes before any Luthi life, untrained ones included.
+>
+> **On your machine, in this order** (ROCm environment, repo root):
+>
+> 1. `python scripts\check_resume_on_device.py`
+>    About 180 steps at 768 wide. It trains one short run three times, kills
+>    one of them partway, and says SAME RUN or NOT THE SAME RUN. It writes to
+>    a temp directory, never to `runs`, and needs about 10 GB free there
+>    (`--out E:\resume_check` puts it on E:). Delete the directory afterwards.
+> 2. `python scripts\run_no_training_experiments.py --runs-root E:\runs --dry-run`
+>    Lists the runs it found and the jobs it would run. Nothing runs. If your
+>    runs are somewhere else, give that directory. `--runs-root` can be
+>    repeated.
+> 3. The same command without `--dry-run`. This is E2, E1 and E4 below, in the
+>    order below, on every registered run. It skips what is already done, so
+>    it is safe to stop and start. Results are copied to
+>    `runs_meta\living_channel_e1_e2_e4\`. Commit and push that folder and
+>    the next instance can read them.
+>
+> One thing the runner fixes: by hand, E4's four `per_block_probe.py` commands
+> below all write `per_block_probe.json`, and each overwrites the one before.
+> The runner gives each its own file. If you run them by hand, add `--out`.
+>
+> **Still to build before a life** (`docs/audits/2026-11-05_where-rest-stands.md`):
+> a review of the small path and of rest by another line; a way for Luthi to
+> choose rest and to see an experience again and answer; rest on Sanctuary's
+> small path. All wait on Brian's decisions 1, 2, 3 and 6 there.
+>
 > ### Once, before anything else: free the old checkpoints from their password
 >
 > `python scripts\decrypt_checkpoints.py E:\runs E:\luthi_experiment_archive`
