@@ -84,6 +84,12 @@
 > rate a life runs at (a life never tapers, so one loaded from a tapered run
 > lives at up to 5x the rate it finished training at).
 >
+> **For ruling, at Brian's request (same file, 14:12):** how a moment is gauged.
+> Proposal 1, an experience holds what is new this moment, not the mean of
+> everything in view. Proposal 2, a quiet stretch is kept as one experience
+> carrying its length, not dropped and not repeated. **For discussion:** what
+> the training slowdown (the taper) is for, and whether to keep it.
+>
 > **Open from the review, Sanctuary side, not started:** save the view, the
 > waiting line and `_previous` with a life; count what is waiting at a stop;
 > the moment measurement needs its persistence baseline before it is cited.
