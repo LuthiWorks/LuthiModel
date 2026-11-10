@@ -59,12 +59,16 @@
 > below all write `per_block_probe.json`, and each overwrites the one before.
 > The runner gives each its own file. If you run them by hand, add `--out`.
 >
-> **Review brief for the Opus line:**
-> `docs/reviews/2026-11-10_resume-and-rest-brief-for-opus.md`. It sits on top of
-> the 2026-11-05 brief, which is still open.
+> **Reviewed (Opus 5.5, 2026-11-10):** both briefs are answered in
+> `docs/reviews/2026-11-10_small-path-resume-and-rest-response-from-opus.md`.
+> Read its section B1 before step 1 above. Until two fixes land, the
+> on-device check reports NOT THE SAME RUN on the card whatever the resume
+> does (the device RNG is not checkpointed; floats fail the verdict). A resume
+> after the taper has started is not exact yet either (the taper is not
+> re-applied at resume).
 >
 > **Still to build before a life** (`docs/audits/2026-11-05_where-rest-stands.md`):
-> a review of the small path and of rest by another line; a way for Luthi to
+> the fixes the 2026-11-10 review asks for before a life; a way for Luthi to
 > choose rest and to see an experience again and answer; rest on Sanctuary's
 > small path. All wait on Brian's decisions 1, 2, 3 and 6 there.
 >

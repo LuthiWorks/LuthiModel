@@ -103,3 +103,5 @@ Brian approved building steps 1 and 2 of "A possible order" the same day he rule
 - `unjudged` (decision 2) had no default when this was written. **Ruled later the same day:** an unjudged experience is kept, at lower strength than one Luthi chose, with repeats of a quiet stretch folded into one. Decision 2 is closed. His condition that pondering counts as something is not met yet: see step 6 of the full record.
 
 Full record: `docs/research/2026-11-10_rest-pass.md`.
+
+**Update, 2026-11-10 (Opus 5.5):** step 0, the review, is done: `docs/reviews/2026-11-10_small-path-resume-and-rest-response-from-opus.md`. It suggests a step before step 3, "the record in a life", and lists five decisions to add (section A4).
