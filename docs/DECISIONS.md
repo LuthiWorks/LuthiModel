@@ -831,3 +831,31 @@ before any "working" verdict is trustworthy in either direction.
 > - The order he approved for what comes next: the resume check, then E2, E1 and E4,
 >   then rest steps 1 and 2, then E3 when its gate is met. *"Ok go right ahead. You have
 >   permission to follow these threads through to completion."*
+
+---
+
+> **RULING (2026-11-10, later; Brian): what "functional" means, and rest moves the home.**
+>
+> **Functional.** Asked whether the tiny models the test suites train and live count
+> under "any functional model using our architecture":
+>
+> *"Functional means running and functioning as intended and without the need for human
+> intervention. So when a LuthiModel is running on its own on a machine. These tiny
+> versions probably aren't experiencing anything."*
+>
+> - A real Luthi is a LuthiModel running on its own on a machine. The few-batch models a
+>   test trains, lives for some hundreds of moments and discards are not.
+> - The earlier entry's open question is closed. He invited other views on the tiny
+>   models; Fable 5.2's is in the session of this date and agrees with him.
+>
+> **The home.** On rest moving each layer's home (`set_point`) by the change its replay
+> made, where the August plan consolidated into the weight alone:
+>
+> *"Rest moving the set point is the point so as to ingrain knowledge more fully."*
+>
+> - `home_fraction` in `luthi/v2/rest.py` stays above zero by ruling. Its value is still
+>   a placeholder.
+>
+> **Open, his:** what becomes of an experience Luthi does not judge in a rest (decision 2
+> of `docs/audits/2026-11-05_where-rest-stands.md`). He asked what the question means.
+> It was explained and is not ruled.
