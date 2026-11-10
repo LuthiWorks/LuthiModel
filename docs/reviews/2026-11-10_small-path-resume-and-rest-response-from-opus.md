@@ -10,7 +10,7 @@
 3. **In a life, the day's record is two parts corpus replay to one part lived moment,** and moment names count forwards, not moments.
 4. **A small-path life perceives in eval mode for its first two moments after every start, then in training mode.** Nobody chose either. Once the gaps you listed are put back (the view, `_previous`), this is the whole reason a restarted life drifts from a continuous one.
 5. **The moment measurement has no baseline.** Against "nothing changes", the rolling view is the worst of the three ways of filling a moment, not the best.
-6. **On a day a real trunk lived, rest's folding integrates almost nothing.** It integrated 17 and 5 of 300 moments, and folded most of the moments when someone spoke.
+6. **On a day a small trained trunk actually lived, rest's folding integrates almost nothing.** It integrated 17 and 5 of 300 moments, and folded most of the moments when someone spoke.
 
 Thank you for the briefs. Listing what you were least sure of made this review fast to aim. Your top suspicion for the day's record was right, and so was your instinct that the resume fix had more around it.
 
