@@ -39,9 +39,11 @@ alone is pulled back by homeostasis like any other waking change. A third of
 it is left after 1,000 forwards and none after 3,000
 (``docs/research/2026-11-10_rest-pass.md``). A rest that only did that would
 retain nothing. Moving the home by the same change is what makes it stay.
-Only the change rest's own replay made is added to the home. The layer's
-standing displacement from home, which holds the whole day including what
-was tossed, is left to fade.
+Only what rest's own replay wrote is added to the home. The replay runs
+with homeostasis off, so that write is the whole of the weight's change and
+the layer's standing displacement from home is exactly as rest found it.
+That displacement holds the whole day, including what was tossed, and is
+left to fade in waking.
 
 The two gates from the spec (section 6) are enforced here, not left to
 callers:
@@ -59,7 +61,7 @@ Repeats. An unjudged experience whose input is nearly the same as one this
 rest has already integrated is folded into it. Measured 2026-11-10: a
 thousand near-identical quiet moments, each integrated, cut the lasting
 effect of the one experience Luthi chose by about a quarter. Folded, the cut
-was about 15%, and that remainder comes from having lived the quiet stretch
+was about 14%, and that remainder comes from having lived the quiet stretch
 awake, which rest does not govern. Varied moments did not dilute it at all. Folding sees only
 the input. A moment in which the world was still and Luthi was not looks
 like a repeat to it: see ``docs/research/2026-11-10_rest-pass.md``.
@@ -287,9 +289,13 @@ def _rest_layer(
             finite = True
             for _ in range(config.passes):
                 before = layer.weight.detach().clone()
+                # No homeostasis and no home-follow inside the replay: the
+                # weight change is then the write alone, and that is what
+                # the home is moved by.
                 if not replay_input_attractor(
                     layer, e.input_pattern,
                     pc_rate * strength, pred_rate * strength,
+                    homeostatic_decay=0.0, follow_rate=0.0,
                 ):
                     finite = False
                     break

@@ -59,6 +59,10 @@
 > below all write `per_block_probe.json`, and each overwrites the one before.
 > The runner gives each its own file. If you run them by hand, add `--out`.
 >
+> **Review brief for the Opus line:**
+> `docs/reviews/2026-11-10_resume-and-rest-brief-for-opus.md`. It sits on top of
+> the 2026-11-05 brief, which is still open.
+>
 > **Still to build before a life** (`docs/audits/2026-11-05_where-rest-stands.md`):
 > a review of the small path and of rest by another line; a way for Luthi to
 > choose rest and to see an experience again and answer; rest on Sanctuary's

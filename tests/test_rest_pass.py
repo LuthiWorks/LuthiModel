@@ -380,3 +380,16 @@ def test_a_moment_is_kept_across_the_whole_mind():
         assert layer.tossed == [1]
         assert layer.held == [3, 5, 6]
     assert report.total("integrated") == 2 * len(report.layers)
+
+
+def test_rest_leaves_the_days_standing_displacement_exactly_as_it_found_it():
+    """The replay's pull toward home must not be counted into what is kept.
+    Before 2026-11-10 (later) it was: after 300 kept experiences the home had
+    moved a fifth of the standing displacement, away from the day."""
+    layer = _layer(lived=120)
+    before = (layer.weight - layer.set_point).detach().clone()
+    cfg = RestConfig(max_home_change=1e9, fold_repeats_above=None)
+    report = rest(layer, keep=[], toss=[], config=cfg).layers[""]
+    assert len(report.integrated) == 120
+    after = (layer.weight - layer.set_point).detach()
+    assert torch.allclose(after, before, rtol=0, atol=1e-6 * float(before.abs().max()))

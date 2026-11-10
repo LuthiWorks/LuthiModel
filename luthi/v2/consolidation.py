@@ -206,12 +206,21 @@ def replay_input_attractor(
     input_pattern: torch.Tensor,
     pc_rate: float,
     pred_learning_rate: float,
+    *,
+    homeostatic_decay: float | None = None,
+    follow_rate: float | None = None,
 ) -> bool:
     """Re-present one stored input pattern through the layer's own PC
     update, at the given rates. The single step of attractor consolidation,
     shared by ``consolidate_layer_attractor`` (which replays the episode
     ring) and the rest pass (``luthi/v2/rest.py``, which replays what was
     kept from the day's record).
+
+    ``homeostatic_decay`` and ``follow_rate`` default to the layer's own, as
+    every replay has always run. The rest pass passes 0.0 for both, so that
+    the weight change a replay makes is its write and nothing else: the
+    update's pull toward home is part of living, and counted into what rest
+    keeps it would move the home away from the day (found 2026-11-10).
 
     Returns False, having changed nothing, if the pattern does not produce a
     finite output. Call under ``torch.no_grad()``.
@@ -258,7 +267,8 @@ def replay_input_attractor(
         layer.error_acc, layer.plasticity,
         stored_input, output,
         pc_rate, pred_learning_rate,
-        layer.homeostatic_decay, layer.follow_rate,
+        layer.homeostatic_decay if homeostatic_decay is None else homeostatic_decay,
+        layer.follow_rate if follow_rate is None else follow_rate,
         layer.momentum_decay, layer.update_ema_decay,
         layer.precision_ema_decay,
         layer.precision_min, layer.precision_max,
