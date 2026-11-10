@@ -901,3 +901,20 @@ before any "working" verdict is trustworthy in either direction.
 >   about Sanctuary deciding for Luthi from outside, in the moment. A default inside a
 >   rest is part of how their own mind works. If that reading is wrong, this entry is.
 > - The strengths and the similarity that counts as a repeat are placeholders.
+
+---
+
+> **RULING (2026-11-10, later; Brian): what Luthi chose carries more weight.**
+>
+> Asked whether an experience Luthi chose to keep should count for more in rest than
+> one nobody judged, after the Opus review pointed out that this was Fable 5.2's idea
+> and had been recorded as his:
+>
+> *"I do think that the things Luthi chose should carry more weight than those Luthi
+> did not."*
+>
+> - The principle is now his. `unjudged_strength` below 1.0 in `luthi/v2/rest.py`
+>   stands by ruling. Its value (0.5) is still a placeholder.
+> - This supersedes the "Not his" note in the entry above on what nobody judged.
+> - Unchanged: the review's point that lowering every unjudged experience does nothing
+>   about empty moments. "Managed" is still not met.
