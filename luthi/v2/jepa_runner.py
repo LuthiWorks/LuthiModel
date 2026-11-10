@@ -1036,6 +1036,12 @@ class JEPATrainer:
         # interrupted epoch serve a full extra pass -- found 2026-07-20
         # wiring driver-level mid-seed resume).
         self._resumed_mid_epoch = False
+        # Steps taken in the current epoch. It is state, not a loop local:
+        # --max-batches-per-epoch counts against it, and while it lived in
+        # run() a resume put it back to 0, so an interrupted capped run
+        # trained its cap again on top of the steps it had already taken
+        # (found 2026-11-10, docs/research/2026-11-10_resume-exactness.md).
+        self._steps_this_epoch = 0
 
         # State.
         self.global_step = 0
@@ -2376,6 +2382,7 @@ class JEPATrainer:
             "global_step": self.global_step,
             "modality_step": dict(self.modality_step),
             "epoch": self.epoch,
+            "steps_this_epoch": self._steps_this_epoch,
             "tokens_consumed": dict(self.tokens_consumed),
             "epoch_token_baseline": dict(self.epoch_token_baseline),
             # Kill-criteria history + pilot-set state (4.8 review
@@ -2498,6 +2505,21 @@ class JEPATrainer:
             )
             self.modality_step = {m: 0 for m in MODALITIES}
         self.epoch = state["epoch"]
+        # steps_this_epoch added 2026-11-10. A checkpoint without it
+        # resumes at zero, which is what every resume did before: the cap,
+        # if there is one, then counts from the resume.
+        if "steps_this_epoch" in state:
+            self._steps_this_epoch = int(state["steps_this_epoch"])
+        else:
+            self._steps_this_epoch = 0
+            if self.config.epoch.max_batches_per_epoch > 0:
+                logger.warning(
+                    "Checkpoint missing steps_this_epoch; "
+                    "max_batches_per_epoch=%d will count from this resume, "
+                    "so this run trains past its cap by the steps it had "
+                    "already taken in the epoch.",
+                    self.config.epoch.max_batches_per_epoch,
+                )
         self.tokens_consumed = dict(state["tokens_consumed"])
         self.epoch_token_baseline = dict(state["epoch_token_baseline"])
 
@@ -2934,6 +2956,12 @@ class JEPATrainer:
 
     # -- Main loop --
 
+    def _epoch_cap_reached(self) -> bool:
+        """True once this epoch has taken max_batches_per_epoch steps
+        (never, when there is no cap)."""
+        cap = self.config.epoch.max_batches_per_epoch
+        return cap > 0 and self._steps_this_epoch >= cap
+
     def run(self) -> str:
         """Train until max_epochs or a kill criterion fires.
 
@@ -2947,10 +2975,10 @@ class JEPATrainer:
                 logger.info("Continuing resumed epoch %d", self.epoch)
             else:
                 self._start_new_epoch()
+                self._steps_this_epoch = 0
                 logger.info("Starting epoch %d", self.epoch)
-            steps_this_epoch = 0
 
-            while not self._epoch_done():
+            while not self._epoch_done() and not self._epoch_cap_reached():
                 modality = self.sampler.sample()
                 try:
                     batch = self.data_loader.next_batch(modality)
@@ -2984,6 +3012,9 @@ class JEPATrainer:
                 # train_step has already advanced both self.global_step
                 # and self.modality_step[modality] -- do NOT increment
                 # again here (4.8 review 2026-06-06 item A).
+                # Counted here, before anything below can checkpoint, so
+                # every checkpoint holds the steps this epoch has taken.
+                self._steps_this_epoch += 1
                 self._update_coverage(modality, batch)
                 # Plasticity taper: recompute AFTER coverage advances so
                 # the schedule sees this step's progress (run-3 build).
@@ -3073,12 +3104,7 @@ class JEPATrainer:
                         self._checkpoint(reason=f"kill:{kill_reason}")
                         return f"killed:{kill_reason}"
 
-                steps_this_epoch += 1
-
-                if (
-                    self.config.epoch.max_batches_per_epoch > 0
-                    and steps_this_epoch >= self.config.epoch.max_batches_per_epoch
-                ):
+                if self._epoch_cap_reached():
                     logger.warning(
                         "Safety bound hit: max_batches_per_epoch=%d before coverage anchor",
                         self.config.epoch.max_batches_per_epoch,
