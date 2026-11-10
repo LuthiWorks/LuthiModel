@@ -94,7 +94,10 @@ _REPLAY_WRITES = (
     "precision", "error_acc", "plasticity",
 )
 # Of those, the layer's running statistics of its own waking activity.
-_WAKING_STATISTICS = ("momentum", "update_ema", "error_acc")
+# precision joined on 2026-11-10 (Opus follow-up): it is the same kind of
+# thing, an average toward 1/error^2 advancing at its waking decay on every
+# replay, and it moved 0.2 to 9.1% a rest over five lived days.
+_WAKING_STATISTICS = ("momentum", "update_ema", "error_acc", "precision")
 
 
 @dataclass(frozen=True)
@@ -134,8 +137,8 @@ class RestConfig:
     # Silently dropping most of a day is worse than the dilution it was
     # built against. It stays here to be measured against lived days.
     fold_repeats_above: float | None = None
-    # Put the layer's waking statistics (momentum, update_ema, error_acc)
-    # back as rest found them. See _rest_taken.
+    # Put the layer's waking statistics (momentum, update_ema, error_acc,
+    # precision) back as rest found them. See _rest_taken.
     restore_waking_statistics: bool = True
 
     def __post_init__(self) -> None:
@@ -240,15 +243,30 @@ def _rest_layer(
     record = layer._day_record
     taken = record.take()
     out = LayerRest(taken=len(taken))
+    statistics = {
+        name: getattr(layer, name).detach().clone() for name in _WAKING_STATISTICS
+    }
     try:
         return _rest_taken(layer, record, taken, out, keep, toss, unjudged, config)
     except BaseException:
-        # Whatever raised, the day is not lost with it. What this rest had
-        # already integrated stays integrated. Everything else goes back,
-        # to be considered again (Opus review, 2026-11-10: before this the
-        # layer's whole day was gone).
-        finished = set(out.integrated)
+        # Whatever raised, the day is not lost with it (Opus review,
+        # 2026-11-10: before this the layer's whole day was gone).
+        # - What this rest had already integrated stays integrated.
+        # - What Luthi tossed stays tossed. A toss needs no work, so it is
+        #   done the moment it is decided. Put back, it would return
+        #   unjudged and the next rest would keep it by default, the
+        #   opposite of what they said (Opus follow-up).
+        # - Everything else goes back, to be considered again.
+        # - The waking statistics go back as rest found them, as on the
+        #   ordinary path.
+        finished = set(out.integrated) | {
+            e.moment for e in taken if _decide(e, keep, toss, unjudged) == "toss"
+        }
         record.put_back([e for e in taken if e.moment not in finished])
+        if config.restore_waking_statistics:
+            with torch.no_grad():
+                for name, value in statistics.items():
+                    getattr(layer, name).copy_(value)
         raise
 
 
@@ -369,8 +387,9 @@ def _rest_taken(
     # on a lived day, momentum moved 16% of its size in one rest, update_ema
     # 15% and error_acc 12% (Opus review, 2026-11-10). error_acc feeds
     # salience, so that would shift what the layer admits as soon as it
-    # woke. They describe the day's living, not what was kept, so rest puts
-    # them back as it found them.
+    # woke, and precision is what relative trust reads when the layer
+    # writes. They describe the day's living, not what was kept, so rest
+    # puts them back as it found them.
     if config.restore_waking_statistics:
         with torch.no_grad():
             for name in _WAKING_STATISTICS:

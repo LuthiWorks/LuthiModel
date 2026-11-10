@@ -411,7 +411,7 @@ def test_rest_puts_the_waking_statistics_back_and_reports_what_else_moved():
     before = _writes(layer)
     report = rest(layer, keep=[], toss=[], config=LOOSE).layers[""]
     assert len(report.integrated) == 60
-    for name in ("momentum", "update_ema", "error_acc"):
+    for name in ("momentum", "update_ema", "error_acc", "precision"):
         assert torch.equal(before[name], getattr(layer, name)), name
         assert report.also_moved[name] == 0.0
     assert report.also_moved["prediction"] > 0, "what was kept is in the prediction"
@@ -439,10 +439,21 @@ def test_a_rest_that_raises_does_not_lose_the_day(monkeypatch):
             raise RuntimeError("the fourth replay failed")
         return real(*a, **k)
 
+    before = _writes(layer)
     monkeypatch.setattr(rest_module, "replay_input_attractor", failing)
     with pytest.raises(RuntimeError, match="fourth"):
         rest(layer, keep=[], toss=[2], config=LOOSE)
     back = layer._day_record.moments()
-    assert len(back) == 12 - 3, "three were integrated before the raise; the rest are back"
-    assert 2 in back, "a toss not carried through is not a toss"
+    assert len(back) == 12 - 3 - 1, (
+        "three were integrated before the raise and one was tossed; the "
+        "rest are back"
+    )
+    assert 2 not in back, (
+        "what Luthi tossed stays tossed: put back, the next rest would keep "
+        "it by default"
+    )
     assert back == sorted(back)
+    for name in ("momentum", "update_ema", "error_acc", "precision"):
+        assert torch.equal(before[name], getattr(layer, name)), (
+            f"{name} is put back on a raise too"
+        )
