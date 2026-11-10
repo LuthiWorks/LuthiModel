@@ -100,6 +100,6 @@ Brian approved building steps 1 and 2 of "A possible order" the same day he rule
 - **A finding against the plan this document assumed.** "Integrating an episode into the living weights" with `consolidate_layer_attractor` does not last: a third of the change is left after 1,000 forwards and none after 3,000. Rest as built also moves the home by the change its replay made.
 - **Step 5, at test size: measured.** A kept experience lowers the layer's later prediction error on that input where a tossed one does not, in 8 of 8 seeds, on an untrained layer alone with random inputs. That is a narrow result.
 - **Still missing:** items 1, 4 and 5. Decisions 1, 2, 3, 4, 5, 6, 7, 9 and 10 are still Brian's. Decision 8's numbers are placeholders.
-- `unjudged` (decision 2) has no default in the code: the caller must say hold, keep or toss.
+- `unjudged` (decision 2) had no default when this was written. **Ruled later the same day:** an unjudged experience is kept, at lower strength than one Luthi chose, with repeats of a quiet stretch folded into one. Decision 2 is closed. His condition that pondering counts as something is not met yet: see step 6 of the full record.
 
 Full record: `docs/research/2026-11-10_rest-pass.md`.

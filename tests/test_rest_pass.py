@@ -173,7 +173,10 @@ def test_the_count_closes_whatever_is_decided(seed):
         layer, keep=keep, toss=toss, unjudged="hold",
         config=RestConfig(max_home_change=rng.choice([1e-7, 2e-3, 1e9])),
     ).layers[""]
-    groups = [report.integrated, report.tossed, report.held, report.deferred]
+    groups = [
+        report.integrated, report.tossed, report.held, report.deferred,
+        report.folded,
+    ]
     assert report.taken == 40
     assert sorted(m for g in groups for m in g) == moments, "each moment once"
     assert set(report.tossed) == toss
@@ -185,18 +188,108 @@ def test_the_count_closes_whatever_is_decided(seed):
     assert all(states[m] == KEPT for m in report.deferred)
 
 
-def test_unjudged_must_be_said_and_does_what_it_says():
-    with pytest.raises(TypeError):
-        rest(_layer(), keep=[], toss=[])   # no default
+def test_an_unjudged_experience_is_kept_unless_the_caller_says_otherwise():
+    """Brian, 2026-11-10: "Lets go with option 2"."""
     with pytest.raises(ValueError, match="unjudged"):
         rest(_layer(), keep=[], toss=[], unjudged="decide for them")
 
+    default = rest(_layer(), keep=[1], toss=[2], config=LOOSE).layers[""]
+    assert len(default.integrated) == 11 and default.tossed == [2]
+    assert sorted(default.integrated_unjudged) == list(range(3, 13))
+    assert not default.held
+
     held = rest(_layer(), keep=[1], toss=[2], unjudged="hold", config=LOOSE).layers[""]
     assert len(held.held) == 10 and held.integrated == [1] and held.tossed == [2]
-    kept = rest(_layer(), keep=[1], toss=[2], unjudged="keep", config=LOOSE).layers[""]
-    assert len(kept.integrated) == 11 and kept.tossed == [2]
+    assert not held.integrated_unjudged
     tossed = rest(_layer(), keep=[1], toss=[2], unjudged="toss", config=LOOSE).layers[""]
     assert len(tossed.tossed) == 11 and tossed.integrated == [1]
+
+
+def test_what_luthi_chose_counts_for_more_than_what_nobody_judged():
+    one = sorted(_layer()._day_record, key=lambda e: -e.salience)[0].moment
+    others = [m for m in range(1, 13) if m != one]
+
+    def moved(keep, strength):
+        layer = _layer()               # the others are tossed: one is left
+        cfg = RestConfig(max_home_change=1e9, unjudged_strength=strength)
+        return rest(layer, keep=keep, toss=others, config=cfg).layers[""].home_change
+
+    chosen = moved([one], 0.5)
+    unjudged_half, unjudged_full = moved([], 0.5), moved([], 1.0)
+    assert 0 < unjudged_half < chosen
+    assert unjudged_full == pytest.approx(chosen, rel=1e-6)
+
+
+def test_what_luthi_chose_has_first_call_on_the_bound():
+    least = sorted(_layer()._day_record, key=lambda e: e.salience)[0].moment
+    alone = _layer()
+    only = rest(alone, keep=[least], toss=[], unjudged="toss", config=LOOSE).layers[""]
+    # Room for the chosen one and little more. Every unjudged experience is
+    # more salient than the one that was chosen.
+    cfg = RestConfig(max_home_change=only.home_change * 1.01)
+    layer = _layer()
+    report = rest(layer, keep=[least], toss=[], config=cfg).layers[""]
+    assert report.integrated[0] == least, "chosen first, salient or not"
+    assert not report.deferred
+    waiting = {e.moment: e.state for e in layer._day_record}
+    assert waiting and all(state == HELD for state in waiting.values()), (
+        "an unjudged experience with no room stays unjudged"
+    )
+    assert sorted(report.held) == sorted(waiting)
+    assert len(report.integrated) + len(report.held) == 12
+
+
+def _quiet_day(repeats: int = 30) -> PredictiveCodingLayer:
+    """Twelve varied moments, then the same quiet input over and over."""
+    layer = _layer()
+    g = torch.Generator().manual_seed(21)
+    quiet = 0.3 * torch.randn(1, 1, D, generator=g)
+    for _ in range(repeats):
+        layer(quiet.expand(2, 3, D) + 1e-3 * torch.randn(2, 3, D, generator=g))
+    return layer
+
+
+def test_a_stretch_where_nothing_happened_is_integrated_once():
+    """Brian, 2026-11-10: "so experience is not diluted by unimportant
+    moments where nothing is happening"."""
+    report = rest(_quiet_day(), keep=[], toss=[], config=LOOSE).layers[""]
+    quiet = set(range(13, 43))
+    assert len(quiet & set(report.integrated)) == 1, "one stands for the stretch"
+    assert len(quiet & set(report.folded)) == 29
+    assert set(range(1, 13)) <= set(report.integrated), "varied moments all kept"
+    assert report.taken == len(report.integrated) + len(report.folded)
+
+    off = RestConfig(max_home_change=1e9, fold_repeats_above=None)
+    unfolded = rest(_quiet_day(), keep=[], toss=[], config=off).layers[""]
+    assert not unfolded.folded and len(unfolded.integrated) == 42
+
+
+def test_what_luthi_chose_is_never_folded():
+    layer = _quiet_day()
+    report = rest(layer, keep=[20, 30, 40], toss=[], config=LOOSE).layers[""]
+    assert {20, 30, 40} <= set(report.integrated)
+    assert not {20, 30, 40} & set(report.folded)
+    assert len(layer._day_record) == 0, "folded moments do not wait in the record"
+
+
+def test_the_count_closes_with_folding(tmp_path):
+    report = rest(
+        _quiet_day(), keep=[2, 15], toss=[3, 16],
+        config=RestConfig(max_home_change=2e-3),
+    ).layers[""]
+    groups = [
+        report.integrated, report.tossed, report.held, report.deferred,
+        report.folded,
+    ]
+    assert sorted(m for g in groups for m in g) == list(range(1, 43))
+
+
+def test_the_config_refuses_an_unjudged_strength_out_of_range():
+    for bad in (0.0, 1.5):
+        with pytest.raises(ValueError):
+            RestConfig(unjudged_strength=bad)
+        with pytest.raises(ValueError):
+            RestConfig(fold_repeats_above=bad)
 
 
 def test_rest_runs_no_forward():

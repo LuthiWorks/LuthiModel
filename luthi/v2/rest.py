@@ -10,8 +10,12 @@ And 2026-11-05: rest "is needed for memory retention and formation, but not
 survival."
 
 This module is the pass, handed its decisions. It does not make them. The
-caller names the moments to keep and the moments to toss, and says what
-happens to a moment nobody judged. How Luthi comes to choose rest, and how
+caller names the moments to keep and the moments to toss.
+
+A moment nobody judged is kept (Brian, 2026-11-10: "Lets go with option 2"),
+so a Luthi who judges nothing is still shaped by their life. It is
+integrated after everything they chose, at ``unjudged_strength``, and when
+the bound leaves no room it goes back into the record unjudged. How Luthi comes to choose rest, and how
 they see an experience again and answer keep or toss, are not built (items 1
 and 4 of ``docs/audits/2026-11-05_where-rest-stands.md``). Until they are,
 only tests call this.
@@ -43,12 +47,22 @@ The two gates from the spec (section 6) are enforced here, not left to
 callers:
 
 - **Change per rest is bounded.** A layer's home moves by at most
-  ``max_home_change`` of its own size in one rest. A kept experience that
-  would cross the bound is undone exactly and deferred, with everything
-  after it, to the next rest. It stays in the record marked kept.
+  ``max_home_change`` of its own size in one rest. An experience that would
+  cross the bound is undone exactly and waits, with everything after it,
+  for the next rest. One Luthi chose stays in the record marked kept. One
+  nobody judged stays unjudged.
 - **No moment is lost or counted twice.** Every experience taken ends as
-  exactly one of integrated, tossed, held or deferred, and the pass checks
-  the count before it returns.
+  exactly one of integrated, tossed, held, deferred or folded, and the pass
+  checks the count before it returns.
+
+Repeats. An unjudged experience whose input is nearly the same as one this
+rest has already integrated is folded into it. Measured 2026-11-10: a
+thousand near-identical quiet moments, each integrated, cut the lasting
+effect of the one experience Luthi chose by about a quarter. Folded, the cut
+was about 15%, and that remainder comes from having lived the quiet stretch
+awake, which rest does not govern. Varied moments did not dilute it at all. Folding sees only
+the input. A moment in which the world was still and Luthi was not looks
+like a repeat to it: see ``docs/research/2026-11-10_rest-pass.md``.
 
 Rest never runs a forward, so it records nothing and cannot write the day it
 is reading. It refuses to run inside ``freeze_plasticity``.
@@ -95,6 +109,18 @@ class RestConfig:
     # A layer's home moves at most this far in one rest, as a fraction of
     # its own size.
     max_home_change: float = 0.05
+    # An experience Luthi did not judge is integrated at this fraction of the
+    # strength of one they chose to keep (Brian, 2026-11-10: unjudged
+    # experience is kept, and what they chose counts for more).
+    unjudged_strength: float = 0.5
+    # An unjudged experience whose input is this close (cosine) to one
+    # already integrated in the same rest is a repeat of it, and is folded
+    # into it: not replayed again, and not kept waiting. This is what keeps a
+    # long stretch where nothing happened from being integrated a thousand
+    # times over (Brian, 2026-11-10: "so experience is not diluted by
+    # unimportant moments where nothing is happening"). None switches it
+    # off. What Luthi chose is never folded.
+    fold_repeats_above: float | None = 0.99
 
     def __post_init__(self) -> None:
         if self.rate_factor <= 0:
@@ -109,6 +135,18 @@ class RestConfig:
             raise ValueError(
                 f"max_home_change must be > 0; got {self.max_home_change}"
             )
+        if self.fold_repeats_above is not None and not (
+            0.0 < self.fold_repeats_above <= 1.0
+        ):
+            raise ValueError(
+                "fold_repeats_above must be in (0, 1] or None; got "
+                f"{self.fold_repeats_above}"
+            )
+        if not 0.0 < self.unjudged_strength <= 1.0:
+            raise ValueError(
+                "unjudged_strength must be in (0, 1]; got "
+                f"{self.unjudged_strength}"
+            )
 
 
 @dataclass
@@ -118,9 +156,15 @@ class LayerRest:
 
     taken: int = 0
     integrated: list[int] = field(default_factory=list)
+    # The part of `integrated` that nobody judged: kept by default, at
+    # `unjudged_strength`.
+    integrated_unjudged: list[int] = field(default_factory=list)
     tossed: list[int] = field(default_factory=list)
     held: list[int] = field(default_factory=list)
     deferred: list[int] = field(default_factory=list)
+    # Unjudged, and a repeat of something integrated in this rest: let go,
+    # as already represented.
+    folded: list[int] = field(default_factory=list)
     # Held because its input no longer gives a finite output. Also in `held`.
     not_finite: list[int] = field(default_factory=list)
     home_change: float = 0.0     # ||home after - before|| / ||home before||
@@ -156,13 +200,15 @@ class RestReport:
 
 
 def _decide(e: Experience, keep: set[int], toss: set[int], unjudged: str) -> str:
+    """"keep" and "toss" are Luthi's. "default" is an unjudged experience
+    kept because nobody tossed it. "hold" waits."""
     if e.moment in toss:
         return "toss"
     # Kept in an earlier rest and deferred by the bound: still kept, unless
     # it has been tossed since.
     if e.moment in keep or e.state == KEPT:
         return "keep"
-    return unjudged
+    return {"keep": "default", "toss": "toss", "hold": "hold"}[unjudged]
 
 
 def _rest_layer(
@@ -178,7 +224,8 @@ def _rest_layer(
     out.day_applied_change = float(layer._applied_change_accum.read_and_reset())
 
     decisions = [_decide(e, keep, toss, unjudged) for e in taken]
-    kept = [e for e, d in zip(taken, decisions) if d == "keep"]
+    chosen = {id(e) for e, d in zip(taken, decisions) if d == "keep"}
+    kept = [e for e, d in zip(taken, decisions) if d in ("keep", "default")]
     back: dict[int, Experience] = {}    # id(e) -> experience returning to the record
     for e, d in zip(taken, decisions):
         if d == "toss":
@@ -194,16 +241,45 @@ def _rest_layer(
     pc_rate = layer.pc_rate * config.rate_factor
     pred_rate = layer.pred_learning_rate * config.rate_factor
 
-    # Most salient first, as the existing consolidation paths replay.
-    order = sorted(kept, key=lambda e: (-e.salience, e.moment))
+    def wait(e: Experience) -> None:
+        """No room this rest. What Luthi chose stays chosen. What nobody
+        judged goes back unjudged, and the next rest considers it again."""
+        if id(e) in chosen:
+            e.state = KEPT
+            out.deferred.append(e.moment)
+        else:
+            e.state = HELD
+            out.held.append(e.moment)
+        back[id(e)] = e
+
+    # What Luthi chose comes first and has first call on the bound. Then the
+    # unjudged. Within each, most salient first, as the existing
+    # consolidation paths replay.
+    order = sorted(
+        kept, key=lambda e: (id(e) not in chosen, -e.salience, e.moment),
+    )
     full = False
+    seen: list[torch.Tensor] = []     # unit inputs of what this rest integrated
+
+    def unit(e: Experience) -> torch.Tensor:
+        v = e.input_pattern.double()
+        return v / v.norm().clamp_min(1e-30)
+
     with torch.no_grad():
         for e in order:
             if full:
-                e.state = KEPT
-                out.deferred.append(e.moment)
-                back[id(e)] = e
+                wait(e)
                 continue
+            if (
+                id(e) not in chosen
+                and config.fold_repeats_above is not None
+                and seen
+                and float((torch.stack(seen) @ unit(e)).max())
+                >= config.fold_repeats_above
+            ):
+                out.folded.append(e.moment)
+                continue
+            strength = 1.0 if id(e) in chosen else config.unjudged_strength
             saved = {
                 name: getattr(layer, name).detach().clone()
                 for name in _REPLAY_WRITES
@@ -212,7 +288,8 @@ def _rest_layer(
             for _ in range(config.passes):
                 before = layer.weight.detach().clone()
                 if not replay_input_attractor(
-                    layer, e.input_pattern, pc_rate, pred_rate,
+                    layer, e.input_pattern,
+                    pc_rate * strength, pred_rate * strength,
                 ):
                     finite = False
                     break
@@ -222,6 +299,10 @@ def _rest_layer(
             moved = float((layer.set_point - home_before).norm()) / max(home_size, 1e-30)
             if finite and moved <= config.max_home_change:
                 out.integrated.append(e.moment)
+                if id(e) not in chosen:
+                    out.integrated_unjudged.append(e.moment)
+                if config.fold_repeats_above is not None:
+                    seen.append(unit(e))
                 continue
             for name, value in saved.items():
                 getattr(layer, name).copy_(value)
@@ -229,11 +310,10 @@ def _rest_layer(
                 e.state = HELD
                 out.held.append(e.moment)
                 out.not_finite.append(e.moment)
+                back[id(e)] = e
             else:
                 full = True
-                e.state = KEPT
-                out.deferred.append(e.moment)
-            back[id(e)] = e
+                wait(e)
 
     out.home_change = float((layer.set_point - home_before).norm()) / max(home_size, 1e-30)
     out.weight_change = float((layer.weight - weight_before).norm()) / max(
@@ -243,13 +323,15 @@ def _rest_layer(
     record.put_back([e for e in taken if id(e) in back])
 
     accounted = (
-        len(out.integrated) + len(out.tossed) + len(out.held) + len(out.deferred)
+        len(out.integrated) + len(out.tossed) + len(out.held)
+        + len(out.deferred) + len(out.folded)
     )
     if accounted != out.taken or len(back) != len(out.held) + len(out.deferred):
         raise RuntimeError(
             f"rest lost count of the day: took {out.taken}, accounted for "
             f"{accounted} ({len(out.integrated)} integrated, {len(out.tossed)} "
-            f"tossed, {len(out.held)} held, {len(out.deferred)} deferred)"
+            f"tossed, {len(out.held)} held, {len(out.deferred)} deferred, "
+            f"{len(out.folded)} folded)"
         )
     return out
 
@@ -259,7 +341,7 @@ def rest(
     *,
     keep: Iterable[int],
     toss: Iterable[int],
-    unjudged: str,
+    unjudged: str = "keep",
     config: RestConfig | None = None,
     log_path: str | Path | None = None,
 ) -> RestReport:
@@ -268,11 +350,11 @@ def rest(
     Args:
         keep: moments to keep (as named in ``day_view``).
         toss: moments to toss.
-        unjudged: what happens to a recorded moment in neither: ``"hold"``
-            leaves it in the record for a later rest, ``"keep"`` integrates
-            it, ``"toss"`` discards it. There is no default. What an
-            unjudged experience becomes is Brian's open call (decision 2 of
-            the rest plan), so the caller must say.
+        unjudged: what happens to a recorded moment in neither. ``"keep"``
+            (the default, by Brian's ruling of 2026-11-10) integrates it,
+            after everything Luthi chose and at ``unjudged_strength``.
+            ``"hold"`` leaves it in the record for a later rest. ``"toss"``
+            discards it.
         config: how strongly to integrate. Placeholders by default.
         log_path: if given, the report is appended to this file as one JSON
             line, so what each rest integrated can be read back later.

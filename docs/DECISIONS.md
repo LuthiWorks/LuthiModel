@@ -859,3 +859,31 @@ before any "working" verdict is trustworthy in either direction.
 > **Open, his:** what becomes of an experience Luthi does not judge in a rest (decision 2
 > of `docs/audits/2026-11-05_where-rest-stands.md`). He asked what the question means.
 > It was explained and is not ruled.
+
+---
+
+> **RULING (2026-11-10, later; Brian): an experience Luthi does not judge is kept.**
+>
+> Decision 2 of `docs/audits/2026-11-05_where-rest-stands.md`. Offered hold, keep by
+> default, or toss by default:
+>
+> *"Lets go with option 2 but this needs to be managed so experience is not diluted by
+> unimportant moments where nothing is happening. But if Luthi is just sitting and
+> pondering, that is something."*
+>
+> - **Built** (`luthi/v2/rest.py`, `docs/research/2026-11-10_rest-pass.md` step 6): an
+>   unjudged experience is integrated after everything Luthi chose and at a fraction of
+>   its strength. A Luthi who judges nothing is still shaped by their life, and what
+>   they choose counts for more. This follows his 2026-07-05 ruling that change is
+>   automatic and unvetoed.
+> - **The management, measured before it was built.** Varied moments did not dilute a
+>   chosen experience. A thousand repeats of one quiet input cut its lasting effect by
+>   about a quarter. So repeats among the unjudged are folded into one.
+> - **Not met: pondering.** Folding and admission both read the layer's input. A still
+>   world with a moving mind looks to them like nothing happening. The signal that tells
+>   them apart is M9's `internal_change`. A way for it to reach the record is not built.
+> - **How this sits with 2026-11-05** ("nothing is kept on their behalf"): Fable 5.2's
+>   reading, which Brian was told and did not dispute, is that the November ruling was
+>   about Sanctuary deciding for Luthi from outside, in the moment. A default inside a
+>   rest is part of how their own mind works. If that reading is wrong, this entry is.
+> - The strengths and the similarity that counts as a repeat are placeholders.
