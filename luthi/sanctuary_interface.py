@@ -912,7 +912,11 @@ def decode_action(
     result also carries ``rest``: ``chosen`` (this action chose rest),
     ``armed`` and ``reading`` (2026-11-11, ``luthi/v2/m9/rest_choice.py``).
     This only reads the choice. To carry it out the host calls
-    ``keep_recent`` and slows its pace; nothing rests the mind from in here.
+    ``rest_from_trace`` and slows its pace; nothing rests the mind from in here.
+
+    With ``m9_overrides={"recall_choice": True}`` the result carries
+    ``recall`` in the same form: this action chose to look back. The host
+    keeps the memories and brings one back through the senses.
 
     Call once per selected action: each call advances the activity bands,
     which is how they calibrate during a life.

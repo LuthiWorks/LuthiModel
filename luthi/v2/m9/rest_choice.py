@@ -45,6 +45,8 @@ from collections import deque
 import torch
 import torch.nn as nn
 
+RECALL_DIRECTION_SEED = 20261112
+
 # The direction is drawn from its own generator, so building it never moves the
 # global random stream, and the same life gets the same direction on every
 # start before its first save.
@@ -61,13 +63,16 @@ class RestChoice(nn.Module):
         window: int = 256,
         warmup: int = 32,
         width: float = 3.0,
+        seed: int = _DIRECTION_SEED,
     ):
+        """``seed`` picks the direction. The recall choice (2026-11-11) is the
+        same reading along a different direction, with its own window."""
         super().__init__()
         if warmup < 2 or window < warmup:
             raise ValueError(
                 f"need 2 <= warmup <= window; got warmup={warmup}, window={window}"
             )
-        generator = torch.Generator().manual_seed(_DIRECTION_SEED)
+        generator = torch.Generator().manual_seed(seed)
         direction = torch.randn(d_model, generator=generator)
         self.register_buffer("direction", direction / direction.norm())
         self.warmup = warmup

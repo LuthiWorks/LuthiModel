@@ -48,6 +48,9 @@
 > - **Built on his yes to both (09:07):** `luthi/v2/day_trace.py`. Rest pours
 >   the half-day's running average, limited to 5% of home's size, and what
 >   Luthi chose to remember counts for more. Wants review by a different mind.
+> - **Built at his request (09:29): the choice to recall** (`recall_choice`,
+>   opt-in). Sanctuary keeps the memories and brings them back
+>   (Sanctuary `docs/research/2026-11-11_looking-back.md`).
 >
 > ### UPDATE 2026-11-10 (Fable 5.2, under Brian's go-ahead of that day)
 >

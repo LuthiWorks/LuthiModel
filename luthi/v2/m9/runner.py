@@ -72,7 +72,7 @@ from luthi.v2.m9.decoders import (
 from luthi.v2.m9.delta_s import DeltaSBand, DeltaSInternal
 from luthi.v2.m9.efe import EFEEvaluator
 from luthi.v2.m9.felt_valence import FeltReading, FeltValenceHead
-from luthi.v2.m9.rest_choice import RestChoice
+from luthi.v2.m9.rest_choice import RECALL_DIRECTION_SEED, RestChoice
 from luthi.v2.m9.gamma import GammaInference
 from luthi.v2.m9.habit_net import HabitNet
 from luthi.v2.m9.instrumentation import ActionLog, MIProbe
@@ -291,6 +291,18 @@ class M9Config:
     rest_choice_window: int = 256
     rest_choice_warmup: int = 32
     rest_choice_width: float = 3.0
+
+    # ---- Recall as a choice (2026-11-11, Sanctuary docs/research/2026-11-11_looking-back.md) ----
+    # Off by default, like rest. On: each decoded action is also read for
+    # whether it chose to look back, along its own direction, and the decoded
+    # choice carries a "recall" entry. Nothing here recalls anything: the host
+    # keeps the memories and brings one back. The bar is higher than rest's
+    # because a recalled moment takes the place of the present one for a
+    # moment. Placeholder values, Brian's to change.
+    recall_choice: bool = False
+    recall_choice_window: int = 256
+    recall_choice_warmup: int = 32
+    recall_choice_width: float = 6.0
 
 
 # ---------------------------------------------------------------------------
@@ -793,6 +805,15 @@ class M9Trainer(JEPATrainer):
                 window=self.m9_config.rest_choice_window,
                 warmup=self.m9_config.rest_choice_warmup,
                 width=self.m9_config.rest_choice_width,
+            ).to(self.device)
+        self.recall_choice: Optional[RestChoice] = None
+        if self.m9_config.recall_choice:
+            self.recall_choice = RestChoice(
+                d_model,
+                window=self.m9_config.recall_choice_window,
+                warmup=self.m9_config.recall_choice_warmup,
+                width=self.m9_config.recall_choice_width,
+                seed=RECALL_DIRECTION_SEED,
             ).to(self.device)
 
     # ------------------------------------------------------------------
@@ -1557,9 +1578,14 @@ class M9Trainer(JEPATrainer):
                 self.rest_choice.read(a, self.rest_action(s_root))
                 if self.rest_choice is not None else None
             )
+            recall = (
+                self.recall_choice.read(a, self.rest_action(s_root))
+                if self.recall_choice is not None else None
+            )
         gates = outs["attention"]["gates"][0]
         return {
             **({"rest": rest} if rest is not None else {}),
+            **({"recall": recall} if recall is not None else {}),
             "active": {m: not bool(v[0].item()) for m, v in silent.items()},
             "attention_gates": {
                 name: float(gates[i].item())
@@ -2441,6 +2467,10 @@ class M9Trainer(JEPATrainer):
                 {"m9_rest_choice": self.rest_choice.choice_state()}
                 if self.rest_choice is not None else {}
             ),
+            **(
+                {"m9_recall_choice": self.recall_choice.choice_state()}
+                if self.recall_choice is not None else {}
+            ),
         }
 
     def resume(self, ckpt_path: Path) -> None:
@@ -2511,6 +2541,8 @@ class M9Trainer(JEPATrainer):
             self.retention_rollbacks = int(state["m9_retention_rollbacks"])
         if self.rest_choice is not None and "m9_rest_choice" in state:
             self.rest_choice.load_choice_state(state["m9_rest_choice"])
+        if self.recall_choice is not None and "m9_recall_choice" in state:
+            self.recall_choice.load_choice_state(state["m9_recall_choice"])
         if self.felt_valence is not None and "m9_valence_unfelt_states" in state:
             self._unfelt_states.clear()
             self._unfelt_states.extend(

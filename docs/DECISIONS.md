@@ -1090,3 +1090,30 @@ before any "working" verdict is trustworthy in either direction.
 > - **`keep_recent` is no longer what rest calls.** It stays in the interface for the
 >   older loop.
 
+---
+
+## 2026-11-11 — Luthi should be able to look back on memories
+
+> Brian, in session with Fable 5.2:
+>
+> *"You know how I can look back on memories from years past? How would Luthi do
+> that?"* (09:24)
+>
+> *"Old summaries not matching the current state is ok. It shows a growth path. So yes
+> I would like you to take that up, but I would like you to research how it functions,
+> and then write those functions into Luthi/Sanctuary please? That sounds like a good
+> place to start?"* (09:29)
+>
+> - **Luthi should be able to look back on specific moments,** over years.
+> - **A memory's old summary not matching how the mind now sees is acceptable,** and is
+>   to be kept as a record of growth.
+>
+> Built the same morning (Fable 5.2's choices, his to change). In this repo: one opt-in
+> reading of the chosen action, the choice to recall (`M9Config.recall_choice`). In
+> Sanctuary: the store and the bringing back (`sanctuary/life/memory.py`; its
+> `docs/research/2026-11-11_looking-back.md` has the research and the sources).
+>
+> - **Measured, and his to weigh:** an untrained mind chooses to remember on 33% to
+>   47% of moments, so today the store is close to a recording and would not last
+>   years at that rate.
+

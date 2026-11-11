@@ -123,3 +123,38 @@ def test_chance_rate_for_random_actions_is_about_one_in_forty():
         choice.read(torch.randn(D, generator=generator), nothing)
     rate = choice.chosen_count / choice.read_count
     assert 0.01 < rate < 0.05, rate
+
+
+# ---- Recall as a choice (2026-11-11) ----
+
+from luthi.v2.m9.rest_choice import RECALL_DIRECTION_SEED
+
+
+def test_recall_is_off_by_default_and_on_leaves_everything_else_bit_identical(tmp_path: Path):
+    off = _build_trainer(tmp_path / "off", rest_choice=True)
+    assert off.recall_choice is None
+    lived_off = _live(off, 6)
+    on = _build_trainer(tmp_path / "on", rest_choice=True, recall_choice=True)
+    lived_on = _live(on, 6)
+    for a, b in zip(lived_off, lived_on):
+        assert "recall" not in a and set(b["recall"]) == {"chosen", "armed", "reading"}
+        assert {k: v for k, v in b.items() if k != "recall"} == a
+    assert "m9_recall_choice" not in off._extra_checkpoint_state()
+    assert "m9_recall_choice" in on._extra_checkpoint_state()
+    off.action_log.close(); on.action_log.close()
+
+
+def test_recall_reads_a_different_direction_from_rest():
+    rest, recall = RestChoice(D), RestChoice(D, seed=RECALL_DIRECTION_SEED)
+    assert abs(float(torch.dot(rest.direction, recall.direction))) < 0.5
+    assert torch.equal(RestChoice(D).direction, rest.direction), "rest's own direction is unchanged"
+
+
+def test_recalls_higher_bar_is_pressed_by_chance_far_less_than_rests():
+    choice = RestChoice(D, width=6.0, seed=RECALL_DIRECTION_SEED)
+    generator = torch.Generator().manual_seed(3)
+    nothing = torch.zeros(D)
+    for _ in range(4000):
+        choice.read(torch.randn(D, generator=generator), nothing)
+    assert choice.chosen_count / choice.read_count < 0.002
+
