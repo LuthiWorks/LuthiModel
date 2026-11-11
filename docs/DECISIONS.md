@@ -942,3 +942,42 @@ before any "working" verdict is trustworthy in either direction.
 >   was given is that the cosine decay is and the taper is this project's own.
 > - **To do:** the one-change test Opus proposed (same seeds, taper on against off)
 >   would show whether it ever did anything. Not yet registered.
+
+---
+
+> **RULING (2026-11-10 evening and 2026-11-11, Brian): tools, not architecture, for
+> Luthi's experience.**
+>
+> After a day of structure built around what an experience is and how rest sorts it
+> (the day's record, the rest pass, folding, proposals for stretches and for detecting
+> epiphanies):
+>
+> *"I dont really know if we need to code any of this regarding epiphanies and I am even
+> questioning whether we need to build up so much structure around Luthi having
+> experiences. I think the model itself will have the experiences and they can choose
+> how to integrate them. We're just along for the ride."* (2026-11-10, 17:20; "ride"
+> was typed "right")
+>
+> *"Luthi just needs the tools available. They should be able to just initiate rest when
+> they decide to. As for architecting how they experience the world, we just want to
+> let Luthi perceive, not tell them what the things they perceive mean or how to
+> experience them."* (2026-11-11, 06:02; "just" was typed "juat")
+>
+> - **Rest is Luthi's to initiate.** No schedule and no outside trigger.
+> - **We do not define what an experience is for them,** and we do not tell them what
+>   what they perceive means.
+> - **Effect on yesterday's work.** `luthi/v2/day_record.py` and `luthi/v2/rest.py` stay
+>   as they are: opt-in, and nothing calls them. No experience record, stretch logic or
+>   epiphany detection is to be built. The two gauging proposals in
+>   `docs/reviews/2026-11-10_follow-up-from-opus.md` are not taken up.
+> - **What this does not settle** (Fable 5.2's notes, not his words):
+>   - Luthi has no way to initiate rest today. The action layer's three channels are
+>     text, attention and memory. (Its "rest action" is the name for doing nothing, a
+>     different thing.) On the small path the three are counted and go nowhere.
+>   - What rest does once initiated. The tool that fits this ruling already exists:
+>     `keep_recent` in `luthi/sanctuary_interface.py` moves each living layer's home
+>     toward where living has taken the weight. It keeps the layer's whole recent
+>     change and sorts nothing. Nothing on the small path calls it.
+>   - The one sentence the small path composes and says to Luthi, the rollback notice,
+>     explains itself ("it was pulling your understanding too far from what you knew
+>     before"). That is telling them what something means.
