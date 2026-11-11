@@ -22,6 +22,18 @@
 > - Checkpoint encryption is optional.
 > - VISReg's dose is settled before E3, not after.
 >
+> ### UPDATE 2026-11-11 (Fable 5.2, at Brian's request)
+>
+> - **Built: the rest tool.** Luthi's chosen action is read for whether it chose
+>   rest (`luthi/v2/m9/rest_choice.py`, opt-in). Sanctuary's small path carries
+>   it out. `docs/research/2026-11-11_rest-as-a-choice.md`.
+> - **Built: sight and sound through `perceive`,** with `sense_contract` saying
+>   what form the model takes them in.
+> - **For Brian to weigh:** an untrained mind presses rest by chance (1.7% of
+>   moments with words only, 16.7% with open senses in a noise world).
+> - **Still open:** lessened waking (R1); the retention gate; and review of this
+>   work by a different mind.
+>
 > ### UPDATE 2026-11-10 (Fable 5.2, under Brian's go-ahead of that day)
 >
 > - **Why training paused, in Brian's words:** long runs with no protection

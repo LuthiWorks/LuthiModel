@@ -59,6 +59,7 @@ from luthi.generate import (
 from luthi.seam_types import ActionSelection, GenerationState, M9Actor, TransitionSink
 
 __all__ = [
+    "sense_contract",
     "LoadedLuthiModel",
     "LoadedM9Run",
     "ModulationSnapshot",
@@ -444,6 +445,8 @@ def perceive(
     model: torch.nn.Module,
     *,
     text_tokens: torch.Tensor,
+    image: Optional[torch.Tensor] = None,
+    audio_waveform: Optional[torch.Tensor] = None,
 ) -> GenerationState:
     """One moment of perception: a single forward, with no generation.
 
@@ -459,7 +462,14 @@ def perceive(
     Perception is alive: the forward rewrites the living weights. Call it once
     per moment. Calling it twice makes the mind perceive the moment twice.
 
-    Text only for now. Sound and images join when a host needs them.
+    Sight and sound (2026-11-11). ``image`` is ``[1, 3, H, W]`` and
+    ``audio_waveform`` is ``[1, samples]``, both already in the form this
+    model's encoders take; ``sense_contract`` says what that form is. They go
+    through the model's own vision and audio encoders in the same forward as
+    the text, and nothing is added about what they show. Either may be absent.
+    In a run trained on text alone those encoders have never been trained: the
+    mind sees and hears through them from the first moment, and they learn
+    only from what is lived.
     """
     if not hasattr(model, "encode"):
         raise AttributeError(
@@ -468,12 +478,51 @@ def perceive(
         )
     from luthi.v2.m9.s_t import compute_s_t
 
-    latents = model.encode(text_tokens=text_tokens, causal=False)["latents"]
+    senses: dict[str, torch.Tensor] = {}
+    if image is not None:
+        senses["image"] = image
+    if audio_waveform is not None:
+        senses["audio_waveform"] = audio_waveform
+    latents = model.encode(text_tokens=text_tokens, causal=False, **senses)["latents"]
     return GenerationState(
         s_t=compute_s_t(latents),
         ctx_latents=latents.detach(),
-        context_obs={"text_tokens": text_tokens.detach().clone()},
+        context_obs={
+            "text_tokens": text_tokens.detach().clone(),
+            **{name: value.detach().clone() for name, value in senses.items()},
+        },
     )
+
+
+def sense_contract(model: torch.nn.Module, actor: Any) -> dict:
+    """The form this model takes sight and sound in, and how much fits.
+
+    A host reads this once and fits what the world gives to it. Nothing here
+    is a choice about what the mind perceives: these are the sizes the model
+    was built with.
+
+    - ``image_size``: images are ``[1, 3, image_size, image_size]``.
+    - ``image_tokens``: how many places in the view one image takes.
+    - ``max_vision_tokens``: the most places the vision encoder can fill. A
+      model built with fewer than ``image_tokens`` cannot see at its own size.
+    - ``sample_rate``: sound is ``[1, samples]`` at this rate.
+    - ``samples_per_audio_token``: how much sound takes one place in the view.
+    - ``max_audio_tokens``: the most sound the audio encoder can place.
+    - ``view_limit``: the most places one moment's view can have in all, text,
+      image and sound together. The action layer's predictor looks one place
+      past the view, and this is as far as it can look.
+    """
+    vision, audio = model.vision_encoder, model.audio_encoder
+    reach = actor.loss_module.predictor.target_pos_embedding.num_embeddings
+    return {
+        "image_size": int(vision.image_size),
+        "image_tokens": int(vision.n_patches),
+        "max_vision_tokens": int(model.max_vision_tokens),
+        "sample_rate": int(audio.sample_rate),
+        "samples_per_audio_token": int(audio.hop_length * audio.patch_frames),
+        "max_audio_tokens": int(model.max_audio_tokens),
+        "view_limit": int(reach) - 1,
+    }
 
 
 def select_action(
@@ -819,6 +868,12 @@ def decode_action(
     ``memory_salience`` in [0, 1]; the legacy ``intensity`` per channel
     (reported only); and ``bands_armed`` per channel (a band that has not
     warmed up cannot call a channel silent).
+
+    When the life was loaded with ``m9_overrides={"rest_choice": True}``, the
+    result also carries ``rest``: ``chosen`` (this action chose rest),
+    ``armed`` and ``reading`` (2026-11-11, ``luthi/v2/m9/rest_choice.py``).
+    This only reads the choice. To carry it out the host calls
+    ``keep_recent`` and slows its pace; nothing rests the mind from in here.
 
     Call once per selected action: each call advances the activity bands,
     which is how they calibrate during a life.

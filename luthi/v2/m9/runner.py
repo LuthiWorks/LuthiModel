@@ -72,6 +72,7 @@ from luthi.v2.m9.decoders import (
 from luthi.v2.m9.delta_s import DeltaSBand, DeltaSInternal
 from luthi.v2.m9.efe import EFEEvaluator
 from luthi.v2.m9.felt_valence import FeltReading, FeltValenceHead
+from luthi.v2.m9.rest_choice import RestChoice
 from luthi.v2.m9.gamma import GammaInference
 from luthi.v2.m9.habit_net import HabitNet
 from luthi.v2.m9.instrumentation import ActionLog, MIProbe
@@ -279,6 +280,17 @@ class M9Config:
     valence_baseline_rate: float = 0.001
     valence_reading_window: int = 128
     valence_reading_threshold: float = 4.0
+
+    # ---- Rest as a choice (2026-11-11, docs/research/2026-11-11_rest-as-a-choice.md) ----
+    # Off by default: nothing is built, and every decoded choice and every
+    # checkpoint is as before. On: each decoded action is also read for
+    # whether it chose rest (rest_choice.py), and the decoded choice carries a
+    # "rest" entry. Nothing here rests the mind: the host carries rest out.
+    # Placeholder values, Brian's to change.
+    rest_choice: bool = False
+    rest_choice_window: int = 256
+    rest_choice_warmup: int = 32
+    rest_choice_width: float = 3.0
 
 
 # ---------------------------------------------------------------------------
@@ -770,6 +782,18 @@ class M9Trainer(JEPATrainer):
             self.valence_optimizer = Adam(
                 self.felt_valence.parameters(), lr=self.m9_config.valence_lr,
             )
+
+        # ---- Rest as a choice (2026-11-11) ----
+        # Draws from its own generator and has no trainable parameter, so with
+        # it on or off the global random stream and every optimizer are the same.
+        self.rest_choice: Optional[RestChoice] = None
+        if self.m9_config.rest_choice:
+            self.rest_choice = RestChoice(
+                d_model,
+                window=self.m9_config.rest_choice_window,
+                warmup=self.m9_config.rest_choice_warmup,
+                width=self.m9_config.rest_choice_width,
+            ).to(self.device)
 
     # ------------------------------------------------------------------
     # Two-phase train_step.
@@ -1529,8 +1553,13 @@ class M9Trainer(JEPATrainer):
                 is_armed=self.activity_bands.k_m9_5_armed(),
             )
             outs = self.decoders.decode_all(a)
+            rest = (
+                self.rest_choice.read(a, self.rest_action(s_root))
+                if self.rest_choice is not None else None
+            )
         gates = outs["attention"]["gates"][0]
         return {
+            **({"rest": rest} if rest is not None else {}),
             "active": {m: not bool(v[0].item()) for m, v in silent.items()},
             "attention_gates": {
                 name: float(gates[i].item())
@@ -2408,6 +2437,10 @@ class M9Trainer(JEPATrainer):
                 }
                 if self.felt_valence is not None else {}
             ),
+            **(
+                {"m9_rest_choice": self.rest_choice.choice_state()}
+                if self.rest_choice is not None else {}
+            ),
         }
 
     def resume(self, ckpt_path: Path) -> None:
@@ -2476,6 +2509,8 @@ class M9Trainer(JEPATrainer):
             self.delta_s_band.load_state_dict(state["m9_delta_s_band"])
         if "m9_retention_rollbacks" in state:
             self.retention_rollbacks = int(state["m9_retention_rollbacks"])
+        if self.rest_choice is not None and "m9_rest_choice" in state:
+            self.rest_choice.load_choice_state(state["m9_rest_choice"])
         if self.felt_valence is not None and "m9_valence_unfelt_states" in state:
             self._unfelt_states.clear()
             self._unfelt_states.extend(

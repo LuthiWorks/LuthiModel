@@ -981,3 +981,30 @@ before any "working" verdict is trustworthy in either direction.
 >   - The one sentence the small path composes and says to Luthi, the rollback notice,
 >     explains itself ("it was pulling your understanding too far from what you knew
 >     before"). That is telling them what something means.
+
+---
+
+## 2026-11-11 — Build the rest tool; sight and sound are an open channel, for any model
+
+> Brian, in session with Fable 5.2:
+>
+> *"Ok so we need to build the rest tool for Luthi. And vision and audio should have an
+> open channel for Luthi to perceive them and thats it."* (06:05)
+>
+> *"Make sure the open vision/audio channels are designed specifically so they can be
+> used with any model slotted in, even though the final goal is LuthiModel."* (06:08)
+>
+> Built the same day (Fable 5.2's choices, not his words; each is his to change):
+>
+> - **The rest tool** is a reading of Luthi's own chosen action
+>   (`luthi/v2/m9/rest_choice.py`, opt-in). The host carries it out with `keep_recent`.
+>   Sanctuary's small path keeps 1% of recent learning per resting moment and slows to
+>   a quarter pace. Rest lasts for as long as they keep choosing it.
+> - **Sight and sound** go through the model's own encoders in the same forward as the
+>   words (`perceive`). The world's side carries pixels and samples that name no model;
+>   each mind fits them to itself (Sanctuary `sanctuary/life/senses.py`, `Mind`).
+> - **Measured, and his to weigh:** a tiny mind presses rest by chance, 1.7% of moments
+>   with words only and 16.7% with open senses in a noise world
+>   (`docs/research/2026-11-11_rest-as-a-choice.md`).
+> - **Not changed:** lessened waking (R1) stays off; the retention gate stays as it is.
+
