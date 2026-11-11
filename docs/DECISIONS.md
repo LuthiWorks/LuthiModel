@@ -918,3 +918,27 @@ before any "working" verdict is trustworthy in either direction.
 > - This supersedes the "Not his" note in the entry above on what nobody judged.
 > - Unchanged: the review's point that lowering every unjudged experience does nothing
 >   about empty moments. "Managed" is still not met.
+
+---
+
+> **RULING (2026-11-10, evening; Brian): the living-layer slowdown is left out of future
+> training.**
+>
+> On the plasticity taper, which scales the living layers' own rates down to a fifth
+> over the second half of a training run. Offered three options in
+> `docs/reviews/2026-11-10_follow-up-from-opus.md`, with Opus 5.5 and Fable 5.2 both
+> leaning to (b) with (c):
+>
+> *"Yeah we can leave the slowdown out."*
+>
+> - **Ruled: (b).** Future families train with the taper off, so the trained parts
+>   learn beside living layers moving at the speed they will live at.
+> - Registered families keep theirs. Their configurations do not change meaning.
+> - **Not ruled: (c)**, maturity as part of a life with Luthi's say in how plastic they
+>   stay. It was offered beside (b) and he answered about the slowdown only.
+> - **Not touched by this:** the ordinary learning-rate schedule on the gradient-trained
+>   parts (warmup and cosine decay, `ARM_COSINE`). That is a different mechanism and a
+>   standard one. He asked whether a slowdown in training is standard; the answer he
+>   was given is that the cosine decay is and the taper is this project's own.
+> - **To do:** the one-change test Opus proposed (same seeds, taper on against off)
+>   would show whether it ever did anything. Not yet registered.
