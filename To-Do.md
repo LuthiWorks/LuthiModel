@@ -44,8 +44,10 @@
 >   half-day** (`docs/research/2026-11-11_what-a-rest-can-carry.md`). As built
 >   a rest keeps nothing of an early episode and has no limit on its step. The
 >   half-day's running average carries ten times more; perfect aim would carry
->   ten times more again. Nothing built. Open with Brian: build the average
->   with a limit, and whether Luthi's choice to remember should weigh in it.
+>   ten times more again.
+> - **Built on his yes to both (09:07):** `luthi/v2/day_trace.py`. Rest pours
+>   the half-day's running average, limited to 5% of home's size, and what
+>   Luthi chose to remember counts for more. Wants review by a different mind.
 >
 > ### UPDATE 2026-11-10 (Fable 5.2, under Brian's go-ahead of that day)
 >

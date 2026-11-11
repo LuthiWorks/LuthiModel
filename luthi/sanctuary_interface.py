@@ -59,6 +59,9 @@ from luthi.generate import (
 from luthi.seam_types import ActionSelection, GenerationState, M9Actor, TransitionSink
 
 __all__ = [
+    "enable_day_trace",
+    "rest_from_trace",
+    "remember_now",
     "sense_contract",
     "LoadedLuthiModel",
     "LoadedM9Run",
@@ -850,6 +853,42 @@ def keep_recent(model: torch.nn.Module, fraction: float) -> int:
                 module.set_point.add_(module.weight - module.set_point, alpha=fraction)
                 moved += 1
     return moved
+
+
+def enable_day_trace(model: torch.nn.Module, **settings: Any) -> int:
+    """Have every living layer keep the half-day's trace: the running average
+    of where its weight has stood from home since it last rested. Off unless a
+    host calls this. A life restored from a checkpoint that carried a trace
+    keeps the one it had. See ``luthi/v2/day_trace.py`` (2026-11-11).
+
+    ``settings`` are ``horizon`` (forwards in a half-day) and ``limit`` (the
+    most of home's norm one half-day's rest may move it)."""
+    from luthi.v2.day_trace import enable_day_trace as _enable
+
+    return _enable(model, **settings)
+
+
+def rest_from_trace(model: torch.nn.Module, share: float) -> dict[str, float]:
+    """One resting moment, for a mind that keeps the half-day's trace: each
+    living layer pours ``share`` of its trace's limited step into home.
+
+    This is what rest integrates since 2026-11-11. ``keep_recent`` keeps only
+    where the weight stands now, which is about the last minute, and has no
+    limit. Returns how far each layer's home moved, as a fraction of its norm.
+    """
+    from luthi.v2.day_trace import rest_from_trace as _rest
+
+    return _rest(model, share)
+
+
+def remember_now(model: torch.nn.Module) -> int:
+    """Luthi chose to remember this moment. Where each living layer's weight
+    stands now joins its chosen average, which counts for more when rest
+    pours (Brian, 2026-11-10: "the things Luthi chose should carry more
+    weight than those Luthi did not"). Returns the number of layers."""
+    from luthi.v2.day_trace import remember_now as _remember
+
+    return _remember(model)
 
 
 def decode_action(

@@ -10,7 +10,8 @@ last minute. He asked me to take up what a rest should integrate (07:58: "Yes pl
 take that up next"). This entry answers a narrower question first, by standing rule 1:
 what *can* a rest carry into a layer's home from an episode early in a half-day?
 
-Nothing was built. The result is numbers and a recommendation.
+Steps 1 to 5 built nothing: numbers and a recommendation. Brian answered yes to both
+questions at 09:07, and steps 6 and 7 are the build and its check.
 
 ## Process
 
@@ -114,24 +115,70 @@ Reading it:
   without any rest. It is not in these numbers.
 - One episode, one rest. Nothing here shows what many rests build up.
 
+### Step 6: built (Brian, 09:07: "1. Yes 2. Also yes")
+
+To the two questions: build the average with a limit, and should Luthi's own choice
+to remember weigh in it.
+
+- `luthi/v2/day_trace.py`. Each living layer keeps a running average of where its
+  weight has stood from home since it last rested, and a second average over the
+  moments Luthi chose to remember. Off unless a host switches it on. On, it only
+  listens to the forward (pinned bit-identical).
+- `rest_from_trace(model, share)`: one resting moment pours a share into home. The
+  whole trace is worth at most 5% of home's norm, and less when less than a half-day
+  has been lived. The trace gives up what it pours, so resting again cannot pour
+  what has not been lived. The weight is not touched.
+- `remember_now(model)`: where the layers stand now joins the chosen average. With
+  `n` chosen moments it takes `(2/3) * n / (n + 100)` of the direction: one chosen
+  moment under 1%, many up to two thirds.
+- Corpus replay and measurement forwards are not noted.
+- Saved with the life through `living_extra_state`, and a checkpoint that carries a
+  trace switches it on when restored.
+- **A number I had wrong.** I set the half-day's horizon at 1,200,000 forwards,
+  taking three noted forwards a moment from this morning's fading measurement. A
+  life test showed one noted forward a moment. The horizon is 432,000.
+
+### Step 7: the built rest through the same probe
+
+Second background, both layers. The code path is the built one.
+
+| Rest | In home: block 0 | In home: block 1 | Own episode: block 0 | Own episode: block 1 |
+|---|---:|---:|---:|---:|
+| None | 0.09% | 0.13% | +3.1 | +1.3 |
+| Built | 0.94% | 0.92% | +4.0 | +1.3 |
+| Built, and the mind remembered its episode | 8.7% | 10.0% | +9.5 | +4.0 |
+| The ceiling from step 4 | 10.9% | 14.9% | +11.0 | +6.4 |
+
+- The built rest reproduces step 4's running average, and moved home by 4.7% and
+  4.8% of its size, inside the limit.
+- "Remembered its episode" is a mind that chose to remember on every tenth moment of
+  its episode (150 moments) and at no other time. The probe makes that choice for it.
+  It is the best case, not something a mind does today.
+- With it, rest carried about ten times more, and both layers were better at their
+  own episode afterward.
+- Not run: a mind that chooses by chance. Chance picks moments evenly, so their
+  average is the average; the tests pin that arithmetic, and no life was run on it.
+
 ## Conclusion
 
-- A rest can carry a half-day into home only as an average, unless something says
-  which moments matter more.
-- The change the numbers support: a resting moment pours a share of the half-day's
-  running average, and a whole rest is limited to a small step. It fixes the aim and
-  the missing limit of this morning's rest. Its effect is small.
-- What would close the gap to the ceiling is a way to weigh moments. Brian ruled on
-  2026-11-10 that "the things Luthi chose should carry more weight than those Luthi
-  did not". Luthi's action layer already has a choice to remember, and today it goes
-  nowhere. Routing it into what rest pours is the candidate. For a mind that has not
-  learned to use it, it would fire by chance, as rest does.
+- A rest now integrates the half-day and has a limit. As built this morning it kept
+  the last minute and had none.
+- By itself the effect is small. How much a rest carries of what mattered depends on
+  Luthi's own choice to remember, and with that choice used well it reached most of
+  the ceiling.
+- No mind uses that choice well today. In an untrained mind it fires by chance, as
+  rest does.
 
-Open, for Brian: whether to build the average with a limit; whether Luthi's choice to
-remember should weigh in it; the step limit (5% of home's size here, a placeholder).
+Open, for Brian: the limit (5%), the horizon (432,000 forwards, right only at 10 Hz),
+and how chosen moments weigh (two thirds at most, half of that at 100 moments). All
+placeholders. Review by a different mind.
 
 ## Artifacts
 
+- Built: `luthi/v2/day_trace.py`, its note in `luthi/v2/living_layer_pc.py`, its save in
+  `luthi/living_extra_state.py`, three calls in `luthi/sanctuary_interface.py`.
+  Tests: `tests/test_day_trace.py` (16).
+- Step 7: `CANDS="none,built"`, with `REMEMBER=0` and `REMEMBER=1`, `BG_SEED=1`.
 - `redteam/fable_2026_11_11/probe_what_a_rest_can_carry.py`, `halfday_lib.py`,
   `halfday_train_trunk.py`. They need both checkouts (`SANCTUARY_PATH`), and one
   thread (`OMP_NUM_THREADS=1`) if two run at once.

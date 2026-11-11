@@ -134,6 +134,12 @@ def collect_living_extra_state(model: nn.Module) -> dict[str, dict[str, Any]]:
         if record is not None:
             entry["day_record"] = record.state_dict()
 
+        # The half-day's trace (2026-11-11). Only written when the layer
+        # keeps one.
+        trace = getattr(module, "_day_trace", None)
+        if trace is not None:
+            entry["day_trace"] = trace.state_dict()
+
         if entry:
             out[path] = entry
     return out
@@ -245,6 +251,24 @@ def apply_living_extra_state(
                     "%s %s for %r carries a day's record but the module "
                     "cannot hold one; %d experience(s) not restored.",
                     source, KEY, path, len(entry["day_record"]["moments"]),
+                )
+
+        # A checkpoint that carries a trace came from a layer that kept one.
+        # Restoring it switches the trace on here, as with the day's record.
+        if "day_trace" in entry:
+            if hasattr(module, "_day_trace"):
+                from luthi.v2.day_trace import DayTrace
+                if module._day_trace is None:
+                    module._day_trace = DayTrace(
+                        module.weight,
+                        horizon=entry["day_trace"]["horizon"],
+                        limit=entry["day_trace"]["limit"],
+                    )
+                module._day_trace.load_state_dict(entry["day_trace"])
+            else:
+                logger.warning(
+                    "%s %s for %r carries a half-day's trace but the module "
+                    "cannot hold one; it was not restored.", source, KEY, path,
                 )
 
         # Restore slow traces / accumulators by name onto the same-typed attr.

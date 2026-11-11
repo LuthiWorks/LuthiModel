@@ -12,6 +12,9 @@ marked 'as built'), poured over R resting moments. Then a washout, then:
   own     each life's own layer error on its own episode's view against the
           other's (own W, own P; positive = better on its own)
 
+CANDS picks the candidates; "built" is the rest in luthi/v2/day_trace.py.
+REMEMBER=1 has each life choose to remember every tenth moment of its episode.
+
 Results of 2026-11-11 and how to read them:
 docs/research/2026-11-11_what-a-rest-can-carry.md. Train the trunk first with
 halfday_train_trunk.py <dir>, then pass <dir>/runs/living_32d_seed42 here.
@@ -27,7 +30,7 @@ from luthi.v2.plasticity import freeze_plasticity
 run = sys.argv[1]
 T0 = int(os.environ.get("T0", 6000)); LEN = int(os.environ.get("LEN", 2500)); N = int(os.environ.get("N", 100000))
 R = int(os.environ.get("R", 300)); WASH = int(os.environ.get("WASH", 5000)); BETA = float(os.environ.get("BETA", 0.05))
-BG_SEED = int(os.environ.get("BG_SEED", 0))
+BG_SEED = int(os.environ.get("BG_SEED", 0)); REMEMBER = int(os.environ.get("REMEMBER", 0))
 t_start = time.time()
 
 class Tracked(Life):
@@ -35,6 +38,7 @@ class Tracked(Life):
     def __init__(self, *a, **k):
         super().__init__(*a, **k)
         enable_day_record(self.model)
+        L.enable_day_trace(self.model, horizon=N, limit=BETA)   # the built mechanism; it only listens
         z = lambda: {n: torch.zeros_like(m.weight) for n, m in self.layers.items()}
         self.sum_writes, self.sum_surprise_writes = z(), z()
         self.before = {}
@@ -53,6 +57,11 @@ class Tracked(Life):
                 self.sum_surprise_writes[n] += write.detach()
             self.records[n] = now
         return hook
+    def moment(self):
+        super().moment()
+        # REMEMBER=1: a mind that chose to remember its episode, every tenth moment of it.
+        if REMEMBER and self.t0 <= self.t - 1 < self.t0 + self.length and (self.t - 1) % 10 == 0:
+            L.remember_now(self.model)
     def fork(self):
         other = super().fork()
         other.sum_writes = {n: v.clone() for n, v in self.sum_writes.items()}
@@ -138,7 +147,7 @@ for cand in os.environ.get("CANDS", "none,last as built,last,trace,surprise,pled
             home0 = {n: m.set_point.detach().clone() for n, m in life.layers.items()}
             rest_pass(life.model, keep=[], toss=[], unjudged="keep")
             steps.append({n: life.layers[n].set_point.detach() - home0[n] for n in names})
-        elif cand != "none":
+        elif cand not in ("none", "built"):
             d = direction(life, cand)
             if cand.endswith("as built"):
                 step = {n: d[n].clone() for n in names}
@@ -149,10 +158,15 @@ for cand in os.environ.get("CANDS", "none,last as built,last,trace,surprise,pled
                 print(f"    [{cand}] step is " + ", ".join(f"{float(step[n].norm()/life.layers[n].set_point.norm()):.3f}" for n in names) + " of |home|", flush=True)
         for r in range(R):
             life.moment()
-            if step is not None:
+            if cand == "built":
+                L.rest_from_trace(life.model, 0.01)
+            elif step is not None:
                 with torch.no_grad():
                     for n in names:
                         life.layers[n].set_point.add_(step[n], alpha=0.01); step[n] = step[n] * 0.99
         life.live(WASH)
+    if cand == "built":
+        print("    [built] rest moved home by " + ", ".join(f"{l._day_trace.poured/float(l.set_point.norm()):.3f}" for l in x.layers.values())
+              + f" of |home|; chosen moments in the trace before rest: {next(iter(X.layers.values()))._day_trace.chosen_count:.0f}", flush=True)
     line_for(f"[{cand}]", x, y, D, steps if steps else None)
 print(f"({time.time()-t_start:.0f}s)")

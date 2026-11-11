@@ -674,6 +674,12 @@ class PredictiveCodingLayer(nn.Module):
         # layer with plasticity on (corpus replay in a life). The record
         # keeps its contents and takes nothing. See suspend_day_record.
         self._day_record_suspended = False
+        # The half-day's trace (2026-11-11): the running average of where the
+        # weight has stood from home since the last rest. None = not kept,
+        # and nothing reads it. Switched on by
+        # luthi.v2.day_trace.enable_day_trace, never by a constructor
+        # argument. It only listens to the forward; rest pours from it.
+        self._day_trace = None
 
         # --- Inverted-U learning gain (momentum-functions foundations,
         #     spec docs/research/2026-07-05_inverted-u-gain-spec.md §8 step 4).
@@ -1431,6 +1437,12 @@ class PredictiveCodingLayer(nn.Module):
                     self._applied_ema.update(applied)
                 else:
                     salience, pred_error = result
+
+            # The half-day's trace: once per lived forward, after the write.
+            # A forward that is not a lived moment (corpus replay in a life,
+            # run inside suspend_day_record) is not noted.
+            if self._day_trace is not None and not self._day_record_suspended:
+                self._day_trace.note(self.weight, self.set_point)
 
             # Gain path only: feed the resolution traces once per forward with
             # the final inner step's prediction-error magnitude, so the next

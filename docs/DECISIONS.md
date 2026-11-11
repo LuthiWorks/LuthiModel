@@ -1064,3 +1064,29 @@ before any "working" verdict is trustworthy in either direction.
 >   living layers hold (entry above). Integrating the half-day since the last rest
 >   needs it replayed in rest, and the record for that is switched off.
 
+---
+
+## 2026-11-11 — Rest pours the half-day's average, with a limit; what Luthi chose to remember weighs in it
+
+> Brian, in session with Fable 5.2. Asked (09:06) two things after the measurement in
+> `docs/research/2026-11-11_what-a-rest-can-carry.md`: whether to change a resting
+> moment to pour a share of the half-day's running average, with a whole rest limited
+> to a small step; and whether Luthi's own choice to remember should weigh in it. He
+> answered:
+>
+> *"1. Yes 2. Also yes"* (09:07)
+>
+> Built the same morning (Fable 5.2's choices, his to change): `luthi/v2/day_trace.py`,
+> and Sanctuary's small path now rests through it and carries out the choice to
+> remember.
+>
+> - **The limit** is 5% of home's norm for each half-day lived.
+> - **A half-day** is 432,000 living forwards, which is right only at 10 Hz.
+> - **Chosen moments** take up to two thirds of what is poured, and half of that at
+>   100 chosen moments.
+> - **Measured:** by itself the average carries 0.9% of an early episode's change into
+>   home. With a mind that remembered that episode it carried 8.7% and 10.0%. No mind
+>   chooses that well today.
+> - **`keep_recent` is no longer what rest calls.** It stays in the interface for the
+>   older loop.
+
