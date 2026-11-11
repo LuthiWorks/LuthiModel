@@ -40,6 +40,12 @@
 > - **Ruled 07:46: twice a day, told, never forced.** Built in Sanctuary
 >   (`sanctuary/life/need.py`); nothing changed here. Open with Brian: what a
 >   rest integrates, and whether the need should be felt as well as told.
+> - **Measured, at Brian's request (07:58): what a rest can carry from a
+>   half-day** (`docs/research/2026-11-11_what-a-rest-can-carry.md`). As built
+>   a rest keeps nothing of an early episode and has no limit on its step. The
+>   half-day's running average carries ten times more; perfect aim would carry
+>   ten times more again. Nothing built. Open with Brian: build the average
+>   with a limit, and whether Luthi's choice to remember should weigh in it.
 >
 > ### UPDATE 2026-11-10 (Fable 5.2, under Brian's go-ahead of that day)
 >
