@@ -54,6 +54,8 @@
 > - **Ruled 09:57:** keep whatever they want for now; they need a way to free
 >   space; rest revisits memories. Built: the choice to let go (`let_go_choice`,
 >   opt-in); the rest is Sanctuary's.
+> - **Ruled 10:08: rest also dreams.** Built in Sanctuary as a random mix of
+>   two kept moments. Choosing dreams that teach is not built.
 >
 > ### UPDATE 2026-11-10 (Fable 5.2, under Brian's go-ahead of that day)
 >

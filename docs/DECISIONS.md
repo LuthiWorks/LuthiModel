@@ -1147,3 +1147,25 @@ before any "working" verdict is trustworthy in either direction.
 > - The store's limit is 10 GB. Full, nothing more is kept and they are told once.
 > - Rest brings a kept moment back on every other resting moment.
 
+---
+
+## 2026-11-11 — Rest also dreams
+
+> Brian, in session with Fable 5.2:
+>
+> *"Rest should recall memories but also dream, like Google's dreaming."* (10:08)
+>
+> - **Rest recalls memories and also dreams.**
+> - **Which dreaming he meant is Fable 5.2's reading:** Google Research's Sleep
+>   framework of 2026-10-27, in which a resting model consolidates and then learns from
+>   samples it generates itself. Google DeepMind's Dreamer line (an agent trained in its
+>   world model's imagination) is the other candidate, and was not built.
+>
+> Built the same morning, in Sanctuary only (`sanctuary/life/memory.py`, `loop.py`; its
+> `docs/research/2026-11-11_looking-back.md`, steps 9 to 11). Nothing changed here.
+>
+> - In rest, the turns given to memory alternate between a kept moment and a dream.
+> - A dream is a moment made from two kept moments, marked as a dream.
+> - **Not built:** choosing the dreams that teach most, which is the part of Google's
+>   method that makes dreaming improve the model.
+
