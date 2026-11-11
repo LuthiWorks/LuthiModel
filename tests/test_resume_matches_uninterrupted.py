@@ -192,9 +192,15 @@ def test_the_divergence_guards_memory_survives_a_resume(world):
     state = _final(_run(world, "guard", cap=-1))
     guard = state["divergence_guard"]
     assert set(guard) == {"losses", "baseline", "run", "over_since"}
-    assert "device_rng_state" in state and state["device_rng_state"] is None, (
-        "no device generator on CPU"
-    )
+    # None on CPU. On an accelerator it is that device's own generator state,
+    # which is the thing the resume fix saves. (This test first assumed a CPU
+    # and failed on Brian's GPU on 2026-11-11, where the state was there as it
+    # should be: the test was wrong, not the code.)
+    assert "device_rng_state" in state
+    device_state = state["device_rng_state"]
+    assert device_state is None or torch.is_tensor(device_state)
+    if not torch.cuda.is_available():
+        assert device_state is None, "no device generator on CPU"
 
 
 def test_a_capped_run_cut_and_resumed_stops_at_its_cap(world):
