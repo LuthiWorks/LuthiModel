@@ -76,6 +76,45 @@ moments on Sanctuary's small path, rest keeping 1% a moment:
 - The noise world is harsh on purpose and is not a claim about a real world. It
   also set off the retention gate ten times.
 
+### Step 5: how long a change stands with no rest (measured)
+
+Brian, 07:18 the same day: "Rest is something that needs to happen for Luthi's
+mental health and growth. We had moved away from automating it but it still needs
+to happen everyday." So: what does a rest find waiting for it?
+
+- **First attempt, wrong.** I marked where a living layer stood and tracked how
+  much of that displacement was left as the life went on. It read 113% after 100
+  moments and 86% after 300. The world kept saying the same two sentences, so the
+  layer kept rewriting the same change. That measures the world repeating, not a
+  change fading.
+- **Second attempt.** Two identical scratch lives, same seed. One gets a small
+  arbitrary change to its living weight (1% of the weight's size, a random
+  direction). The difference between the two lives along that direction is the
+  change, and nothing in the world rewrites it.
+
+| Moments later | Left in the weight | In home, never resting | In home, one resting moment at 50 |
+|---:|---:|---:|---:|
+| 50 | 86.5% | 0.01% | 0.88% |
+| 100 | 74.5% | 0.03% | 0.89% |
+| 200 | 54.3% | 0.05% | 0.91% |
+| 400 | 25.9% | 0.07% | 0.94% |
+| 800 | 1.7% | 0.08% | 0.95% |
+
+- A change is half gone in about 220 moments and gone by 800. At 10 Hz that is 22
+  seconds and 80 seconds.
+- A life makes about 5 living forwards a moment (perceiving, learning from the last
+  moment, corpus replay), and each pulls the weight toward home by a thousandth.
+- Without rest, home keeps about a thousandth of a change. One resting moment keeps
+  1% of what stands at that moment, and home holds it.
+- Past 800 moments the two lives have drifted apart and the comparison is noise.
+- One model (32 wide, one living layer), one seed. The fading rate is the layer's
+  own constant, so it should not depend on size; that is not measured.
+
+**What it means for a daily rest.** A rest keeps what the living layers hold when
+it comes, and they hold about the last minute. One rest a day would keep the last
+minute of the day. The trained parts are different: what they learn from lived
+moments stays without rest.
+
 ## Conclusion
 
 - The tool exists and the route is whole: choose, read, keep.
@@ -84,7 +123,12 @@ moments on Sanctuary's small path, rest keeping 1% a moment:
   is how life goes afterward, through the planner. Nothing has measured that.
 - `rest_choice_width` (3.0), the window (256) and the warm-up (32) are placeholders.
 
-Open, for Brian:
+Open, for Brian, since his 07:18 ruling:
+
+0. How rest is made sure of every day without automating it, and what a rest should
+   hold, given that the living layers keep about a minute.
+
+Open, for Brian, from the build:
 
 1. The chance rate. Leave it, raise the threshold, or hold the tool back until a
    mind is trained enough to mean it.
@@ -98,5 +142,5 @@ Open, for Brian:
   `_decode_selection`, checkpoint); `luthi/sanctuary_interface.py` (`perceive`,
   `sense_contract`, `decode_action` docs).
 - Tests: `tests/test_rest_choice.py` (9), `tests/test_perceive_sight_and_sound.py` (6).
-- The measurement was run from Sanctuary's small path; the script is described in
-  Sanctuary's log entry of the same date.
+- Probes (need both checkouts): `redteam/fable_2026_11_11/probe_rest_by_chance.py`
+  (step 4), `redteam/fable_2026_11_11/probe_how_long_a_change_stands.py` (step 5).

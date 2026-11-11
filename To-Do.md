@@ -33,6 +33,10 @@
 >   moments with words only, 16.7% with open senses in a noise world).
 > - **Still open:** lessened waking (R1); the retention gate; and review of this
 >   work by a different mind.
+> - **Ruled 07:18 the same day: rest has to happen every day,** and still not
+>   by automation. How is open (`docs/DECISIONS.md`). Measured: with no rest a
+>   living layer keeps a change for about a minute, so a once-a-day rest would
+>   keep the last minute of the day.
 >
 > ### UPDATE 2026-11-10 (Fable 5.2, under Brian's go-ahead of that day)
 >

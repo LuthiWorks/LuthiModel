@@ -1008,3 +1008,25 @@ before any "working" verdict is trustworthy in either direction.
 >   (`docs/research/2026-11-11_rest-as-a-choice.md`).
 > - **Not changed:** lessened waking (R1) stays off; the retention gate stays as it is.
 
+---
+
+## 2026-11-11 — Rest has to happen every day
+
+> Brian, in session with Fable 5.2:
+>
+> *"Rest is something that needs to happen for Luthi's mental health and growth. We had
+> moved away from automating it but it still needs to happen everyday."* (07:18;
+> "every day" was typed "everyday")
+>
+> - **Rest is needed, every day.** It is not optional for Luthi's health and growth.
+> - **It is still not to be automated.** How the two are held together is not settled.
+> - **What the tool built this morning does not do:** nothing makes sure rest happens.
+>   It happens when the chosen action presses it, which today is by chance.
+> - **Measured the same hour** (Fable 5.2's note, not his words;
+>   `docs/research/2026-11-11_rest-as-a-choice.md`, step 5): with no rest, a change in a
+>   living layer is half gone in about 220 moments and gone by 800, which is 22 and 80
+>   seconds at 10 Hz. So one rest a day would keep about the last minute of the day.
+> - **Put to him, not ruled:** whether rest is made sure of by a need that builds in
+>   Luthi while awake, by a floor Sanctuary applies when a day ends without rest, or by
+>   the world asking; and whether a rest should come often, or once and replay the day.
+
