@@ -16,7 +16,7 @@ words = ("river stone light memory window garden quiet music signal field mornin
 driver.OUTPUT_ROOT = ROOT / "runs"
 driver._run_one("living", D, SEED, Namespace(
     data_dir=str(corpus), tokenizer=str(LUTHI / "corpus_build" / "tokenizer_32k.json"),
-    n_blocks=2, epochs=1, batch_size=4, seq_len=32, stride=32, lr=3e-4,
+    n_blocks=2, epochs=int(os.environ.get("EPOCHS", "1")), batch_size=4, seq_len=32, stride=32, lr=3e-4,
     holdout_fraction=0.2, heldout_batches=2, probe_batches=2, kill_warmup=10**9,
     checkpoint_interval=900, checkpoint_slots=3, max_batches_per_epoch=BATCHES))
 print("RUN", ROOT / "runs" / f"living_{D}d_seed{SEED}")

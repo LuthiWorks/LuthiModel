@@ -59,6 +59,7 @@ from luthi.generate import (
 from luthi.seam_types import ActionSelection, GenerationState, M9Actor, TransitionSink
 
 __all__ = [
+    "learn_from_dream",
     "enable_day_trace",
     "rest_from_trace",
     "remember_now",
@@ -889,6 +890,16 @@ def remember_now(model: torch.nn.Module) -> int:
     from luthi.v2.day_trace import remember_now as _remember
 
     return _remember(model)
+
+
+def learn_from_dream(actor: Any, dream: torch.Tensor, real: list, **settings: Any) -> dict:
+    """One checked learning step on a dream's words: learn from it, read the
+    prediction loss on real kept moments before and after, and undo the step
+    if it is worse. See ``luthi/v2/dreaming.py`` (2026-11-11). Nothing calls
+    this unless a host does."""
+    from luthi.v2.dreaming import learn_from_dream as _learn
+
+    return _learn(actor, dream, real, **settings)
 
 
 def decode_action(

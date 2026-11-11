@@ -56,6 +56,9 @@
 >   opt-in); the rest is Sanctuary's.
 > - **Ruled 10:08: rest also dreams.** Built in Sanctuary as a random mix of
 >   two kept moments. Choosing dreams that teach is not built.
+> - **Built at his request (10:15): learning from a dream, with a check**
+>   (`luthi/v2/dreaming.py`; `docs/research/2026-11-11_can-dreaming-improve.md`).
+>   Wants review by a different mind: it reaches into learning by gradient.
 >
 > ### UPDATE 2026-11-10 (Fable 5.2, under Brian's go-ahead of that day)
 >

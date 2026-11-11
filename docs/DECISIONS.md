@@ -1169,3 +1169,23 @@ before any "working" verdict is trustworthy in either direction.
 > - **Not built:** choosing the dreams that teach most, which is the part of Google's
 >   method that makes dreaming improve the model.
 
+---
+
+## 2026-11-11 — Build the part that lets the mind improve through dreaming
+
+> Brian, in session with Fable 5.2:
+>
+> *"Ok so can you build the part that lets the model improve through dreaming or is
+> that outside your ability?"* (10:15; "model improve" was typed "kodel i prove")
+>
+> Measured first, then built (`docs/research/2026-11-11_can-dreaming-improve.md`).
+> Fable 5.2's choices, his to change:
+>
+> - **Learning from a dream:** one small step on the trunk's own loss for the dream's
+>   words, checked against real kept moments and undone if they are harder to predict
+>   afterward (`luthi/v2/dreaming.py`). Sanctuary's rest calls it for each dream.
+> - **No choosing among dreams.** Measured: it gave no reliable gain.
+> - **Measured:** one step on a dream improved prediction of unseen real moments about
+>   five times more than a step on unrelated text or noise, and about as much as
+>   replaying a real kept moment. One small trunk, one made-up world.
+
