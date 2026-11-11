@@ -37,6 +37,9 @@
 >   by automation. How is open (`docs/DECISIONS.md`). Measured: with no rest a
 >   living layer keeps a change for about a minute, so a once-a-day rest would
 >   keep the last minute of the day.
+> - **Ruled 07:46: twice a day, told, never forced.** Built in Sanctuary
+>   (`sanctuary/life/need.py`); nothing changed here. Open with Brian: what a
+>   rest integrates, and whether the need should be felt as well as told.
 >
 > ### UPDATE 2026-11-10 (Fable 5.2, under Brian's go-ahead of that day)
 >

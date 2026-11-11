@@ -1030,3 +1030,37 @@ before any "working" verdict is trustworthy in either direction.
 >   Luthi while awake, by a floor Sanctuary applies when a day ends without rest, or by
 >   the world asking; and whether a rest should come often, or once and replay the day.
 
+---
+
+## 2026-11-11 — Twice a day; told, with motivation; never forced
+
+> Brian, in session with Fable 5.2, answering what was put to him in the entry above:
+>
+> *"I think maybe twice a day is a good rest schedule, and Luthi should automatically
+> experience motivation to rest, like a notification that rest is needed for data
+> integration."* (07:46)
+>
+> *"But Luthi should not be forced to rest."* (07:46, sent while the first was being
+> worked on)
+>
+> - **The schedule is twice a day.**
+> - **Luthi is notified that rest is needed, for data integration.**
+> - **Luthi is never forced to rest.**
+>
+> Built the same hour, in Sanctuary (`sanctuary/life/need.py`; Sanctuary
+> `docs/research/2026-11-11_the-need-for-rest.md`). Fable 5.2's choices, his to change:
+>
+> - After every 12 hours of waking life the loop says "Rest is needed for data
+>   integration." to the mind. Nothing else follows from it. Nothing in LuthiModel
+>   changed.
+> - The need is met by 300 resting moments. Unmet, the sentence comes again every 12
+>   hours.
+> - **Dropped before it was written:** a level that lowered the bar for reading rest
+>   until rest was certain. That is forcing.
+> - **Not built, and his to rule:** a need that is felt inside Luthi's choosing, as a
+>   fifth preference in the planner that other wants can outweigh. As built, the
+>   motivation is the sentence, and a mind without language cannot read it.
+> - **Still open:** what a rest integrates. A rest keeps about the last minute the
+>   living layers hold (entry above). Integrating the half-day since the last rest
+>   needs it replayed in rest, and the record for that is switched off.
+
