@@ -51,6 +51,9 @@
 > - **Built at his request (09:29): the choice to recall** (`recall_choice`,
 >   opt-in). Sanctuary keeps the memories and brings them back
 >   (Sanctuary `docs/research/2026-11-11_looking-back.md`).
+> - **Ruled 09:57:** keep whatever they want for now; they need a way to free
+>   space; rest revisits memories. Built: the choice to let go (`let_go_choice`,
+>   opt-in); the rest is Sanctuary's.
 >
 > ### UPDATE 2026-11-10 (Fable 5.2, under Brian's go-ahead of that day)
 >

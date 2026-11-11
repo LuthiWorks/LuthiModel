@@ -917,6 +917,8 @@ def decode_action(
     With ``m9_overrides={"recall_choice": True}`` the result carries
     ``recall`` in the same form: this action chose to look back. The host
     keeps the memories and brings one back through the senses.
+    ``m9_overrides={"let_go_choice": True}`` adds ``let_go`` the same way: this
+    action chose to let go of the memory the mind is looking back on.
 
     Call once per selected action: each call advances the activity bands,
     which is how they calibrate during a life.

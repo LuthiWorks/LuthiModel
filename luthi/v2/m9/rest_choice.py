@@ -46,6 +46,7 @@ import torch
 import torch.nn as nn
 
 RECALL_DIRECTION_SEED = 20261112
+LET_GO_DIRECTION_SEED = 20261113
 
 # The direction is drawn from its own generator, so building it never moves the
 # global random stream, and the same life gets the same direction on every

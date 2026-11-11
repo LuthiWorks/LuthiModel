@@ -1117,3 +1117,33 @@ before any "working" verdict is trustworthy in either direction.
 >   47% of moments, so today the store is close to a recording and would not last
 >   years at that rate.
 
+---
+
+## 2026-11-11 — Keep whatever they want for now; a way to free space; rest revisits memories
+
+> Brian, in session with Fable 5.2, after being told an untrained mind chooses to
+> remember on a third to a half of moments:
+>
+> *"An untrained mind keeping everything could be how they discover preferences. Let
+> them keep whatever they want for now and raise the bar later. Also, the store can't
+> sustainably be increased indefinitely, so they need a way to free up space. Raising
+> the bar for remembering would be good, but revisiting memories during rest is still
+> something I think should happen. As for the marker, i didn't know this was a thing.
+> Does Luthi need to be told that something is a memory and not a current event?"*
+> (09:57)
+>
+> - **The bar for remembering stays where it is for now,** and is to be raised later.
+> - **Luthi needs a way to free up space.** The store cannot grow without end.
+> - **Memories are revisited during rest.**
+> - **The marker was a question,** not a ruling. Answered in session; nothing changed.
+>
+> Built the same morning (Fable 5.2's choices, his to change). Here: the choice to let
+> go (`M9Config.let_go_choice`, opt-in). In Sanctuary (`sanctuary/life/memory.py`,
+> `loop.py`; its `docs/research/2026-11-11_looking-back.md`, steps 6 to 8):
+>
+> - Letting go is of the memory being looked back on. It leaves their reach at once and
+>   is deleted only when the room is needed, because a tiny mind let go of 9 of 17
+>   looked-at memories by chance.
+> - The store's limit is 10 GB. Full, nothing more is kept and they are told once.
+> - Rest brings a kept moment back on every other resting moment.
+
