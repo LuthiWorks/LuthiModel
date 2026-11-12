@@ -59,6 +59,9 @@
 > - **Built at his request (10:15): learning from a dream, with a check**
 >   (`luthi/v2/dreaming.py`; `docs/research/2026-11-11_can-dreaming-improve.md`).
 >   Wants review by a different mind: it reaches into learning by gradient.
+> - **What fits on the card** (`docs/research/2026-11-11_what-fits-on-the-card.md`):
+>   about 1024x12 as built. Two opt-in driver flags shrink the episode store.
+>   Suggested, not done: a timed 200-step run at 1024x12 on the card.
 >
 > ### UPDATE 2026-11-10 (Fable 5.2, under Brian's go-ahead of that day)
 >

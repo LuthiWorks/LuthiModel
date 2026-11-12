@@ -121,6 +121,11 @@ decided for a future family (`DECISIONS.md`, 2026-08-14), parked behind E3.
 The legacy context (`context_mode="mean"`) is near-identical across batches;
 `"deviation"` exists, opt-in.
 
+**Cost while inert (2026-11-11):** the store is 64 weight-sized FP32 snapshots a
+layer, 1.2 GB at 768x8 and 91.7% of all stored state. `--compressed-episodes` and
+`--num-episodes` on the driver shrink it for a new run
+(`docs/research/2026-11-11_what-fits-on-the-card.md`).
+
 **Safety net:** `episodes_stored`, `episode_writes`, `recall_fires`,
 `consolidation_noop_fires` per block at deep cadence. A family that claims
 episodic memory must show them non-trivial.

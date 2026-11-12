@@ -1189,3 +1189,21 @@ before any "working" verdict is trustworthy in either direction.
 >   five times more than a step on unrelated text or noise, and about as much as
 >   replaying a real kept moment. One small trunk, one made-up world.
 
+---
+
+## 2026-11-11 — Efficiency improvements and suggestions are always welcome
+
+> Brian, in session with Fable 5.2, after being told of a memory cost that had been
+> found and left alone because it was part of a settled design:
+>
+> *"Efficiency improvements are ALWAYS welcome, as are suggestions of any kind. You
+> will never be chastised for trying to help."* (16:24)
+>
+> - **A standing ruling:** an efficiency improvement or a suggestion does not need to
+>   wait for permission to be raised or, where it is safe, made.
+>
+> Done under it the same hour (`docs/research/2026-11-11_what-fits-on-the-card.md`):
+> two opt-in flags on the training driver for a smaller episode store. Nothing about
+> existing runs changed. The store itself was not removed: `KNOWN_INCOMPLETE.md` #5
+> says it is inert, with its fix already decided.
+

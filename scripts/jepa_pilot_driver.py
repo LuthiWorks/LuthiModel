@@ -1189,6 +1189,20 @@ def _run_one(arm: str, d_model: int, seed: int, args) -> dict:
         backward_pass_enabled=False,
     )
     model_kwargs.update(ARM_CONFIGS[arm])
+    # A smaller episode store, opt-in (2026-11-11). Each living layer reserves
+    # 64 weight-sized snapshots in FP32: 1.2 GB at 768x8, 91% of all stored
+    # state, for a store most blocks never write to in this lineage
+    # (KNOWN_INCOMPLETE #5). The model already takes both settings; these
+    # flags only pass them through. Absent, model_kwargs is as it was, so
+    # every existing run and checkpoint is untouched. Set, they are recorded
+    # in the run's config with the rest of model_kwargs, which is what a
+    # loader rebuilds the model from.
+    if getattr(args, "compressed_episodes", False):
+        model_kwargs["compressed_episodes"] = True
+    if getattr(args, "num_episodes", None) is not None:
+        if args.num_episodes < 1:
+            raise ValueError(f"--num-episodes must be at least 1; got {args.num_episodes}")
+        model_kwargs["num_episodes"] = args.num_episodes
     # C++ fallback: LOUD, RECORDED, NOT FATAL (rewritten 2026-10-19).
     #
     # The 2026-07-21 guard refused any relative_trust arm without the C++
@@ -1653,6 +1667,14 @@ def main() -> int:
     p.add_argument("--seeds", type=str, default=None,
                    help="Explicit comma-separated seed list (overrides "
                         "--n-seeds), e.g. '44'.")
+    p.add_argument("--compressed-episodes", dest="compressed_episodes",
+                   action="store_true",
+                   help="Store each living layer's episode snapshots as INT8 "
+                        "(a quarter of the memory). Off by default; a run "
+                        "with it is its own configuration.")
+    p.add_argument("--num-episodes", dest="num_episodes", type=int, default=None,
+                   help="Episode snapshots kept per living layer (default: "
+                        "the model's 64).")
     p.add_argument("--no-m9", dest="no_m9", action="store_true",
                    help="Do not train the M9 action layer (on by default "
                         "since 2026-11-02; it leaves the trunk unchanged).")
