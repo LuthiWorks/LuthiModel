@@ -106,8 +106,11 @@ Not tested on the card: the new kill-from-outside path. The cut run that was res
 had been made by the old script and killed by hand. A full run into an empty `--out`
 would exercise it (about 25 minutes).
 
-Not explained: the resumed run's final checkpoint is 192 bytes larger than the
-uninterrupted ones' (2,739,887,033 against 2,739,886,841). The comparison found no
-differing state, so it is outside what is compared. The terminal instance's guess is
-the two fields the check leaves out by design (`wall_clock_seconds`, `reason`).
-
+The 192 bytes, explained by the terminal instance (2026-11-13): the resumed run's
+final checkpoint was 192 bytes larger than the uninterrupted ones'. A full compare with
+nothing skipped found 2,638 entries and only `wall_clock_seconds` differing. All 969
+records in the checkpoint file are the same size except the pickle index, which is 201
+bytes longer: 15 strings (the 14 optimizer state keys and `'text'`) are written out a
+second time where an uninterrupted run writes a back-reference. It is encoding, not
+state. Their reading of why, untested: after a resume the loaded key strings are
+separate objects, so the pickler does not share them.

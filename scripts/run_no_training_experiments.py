@@ -73,6 +73,11 @@ def find_runs(roots: list[Path]) -> list[dict]:
                 "seed": result.get("seed"),
                 "outcome": str(result.get("outcome", "")),
                 "has_checkpoint": any((run_dir / "checkpoints").glob("ckpt_*.pt")),
+                # A smoke run records the arm it smoked, so it looks like a
+                # run of that arm. It is known only by the folder it sits in.
+                "smoke": any(
+                    "smoke" in part.lower() for part in run_dir.relative_to(root).parts
+                ),
             })
     return runs
 
@@ -87,6 +92,10 @@ def select(runs: list[dict], everything: bool, match: str) -> list[dict]:
         if not run["has_checkpoint"]:
             continue
         if match and match not in run["name"]:
+            continue
+        if run.get("smoke") and not everything:
+            # Found on Brian's archive, 2026-11-13: smoke_768_b16 had recorded
+            # arm probe_768_visreg and was selected beside the real family.
             continue
         arm, d = run["arm"], run["d_model"]
         registered = (

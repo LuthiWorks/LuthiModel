@@ -63,6 +63,10 @@
 >   entries differ). Record: `docs/research/2026-11-10_resume-exactness.md`, last
 >   section. Left: one full run of the check into an empty folder, to exercise
 >   its new way of cutting; then the no-training experiments.
+> - **Where the runs are** (terminal Fable, 2026-11-13): `E:\runs` holds no
+>   pilot runs. The living 512 family is in the repo's `runs\`, the dead
+>   controls are in `E:\luthi_experiment_archive`, and the 768 family is in
+>   both. Give the runner both roots. Smoke runs are now left out.
 > - **What fits on the card** (`docs/research/2026-11-11_what-fits-on-the-card.md`):
 >   about 1024x12 as built. Two opt-in driver flags shrink the episode store.
 >   Suggested, not done: a timed 200-step run at 1024x12 on the card.

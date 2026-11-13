@@ -126,3 +126,32 @@ def test_a_rerun_beside_its_original_is_named(tmp_path):
     assert reruns_beside_originals(chosen) == [
         ("living_v5_4x_d4_512d_seed44", "living_v5_4x_d4_rerun_512d_seed44")
     ]
+
+
+def test_a_smoke_run_is_not_taken_for_a_run_of_the_arm_it_smoked(tmp_path):
+    """Found on Brian's archive, 2026-11-13: a smoke run records the arm it
+    smoked, and was selected beside the registered family."""
+    _run(tmp_path / "real", "probe_768_visreg", 768, 46)
+    _run(tmp_path / "2026-08-11_smoke_768_b16", "probe_768_visreg", 768, 7)
+    runs = find_runs([tmp_path])
+    assert sorted(r["smoke"] for r in runs) == [False, True]
+    assert [r["seed"] for r in select(runs, everything=False, match="")] == [46]
+    assert len(select(runs, everything=True, match="")) == 2, "--all still takes it"
+
+
+def test_two_roots_give_the_living_runs_and_their_controls_together(tmp_path):
+    """Brian's runs sit in two places: the living family in one, the dead
+    controls in the other, and the 768 family in both."""
+    here, archive = tmp_path / "repo_runs", tmp_path / "archive"
+    for seed in (46, 95, 97):
+        _run(here, "probe_768_visreg", 768, seed)
+        _run(archive, "probe_768_visreg", 768, seed)
+    for seed in (42, 43, 44):
+        _run(here, "living_v5_4x_d4", 512, seed)
+        _run(archive, "dead_4x", 512, seed)
+    kept, dropped = drop_copies(select(find_runs([here, archive]), everything=False, match=""))
+    assert len(dropped) == 3 and all(r["arm"] == "probe_768_visreg" for r in dropped)
+    arms = sorted({r["arm"] for r in kept})
+    assert arms == ["dead_4x", "living_v5_4x_d4", "probe_768_visreg"]
+    assert all(here in r["dir"].parents for r in kept if r["arm"] == "probe_768_visreg"), "the first root's copy is kept"
+
