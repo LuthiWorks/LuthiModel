@@ -88,7 +88,7 @@ def main() -> int:
         write_diversity,
     )
     from luthi.v2.plasticity import freeze_plasticity
-    from luthi.v2.run_rebuild import rebuild_run
+    from luthi.v2.run_rebuild import rebuild_run, reconstruction
     from scripts.jepa_pilot_driver import _device
 
     device = _device()
@@ -172,6 +172,7 @@ def main() -> int:
               f"sim={s['last_recall_sim']:.4f} blend_share={s['last_blend_share']:.4f}",
               flush=True)
     out = Path(args.out) if args.out else Path(args.run_dir) / "living_write_probe.json"
+    report["reconstruction"] = reconstruction(run.result["config"])
     out.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(f"wrote {out}")
     return 0

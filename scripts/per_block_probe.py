@@ -363,6 +363,8 @@ def main() -> int:
               f"{r['chorus_eff_rank']:>9.1f} {r['chorus2_eff_rank']:>9.1f} "
               f"{r['offset_dominance']:>8.4f} {r['latent_rms']:>10.3g}")
 
+    from luthi.v2.run_rebuild import reconstruction
+
     out_path = Path(args.out) if args.out else run_dir / "per_block_probe.json"
     out_path.write_text(json.dumps({
         "run_dir": str(run_dir),
@@ -370,6 +372,7 @@ def main() -> int:
         "ckpt_step": step if isinstance(step, int) else str(step),
         "arm": result["arm"],
         "seed": result["seed"],
+        "reconstruction": reconstruction(cfg),
         "settings": {
             "train_batches": args.train_batches,
             "heldout_batches": args.heldout_batches,

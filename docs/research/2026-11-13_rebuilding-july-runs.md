@@ -168,6 +168,43 @@ failed (`KeyError: 'model_kwargs'`). `scripts/per_block_probe.py` rebuilt the mo
 itself. It now goes through `rebuild_run`. The plan runs E4 only on the 768 runs, so
 this had not been met on Brian's card.
 
+### Step 11: the third attempt on Brian's card, and a job that did not exit
+
+Main at f6c4df1. E2 ran on all nine (six new, three already there), no failures. E1
+stopped at its first job. From the terminal instance's report:
+
+- `adaptation_eval.py` on `probe_768_visreg_768d_seed46` wrote a whole result 54
+  seconds after it started and logged that it had.
+- The process then stayed alive for 64 minutes: one thread, a full core, no output.
+  The runner waited on it with no limit and printed nothing, so 32 jobs never started.
+- The nine E2 jobs had exited cleanly on the same card. No stack was captured.
+
+This is the shape of 2026-11-12's hang in the resume check (work done, process
+spins). There the fix was to kill from outside, and the same is done here. Why the
+process spins is not known. It is after the script's last line, so it is in the
+interpreter's or the GPU runtime's shutdown, and I cannot reproduce it without the
+card.
+
+What was built, in `scripts/run_no_training_experiments.py`:
+
+- A job is waited on by its result. Once the result is whole it has 60 seconds to
+  exit; then it is killed, counted as done, and named in the report.
+- A job with no result after six hours is killed and counted as failed. A line is
+  printed every five minutes while a job runs.
+- Their second point: the results did not say what had been reconstructed; only the
+  logs did. Each of the three scripts now writes a `reconstruction` field (empty for a
+  run that recorded everything). The runner keeps an existing result only if it has
+  that field, so the nine E2 results and the one E1 result are measured again. The
+  earlier ones are moved beside the new ones (`<name>.earlier1.json`), not overwritten.
+- Their third point: 768 seeds 46 and 95 were stopped near step 9,200 of 54,077. The
+  taper begins at half a run, so they never left the full rate, and step 9's job would
+  have read them at a rate that was never theirs. My error: I asked whether a run
+  trained with the taper, not whether it reached it. The job is now only for runs that
+  finished.
+
+Run here on the two July-made runs: ten jobs, each result carrying its marks, and a
+second pass finds all ten already done.
+
 ## Conclusion
 
 The nine July runs can be rebuilt, and each is marked for what was reconstructed:
@@ -178,6 +215,8 @@ corpus path when that was moved.
 - Checked by measurement: that today's code computes from a July checkpoint what
   July's code computed, for the living and the dead arm, at 64 wide on CPU; and that
   the 27 values are read by nothing while the five mechanisms are off.
+- Not known: why a finished job sometimes does not exit on Brian's card (step 11).
+  The runner no longer depends on it.
 - Not checked: the same at 512 on Brian's card; the C++ and Python maths against each
   other; that the corpus files themselves are unchanged since July (the list is, and
   no file it names is missing).
@@ -193,8 +232,11 @@ corpus path when that was moved.
   marked; the 27 values change nothing; only they may be missing; a layer that reads
   them may not lack them; a run made today still loads strictly; the corpus is found
   when its recorded place is gone, and refused when this repo cannot stand in.
-- `tests/test_no_training_runner.py`: the taper-floor job and its floor.
+- `tests/test_no_training_runner.py`: the taper-floor job, only for finished runs; a
+  job that writes and spins is killed and counts; one that writes nothing fails at
+  the limit; an earlier result is moved aside; a result without its marks is redone.
 - `redteam/fable_2026_11_13/`: the two scripts of step 7 and how they were run.
-- Commits: 23243c4 (steps 1 to 4), 7c4140b and the one after it (steps 5 to 10).
+- Commits: 23243c4 (steps 1 to 4), 7c4140b and f6c4df1 (steps 5 to 10), and the one
+  after (step 11).
 - Where the runs are, and the terminal instance's reports: `To-Do.md`, 2026-11-11
   block; `docs/research/2026-11-10_resume-exactness.md`, last section.

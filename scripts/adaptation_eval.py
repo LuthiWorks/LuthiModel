@@ -65,7 +65,7 @@ def main() -> int:
     args = ap.parse_args()
 
     from luthi.v2.adaptation_eval import adaptation_eval, holdout_documents
-    from luthi.v2.run_rebuild import rebuild_run
+    from luthi.v2.run_rebuild import rebuild_run, reconstruction
     from scripts.jepa_pilot_driver import _device
 
     device = _device()
@@ -94,6 +94,7 @@ def main() -> int:
     default_name = ("adaptation_eval.json" if args.doc_phase == 0
                     else f"adaptation_eval_phase{args.doc_phase}.json")
     out = Path(args.out) if args.out else Path(args.run_dir) / default_name
+    res["reconstruction"] = reconstruction(run.result["config"])
     out.write_text(json.dumps(res, indent=2), encoding="utf-8")
     print(f"wrote {out}")
     return 0

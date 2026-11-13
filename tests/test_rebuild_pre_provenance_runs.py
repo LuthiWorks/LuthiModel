@@ -35,6 +35,7 @@ from luthi.v2.run_rebuild import (
     PRE_PROVENANCE_ARMS,
     PRE_PROVENANCE_NOTE,
     rebuild_run,
+    reconstruction,
 )
 
 REPO = Path(__file__).resolve().parents[1]
@@ -94,6 +95,11 @@ def test_a_checked_arm_is_rebuilt_as_the_driver_built_it(tmp_path: Path, monkeyp
     cfg = rebuilt.result["config"]
     assert cfg["sigreg_projection"] == "linear_bn"
     assert cfg["taper"] is (arm != "dead_4x")
+    marks = reconstruction(cfg)
+    assert marks["model_kwargs_source"] == PRE_PROVENANCE_NOTE
+    assert marks["sigreg_projection"] == "linear_bn" and marks["taper"] is (arm != "dead_4x")
+    assert ("living_state_absent_at_training" in marks) is (arm != "dead_4x")
+    assert json.loads(json.dumps(marks)) == marks, "an instrument writes it as JSON"
     if arm == "dead_4x":
         assert "living_state_absent_at_training" not in cfg
     else:
@@ -268,3 +274,16 @@ def test_a_place_this_repo_cannot_stand_in_for_is_refused(repo_with_a_list, reco
     with pytest.raises(FileNotFoundError, match="nothing to rebuild its data from"):
         run_rebuild._where_the_corpus_is(recorded, cfg, "data_dir")
     assert cfg == {"data_dir": recorded}
+
+
+def test_a_run_that_recorded_everything_has_nothing_reconstructed():
+    assert reconstruction({"model_kwargs": {"d_model": 8}, "taper": True, "sigreg_projection": "linear"}) == {}
+
+
+def test_a_moved_corpus_is_said_in_the_result(repo_with_a_list):
+    recorded = r"C:\Some\Old Place\corpus_build\a_filelist.txt"
+    cfg = {"model_kwargs": {"d_model": 8}, "file_list": recorded}
+    run_rebuild._where_the_corpus_is(recorded, cfg, "file_list")
+    assert reconstruction(cfg) == {
+        "file_list_source": CORPUS_MOVED_NOTE, "file_list_recorded": recorded,
+    }

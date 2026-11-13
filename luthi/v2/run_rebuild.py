@@ -193,6 +193,25 @@ def trained_with_taper(result: dict) -> bool | None:
     return None
 
 
+RECONSTRUCTION_KEYS = (
+    "model_kwargs_source", "living_state_absent_at_training",
+    "file_list_source", "file_list_recorded", "data_dir_source", "data_dir_recorded",
+)
+
+
+def reconstruction(cfg: dict) -> dict:
+    """What ``rebuild_run`` had to supply or change to rebuild this run, for
+    an instrument to write into its result. Empty when the run recorded
+    everything and nothing was moved. Call it after ``rebuild_run``, on the
+    config that call returned."""
+    marks = {key: cfg[key] for key in RECONSTRUCTION_KEYS if key in cfg}
+    if "model_kwargs_source" in marks:
+        # Supplied with the settings, from the same history.
+        marks["sigreg_projection"] = cfg["sigreg_projection"]
+        marks["taper"] = cfg["taper"]
+    return marks
+
+
 def _reads_none_of_it(layer) -> bool:
     """True when every mechanism that reads LIVING_STATE_SINCE_2026_07_27 is
     off in this layer."""
@@ -314,4 +333,6 @@ def rebuild_run(
     )
 
 
-__all__ = ["RebuiltRun", "TAPER_FLOOR", "rebuild_run", "trained_with_taper"]
+__all__ = [
+    "RebuiltRun", "TAPER_FLOOR", "rebuild_run", "reconstruction", "trained_with_taper",
+]

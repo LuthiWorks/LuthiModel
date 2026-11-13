@@ -2,6 +2,10 @@
 plans (2026-11-10). The instruments themselves need trained runs; the
 selection and the plan are pure and are pinned here.
 
+Since 2026-11-13 it also pins how a job is waited on: by its result, not by
+its exit, because on Brian's card a job wrote a whole result and then spun
+for an hour.
+
 Pins:
 - It finds a run by its ``pilot_result.json`` and needs a checkpoint.
 - By default it selects the registered runs only: the 768x8 family, the 512
@@ -26,7 +30,10 @@ from scripts.run_no_training_experiments import (  # noqa: E402
     reruns_beside_originals,
     is_dead,
     plan,
+    result_of,
+    run_job,
     select,
+    set_aside,
 )
 
 
@@ -165,12 +172,20 @@ def test_two_roots_give_the_living_runs_and_their_controls_together(tmp_path):
 
 def test_a_run_that_recorded_its_taper_is_read_at_the_floor_too(tmp_path):
     """And a dead run never is: it has no living rate."""
-    for arm, taper in (("probe_768_visreg", True), ("lc768_living", False), ("lc768_dead", True)):
-        run = tmp_path / f"{arm}_768d_seed97"
+    made = (
+        ("probe_768_visreg", 97, True, "completed"),
+        # Stopped at a sixth of its run. The taper begins at half, so this
+        # run never left the full rate, and the floor is not its rate.
+        ("probe_768_visreg", 46, True, "killed"),
+        ("lc768_living", 97, False, "completed"),
+        ("lc768_dead", 97, True, "completed"),
+    )
+    for arm, seed, taper, outcome in made:
+        run = tmp_path / f"{arm}_768d_seed{seed}"
         (run / "checkpoints").mkdir(parents=True)
         (run / "checkpoints" / "ckpt_00000000.pt").write_bytes(b"")
         (run / "pilot_result.json").write_text(json.dumps({
-            "arm": arm, "d_model": 768, "seed": 97, "outcome": "completed",
+            "arm": arm, "d_model": 768, "seed": seed, "outcome": outcome,
             "config": {"model_kwargs": {"d_model": 768}, "taper": taper},
         }))
     jobs = plan(find_runs([tmp_path]), {"e1"})
@@ -183,3 +198,79 @@ def test_the_floor_is_the_trainers():
     from luthi.v2.run_rebuild import TAPER_FLOOR
 
     assert TAPER_FLOOR == TaperConfig().floor
+
+
+# -- waiting on a job by its result (2026-11-13) --------------------------
+
+_WRITES = "import json, sys; open(sys.argv[1], 'w').write(json.dumps({'x': 1, 'reconstruction': {}}))"
+
+
+def _job(tmp_path: Path, code: str, **kw) -> tuple[dict, Path]:
+    out = tmp_path / "result.json"
+    outcome = run_job(
+        [sys.executable, "-c", code, str(out)], out, tmp_path / "result.log",
+        poll=0.05, **{"exit_grace": 30.0, "timeout": 30.0, **kw},
+    )
+    return outcome, out
+
+
+def test_a_job_that_writes_and_exits_is_done(tmp_path):
+    outcome, out = _job(tmp_path, _WRITES)
+    assert outcome["ok"] and outcome["killed"] is None and outcome["code"] == 0
+    assert result_of(out) == {"x": 1, "reconstruction": {}}
+
+
+def test_a_job_that_writes_and_then_spins_is_killed_and_counts(tmp_path):
+    """What happened on Brian's card. The result is whole, so the work is
+    done; the process is not waited on for an hour."""
+    outcome, out = _job(tmp_path, _WRITES + "\nwhile True: pass", exit_grace=0.5)
+    assert outcome["ok"] and outcome["killed"] == "did not exit after writing its result"
+    assert outcome["seconds"] < 20
+    assert result_of(out) is not None
+
+
+def test_a_job_that_spins_with_no_result_fails_at_the_limit(tmp_path):
+    outcome, out = _job(tmp_path, "while True: pass", timeout=0.5)
+    assert not outcome["ok"] and outcome["killed"] == "wrote no result in time"
+    assert not out.exists()
+
+
+def test_a_job_that_exits_badly_or_writes_nothing_fails(tmp_path):
+    outcome, _ = _job(tmp_path, "raise SystemExit(3)")
+    assert not outcome["ok"] and outcome["code"] == 3
+    outcome, _ = _job(tmp_path, "pass")
+    assert not outcome["ok"] and outcome["code"] == 0
+
+
+def test_a_half_written_result_is_not_a_result(tmp_path):
+    """The poll can land while the job is writing. That is not yet done."""
+    out = tmp_path / "result.json"
+    out.write_text('{"x": 1, "reconstr', encoding="utf-8")
+    assert result_of(out) is None
+    assert result_of(tmp_path / "absent.json") is None
+
+
+def test_a_result_that_does_not_say_what_was_reconstructed_is_not_kept_as_done(tmp_path):
+    out = tmp_path / "result.json"
+    out.write_text(json.dumps({"summary": {}}), encoding="utf-8")
+    assert result_of(out) is None
+    out.write_text(json.dumps({"summary": {}, "reconstruction": {}}), encoding="utf-8")
+    assert result_of(out) is not None
+
+
+def test_an_earlier_result_is_moved_aside_and_never_overwritten(tmp_path):
+    out = tmp_path / "result.json"
+    assert set_aside(out) is None
+    for n in (1, 2):
+        out.write_text(str(n), encoding="utf-8")
+        assert set_aside(out) == tmp_path / f"result.earlier{n}.json"
+        assert not out.exists()
+    assert [(tmp_path / f"result.earlier{n}.json").read_text() for n in (1, 2)] == ["1", "2"]
+
+
+def test_each_instrument_writes_what_was_reconstructed():
+    """The runner only keeps a result that says so. The three scripts it
+    runs must each write it, or every run would be measured again forever."""
+    for name in ("living_write_probe.py", "adaptation_eval.py", "per_block_probe.py"):
+        text = (REPO_ROOT / "scripts" / name).read_text(encoding="utf-8")
+        assert '"reconstruction"' in text and "reconstruction(" in text, name

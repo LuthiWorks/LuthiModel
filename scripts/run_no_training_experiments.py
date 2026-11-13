@@ -26,8 +26,19 @@ Which runs are selected, by the arm each run recorded:
 ``--match`` narrows either selection to run names containing a string.
 
 It is safe to stop and start again: a result that already exists is skipped
-(``--redo`` runs it again). One failure does not stop the rest. The exit
+(``--redo`` runs it again). A result that does not say what was
+reconstructed to make it (written before 2026-11-13) is measured again. An
+earlier result is never overwritten: it is moved beside the new one as
+``<name>.earlier<N>.json``. One failure does not stop the rest. The exit
 code is 0 only if nothing failed.
+
+A job is waited on by its result, not by its exit (``run_job``): on Brian's
+card a job has finished its work and then spun for an hour instead of
+exiting. Such a job is killed once its result is whole, and the report
+names it.
+
+A living run that trained with the taper and finished is read a third time
+in E1, at the rate its taper ended on (``adaptation_eval_taper_floor.json``).
 
 Each E4 variant gets its own file name. Run by hand with no ``--out``, all
 four write ``per_block_probe.json`` and each overwrites the one before.
@@ -175,7 +186,10 @@ def plan(runs: list[dict], only: set[str]) -> list[dict]:
             # the taper's floor. No checkpoint carries that, so the two jobs
             # above read at the full rate, as a life loaded from the run
             # would. This one reads at the rate the run ended on.
-            if run.get("tapered") and not is_dead(run["arm"]):
+            # Only for a run that finished: the taper begins at half the
+            # run, so a run stopped before then never left the full rate.
+            if (run.get("tapered") and run["outcome"] == "completed"
+                    and not is_dead(run["arm"])):
                 job("E1", run, "adaptation_eval.py",
                     "adaptation_eval_taper_floor.json",
                     common + ["--rate-scale", str(TAPER_FLOOR)])
@@ -200,6 +214,75 @@ def collect(job: dict, into: Path) -> None:
     shutil.copy2(job["out"], target / job["out"].name)
 
 
+def result_of(path: Path) -> dict | None:
+    """The result at ``path``, when it is there, whole, and says what was
+    reconstructed to make it. None otherwise. A result written before
+    2026-11-13 says nothing about that, and is measured again."""
+    try:
+        result = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return None     # not there, or the job is still writing it
+    return result if isinstance(result, dict) and "reconstruction" in result else None
+
+
+def set_aside(path: Path) -> Path | None:
+    """Move an earlier result out of the way, so that a result appearing at
+    ``path`` can only be the one this job wrote. Nothing is deleted."""
+    if not path.exists():
+        return None
+    for n in range(1, 1000):
+        aside = path.with_name(f"{path.stem}.earlier{n}{path.suffix}")
+        if not aside.exists():
+            path.rename(aside)
+            return aside
+    raise RuntimeError(f"too many earlier results beside {path}")
+
+
+def run_job(cmd: list[str], out: Path, log: Path, *, exit_grace: float,
+            timeout: float, poll: float = 2.0, heartbeat: float = 300.0) -> dict:
+    """Run one job and wait for it, without trusting it to exit.
+
+    On Brian's card a job has twice finished its work and then spun instead
+    of exiting (2026-11-12, and 2026-11-13 for 64 minutes after
+    adaptation_eval had written a complete result). Waiting on the process
+    alone made that a silent stall. So:
+
+    - Once the result is written and whole, the job has ``exit_grace``
+      seconds to exit. If it has not, it is killed and the job counts as
+      done, and the report says so.
+    - A job that has written no result after ``timeout`` seconds is killed
+      and counts as failed.
+    - While it waits, a line is printed every ``heartbeat`` seconds.
+    """
+    started = time.monotonic()
+    written_at = None
+    next_beat = heartbeat
+    with open(log, "wb") as f:
+        proc = subprocess.Popen(cmd, cwd=str(REPO_ROOT), stdout=f, stderr=subprocess.STDOUT)
+        while True:
+            code = proc.poll()
+            elapsed = time.monotonic() - started
+            if code is not None:
+                ok = code == 0 and result_of(out) is not None
+                return {"ok": ok, "code": code, "killed": None, "seconds": elapsed}
+            if written_at is None and result_of(out) is not None:
+                written_at = elapsed
+            if written_at is not None and elapsed - written_at > exit_grace:
+                proc.kill()
+                proc.wait()
+                return {"ok": True, "code": None, "killed": "did not exit after writing its result",
+                        "seconds": elapsed}
+            if written_at is None and elapsed > timeout:
+                proc.kill()
+                proc.wait()
+                return {"ok": False, "code": None, "killed": "wrote no result in time",
+                        "seconds": elapsed}
+            if elapsed >= next_beat:
+                print(f"          still running, {elapsed / 60:.0f} min", flush=True)
+                next_beat += heartbeat
+            time.sleep(poll)
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--runs-root", dest="roots", action="append", required=True,
@@ -216,6 +299,12 @@ def main() -> int:
                    help="List what would run and stop.")
     p.add_argument("--collect-into", default=str(COLLECT),
                    help="Where result files are copied. '' to skip.")
+    p.add_argument("--exit-grace-seconds", type=float, default=60.0,
+                   help="How long a job may take to exit after its result "
+                        "is written, before it is killed and counted done.")
+    p.add_argument("--job-timeout-minutes", type=float, default=360.0,
+                   help="A job with no result after this long is killed "
+                        "and counted failed.")
     args = p.parse_args()
 
     only = {x.strip().lower() for x in args.only.split(",") if x.strip()}
@@ -251,34 +340,44 @@ def main() -> int:
     print(f"[experiments] {len(jobs)} job(s)")
 
     into = Path(args.collect_into) if args.collect_into else None
-    done, skipped, failed = [], [], []
+    done, skipped, failed, hung = [], [], [], []
     for i, job in enumerate(jobs, 1):
         label = f"{job['experiment']} {job['run']} -> {job['out'].name}"
-        if job["out"].exists() and not args.redo:
+        unmarked = job["out"].exists() and result_of(job["out"]) is None
+        if job["out"].exists() and not unmarked and not args.redo:
             skipped.append(label)
             if into and not args.dry_run:
                 collect(job, into)
             print(f"[{i}/{len(jobs)}] have  {label}")
             continue
+        why = (" (the result there does not say what was reconstructed; "
+               "it is kept beside the new one)") if unmarked else ""
         if args.dry_run:
-            print(f"[{i}/{len(jobs)}] would {label}")
+            print(f"[{i}/{len(jobs)}] would {label}{why}")
             continue
-        print(f"[{i}/{len(jobs)}] run   {label}", flush=True)
+        print(f"[{i}/{len(jobs)}] run   {label}{why}", flush=True)
+        set_aside(job["out"])
         log = job["out"].with_suffix(".log")
-        started = time.monotonic()
-        with open(log, "wb") as f:
-            code = subprocess.run(
-                job["cmd"], cwd=str(REPO_ROOT), stdout=f, stderr=subprocess.STDOUT,
-            ).returncode
-        minutes = (time.monotonic() - started) / 60
-        if code == 0 and job["out"].exists():
+        outcome = run_job(
+            job["cmd"], job["out"], log,
+            exit_grace=args.exit_grace_seconds,
+            timeout=args.job_timeout_minutes * 60,
+        )
+        minutes = outcome["seconds"] / 60
+        if outcome["ok"]:
             done.append(label)
             if into:
                 collect(job, into)
-            print(f"          done in {minutes:.1f} min")
+            if outcome["killed"]:
+                hung.append(label)
+                print(f"          done in {minutes:.1f} min. The result is whole, "
+                      f"but the job {outcome['killed']} and was killed.", flush=True)
+            else:
+                print(f"          done in {minutes:.1f} min", flush=True)
         else:
             failed.append(label)
-            print(f"          FAILED (exit {code}); see {log}")
+            reason = outcome["killed"] or f"exit {outcome['code']}"
+            print(f"          FAILED ({reason}); see {log}", flush=True)
 
     if args.dry_run:
         return 0
@@ -286,6 +385,11 @@ def main() -> int:
           f"failed {len(failed)}")
     for label in failed:
         print(f"  failed: {label}")
+    if hung:
+        print(f"[experiments] {len(hung)} job(s) wrote a whole result and "
+              "then did not exit, and were killed:")
+        for label in hung:
+            print(f"  did not exit: {label}")
     if into:
         print(f"[experiments] results copied to {into}")
         print("[experiments] to share them: git add runs_meta && git commit "
