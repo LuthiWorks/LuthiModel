@@ -363,10 +363,11 @@ def main() -> int:
               f"{r['chorus_eff_rank']:>9.1f} {r['chorus2_eff_rank']:>9.1f} "
               f"{r['offset_dominance']:>8.4f} {r['latent_rms']:>10.3g}")
 
+    from luthi.v2 import result_json
     from luthi.v2.run_rebuild import reconstruction
 
     out_path = Path(args.out) if args.out else run_dir / "per_block_probe.json"
-    out_path.write_text(json.dumps({
+    out_path.write_text(result_json.dumps({
         "run_dir": str(run_dir),
         "checkpoint": ckpt_path.name,
         "ckpt_step": step if isinstance(step, int) else str(step),
@@ -388,7 +389,7 @@ def main() -> int:
             "floor_top1": result["probe_shuffled_floor"]["top1"],
         },
         "blocks": rows,
-    }, indent=2), encoding="utf-8")
+    }), encoding="utf-8")
     print(f"\nwrote {out_path}")
     return 0
 
