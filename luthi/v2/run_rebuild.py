@@ -15,12 +15,14 @@ Nothing here writes to the run directory.
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 
 import torch
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -55,6 +57,50 @@ def _text_dataset(cfg: dict, seed: int):
     ))
 
 
+# Runs made before 2026-08-05 did not record what their model was built with.
+# For three arms that was checked, on 2026-11-13, against the driver as it
+# stood when they ran (commits 13e5cd25 of 2026-07-21 and 0230cc9f of
+# 2026-07-26): the driver's base settings and each arm's registry entry were
+# then what is written here, and no default of the model, the living layer or
+# the loss has changed or been removed since. The values are frozen here, not
+# read from the live registry, so a later change to the registry cannot
+# quietly rebuild an old run as a different model. The checkpoint still loads
+# strictly, which catches any difference of shape. Any other arm is refused.
+PRE_PROVENANCE_NOTE = (
+    "reconstructed: checked 2026-11-13 against commits 13e5cd25 and 0230cc9f"
+)
+_LIVING_V5_4X_D4 = {
+    "backward_pass_enabled": True, "consolidation_enabled": True,
+    "episode_recall_threshold": 0.7, "learning_gain_enabled": True,
+    "mu_pc_enabled": True, "mu_pc_exponent": 0.25, "n_blocks": 4,
+    "relative_trust": True,
+}
+PRE_PROVENANCE_ARMS: dict[str, dict] = {
+    "dead_4x": {"dead_ffn": True},
+    "living_v5_4x_d4": _LIVING_V5_4X_D4,
+    "living_v5_4x_d4_rerun": _LIVING_V5_4X_D4,
+}
+
+
+def _pre_provenance_model_kwargs(result: dict, result_path: Path) -> dict:
+    arm = result["arm"]
+    if arm not in PRE_PROVENANCE_ARMS:
+        raise RuntimeError(
+            f"{result_path} predates the 2026-08-05 provenance block "
+            f"(no model_kwargs), and arm {arm!r} is not one whose earlier "
+            "configuration has been checked against history "
+            f"({', '.join(sorted(PRE_PROVENANCE_ARMS))}). Check it the same "
+            "way before adding it; do not guess here."
+        )
+    cfg = result["config"]
+    kwargs = dict(
+        d_model=result["d_model"], n_blocks=cfg["n_blocks"], n_heads=4,
+        ffn_expansion=1, max_seq_len=cfg["seq_len"], backward_pass_enabled=False,
+    )
+    kwargs.update(PRE_PROVENANCE_ARMS[arm])
+    return kwargs
+
+
 def rebuild_run(
     run_dir: str | Path,
     *,
@@ -78,10 +124,12 @@ def rebuild_run(
     result = json.loads(result_path.read_text(encoding="utf-8"))
     cfg = result["config"]
     if not cfg.get("model_kwargs"):
-        raise RuntimeError(
-            f"{result_path} predates the 2026-08-05 provenance block "
-            "(no model_kwargs); rebuild it with scripts/pilot_verdict.py's "
-            "legacy path instead of guessing here."
+        cfg["model_kwargs"] = _pre_provenance_model_kwargs(result, result_path)
+        cfg["model_kwargs_source"] = PRE_PROVENANCE_NOTE
+        logger.warning(
+            "%s has no recorded model_kwargs; arm %r was rebuilt from the "
+            "configuration checked against git history on 2026-11-13.",
+            result_path, result["arm"],
         )
     model_kwargs = dict(cfg["model_kwargs"])
 

@@ -67,6 +67,10 @@
 >   pilot runs. The living 512 family is in the repo's `runs\`, the dead
 >   controls are in `E:\luthi_experiment_archive`, and the 768 family is in
 >   both. Give the runner both roots. Smoke runs are now left out.
+> - **E2 ran for the 768 family; the nine July runs were refused** for having
+>   no recorded model settings. Checked against history and made rebuildable
+>   for those three arms only (`docs/research/2026-11-13_rebuilding-july-runs.md`).
+>   Next: E2 on the rest, then E1, then E4.
 > - **What fits on the card** (`docs/research/2026-11-11_what-fits-on-the-card.md`):
 >   about 1024x12 as built. Two opt-in driver flags shrink the episode store.
 >   Suggested, not done: a timed 200-step run at 1024x12 on the card.
