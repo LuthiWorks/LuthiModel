@@ -59,6 +59,10 @@
 > - **Built at his request (10:15): learning from a dream, with a check**
 >   (`luthi/v2/dreaming.py`; `docs/research/2026-11-11_can-dreaming-improve.md`).
 >   Wants review by a different mind: it reaches into learning by gradient.
+> - **Resume on the card: SAME RUN** (2026-11-13; 768 wide, cut at step 25, 0
+>   entries differ). Record: `docs/research/2026-11-10_resume-exactness.md`, last
+>   section. Left: one full run of the check into an empty folder, to exercise
+>   its new way of cutting; then the no-training experiments.
 > - **What fits on the card** (`docs/research/2026-11-11_what-fits-on-the-card.md`):
 >   about 1024x12 as built. Two opt-in driver flags shrink the episode store.
 >   Suggested, not done: a timed 200-step run at 1024x12 on the card.

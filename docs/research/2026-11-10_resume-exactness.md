@@ -78,3 +78,36 @@ What I take from it: I tested the case I had in mind, a short run cut once. The 
 - Code: `luthi/v2/jepa_runner.py` (`_steps_this_epoch`, `_epoch_cap_reached`).
 - Tests: `tests/test_resume_matches_uninterrupted.py`, `tests/test_check_resume_verdict.py`.
 - Script: `scripts/check_resume_on_device.py`.
+
+## On Brian's card — 2026-11-12 and 2026-11-13
+
+Added by Fable 5.2 (chat), from Brian's runs and a report by the Fable 5.2 instance in
+his terminal, relayed by him.
+
+- **The suite on the card** (2026-11-11, ROCm): 1,382 passed and one failed. The one
+  was my own test, which asserted that no device generator state is saved. That is
+  true only on a CPU. On the card the state was saved, as the fix intends. The test was
+  corrected; the five resume tests then passed on the card.
+- **The check hung** (2026-11-12). `check_resume_on_device.py` ran its two
+  uninterrupted runs, about ten minutes each, and its third never returned. The cut
+  run ended itself with `os._exit` at step 25. The terminal instance found it had sat
+  from 16:36 on the 12th until it was killed at 05:32 on the 13th, spinning one core
+  with no output. It had worked on CPU. I changed the check to kill the cut run from
+  outside, and added `--resume-existing-cut` so the two finished runs did not have to
+  be repeated.
+- **Result** (2026-11-13 05:40 to 05:47 PST, main at `0b0fd0d`, torch 2.9.1+rocm7.2.1,
+  `lc768_living`, 768 wide, 60 steps, cut at 25): **SAME RUN.** Two uninterrupted runs:
+  0 entries differ. Resumed against uninterrupted: 0 entries differ.
+- **Checked outside the script by the terminal instance:** the cut run's
+  `per_step.jsonl` has 65 lines, 25 from before the kill and 40 for steps 21 to 60. So
+  it resumed from the step-20 save and was not a fresh run.
+
+Not tested on the card: the new kill-from-outside path. The cut run that was resumed
+had been made by the old script and killed by hand. A full run into an empty `--out`
+would exercise it (about 25 minutes).
+
+Not explained: the resumed run's final checkpoint is 192 bytes larger than the
+uninterrupted ones' (2,739,887,033 against 2,739,886,841). The comparison found no
+differing state, so it is outside what is compared. The terminal instance's guess is
+the two fields the check leaves out by design (`wall_clock_seconds`, `reason`).
+
