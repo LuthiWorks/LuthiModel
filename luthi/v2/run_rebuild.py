@@ -193,9 +193,13 @@ def trained_with_taper(result: dict) -> bool | None:
     return None
 
 
+# Not the recorded path itself. A path from before the repo moved lies in a
+# user's home folder, and a result is committed to a public repo: the first
+# results written with this field (2026-11-13) put that path in ten files.
+# The run's own pilot_result.json, on the machine that made it, still has it.
 RECONSTRUCTION_KEYS = (
     "model_kwargs_source", "living_state_absent_at_training",
-    "file_list_source", "file_list_recorded", "data_dir_source", "data_dir_recorded",
+    "file_list_source", "data_dir_source",
 )
 
 

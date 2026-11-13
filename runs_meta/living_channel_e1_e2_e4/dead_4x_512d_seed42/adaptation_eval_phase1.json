@@ -701,7 +701,6 @@
   "reconstruction": {
     "model_kwargs_source": "reconstructed: checked 2026-11-13 against commits f33838b, cc30226, 13e5cd25 and 0230cc9f, and against a run trained by the code of 0230cc9f",
     "file_list_source": "recorded path is gone; same path under this repo",
-    "file_list_recorded": "C:\\Users\\Hasha Smokes\\Desktop\\LuthiModel\\LuthiModel\\corpus_build\\gutenberg_4x_filelist.txt",
     "sigreg_projection": "linear_bn",
     "taper": false
   }

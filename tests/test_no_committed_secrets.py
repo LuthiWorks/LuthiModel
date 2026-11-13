@@ -89,6 +89,18 @@ def test_no_user_home_path_in_launchers():
     )
 
 
+def test_no_user_home_path_in_committed_results():
+    """Results are data about runs, committed here in public (runs_meta).
+    On 2026-11-13 ten of them carried a run's recorded corpus path, which
+    lay in a user's home folder."""
+    hits = []
+    for path in sorted((REPO_ROOT / "runs_meta").rglob("*.json")):
+        text = path.read_text(encoding="utf-8", errors="replace").replace("\\\\", "\\")
+        if USER_HOME.search(text):
+            hits.append(str(path.relative_to(REPO_ROOT)))
+    assert not hits, "result file(s) name a user-home path:\n" + "\n".join(hits)
+
+
 @pytest.mark.parametrize("line,bad", [
     ('python -m luthi.generate --checkpoint_password "hunter2"', True),
     ("python x.py --checkpoint_password=hunter2", True),

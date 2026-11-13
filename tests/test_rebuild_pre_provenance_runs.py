@@ -284,6 +284,7 @@ def test_a_moved_corpus_is_said_in_the_result(repo_with_a_list):
     recorded = r"C:\Some\Old Place\corpus_build\a_filelist.txt"
     cfg = {"model_kwargs": {"d_model": 8}, "file_list": recorded}
     run_rebuild._where_the_corpus_is(recorded, cfg, "file_list")
-    assert reconstruction(cfg) == {
-        "file_list_source": CORPUS_MOVED_NOTE, "file_list_recorded": recorded,
-    }
+    assert cfg["file_list_recorded"] == recorded
+    # The result says the path was moved, and does not carry the old path:
+    # it lay in a user's home folder, and results are committed in public.
+    assert reconstruction(cfg) == {"file_list_source": CORPUS_MOVED_NOTE}
