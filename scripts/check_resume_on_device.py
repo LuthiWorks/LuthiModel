@@ -37,6 +37,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -78,7 +79,14 @@ def _child(ns: argparse.Namespace) -> int:
         # The cut run dies LAG steps after its save, so it loses those
         # steps and has to train them again.
         if ns.die_at >= 0 and self.global_step >= ns.die_at:
-            os._exit(KILLED)
+            # Say the step was reached, then wait to be killed from outside,
+            # as a power cut would. (Until 2026-11-12 this process ended
+            # itself with os._exit. On Brian's card that never returned: the
+            # run sat for two hours with the cut never happening. Ending
+            # itself is also not what a power cut is.)
+            (Path(ns.out) / f"{ns.child}.reached").write_text(str(self.global_step))
+            while True:
+                time.sleep(3600)
         return real_step(self, *a, **k)
 
     JEPATrainer._checkpoint_if_due = due
@@ -226,6 +234,10 @@ def main() -> int:
     p.add_argument("--registered-corpus", dest="registered_corpus",
                    action="store_true")
     p.add_argument("--out", default=None)
+    p.add_argument("--resume-existing-cut", dest="resume_existing_cut",
+                   action="store_true",
+                   help="--out already holds two finished runs and a cut run "
+                        "that was killed: only resume the cut run and compare.")
     p.add_argument("--child", default=None, help=argparse.SUPPRESS)
     p.add_argument("--die-at", dest="die_at", type=int, default=-1,
                    help=argparse.SUPPRESS)
@@ -237,11 +249,16 @@ def main() -> int:
 
     out = Path(ns.out) if ns.out else Path(tempfile.mkdtemp(prefix="luthi_resume_check_"))
     out.mkdir(parents=True, exist_ok=True)
-    if any(out.iterdir()):
+    if ns.resume_existing_cut:
+        missing = [n for n in ("straight_a", "straight_b", "cut") if not (out / n).is_dir()]
+        if missing:
+            p.error(f"--resume-existing-cut needs {', '.join(missing)} under {out}")
+    elif any(out.iterdir()):
         p.error(f"--out {out} is not empty; this check starts from nothing")
     base = [sys.executable, str(Path(__file__).resolve())]
     for key, value in vars(ns).items():
-        if key in ("child", "die_at", "out", "registered_corpus") or value is None:
+        if key in ("child", "die_at", "out", "registered_corpus",
+                   "resume_existing_cut") or value is None:
             continue
         base += [f"--{key}" if key in ("batch_size", "seq_len", "arm", "seed",
                                         "steps", "tokenizer")
@@ -252,21 +269,44 @@ def main() -> int:
 
     def run(name: str, die_at: int = -1) -> int:
         cmd = base + ["--child", name, "--die-at", str(die_at)]
+        reached = out / f"{name}.reached"
+        if reached.exists():
+            reached.unlink()
         with open(out / f"{name}.log", "ab") as log:
-            return subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT).returncode
+            proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT)
+            if die_at < 0:
+                return proc.wait()
+            # Kill it from outside the moment it says it reached the step.
+            while proc.poll() is None:
+                if reached.exists():
+                    proc.kill()
+                    proc.wait()
+                    return KILLED
+                time.sleep(0.5)
+            return proc.returncode
 
     print(f"[resume-check] {ns.arm} {ns.d_model}d, {ns.steps} steps, cut at {ns.cut_at}")
     print(f"[resume-check] writing under {out}")
-    for name in ("straight_a", "straight_b"):
-        if run(name) != 0:
-            print(f"[resume-check] {name} failed; see {out / (name + '.log')}")
+    if ns.resume_existing_cut:
+        print("[resume-check] using the two finished runs and the killed cut run already there")
+    else:
+        for name in ("straight_a", "straight_b"):
+            if run(name) != 0:
+                print(f"[resume-check] {name} failed; see {out / (name + '.log')}")
+                return 2
+            print(f"[resume-check] {name}: done", flush=True)
+        code = run("cut", die_at=ns.cut_at)
+        if code == 0:
+            print("[resume-check] the cut run finished without being cut; nothing was tested")
             return 2
-        print(f"[resume-check] {name}: done")
-    code = run("cut", die_at=ns.cut_at)
-    if code == 0:
-        print("[resume-check] the cut run finished without being cut; nothing was tested")
+        print(f"[resume-check] cut: killed at step {ns.cut_at} (exit {code})", flush=True)
+    saved = sorted((out / "cut").glob("*/checkpoints/ckpt_*"))
+    if not saved:
+        # With nothing saved, "resuming" would be a fresh run, which matches
+        # an uninterrupted one for the wrong reason.
+        print("[resume-check] the cut run left no checkpoint to resume from; nothing was tested")
         return 2
-    print(f"[resume-check] cut: killed at step {ns.cut_at} (exit {code})")
+    print(f"[resume-check] cut: resuming from {saved[-1].name}", flush=True)
     if run("cut") != 0:
         print(f"[resume-check] the resume failed; see {out / 'cut.log'}")
         return 2
