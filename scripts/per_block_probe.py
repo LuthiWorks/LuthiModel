@@ -116,52 +116,25 @@ def _spectrum(x: torch.Tensor) -> dict:
 
 
 def _rebuild(run_dir: Path, ckpt_path: Path, device):
-    """Rebuild the arm from the run's OWN recorded model_kwargs.
+    """Rebuild the run through the shared path (``luthi.v2.run_rebuild``).
 
-    Deliberately NOT via scripts.jepa_pilot_driver.ARM_CONFIGS: that path
-    starts from a hardcoded n_heads=4 and depends on the arm's entry to
-    override it, so a rebuild is only correct while the registry and the
-    run agree. pilot_result.json records the kwargs the run was actually
-    constructed with, which is the provenance that matters here.
+    Until 2026-11-13 this script rebuilt the model itself, from the run's
+    recorded model_kwargs. That refused every run made before 2026-08-05,
+    which recorded none, and it would have missed what the shared path now
+    knows about those runs (their projection head, the living state they
+    lack, a corpus path from before the repo moved). The shared path still
+    reads recorded settings where a run has them, never the live registry.
     """
-    from luthi.living_extra_state import apply_living_extra_state
-    from luthi.v2.multimodal_model_pc import MultimodalPredictiveCodingLM
+    from luthi.v2.run_rebuild import rebuild_run
 
-    result = json.loads((run_dir / "pilot_result.json").read_text(encoding="utf-8"))
-    cfg = result["config"]
-    kwargs = dict(cfg["model_kwargs"])
-    model = MultimodalPredictiveCodingLM(**kwargs).to(device)
-
-    state = torch.load(ckpt_path, map_location="cpu", weights_only=False)
-    model.load_state_dict(state["online_state_dict"])
-    apply_living_extra_state(
-        model, state.get("living_extra_state"),
-        source=f"per_block_probe {ckpt_path.name}",
-    )
-    model.eval()
-    return model, result, cfg, state
-
-
-def _dataset(cfg: dict, seed: int):
-    from luthi.v2.multimodal_data import TextDataset, TextDatasetConfig
-
-    if cfg.get("file_list"):
-        source_paths = [
-            line.strip()
-            for line in Path(cfg["file_list"]).read_text(encoding="utf-8").splitlines()
-            if line.strip()
-        ]
-    else:
-        source_paths = [cfg["data_dir"]]
-    return TextDataset(TextDatasetConfig(
-        source_paths=source_paths,
-        tokenizer_path=REPO_ROOT / "corpus_build" / "tokenizer_32k.json",
-        batch_size=cfg["batch_size"],
-        seq_len=cfg["seq_len"],
-        stride=cfg["stride"],
-        base_seed=seed,
-        holdout_fraction=cfg["holdout_fraction"],
-    ))
+    if ckpt_path.parent != run_dir / "checkpoints":
+        raise ValueError(
+            f"{ckpt_path} is not one of this run's checkpoints "
+            f"({run_dir / 'checkpoints'})"
+        )
+    rebuilt = rebuild_run(run_dir, device=device, ckpt_name=ckpt_path.name)
+    state = {"global_step": rebuilt.global_step}
+    return rebuilt.model, rebuilt.result, rebuilt.result["config"], state, rebuilt.text_ds
 
 
 # ------------------------------------------------------------- collection
@@ -331,7 +304,7 @@ def main() -> int:
     device = _device()
     print(f"device={device}  checkpoint={ckpt_path.name}", flush=True)
 
-    model, result, cfg, state = _rebuild(run_dir, ckpt_path, device)
+    model, result, cfg, state, ds = _rebuild(run_dir, ckpt_path, device)
     step = state.get("global_step", "?")
     print(f"arm={result['arm']} seed={result['seed']} d_model={result['d_model']} "
           f"n_blocks={cfg['n_blocks']} ckpt_step={step}", flush=True)
@@ -340,7 +313,6 @@ def main() -> int:
           f"lift={result['probe']['top1'] / result['probe_shuffled_floor']['top1']:.2f}x",
           flush=True)
 
-    ds = _dataset(cfg, result["seed"])
     vocab = ds.vocab_size()
     print(f"corpus loaded: vocab={vocab}", flush=True)
 

@@ -96,16 +96,19 @@ def _text_dataset(cfg: dict, seed: int):
 
 # Runs made before 2026-08-05 did not record what their model was built with.
 # For three arms that was checked, on 2026-11-13, against the driver as it
-# stood when they ran (commits 13e5cd25 of 2026-07-21 and 0230cc9f of
+# stood when they ran (the dead runs under f33838b of 2026-07-19 and cc30226
+# of 2026-07-20; the living runs under 13e5cd25 of 2026-07-21 and 0230cc9f of
 # 2026-07-26): the driver's base settings and each arm's registry entry were
-# then what is written here, and no default of the model, the living layer or
-# the loss has changed or been removed since. The values are frozen here, not
+# then what is written here, and no default of the model or the living layer
+# has changed or been removed since. One default of the loss has: see
+# PRE_PROVENANCE_SIGREG_PROJECTION below. The values are frozen here, not
 # read from the live registry, so a later change to the registry cannot
 # quietly rebuild an old run as a different model. The checkpoint must still
 # fit exactly (see _load_older_online_state for the one allowance), which
 # catches any difference of shape. Any other arm is refused.
 PRE_PROVENANCE_NOTE = (
-    "reconstructed: checked 2026-11-13 against commits 13e5cd25 and 0230cc9f"
+    "reconstructed: checked 2026-11-13 against commits f33838b, cc30226, "
+    "13e5cd25 and 0230cc9f, and against a run trained by the code of 0230cc9f"
 )
 _LIVING_V5_4X_D4 = {
     "backward_pass_enabled": True, "consolidation_enabled": True,

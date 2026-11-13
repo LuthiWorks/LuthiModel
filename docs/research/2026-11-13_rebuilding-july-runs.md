@@ -54,20 +54,147 @@ controls ran) and `0230cc9f` (2026-07-26, when the living family ran):
 - Any other arm is refused as before, with the same instruction not to guess.
 - The checkpoint still loads strictly.
 
+### Step 5: Brian's card showed two things step 4 missed
+
+The second attempt (main at 23243c4) ran none of the nine. The terminal instance on
+Brian's desktop reported two failures and reviewed the commit.
+
+- **A. The corpus path.** Four of the nine (living seed 42, dead 42, 43, 44) record
+  `file_list` and `data_dir` under a folder from before the repo moved on 2026-07-23.
+  It is gone. The terminal instance found that the repo's
+  `corpus_build/gutenberg_4x_filelist.txt` has one commit ever (6c8b693, 2026-07-18)
+  and is byte-identical to the copy in the pre-migration backup; its 482 entries are
+  repo-relative and none is missing.
+- **B. The checkpoint.** A July checkpoint has 15 entries for each living layer.
+  Today's layer has 42. The strict load named 27 missing in each of four layers, none
+  unexpected, no size wrong.
+- **Their review.** The dead runs launched under f33838b (seed 42) and cc30226
+  (seeds 43, 44), which step 3 did not cite. I checked both: `dead_4x` is
+  `{"dead_ffn": True}` and the base settings are the same in each. They also said my
+  test trains its "old run" with today's code, so it could not show B, and that the
+  rebuild ignores the taper. Both true.
+
+My error in step 4: "the checkpoint still loads strictly" was written about a
+checkpoint made by today's code. I never had a July one. The conclusion's own
+"not checked" line said a difference of shape would stop the load, and it did.
+
+### Step 6: what the 27 are, and whether leaving them out changes anything
+
+All 27 were added between 2026-07-27 and 2026-07-29, for five mechanisms: the episode
+store's adaptive admission and age (`adaptive_episodes`), adaptive recall, the two
+drive settings (`drive_mode`, `drive_normalize`) and the homeostatic band. Each is off
+unless asked for, and the three July arms ask for none. Reading the layer, with all
+five off the values are counters and bookkeeping no path reads.
+
+Reading is how step 4 went wrong, so it is measured two ways (steps 7 and 8).
+
+What was built: a run with no recorded settings may lack exactly those 27 names, in a
+living layer, and only when the layer has all five mechanisms off. Anything else
+missing, anything unexpected and any wrong size is refused. A run that recorded its
+settings still loads strictly. The run is marked
+(`config.living_state_absent_at_training`).
+
+### Step 7: train a run with July's code, and load it with today's
+
+`git worktree add` at 0230cc9f (2026-07-26). That day's driver trained a 64-wide
+`living_v5_4x_d4` and a `dead_4x`, 60 steps each, on 51 of this repo's research notes
+as text. That day's verdict-script path reloaded each and recorded six forwards (three
+in eval mode, three in train mode, the living layers writing in all six) and the
+whole model state after each three.
+
+Loading them with today's `rebuild_run`:
+
+- B reproduced here, as on Brian's card.
+- **C, a third failure his card had not reached.** The projection heads did not fit.
+  In July the head in front of SIGReg was a linear layer and a BatchNorm; commit
+  8ec9d07 (2026-07-29) made a bare linear layer the default. Step 3 said no default of
+  the loss had changed. That was wrong: I compared the model's and the layer's
+  defaults by parsing, and the loss's by eye. Pre-provenance runs are now rebuilt with
+  `linear_bn`, marked in the config.
+- First comparison: "not the same", in every forward. Wrong turn: I had compared the
+  total loss, and seeded the random stream once for all six forwards.
+- Seeding before each forward and comparing each returned value: the prediction loss,
+  the context latents, the predicted targets, the target latents and the per-dimension
+  spread are the same to the bit in all six forwards, for both arms. Every stored
+  value of the model is the same after eval and after train (135 entries living, 41
+  dead). In the living run 49 living entries had changed during the forwards, and the
+  stores held 62 to 64 episodes, so this compared layers that were writing and
+  recalling.
+- What differed: the SIGReg term, and so the total. Since 77bdde3 (2026-08-01) SIGReg
+  draws its random directions from its own generator and not the global stream. With
+  it set back to the global stream, the SIGReg term and the total are the same to the
+  bit too.
+
+So, for these two arms, today's code computes from a July checkpoint what July's code
+computed. E1, E2 and E4 do not read the SIGReg term.
+
+What this does not cover: it was 64 wide, 60 steps, on CPU, with the Python reference
+maths on both sides. Brian's July runs are 512 wide and trained with the C++
+`pc_ops`; today his card runs the Python reference (CLAUDE.md, Build & Test). That
+difference is between the two maths backends, was there before today, and is not
+measured here.
+
+### Step 8: a test that can fail
+
+`test_the_state_an_old_run_lacks_changes_nothing_it_computes` rebuilds one July-shaped
+run twice, overwrites the 27 values in one with nonsense, and requires six forwards and
+everything else the model holds to match to the bit.
+
+- First version: failed its own guard. The tiny run's stores were empty, so recall had
+  nothing to read. Both copies now live two moments with the bar for storing lowered.
+- Then I switched each mechanism on to see whether the test noticed. It missed two of
+  four: my nonsense kept the counters inside their warm-ups. With counters past every
+  warm-up it caught those two and lost the band: my values were all within the band's
+  bounds. With values spread over four orders of magnitude it fails for each of the six
+  switches and passes with all off.
+
+### Step 9: the taper
+
+The living arm trained with the plasticity taper, so each run ended with its living
+rates at the floor, 0.2. The scale is a plain attribute no checkpoint carries, and
+nothing but the trainer sets it. So a rebuilt run stands at 1.0, five times the rate
+it ended on, and so does a life loaded from one.
+
+- E1's two jobs read at 1.0, which is what a loaded life does today. They are
+  unchanged.
+- Added: for a living run that trained with the taper, a third E1 job reads at 0.2
+  (`adaptation_eval_taper_floor.json`). `adaptation_eval` already had the option.
+- Whether a life should begin at the floor is Brian's, and is not decided here.
+
+### Step 10: the per-block probe had its own rebuild
+
+Running all three experiments on the two July-made runs here: E2 and E1 ran, E4
+failed (`KeyError: 'model_kwargs'`). `scripts/per_block_probe.py` rebuilt the model
+itself. It now goes through `rebuild_run`. The plan runs E4 only on the 768 runs, so
+this had not been met on Brian's card.
+
 ## Conclusion
 
-The nine July runs can be measured. What stands behind that:
+The nine July runs can be rebuilt, and each is marked for what was reconstructed:
+its model settings, its projection head, the living state it lacks, its taper, and a
+corpus path when that was moved.
 
-- Checked: the arm entries and base settings against history; that no default changed.
-- Not checked: that each added default leaves the old behaviour exactly as it was.
-  The project's rule says it must, and tests pin many of them, but I did not verify
-  all 59 one by one. A difference of shape would stop the load. A difference of
-  behaviour with the same shapes would not.
+- Checked by reading: the arm entries and base settings at all four launch commits.
+- Checked by measurement: that today's code computes from a July checkpoint what
+  July's code computed, for the living and the dead arm, at 64 wide on CPU; and that
+  the 27 values are read by nothing while the five mechanisms are off.
+- Not checked: the same at 512 on Brian's card; the C++ and Python maths against each
+  other; that the corpus files themselves are unchanged since July (the list is, and
+  no file it names is missing).
+- Wrong in this entry before today's step 5: "no default has changed" (the projection
+  head had) and "the checkpoint still loads strictly" (it never did for a July file).
+  Both came from reading where a measurement was possible.
 
 ## Artifacts
 
-- `luthi/v2/run_rebuild.py`; `tests/test_rebuild_pre_provenance_runs.py` (4): a
-  checked arm rebuilds to exactly what the driver records for it today, and loads; an
-  unchecked arm is refused; the frozen settings ignore the registry.
+- `luthi/v2/run_rebuild.py`; `scripts/per_block_probe.py`;
+  `scripts/run_no_training_experiments.py` (the taper-floor job).
+- `tests/test_rebuild_pre_provenance_runs.py` (13): a July-shaped run rebuilds and is
+  marked; the 27 values change nothing; only they may be missing; a layer that reads
+  them may not lack them; a run made today still loads strictly; the corpus is found
+  when its recorded place is gone, and refused when this repo cannot stand in.
+- `tests/test_no_training_runner.py`: the taper-floor job and its floor.
+- `redteam/fable_2026_11_13/`: the two scripts of step 7 and how they were run.
+- Commits: 23243c4 (steps 1 to 4), 7c4140b and the one after it (steps 5 to 10).
 - Where the runs are, and the terminal instance's reports: `To-Do.md`, 2026-11-11
   block; `docs/research/2026-11-10_resume-exactness.md`, last section.
