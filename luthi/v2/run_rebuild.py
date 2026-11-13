@@ -17,12 +17,14 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 import torch
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 logger = logging.getLogger(__name__)
+
+CORPUS_MOVED_NOTE = "recorded path is gone; same path under this repo"
 
 
 @dataclass
@@ -35,17 +37,52 @@ class RebuiltRun:
     global_step: object
 
 
+def _where_the_corpus_is(recorded: str, cfg: dict, key: str) -> Path:
+    """A run records its corpus by absolute path. The repo has moved since
+    some runs were made (2026-07-23), and their recorded paths point at a
+    place that is gone. When the recorded path does not exist and it lies
+    inside a ``corpus_build`` directory, the same path under this repo's
+    ``corpus_build`` is used, and the change is written into the config
+    beside the original. Anything else is refused, as before.
+
+    That the file is the same file is not checked here. For
+    ``gutenberg_4x_filelist.txt`` it was checked on 2026-11-13: one commit
+    ever (2026-07-18), and byte-identical to the copy in the pre-migration
+    backup."""
+    path = Path(recorded)
+    if path.exists():
+        return path
+    parts = PureWindowsPath(recorded).parts if "\\" in recorded else path.parts
+    if "corpus_build" in parts:
+        here = REPO_ROOT.joinpath(*parts[parts.index("corpus_build"):])
+        if here.exists():
+            cfg[f"{key}_recorded"] = recorded
+            cfg[key] = str(here)
+            cfg[f"{key}_source"] = CORPUS_MOVED_NOTE
+            logger.warning(
+                "the run's recorded %s (%s) no longer exists; using the same "
+                "path under this repo: %s", key, recorded, here,
+            )
+            return here
+    raise FileNotFoundError(
+        f"the run's recorded {key} does not exist: {recorded}. It is not "
+        "under a corpus_build directory that this repo also has, so there "
+        "is nothing to rebuild its data from."
+    )
+
+
 def _text_dataset(cfg: dict, seed: int):
     from luthi.v2.multimodal_data import TextDataset, TextDatasetConfig
 
     if cfg.get("file_list"):
+        file_list = _where_the_corpus_is(cfg["file_list"], cfg, "file_list")
         source_paths = [
             line.strip()
-            for line in Path(cfg["file_list"]).read_text(encoding="utf-8").splitlines()
+            for line in file_list.read_text(encoding="utf-8").splitlines()
             if line.strip()
         ]
     else:
-        source_paths = [cfg["data_dir"]]
+        source_paths = [str(_where_the_corpus_is(cfg["data_dir"], cfg, "data_dir"))]
     return TextDataset(TextDatasetConfig(
         source_paths=source_paths,
         tokenizer_path=REPO_ROOT / "corpus_build" / "tokenizer_32k.json",
@@ -64,8 +101,9 @@ def _text_dataset(cfg: dict, seed: int):
 # then what is written here, and no default of the model, the living layer or
 # the loss has changed or been removed since. The values are frozen here, not
 # read from the live registry, so a later change to the registry cannot
-# quietly rebuild an old run as a different model. The checkpoint still loads
-# strictly, which catches any difference of shape. Any other arm is refused.
+# quietly rebuild an old run as a different model. The checkpoint must still
+# fit exactly (see _load_older_online_state for the one allowance), which
+# catches any difference of shape. Any other arm is refused.
 PRE_PROVENANCE_NOTE = (
     "reconstructed: checked 2026-11-13 against commits 13e5cd25 and 0230cc9f"
 )
@@ -101,6 +139,95 @@ def _pre_provenance_model_kwargs(result: dict, result_path: Path) -> dict:
     return kwargs
 
 
+# What the loss and the trainer were given for the same runs. Neither rides in
+# model_kwargs, and neither was recorded then.
+#
+# - The projection head in front of SIGReg was a linear layer and a BatchNorm
+#   until commit 8ec9d07 (2026-07-29), which made a bare linear layer the
+#   default. Found on 2026-11-13 by training a run with the code of
+#   2026-07-26 and loading it here: the heads did not fit.
+# - The living arm trained with the plasticity taper, so it ended its run
+#   with the living rates at the taper's floor (0.2). No checkpoint carries
+#   that scale, so a rebuilt model's living layers stand at 1.0. It is
+#   written into the config so an instrument can measure at either.
+PRE_PROVENANCE_SIGREG_PROJECTION = "linear_bn"
+TAPER_FLOOR = 0.2   # TaperConfig's floor; no driver has ever set another
+PRE_PROVENANCE_TAPER: dict[str, bool] = {
+    "dead_4x": False, "living_v5_4x_d4": True, "living_v5_4x_d4_rerun": True,
+}
+
+# State the living layer has stored in its checkpoints since 2026-07-27 to
+# 2026-07-29, which runs made before then do not have: the episode store's
+# admission and age bookkeeping (adaptive_episodes), adaptive recall, the
+# drive modes, and the homeostatic band. Each belongs to a mechanism that is
+# off unless asked for, and none of the runs above asked. With them off the
+# layer reads none of these values, so leaving them as a new layer has them
+# changes nothing the layer computes. That is checked two ways:
+# tests/test_rebuild_pre_provenance_runs.py scrambles them and requires every
+# forward to come out the same to the bit, and on 2026-11-13 a run trained
+# with the code of 2026-07-26 was loaded both by that code and by this, and
+# the two computed the same numbers (docs/research/2026-11-13_rebuilding-july-runs.md).
+LIVING_STATE_SINCE_2026_07_27 = frozenset({
+    "episode_steps", "episode_step_counter", "episode_writes", "last_write_step",
+    "salience_window", "salience_window_pos", "salience_window_filled",
+    "salience_level", "salience_drift", "salience_dev",
+    "recall_sim_mean", "recall_sim_var", "recall_sim_count", "recall_fires",
+    "error_rms", "drive_ref", "drive_ref_drift", "drive_dev", "drive_calls",
+    "drive_gain", "drive_fire_count", "drive_gain_sum",
+    "act_mean", "act_var", "act_count", "band_boost_rows", "band_damp_rows",
+})
+
+
+def trained_with_taper(result: dict) -> bool | None:
+    """Whether a run trained with the plasticity taper, so that it ended with
+    its living rates at the taper's floor. None when the run did not record
+    it and is not one of the runs checked against history."""
+    cfg = result.get("config", {})
+    if "taper" in cfg:
+        return bool(cfg["taper"])
+    if not cfg.get("model_kwargs"):
+        return PRE_PROVENANCE_TAPER.get(result.get("arm"))
+    return None
+
+
+def _reads_none_of_it(layer) -> bool:
+    """True when every mechanism that reads LIVING_STATE_SINCE_2026_07_27 is
+    off in this layer."""
+    return (
+        not layer.adaptive_episodes and not layer.adaptive_recall
+        and layer.drive_mode == "raw" and not layer.drive_normalize
+        and not layer.homeostatic_band_enabled
+    )
+
+
+def _load_older_online_state(model, online_state: dict, ckpt: Path) -> list[str]:
+    """Load a pre-provenance run's encoder. Everything must fit exactly, as
+    in a strict load, with one allowance: a living layer may lack the state
+    named in LIVING_STATE_SINCE_2026_07_27, and only when the layer has every
+    mechanism that reads it switched off. Returns the names that were absent."""
+    from luthi.v2.living_layer_pc import PredictiveCodingLayer
+
+    missing, unexpected = model.load_state_dict(online_state, strict=False)
+    modules = dict(model.named_modules())
+    refused = []
+    for key in missing:
+        path, _, name = key.rpartition(".")
+        layer = modules.get(path)
+        if not (
+            isinstance(layer, PredictiveCodingLayer)
+            and name in LIVING_STATE_SINCE_2026_07_27
+            and _reads_none_of_it(layer)
+        ):
+            refused.append(key)
+    if refused or unexpected:
+        raise RuntimeError(
+            f"{ckpt} does not fit the model rebuilt for it. Missing, and not "
+            f"state an older living layer may lack: {refused}. Not expected: "
+            f"{list(unexpected)}."
+        )
+    return sorted({key.rpartition(".")[2] for key in missing})
+
+
 def rebuild_run(
     run_dir: str | Path,
     *,
@@ -123,9 +250,12 @@ def rebuild_run(
         )
     result = json.loads(result_path.read_text(encoding="utf-8"))
     cfg = result["config"]
-    if not cfg.get("model_kwargs"):
+    pre_provenance = not cfg.get("model_kwargs")
+    if pre_provenance:
         cfg["model_kwargs"] = _pre_provenance_model_kwargs(result, result_path)
         cfg["model_kwargs_source"] = PRE_PROVENANCE_NOTE
+        cfg.setdefault("sigreg_projection", PRE_PROVENANCE_SIGREG_PROJECTION)
+        cfg.setdefault("taper", PRE_PROVENANCE_TAPER[result["arm"]])
         logger.warning(
             "%s has no recorded model_kwargs; arm %r was rebuilt from the "
             "configuration checked against git history on 2026-11-13.",
@@ -153,7 +283,17 @@ def rebuild_run(
         raise FileNotFoundError(f"no checkpoints in {run_dir / 'checkpoints'}")
     ckpt = (run_dir / "checkpoints" / ckpt_name) if ckpt_name else ckpts[-1]
     state = torch.load(ckpt, map_location="cpu", weights_only=False)
-    model.load_state_dict(state["online_state_dict"])
+    if pre_provenance:
+        absent = _load_older_online_state(model, state["online_state_dict"], ckpt)
+        if absent:
+            cfg["living_state_absent_at_training"] = absent
+            logger.warning(
+                "%s was written before the living layer stored %d of today's "
+                "values; they are left as a new layer has them, and no "
+                "mechanism that reads them is on.", ckpt, len(absent),
+            )
+    else:
+        model.load_state_dict(state["online_state_dict"])
     apply_living_extra_state(
         model, state.get("living_extra_state"), source=f"rebuild_run {ckpt.name}",
     )
@@ -171,4 +311,4 @@ def rebuild_run(
     )
 
 
-__all__ = ["RebuiltRun", "rebuild_run"]
+__all__ = ["RebuiltRun", "TAPER_FLOOR", "rebuild_run", "trained_with_taper"]

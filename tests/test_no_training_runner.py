@@ -79,7 +79,13 @@ def test_the_plan_is_e2_then_e1_then_e4_on_the_right_runs(tmp_path):
         (j["experiment"] for j in jobs), key=["E2", "E1", "E4"].index
     )
     assert len(by["E2"]) == 4 and not any("dead" in j["run"] for j in by["E2"])
-    assert len(by["E1"]) == 10, "five runs, two document sets each"
+    assert len(by["E1"]) == 11, (
+        "five runs, two document sets each, and the July living run once "
+        "more at the rate its taper ended on"
+    )
+    floor = [j for j in by["E1"] if j["out"].name == "adaptation_eval_taper_floor.json"]
+    assert [j["run"] for j in floor] == ["living_v5_4x_d4_512d_seed44"]
+    assert floor[0]["cmd"][-2:] == ["--rate-scale", "0.2"]
     assert sum("dead_4x" in j["run"] for j in by["E1"]) == 2
     assert len(by["E4"]) == 12 and all("768d" in j["run"] for j in by["E4"])
     assert plan(select(_world_again(tmp_path), False, ""), {"e2"})[0]["experiment"] == "E2"
@@ -155,3 +161,25 @@ def test_two_roots_give_the_living_runs_and_their_controls_together(tmp_path):
     assert arms == ["dead_4x", "living_v5_4x_d4", "probe_768_visreg"]
     assert all(here in r["dir"].parents for r in kept if r["arm"] == "probe_768_visreg"), "the first root's copy is kept"
 
+
+
+def test_a_run_that_recorded_its_taper_is_read_at_the_floor_too(tmp_path):
+    """And a dead run never is: it has no living rate."""
+    for arm, taper in (("probe_768_visreg", True), ("lc768_living", False), ("lc768_dead", True)):
+        run = tmp_path / f"{arm}_768d_seed97"
+        (run / "checkpoints").mkdir(parents=True)
+        (run / "checkpoints" / "ckpt_00000000.pt").write_bytes(b"")
+        (run / "pilot_result.json").write_text(json.dumps({
+            "arm": arm, "d_model": 768, "seed": 97, "outcome": "completed",
+            "config": {"model_kwargs": {"d_model": 768}, "taper": taper},
+        }))
+    jobs = plan(find_runs([tmp_path]), {"e1"})
+    floor = [j["run"] for j in jobs if j["out"].name == "adaptation_eval_taper_floor.json"]
+    assert floor == ["probe_768_visreg_768d_seed97"]
+
+
+def test_the_floor_is_the_trainers():
+    from luthi.v2.jepa_runner import TaperConfig
+    from luthi.v2.run_rebuild import TAPER_FLOOR
+
+    assert TAPER_FLOOR == TaperConfig().floor

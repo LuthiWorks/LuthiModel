@@ -49,6 +49,10 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = REPO_ROOT / "scripts"
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from luthi.v2.run_rebuild import TAPER_FLOOR, trained_with_taper  # noqa: E402
 COLLECT = REPO_ROOT / "runs_meta" / "living_channel_e1_e2_e4"
 
 
@@ -73,6 +77,7 @@ def find_runs(roots: list[Path]) -> list[dict]:
                 "seed": result.get("seed"),
                 "outcome": str(result.get("outcome", "")),
                 "has_checkpoint": any((run_dir / "checkpoints").glob("ckpt_*.pt")),
+                "tapered": trained_with_taper(result),
                 # A smoke run records the arm it smoked, so it looks like a
                 # run of that arm. It is known only by the folder it sits in.
                 "smoke": any(
@@ -166,6 +171,14 @@ def plan(runs: list[dict], only: set[str]) -> list[dict]:
             job("E1", run, "adaptation_eval.py", "adaptation_eval.json", common)
             job("E1", run, "adaptation_eval.py", "adaptation_eval_phase1.json",
                 common + ["--doc-phase", "1"])
+            # A run trained with the taper ended with its living rates at
+            # the taper's floor. No checkpoint carries that, so the two jobs
+            # above read at the full rate, as a life loaded from the run
+            # would. This one reads at the rate the run ended on.
+            if run.get("tapered") and not is_dead(run["arm"]):
+                job("E1", run, "adaptation_eval.py",
+                    "adaptation_eval_taper_floor.json",
+                    common + ["--rate-scale", str(TAPER_FLOOR)])
     if "e4" in only:
         for run in [r for r in living if r["d_model"] == 768] or (
             living if not any(r["d_model"] == 768 for r in runs) else []
