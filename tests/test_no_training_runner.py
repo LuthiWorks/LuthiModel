@@ -34,6 +34,7 @@ from scripts.run_no_training_experiments import (  # noqa: E402
     run_job,
     select,
     set_aside,
+    stale,
 )
 
 
@@ -274,3 +275,20 @@ def test_each_instrument_writes_what_was_reconstructed():
     for name in ("living_write_probe.py", "adaptation_eval.py", "per_block_probe.py"):
         text = (REPO_ROOT / "scripts" / name).read_text(encoding="utf-8")
         assert '"reconstruction"' in text and "reconstruction(" in text, name
+
+
+def test_e4_fits_on_the_runs_device_and_an_earlier_cpu_result_is_measured_again(tmp_path):
+    """Twelve jobs took 14 to 16 hours fitted on the CPU. All twelve are to
+    be fitted the same way, so a result from before is not kept as done."""
+    jobs = [j for j in plan(select(_world(tmp_path), False, ""), {"e4"})]
+    assert jobs and all(j["cmd"][-2:] == ["--fit-device", "run"] for j in jobs)
+    job = jobs[0]
+    assert stale(job) == ""                                  # nothing there yet
+    job["out"].write_text(json.dumps({"reconstruction": {}, "settings": {"offset": 1}}))
+    assert "before the probe could use the card" in stale(job)
+    job["out"].write_text(json.dumps(
+        {"reconstruction": {}, "settings": {"offset": 1, "fit_device": "cuda:0"}}
+    ))
+    assert stale(job) == ""
+    job["out"].write_text(json.dumps({"settings": {"fit_device": "cpu"}}))
+    assert "does not say what was reconstructed" in stale(job)

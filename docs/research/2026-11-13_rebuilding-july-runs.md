@@ -205,6 +205,39 @@ What was built, in `scripts/run_no_training_experiments.py`:
 Run here on the two July-made runs: ten jobs, each result carrying its marks, and a
 second pass finds all ten already done.
 
+### Step 12: the fourth attempt: every E1 job hangs, and E4 would take 14 hours
+
+From the terminal instance, 10:45, still on ca95572:
+
+- E2 ran 9, none failed, none hung. E1 ran 31, none failed, and **all 31 did not
+  exit**: each wrote a whole result and was killed 60 seconds later. With the morning's
+  one that is 32 of 32 for `adaptation_eval.py` and 0 of 18 for
+  `living_write_probe.py`, across living and dead, 512 and 768. So it is not
+  intermittent. It belongs to something the first script does and the second does not.
+- What I checked from here: both scripts take an SVD on the card
+  (`adaptation_eval._eff_rank`, `living_diagnostics.living_change_spectrum`), so the
+  SVD alone is not it. `adaptation_eval` also snapshots and restores the model many
+  times. I have not found the cause and cannot bisect it without the card. A bisect
+  there is short: the script exits in seconds or it does not.
+- All six dead-control results held a bare `NaN` (a t-value of 0 divided by 0, which
+  is the control behaving as it should). Fixed in feae189: `luthi/v2/result_json.py`.
+- E4's first job was 40 minutes in with four of nine probes fitted: 70 to 80 minutes
+  a job, 14 to 16 hours for twelve. I had not estimated it. The probe is a 768 by
+  32,000 linear layer and was fitted on the CPU.
+
+What was built for E4: `per_block_probe.py --fit-device run` fits each probe on the
+device the model runs on. The default is still the CPU, and on the CPU the script's
+numbers are the same as before to the last digit (checked here against the earlier
+result of the same job). The probe is drawn and the minibatches ordered on the CPU
+either way, so only the arithmetic moves. The runner asks for it, the result records
+where it was fitted, and a result that does not say is measured again so all twelve
+are fitted alike.
+
+Not measured: how long a job takes on the card, and how far the card's numbers sit
+from the CPU's. Both are for the card to say. The first matters today; the second is
+float-level if the fit behaves, and the two CPU results kept beside the new ones show
+it for those two jobs.
+
 ## Conclusion
 
 The nine July runs can be rebuilt, and each is marked for what was reconstructed:
@@ -215,8 +248,9 @@ corpus path when that was moved.
 - Checked by measurement: that today's code computes from a July checkpoint what
   July's code computed, for the living and the dead arm, at 64 wide on CPU; and that
   the 27 values are read by nothing while the five mechanisms are off.
-- Not known: why a finished job sometimes does not exit on Brian's card (step 11).
-  The runner no longer depends on it.
+- Not known: why `adaptation_eval.py` never exits on Brian's card once it has
+  finished, when `living_write_probe.py` always does (steps 11 and 12). The runner no
+  longer depends on it.
 - Not checked: the same at 512 on Brian's card; the C++ and Python maths against each
   other; that the corpus files themselves are unchanged since July (the list is, and
   no file it names is missing).

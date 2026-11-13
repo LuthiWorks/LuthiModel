@@ -198,14 +198,34 @@ def plan(runs: list[dict], only: set[str]) -> list[dict]:
             living if not any(r["d_model"] == 768 for r in runs) else []
         ):
             job("E4", run, "per_block_probe.py", "per_block_probe_offset+1.json",
-                ["--offset", "1"])
+                ["--offset", "1"] + E4_FIT)
             job("E4", run, "per_block_probe.py", "per_block_probe_offset-1.json",
-                ["--offset", "-1"])
+                ["--offset", "-1"] + E4_FIT)
             job("E4", run, "per_block_probe.py", "per_block_probe_offset0.json",
-                ["--offset", "0"])
+                ["--offset", "0"] + E4_FIT)
             job("E4", run, "per_block_probe.py", "per_block_probe_causal.json",
-                ["--causal"])
+                ["--causal"] + E4_FIT)
     return jobs
+
+
+# E4's probes are fitted on the device the model runs on (2026-11-13). On the
+# CPU one job took 70 to 80 minutes on Brian's machine, twelve jobs 14 to 16
+# hours. A result that does not say where it was fitted is from before, and
+# is measured again so that all twelve are fitted the same way.
+E4_FIT = ["--fit-device", "run"]
+
+
+def stale(job: dict) -> str:
+    """Why the result already at ``job["out"]`` is not kept as done, or ""
+    when it is (or when there is none)."""
+    if not job["out"].exists():
+        return ""
+    result = result_of(job["out"])
+    if result is None:
+        return "the result there does not say what was reconstructed"
+    if job["experiment"] == "E4" and "fit_device" not in result.get("settings", {}):
+        return "the result there was fitted before the probe could use the card"
+    return ""
 
 
 def collect(job: dict, into: Path) -> None:
@@ -343,15 +363,14 @@ def main() -> int:
     done, skipped, failed, hung = [], [], [], []
     for i, job in enumerate(jobs, 1):
         label = f"{job['experiment']} {job['run']} -> {job['out'].name}"
-        unmarked = job["out"].exists() and result_of(job["out"]) is None
-        if job["out"].exists() and not unmarked and not args.redo:
+        reason = stale(job)
+        if job["out"].exists() and not reason and not args.redo:
             skipped.append(label)
             if into and not args.dry_run:
                 collect(job, into)
             print(f"[{i}/{len(jobs)}] have  {label}")
             continue
-        why = (" (the result there does not say what was reconstructed; "
-               "it is kept beside the new one)") if unmarked else ""
+        why = f" ({reason}; it is kept beside the new one)" if reason else ""
         if args.dry_run:
             print(f"[{i}/{len(jobs)}] would {label}{why}")
             continue

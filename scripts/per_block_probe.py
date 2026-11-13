@@ -224,11 +224,20 @@ def _standardizer(x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
 
 def _fit_probe(x: torch.Tensor, y: torch.Tensor, vocab: int,
                epochs: int, lr: float, seed: int,
-               mu: torch.Tensor, sd: torch.Tensor) -> nn.Linear:
+               mu: torch.Tensor, sd: torch.Tensor,
+               device: torch.device = torch.device("cpu")) -> nn.Linear:
     """eval_heldout.fit_next_token_probe's recipe (Adam, 1e-2, 3 epochs,
-    4096 minibatch) on STANDARDIZED inputs -- see _standardizer."""
+    4096 minibatch) on STANDARDIZED inputs -- see _standardizer.
+
+    ``device`` is where the fit runs (2026-11-13). On the CPU a 768-wide
+    probe over a 32,000-token vocabulary took about eight minutes a stream
+    on Brian's machine, nine streams a job. The probe is drawn and the
+    minibatches are ordered on the CPU whatever the device, so the start
+    and the order are the same; the arithmetic is the device's. The features
+    stay where they were gathered and go over a minibatch at a time."""
     torch.manual_seed(seed)
-    probe = nn.Linear(x.shape[-1], vocab)
+    probe = nn.Linear(x.shape[-1], vocab).to(device)
+    mu, sd = mu.to(device), sd.to(device)
     opt = torch.optim.Adam(probe.parameters(), lr=lr)
     probe.train()
     for _ in range(epochs):
@@ -236,7 +245,8 @@ def _fit_probe(x: torch.Tensor, y: torch.Tensor, vocab: int,
         for start in range(0, x.shape[0], 4096):
             idx = perm[start:start + 4096]
             opt.zero_grad(set_to_none=True)
-            loss = F.cross_entropy(probe((x[idx].float() - mu) / sd), y[idx])
+            xb, yb = x[idx].float().to(device), y[idx].to(device)
+            loss = F.cross_entropy(probe((xb - mu) / sd), yb)
             loss.backward()
             opt.step()
     probe.eval()
@@ -253,9 +263,11 @@ def _accuracy(probe: nn.Linear, x: torch.Tensor, y: torch.Tensor,
     top1 = 0.0
     top5 = 0.0
     n = 0
+    device = probe.weight.device
+    mu, sd = mu.to(device), sd.to(device)
     for start in range(0, x.shape[0], 8192):
-        xb = (x[start:start + 8192].float() - mu) / sd
-        yb = y[start:start + 8192]
+        xb = (x[start:start + 8192].float().to(device) - mu) / sd
+        yb = y[start:start + 8192].to(device)
         logits = probe(xb)
         top1 += (logits.argmax(dim=-1) == yb).float().sum().item()
         k = min(5, logits.shape[-1])
@@ -278,6 +290,9 @@ def main() -> int:
     ap.add_argument("--epochs", type=int, default=3)
     ap.add_argument("--lr", type=float, default=1e-2)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--fit-device", choices=("cpu", "run"), default="cpu",
+                    help="Where each probe is fitted: the CPU (as always "
+                         "until 2026-11-13), or the device the model runs on.")
     ap.add_argument("--out", default="", help="report path; default = run-dir/per_block_probe.json")
     # B7 controls (2026-10-19). --causal: position t cannot attend to t+1, so
     # the next-token readout cannot see its answer. --offset: 1 next token,
@@ -328,13 +343,15 @@ def main() -> int:
     print(f"train pairs={train_y.shape[0]}  holdout pairs={hold_y.shape[0]}  "
           f"streams={len(train_x)} (emb + {len(train_x) - 1} blocks)", flush=True)
 
+    fit_device = device if args.fit_device == "run" else torch.device("cpu")
+    print(f"probes fitted on {fit_device}", flush=True)
     rows = []
     for bi in range(len(train_x)):
         label = "emb" if bi == 0 else f"b{bi - 1}"
         spec = _spectrum(hold_x[bi])
         mu, sd = _standardizer(train_x[bi])
         probe = _fit_probe(train_x[bi], train_y, vocab,
-                           args.epochs, args.lr, args.seed, mu, sd)
+                           args.epochs, args.lr, args.seed, mu, sd, fit_device)
         acc = _accuracy(probe, hold_x[bi], hold_y, False, args.seed, mu, sd)
         floor = _accuracy(probe, hold_x[bi], hold_y, True, args.seed, mu, sd)
         row = {
@@ -383,6 +400,7 @@ def main() -> int:
             "causal": CAUSAL,
             "offset": OFFSET,
             "plasticity_frozen": True,
+            "fit_device": str(fit_device),
         },
         "verdict_reference": {
             "probe_top1": result["probe"]["top1"],
