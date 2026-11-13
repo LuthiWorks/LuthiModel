@@ -67,10 +67,26 @@
 >   pilot runs. The living 512 family is in the repo's `runs\`, the dead
 >   controls are in `E:\luthi_experiment_archive`, and the 768 family is in
 >   both. Give the runner both roots. Smoke runs are now left out.
-> - **E2 ran for the 768 family; the nine July runs were refused** for having
->   no recorded model settings. Checked against history and made rebuildable
->   for those three arms only (`docs/research/2026-11-13_rebuilding-july-runs.md`).
->   Next: E2 on the rest, then E1, then E4.
+> - **E1, E2 and E4 have run and been read once** (2026-11-13; twelve runs, 52
+>   results in `runs_meta/living_channel_e1_e2_e4`; read with
+>   `python scripts/read_no_training_results.py`). Record:
+>   `docs/research/2026-11-13_e1-e2-e4-first-read.md`; registry, last entry.
+>   - E1: no checkpoint shows document-specific change (0 of 7, controls exact).
+>     Reading moves the July runs by parts per million, and not through the write.
+>   - E2: the write's input is constant, as diagnosed. The living change is not
+>     one direction in the finished runs, and half the 768 blocks' stores never
+>     recall. The diagnosis's kill condition is tripped (12 misses).
+>   - E4: confirmed. No block beats the embedding row. The next-token probe is
+>     retired as a capability axis.
+>   - **Next, in order:** (1) a different seat reviews the read; (2) E3's
+>     predictions are revised for E2's misses; (3) a replacement capability axis
+>     is registered. E3 cannot launch before all three (amendment 3).
+>   - Open: E1's registration also names the v3/v4 512 families and the depth-8
+>     probes, not yet read (each pre-August arm needs its settings checked
+>     against history first). `adaptation_eval.py` never exits on Brian's card
+>     once done (38 of 38); the runner kills it. Cause not found.
+>   - How the nine July runs were made rebuildable:
+>     `docs/research/2026-11-13_rebuilding-july-runs.md`.
 > - **What fits on the card** (`docs/research/2026-11-11_what-fits-on-the-card.md`):
 >   about 1024x12 as built. Two opt-in driver flags shrink the episode store.
 >   Suggested, not done: a timed 200-step run at 1024x12 on the card.

@@ -1516,3 +1516,46 @@ is the entire point. Honor them after.
 > - The re-reading notice: KF2's kill stands; KF7 is suspended as above; the
 >   dead-control obligation is discharged when `lc768_dead` completes.
 > - The five standing rules in `CLAUDE.md`.
+
+---
+
+> # 2026-11-13 — E1, E2 and E4: FIRST READ, awaiting review by another seat
+>
+> Entered by Claude Fable 5.2, the seat that built the runner and read the
+> results. A different seat has not yet reviewed this. Until one has, this
+> is a first read and not a ratified verdict. Nothing frozen above is
+> edited. Record: `2026-11-13_e1-e2-e4-first-read.md`. Every number is
+> reproduced by `python scripts/read_no_training_results.py` from
+> `runs_meta/living_channel_e1_e2_e4` (commit 0eb6b23).
+>
+> **Read:** seven counted checkpoints (six finished `living_v5_4x_d4` 512d
+> runs, rebuilt from history and marked so; `probe_768_visreg` seed 97),
+> three `dead_4x` controls, and two 768 runs stopped at a sixth of their
+> length (seeds 46 and 95), which are reported and not counted.
+> **Not read:** the v3 and v4 512d families and the depth-8 probes, which
+> E1's registration also names.
+>
+> - **E1.** Controls: exact null, 3 of 3, both document sets. Criterion met
+>   by 0 of 7; candidates 0 of 7 (chance accounting: 14 reads, 0 hits; t
+>   from −0.8 to +1.5). **Prediction confirmed** on what was read; the kill
+>   condition for the diagnosis is not tripped.
+> - **E2.** For the finished 768 run, eight living blocks: stationarity
+>   holds in 8 of 8; the spectrum prediction (top share and alignment both
+>   at or above 0.9) **misses in 8 of 8** (top share 0.56 to 0.87); the store
+>   prediction holds in blocks 0 to 3 and **misses in blocks 4 to 7**
+>   (recall duty 0). **The kill condition for the diagnosis at scale is
+>   tripped: twelve misses.** As registered, E3's predictions are to be
+>   revised before E3 runs. Not done here.
+> - **E4.** No block exceeds the embedding row by the amendment-4 margin at
+>   +1 or −1 in any of three seeds (one admissible). **Confirmed.** As
+>   registered: B7 closes as "the next-token probe reads the residual's copy
+>   of the input, not trunk computation", the probe is retired as a
+>   capability axis, and a replacement is to be registered (a condition of
+>   E3's launch under amendment 3). Not done here.
+>
+> **Outside the registered rules, reported:** reading four windows changes
+> the July runs' prediction error by parts per million; the change is the
+> same whichever document is read; and at a fifth of the living rate it is
+> 0.84 to 1.12 of what it was, so it does not come from the write. The
+> living change in the finished runs is about a ten-thousandth of the
+> weight in most blocks.
