@@ -61,8 +61,8 @@
 >   Wants review by a different mind: it reaches into learning by gradient.
 > - **Resume on the card: SAME RUN** (2026-11-13; 768 wide, cut at step 25, 0
 >   entries differ). Record: `docs/research/2026-11-10_resume-exactness.md`, last
->   section. Left: one full run of the check into an empty folder, to exercise
->   its new way of cutting; then the no-training experiments.
+>   section. The whole check, with its new way of cutting, also
+>   passed end to end (22 minutes). Next: the no-training experiments.
 > - **Where the runs are** (terminal Fable, 2026-11-13): `E:\runs` holds no
 >   pilot runs. The living 512 family is in the repo's `runs\`, the dead
 >   controls are in `E:\luthi_experiment_archive`, and the 768 family is in

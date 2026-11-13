@@ -102,9 +102,12 @@ his terminal, relayed by him.
   `per_step.jsonl` has 65 lines, 25 from before the kill and 40 for steps 21 to 60. So
   it resumed from the step-20 save and was not a fresh run.
 
-Not tested on the card: the new kill-from-outside path. The cut run that was resumed
-had been made by the old script and killed by hand. A full run into an empty `--out`
-would exercise it (about 25 minutes).
+**The whole check, with the new way of cutting** (terminal instance, 2026-11-13 06:03
+to 06:25 PST, into an empty `E:\resume_check2`, main at `3c1f3c9`): **SAME RUN**, 0
+entries differ in both comparisons. The cut run was killed from outside 86 seconds
+after it started, the resume began a second later and took six minutes. No Python
+process was left afterward. The cut run's step log again has 65 lines. So the check
+that hung on the 12th now runs end to end on the card in 22 minutes.
 
 The 192 bytes, explained by the terminal instance (2026-11-13): the resumed run's
 final checkpoint was 192 bytes larger than the uninterrupted ones'. A full compare with
