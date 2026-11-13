@@ -1,0 +1,127 @@
+{
+  "run_dir": "C:\\Dev\\LuthiModel\\runs\\jepa_pilot\\living_v5_4x_d4_512d_seed42",
+  "arm": "living_v5_4x_d4",
+  "seed": 42,
+  "checkpoint": "ckpt_00000041.pt",
+  "global_step": 72042,
+  "living_change_spectrum": {
+    "blocks.0.living_ffn": {
+      "top_share": 0.8457890748977661,
+      "eff_rank": 2.277212057316673,
+      "rel_norm": 0.00024478553501393373,
+      "out_align": 0.9864106178283691
+    },
+    "blocks.1.living_ffn": {
+      "top_share": 0.8876684308052063,
+      "eff_rank": 2.0626914509508443,
+      "rel_norm": 0.00026247371479264336,
+      "out_align": 0.9965813159942627
+    },
+    "blocks.2.living_ffn": {
+      "top_share": 0.6970661282539368,
+      "eff_rank": 9.995812182455236,
+      "rel_norm": 0.0001426113215785534,
+      "out_align": 0.9945332407951355
+    },
+    "blocks.3.living_ffn": {
+      "top_share": 0.9821490049362183,
+      "eff_rank": 1.1181284196647312,
+      "rel_norm": 0.01228078110485595,
+      "out_align": 0.17676541209220886
+    }
+  },
+  "batch_mean_stationarity": {
+    "train_batches": {
+      "blocks.0.living_ffn": 0.9999674558639526,
+      "blocks.1.living_ffn": 0.9999967813491821,
+      "blocks.2.living_ffn": 0.9999987483024597,
+      "blocks.3.living_ffn": 0.9999995231628418,
+      "_mean": 0.9999906271696091
+    },
+    "single_sequences": {
+      "blocks.0.living_ffn": 0.9989132881164551,
+      "blocks.1.living_ffn": 0.9998884201049805,
+      "blocks.2.living_ffn": 0.9999525547027588,
+      "blocks.3.living_ffn": 0.9999819397926331,
+      "_mean": 0.9996840506792068
+    }
+  },
+  "write_diversity": {
+    "train_batches": {
+      "blocks.0.living_ffn": 0.6698118569662945,
+      "blocks.1.living_ffn": 0.6412998948432157,
+      "blocks.2.living_ffn": 0.675131435620847,
+      "blocks.3.living_ffn": 0.9996767733305103,
+      "_mean": 0.7464799901902168
+    },
+    "single_sequences": {
+      "blocks.0.living_ffn": -0.004254162013387196,
+      "blocks.1.living_ffn": -0.021197453841121375,
+      "blocks.2.living_ffn": 0.20622731751108647,
+      "blocks.3.living_ffn": 0.9978710685453915,
+      "_mean": 0.29466169255049235
+    }
+  },
+  "block_output_store": {
+    "blocks.0": {
+      "episodes_stored": 64,
+      "recall_duty": 1.0,
+      "last_recall_sim": 0.9977282881736755,
+      "last_blend_share": 0.48687508702278137
+    },
+    "blocks.1": {
+      "episodes_stored": 64,
+      "recall_duty": 1.0,
+      "last_recall_sim": 0.9929974675178528,
+      "last_blend_share": 0.3290417492389679
+    },
+    "blocks.2": {
+      "episodes_stored": 64,
+      "recall_duty": 1.0,
+      "last_recall_sim": 0.9911909699440002,
+      "last_blend_share": 0.32087457180023193
+    },
+    "blocks.3": {
+      "episodes_stored": 64,
+      "recall_duty": 1.0,
+      "last_recall_sim": 0.9027787446975708,
+      "last_blend_share": 0.11921873688697815
+    }
+  },
+  "reconstruction": {
+    "model_kwargs_source": "reconstructed: checked 2026-11-13 against commits f33838b, cc30226, 13e5cd25 and 0230cc9f, and against a run trained by the code of 0230cc9f",
+    "living_state_absent_at_training": [
+      "act_count",
+      "act_mean",
+      "act_var",
+      "band_boost_rows",
+      "band_damp_rows",
+      "drive_calls",
+      "drive_dev",
+      "drive_fire_count",
+      "drive_gain",
+      "drive_gain_sum",
+      "drive_ref",
+      "drive_ref_drift",
+      "episode_step_counter",
+      "episode_steps",
+      "episode_writes",
+      "error_rms",
+      "last_write_step",
+      "recall_fires",
+      "recall_sim_count",
+      "recall_sim_mean",
+      "recall_sim_var",
+      "salience_dev",
+      "salience_drift",
+      "salience_level",
+      "salience_window",
+      "salience_window_filled",
+      "salience_window_pos"
+    ],
+    "file_list_source": "recorded path is gone; same path under this repo",
+    "file_list_recorded": "C:\\Users\\Hasha Smokes\\Desktop\\LuthiModel\\LuthiModel\\corpus_build\\gutenberg_4x_filelist.txt",
+    "sigreg_projection": "linear_bn",
+    "taper": true
+  }
+}

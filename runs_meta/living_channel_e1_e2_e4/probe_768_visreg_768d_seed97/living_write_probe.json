@@ -1,0 +1,156 @@
+{
+  "run_dir": "C:\\Dev\\LuthiModel\\runs\\jepa_pilot\\probe_768_visreg_768d_seed97",
+  "arm": "probe_768_visreg",
+  "seed": 97,
+  "checkpoint": "ckpt_00000056.pt",
+  "global_step": 54077,
+  "living_change_spectrum": {
+    "blocks.0.living_ffn": {
+      "top_share": 0.8031959533691406,
+      "eff_rank": 4.924212540027486,
+      "rel_norm": 0.0001324358481438214,
+      "out_align": 0.993267297744751
+    },
+    "blocks.1.living_ffn": {
+      "top_share": 0.8342961668968201,
+      "eff_rank": 3.5566118525341484,
+      "rel_norm": 0.00015749511108042983,
+      "out_align": 0.9917482137680054
+    },
+    "blocks.2.living_ffn": {
+      "top_share": 0.8513243198394775,
+      "eff_rank": 3.7818932817478172,
+      "rel_norm": 0.0001333448915857411,
+      "out_align": 0.9992315769195557
+    },
+    "blocks.3.living_ffn": {
+      "top_share": 0.7216284275054932,
+      "eff_rank": 9.936907215691495,
+      "rel_norm": 9.821524236933696e-05,
+      "out_align": 0.9985859394073486
+    },
+    "blocks.4.living_ffn": {
+      "top_share": 0.6620242595672607,
+      "eff_rank": 15.035971106110432,
+      "rel_norm": 8.875306687121956e-05,
+      "out_align": 0.9985661506652832
+    },
+    "blocks.5.living_ffn": {
+      "top_share": 0.874351441860199,
+      "eff_rank": 1.9225247891846782,
+      "rel_norm": 0.0012553419320776205,
+      "out_align": 0.7812896966934204
+    },
+    "blocks.6.living_ffn": {
+      "top_share": 0.7879216074943542,
+      "eff_rank": 2.8039582662653646,
+      "rel_norm": 0.001405234030888365,
+      "out_align": 0.7601679563522339
+    },
+    "blocks.7.living_ffn": {
+      "top_share": 0.559410035610199,
+      "eff_rank": 5.723586657203719,
+      "rel_norm": 0.0020453088280921786,
+      "out_align": 0.5637103319168091
+    }
+  },
+  "batch_mean_stationarity": {
+    "train_batches": {
+      "blocks.0.living_ffn": 0.9998887181282043,
+      "blocks.1.living_ffn": 0.9998059272766113,
+      "blocks.2.living_ffn": 0.9999909400939941,
+      "blocks.3.living_ffn": 0.9999971985816956,
+      "blocks.4.living_ffn": 0.9999982118606567,
+      "blocks.5.living_ffn": 0.9999983310699463,
+      "blocks.6.living_ffn": 0.9999984502792358,
+      "blocks.7.living_ffn": 0.999995231628418,
+      "_mean": 0.9999591261148453
+    },
+    "single_sequences": {
+      "blocks.0.living_ffn": 0.995665431022644,
+      "blocks.1.living_ffn": 0.994272768497467,
+      "blocks.2.living_ffn": 0.9997313022613525,
+      "blocks.3.living_ffn": 0.9999087452888489,
+      "blocks.4.living_ffn": 0.9999416470527649,
+      "blocks.5.living_ffn": 0.999948263168335,
+      "blocks.6.living_ffn": 0.9999455213546753,
+      "blocks.7.living_ffn": 0.9998429417610168,
+      "_mean": 0.9986570775508881
+    }
+  },
+  "write_diversity": {
+    "train_batches": {
+      "blocks.0.living_ffn": 0.10317898577696334,
+      "blocks.1.living_ffn": 0.07656873460912832,
+      "blocks.2.living_ffn": 0.19876089815908962,
+      "blocks.3.living_ffn": 0.2842218316779233,
+      "blocks.4.living_ffn": 0.3541832023161215,
+      "blocks.5.living_ffn": 0.42182353451493,
+      "blocks.6.living_ffn": 0.5097575486060895,
+      "blocks.7.living_ffn": 0.5994548724320173,
+      "_mean": 0.31849370101153285
+    },
+    "single_sequences": {
+      "blocks.0.living_ffn": -0.15745321705835474,
+      "blocks.1.living_ffn": -0.1967298429076522,
+      "blocks.2.living_ffn": -0.014815944420231639,
+      "blocks.3.living_ffn": 0.011228317045880107,
+      "blocks.4.living_ffn": -0.004820203258651262,
+      "blocks.5.living_ffn": 0.022169833056446014,
+      "blocks.6.living_ffn": 0.021120600303562175,
+      "blocks.7.living_ffn": 0.05113167328664714,
+      "_mean": -0.0335210979940443
+    }
+  },
+  "block_output_store": {
+    "blocks.0": {
+      "episodes_stored": 64,
+      "recall_duty": 1.0,
+      "last_recall_sim": 0.9997396469116211,
+      "last_blend_share": 0.21968482434749603
+    },
+    "blocks.1": {
+      "episodes_stored": 64,
+      "recall_duty": 1.0,
+      "last_recall_sim": 0.9998415112495422,
+      "last_blend_share": 0.276188462972641
+    },
+    "blocks.2": {
+      "episodes_stored": 64,
+      "recall_duty": 1.0,
+      "last_recall_sim": 0.9949325323104858,
+      "last_blend_share": 0.31004053354263306
+    },
+    "blocks.3": {
+      "episodes_stored": 64,
+      "recall_duty": 1.0,
+      "last_recall_sim": 0.8249561190605164,
+      "last_blend_share": 0.2557492256164551
+    },
+    "blocks.4": {
+      "episodes_stored": 64,
+      "recall_duty": 0.0,
+      "last_recall_sim": 0.19341760873794556,
+      "last_blend_share": 0.0
+    },
+    "blocks.5": {
+      "episodes_stored": 64,
+      "recall_duty": 0.0,
+      "last_recall_sim": 0.06403795629739761,
+      "last_blend_share": 0.0
+    },
+    "blocks.6": {
+      "episodes_stored": 64,
+      "recall_duty": 0.0,
+      "last_recall_sim": -0.0050322446040809155,
+      "last_blend_share": 0.0
+    },
+    "blocks.7": {
+      "episodes_stored": 64,
+      "recall_duty": 0.0,
+      "last_recall_sim": -0.054117463529109955,
+      "last_blend_share": 0.0
+    }
+  },
+  "reconstruction": {}
+}

@@ -1,0 +1,125 @@
+{
+  "run_dir": "C:\\Dev\\LuthiModel\\runs\\jepa_pilot\\living_v5_4x_d4_512d_seed46",
+  "arm": "living_v5_4x_d4",
+  "seed": 46,
+  "checkpoint": "ckpt_00000033.pt",
+  "global_step": 72042,
+  "living_change_spectrum": {
+    "blocks.0.living_ffn": {
+      "top_share": 0.9314806461334229,
+      "eff_rank": 1.5866387229132262,
+      "rel_norm": 0.00032963092584991353,
+      "out_align": 0.9925961494445801
+    },
+    "blocks.1.living_ffn": {
+      "top_share": 0.5178281664848328,
+      "eff_rank": 14.456877236793137,
+      "rel_norm": 0.00011235928854626709,
+      "out_align": 0.7560450434684753
+    },
+    "blocks.2.living_ffn": {
+      "top_share": 0.24263039231300354,
+      "eff_rank": 119.0910293346009,
+      "rel_norm": 9.092690585338798e-05,
+      "out_align": 0.9775440692901611
+    },
+    "blocks.3.living_ffn": {
+      "top_share": 0.9805878400802612,
+      "eff_rank": 1.1219745334779163,
+      "rel_norm": 0.013347910425871048,
+      "out_align": 0.23765341937541962
+    }
+  },
+  "batch_mean_stationarity": {
+    "train_batches": {
+      "blocks.0.living_ffn": 0.9999812841415405,
+      "blocks.1.living_ffn": 0.9999963641166687,
+      "blocks.2.living_ffn": 0.9999985694885254,
+      "blocks.3.living_ffn": 0.9999995231628418,
+      "_mean": 0.9999939352273941
+    },
+    "single_sequences": {
+      "blocks.0.living_ffn": 0.9994631409645081,
+      "blocks.1.living_ffn": 0.9998884797096252,
+      "blocks.2.living_ffn": 0.999955952167511,
+      "blocks.3.living_ffn": 0.9999848008155823,
+      "_mean": 0.9998230934143066
+    }
+  },
+  "write_diversity": {
+    "train_batches": {
+      "blocks.0.living_ffn": 0.5463187170569213,
+      "blocks.1.living_ffn": 0.6964893873450705,
+      "blocks.2.living_ffn": 0.7659455500430673,
+      "blocks.3.living_ffn": 0.9996665101664924,
+      "_mean": 0.7521050411528879
+    },
+    "single_sequences": {
+      "blocks.0.living_ffn": -0.10730030756509785,
+      "blocks.1.living_ffn": 0.18463325211872514,
+      "blocks.2.living_ffn": 0.23974448135512075,
+      "blocks.3.living_ffn": 0.9977529988032865,
+      "_mean": 0.32870760617800865
+    }
+  },
+  "block_output_store": {
+    "blocks.0": {
+      "episodes_stored": 64,
+      "recall_duty": 1.0,
+      "last_recall_sim": 0.9979625344276428,
+      "last_blend_share": 0.4338253438472748
+    },
+    "blocks.1": {
+      "episodes_stored": 64,
+      "recall_duty": 1.0,
+      "last_recall_sim": 0.9891671538352966,
+      "last_blend_share": 0.33864474296569824
+    },
+    "blocks.2": {
+      "episodes_stored": 64,
+      "recall_duty": 1.0,
+      "last_recall_sim": 0.9898696541786194,
+      "last_blend_share": 0.32556888461112976
+    },
+    "blocks.3": {
+      "episodes_stored": 64,
+      "recall_duty": 1.0,
+      "last_recall_sim": 0.7147020697593689,
+      "last_blend_share": 0.09798965603113174
+    }
+  },
+  "reconstruction": {
+    "model_kwargs_source": "reconstructed: checked 2026-11-13 against commits f33838b, cc30226, 13e5cd25 and 0230cc9f, and against a run trained by the code of 0230cc9f",
+    "living_state_absent_at_training": [
+      "act_count",
+      "act_mean",
+      "act_var",
+      "band_boost_rows",
+      "band_damp_rows",
+      "drive_calls",
+      "drive_dev",
+      "drive_fire_count",
+      "drive_gain",
+      "drive_gain_sum",
+      "drive_ref",
+      "drive_ref_drift",
+      "episode_step_counter",
+      "episode_steps",
+      "episode_writes",
+      "error_rms",
+      "last_write_step",
+      "recall_fires",
+      "recall_sim_count",
+      "recall_sim_mean",
+      "recall_sim_var",
+      "salience_dev",
+      "salience_drift",
+      "salience_level",
+      "salience_window",
+      "salience_window_filled",
+      "salience_window_pos"
+    ],
+    "sigreg_projection": "linear_bn",
+    "taper": true
+  }
+}
