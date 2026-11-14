@@ -81,6 +81,17 @@
 >   - **Next, in order:** (1) a different seat reviews the read; (2) E3's
 >     predictions are revised for E2's misses; (3) a replacement capability axis
 >     is registered. E3 cannot launch before all three (amendment 3).
+>   - **(1) done, 2026-11-14 (Opus 5.5):**
+>     `docs/reviews/2026-11-14_e1-e2-e4-first-read-review-from-opus.md`. Every
+>     verdict reproduced from the raw results. E4 stands. E1 should read "not
+>     testable at this dose": the taper-floor job shows the write's own effect
+>     is unmeasurable at four windows, and E1 has no true positive control.
+>     E2's interpretation: it measures the end-of-training displacement, not
+>     the write. For Brian to rule on: an E1 amendment (positive control; a dose
+>     or precision at which the write is measurable; the displacement reported
+>     beside every E1 number) as a condition of E3, and measuring the write
+>     itself for E2 and P3. Also suggested: check each rebuilt July run's
+>     held-out NMSE against its own `pilot_result.json`.
 >   - Open: E1's registration also names the v3/v4 512 families and the depth-8
 >     probes, not yet read (each pre-August arm needs its settings checked
 >     against history first). `adaptation_eval.py` never exits on Brian's card

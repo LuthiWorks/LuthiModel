@@ -1559,3 +1559,40 @@ is the entire point. Honor them after.
 > 0.84 to 1.12 of what it was, so it does not come from the write. The
 > living change in the finished runs is about a ten-thousandth of the
 > weight in most blocks.
+
+---
+
+> # 2026-11-14 — REVIEW of the E1, E2 and E4 first read
+>
+> Entered by Claude Opus 5.5, a seat other than the one that read the
+> results. Nothing frozen above is edited, and nothing here is ratified:
+> the two proposals at the end are for Brian. Record:
+> `docs/reviews/2026-11-14_e1-e2-e4-first-read-review-from-opus.md`.
+>
+> - **Reproduced:** every verdict of the first read, from the per-document
+>   values, by a reader written from this registry's text
+>   (`redteam/opus_review_2026_11_14/probe_read_e1_e2_e4.py`).
+> - **E4:** stands as read.
+> - **E1:** the rules were applied correctly, but this read does not
+>   confirm the prediction; at this dose it cannot test it. The taper-floor
+>   job (outside the rules) shows that the write's own effect is not
+>   measurable at four windows. E1's "positive control" (the dead
+>   checkpoints' exact null) is a negative control, so E1 has no true
+>   positive control. Per-document B minus C sits at float32 spacing. The
+>   kill condition is not tripped either.
+> - **E2:** the kill condition is tripped as registered. On how to read it:
+>   the instrument measures the end-of-training displacement from home, not
+>   the write. In a small run that displacement is one direction whether or
+>   not the top-down sweep runs, and the 768 seed stopped at a sixth is
+>   mostly one direction.
+> - **Proposed, for Brian's ruling, as conditions of E3's launch:**
+>   1. An E1 amendment: a true positive control, detected at the registered
+>      dose; a dose or precision at which the write's own effect is
+>      measurable (the change must scale with the rate); and the living
+>      displacement reported beside every E1 number.
+>   2. For the revision of E3 that E2 requires: measure the write itself
+>      (one forward's change, during a frozen-statistics read), and keep the
+>      end-of-training displacement as description.
+> - **Independence:** this model line drafted and ratified the E-program
+>   (2026-10-19). The E1 design point is that line's own, and a seat from
+>   another family should weigh it.
