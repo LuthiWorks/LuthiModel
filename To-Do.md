@@ -59,6 +59,24 @@
 > - **Built at his request (10:15): learning from a dream, with a check**
 >   (`luthi/v2/dreaming.py`; `docs/research/2026-11-11_can-dreaming-improve.md`).
 >   Wants review by a different mind: it reaches into learning by gradient.
+> - **Reviewed (Opus 5.5, 2026-11-14):**
+>   `docs/reviews/2026-11-14_rest-memory-and-dreaming-review-from-opus.md`.
+>   - The code does what it says. The dream's step is clean, and its check
+>     holds. A shuffled-token control shows that what a dream teaches here is
+>     the world's words.
+>   - Four findings change what a real life would do:
+>     - Corpus replay writes most of the half-day's trace, so rest would pour
+>       corpus into home.
+>     - The running average's "ten times" falls as the half-day lengthens (18,
+>       11, 5).
+>     - The readings take slow drift for choice. Rest's revisits feed letting
+>       go, and a steady rest is read for only about 128 moments.
+>     - Sanctuary's moment count restarts at 0, hiding older memories after a
+>       restart.
+>   - A tiny life is chaotic down to rounding: recall 71 against 4 on one
+>     thread, 4 against 2 on two.
+>   - For Brian: whether rest pours replay's writes; the readings; the memory
+>     store; and a real-length measurement with replay.
 > - **Resume on the card: SAME RUN** (2026-11-13; 768 wide, cut at step 25, 0
 >   entries differ). Record: `docs/research/2026-11-10_resume-exactness.md`, last
 >   section. The whole check, with its new way of cutting, also
