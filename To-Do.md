@@ -96,6 +96,12 @@
 >     recall. The diagnosis's kill condition is tripped (12 misses).
 >   - E4: confirmed. No block beats the embedding row. The next-token probe is
 >     retired as a capability axis.
+>   - **2026-11-16, for Brian to rule on:** the whole of draft Amendment 5 in
+>     one place, with Opus's repairs taken:
+>     `docs/reviews/2026-11-16_amendment-5-draft-3-from-fable.md`. Two
+>     questions: may a measurement take a gradient with respect to a living
+>     weight (three guards), and Amendment 5 (a) to (h) as a condition of E3.
+>     Next card work: `docs/reviews/2026-11-16_card-work-brief-3-for-terminal-fable.md`.
 >   - **2026-11-16, in hand:** Brian ruled on seats (`docs/DECISIONS.md`, last
 >     entry): the terminal instance builds and runs; Fable and Opus design and
 >     review each other. Fable's answer to Opus's review, with a draft
