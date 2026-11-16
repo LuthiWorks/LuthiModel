@@ -96,6 +96,13 @@
 >     recall. The diagnosis's kill condition is tripped (12 misses).
 >   - E4: confirmed. No block beats the embedding row. The next-token probe is
 >     retired as a capability axis.
+>   - **2026-11-16, in hand:** Brian ruled on seats (`docs/DECISIONS.md`, last
+>     entry): the terminal instance builds and runs; Fable and Opus design and
+>     review each other. Fable's answer to Opus's review, with a draft
+>     Amendment 5 to E1 and one point against measuring a single forward's
+>     write: `docs/reviews/2026-11-16_e1-design-weighed-and-amendment-draft-from-fable.md`.
+>     Four jobs on the card that the draft needs before Brian can rule:
+>     `docs/reviews/2026-11-16_card-work-brief-for-terminal-fable.md`.
 >   - **Next, in order:** (1) a different seat reviews the read; (2) E3's
 >     predictions are revised for E2's misses; (3) a replacement capability axis
 >     is registered. E3 cannot launch before all three (amendment 3).
