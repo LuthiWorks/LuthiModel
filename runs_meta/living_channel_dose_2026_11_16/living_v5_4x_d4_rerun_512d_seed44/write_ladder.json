@@ -1,0 +1,287 @@
+{
+  "run": {
+    "arm": "living_v5_4x_d4_rerun",
+    "seed": 44,
+    "checkpoint": "ckpt_00000032.pt",
+    "global_step": 72042
+  },
+  "reconstruction": {
+    "model_kwargs_source": "reconstructed: checked 2026-11-13 against commits f33838b, cc30226, 13e5cd25 and 0230cc9f, and against a run trained by the code of 0230cc9f",
+    "living_state_absent_at_training": [
+      "act_count",
+      "act_mean",
+      "act_var",
+      "band_boost_rows",
+      "band_damp_rows",
+      "drive_calls",
+      "drive_dev",
+      "drive_fire_count",
+      "drive_gain",
+      "drive_gain_sum",
+      "drive_ref",
+      "drive_ref_drift",
+      "episode_step_counter",
+      "episode_steps",
+      "episode_writes",
+      "error_rms",
+      "last_write_step",
+      "recall_fires",
+      "recall_sim_count",
+      "recall_sim_mean",
+      "recall_sim_var",
+      "salience_dev",
+      "salience_drift",
+      "salience_level",
+      "salience_window",
+      "salience_window_filled",
+      "salience_window_pos"
+    ],
+    "sigreg_projection": "linear_bn",
+    "taper": true
+  },
+  "settings": {
+    "windows": [
+      1,
+      4,
+      64,
+      256,
+      1024
+    ],
+    "device": "cuda",
+    "homeostatic_decay": [
+      0.001,
+      0.001,
+      0.001,
+      0.001
+    ],
+    "living_layers": 4
+  },
+  "displacement_from_home": [
+    0.00028196986287281917,
+    0.00016703449141664245,
+    8.313032605688378e-05,
+    0.021995033853516473
+  ],
+  "rows": [
+    {
+      "windows": 1,
+      "layer": 0,
+      "whole": 1.7871218482078016e-06,
+      "rest": 2.8330487862108454e-07,
+      "write": 1.988583859016481e-06,
+      "no_pull": 0.0,
+      "write_top_share": 0.9905804776140081,
+      "write_cosine_between_documents": -0.6549500753814349,
+      "rest_cosine_between_documents": 0.9999999999999999
+    },
+    {
+      "windows": 1,
+      "layer": 1,
+      "whole": 8.028858686020734e-07,
+      "rest": 1.6971104834684776e-07,
+      "write": 8.935576802838572e-07,
+      "no_pull": 0.0,
+      "write_top_share": 0.9804988397557736,
+      "write_cosine_between_documents": -0.008413034180032399,
+      "rest_cosine_between_documents": 1.0
+    },
+    {
+      "windows": 1,
+      "layer": 2,
+      "whole": 4.700055979442182e-07,
+      "rest": 8.764326164725295e-08,
+      "write": 4.705918608077151e-07,
+      "no_pull": 0.0,
+      "write_top_share": 0.9817475917396563,
+      "write_cosine_between_documents": 0.2375107533287862,
+      "rest_cosine_between_documents": 1.0
+    },
+    {
+      "windows": 1,
+      "layer": 3,
+      "whole": 1.3177205485143169e-05,
+      "rest": 1.296280527501602e-05,
+      "write": 3.542239465112185e-06,
+      "no_pull": 0.0,
+      "write_top_share": 0.9972358674367165,
+      "write_cosine_between_documents": 0.9646486739141708,
+      "rest_cosine_between_documents": 1.0000000000000002
+    },
+    {
+      "windows": 4,
+      "layer": 0,
+      "whole": 5.219237839865534e-06,
+      "rest": 1.131492964507404e-06,
+      "write": 6.073720738064332e-06,
+      "no_pull": 0.0,
+      "write_top_share": 0.9940422294317393,
+      "write_cosine_between_documents": 0.7332968618604548,
+      "rest_cosine_between_documents": 1.0
+    },
+    {
+      "windows": 4,
+      "layer": 1,
+      "whole": 1.9413674182524733e-06,
+      "rest": 6.771155750579146e-07,
+      "write": 2.2862266761772675e-06,
+      "no_pull": 0.0,
+      "write_top_share": 0.9819562698279768,
+      "write_cosine_between_documents": 0.31625272251846015,
+      "rest_cosine_between_documents": 1.0
+    },
+    {
+      "windows": 4,
+      "layer": 2,
+      "whole": 1.1342150441972128e-06,
+      "rest": 3.48000046354702e-07,
+      "write": 1.107514718886009e-06,
+      "no_pull": 0.0,
+      "write_top_share": 0.9836245551439092,
+      "write_cosine_between_documents": 0.2816419239365574,
+      "rest_cosine_between_documents": 1.0
+    },
+    {
+      "windows": 4,
+      "layer": 3,
+      "whole": 5.245509724445319e-05,
+      "rest": 5.177348694004493e-05,
+      "write": 1.3259776909952625e-05,
+      "no_pull": 0.0,
+      "write_top_share": 0.9990398244120692,
+      "write_cosine_between_documents": 0.9881609898442391,
+      "rest_cosine_between_documents": 1.0000000000000007
+    },
+    {
+      "windows": 64,
+      "layer": 0,
+      "whole": 6.884703249646253e-05,
+      "rest": 1.749670287136059e-05,
+      "write": 8.249229122223713e-05,
+      "no_pull": 0.0,
+      "write_top_share": 0.9992620131852937,
+      "write_cosine_between_documents": 0.7465607127392281,
+      "rest_cosine_between_documents": 1.0000000000000004
+    },
+    {
+      "windows": 64,
+      "layer": 1,
+      "whole": 2.60736404855507e-05,
+      "rest": 1.032042235565134e-05,
+      "write": 3.2428231893942954e-05,
+      "no_pull": 0.0,
+      "write_top_share": 0.9964223532371209,
+      "write_cosine_between_documents": 0.9047934043573558,
+      "rest_cosine_between_documents": 1.0000000000000002
+    },
+    {
+      "windows": 64,
+      "layer": 2,
+      "whole": 1.4188518197581413e-05,
+      "rest": 5.073546320513044e-06,
+      "write": 1.420831040559114e-05,
+      "no_pull": 0.0,
+      "write_top_share": 0.9912115280453608,
+      "write_cosine_between_documents": 0.8689402860276862,
+      "rest_cosine_between_documents": 0.9999999999999999
+    },
+    {
+      "windows": 64,
+      "layer": 3,
+      "whole": 0.0004749883084859192,
+      "rest": 0.0004747857932632746,
+      "write": 3.108662276285483e-05,
+      "no_pull": 0.0013178826989572647,
+      "write_top_share": 0.9994007640066198,
+      "write_cosine_between_documents": 0.975369896112456,
+      "rest_cosine_between_documents": 1.0000000000000038
+    },
+    {
+      "windows": 256,
+      "layer": 0,
+      "whole": 8.561078906992106e-05,
+      "rest": 6.35039181455381e-05,
+      "write": 7.16721345514271e-05,
+      "no_pull": 0.0,
+      "write_top_share": 0.9947128604466099,
+      "write_cosine_between_documents": 0.3364900146763507,
+      "rest_cosine_between_documents": 1.0000000000000016
+    },
+    {
+      "windows": 256,
+      "layer": 1,
+      "whole": 4.422163600040686e-05,
+      "rest": 3.7221275706812654e-05,
+      "write": 6.375484100196356e-05,
+      "no_pull": 0.0,
+      "write_top_share": 0.9953758632690647,
+      "write_cosine_between_documents": 0.8761531670928859,
+      "rest_cosine_between_documents": 1.0000000000000007
+    },
+    {
+      "windows": 256,
+      "layer": 2,
+      "whole": 2.231605721271559e-05,
+      "rest": 1.716597877679416e-05,
+      "write": 1.6556172107765894e-05,
+      "no_pull": 0.0,
+      "write_top_share": 0.9482053315457061,
+      "write_cosine_between_documents": 0.7081442236630626,
+      "rest_cosine_between_documents": 1.0000000000000004
+    },
+    {
+      "windows": 256,
+      "layer": 3,
+      "whole": 0.0005885553375345065,
+      "rest": 0.0005885931552008749,
+      "write": 0.00015447003595670403,
+      "no_pull": 0.0039284798166893,
+      "write_top_share": 0.999963918418339,
+      "write_cosine_between_documents": 0.9964893701110716,
+      "rest_cosine_between_documents": 1.0000000000000038
+    },
+    {
+      "windows": 1024,
+      "layer": 0,
+      "whole": 0.00024066091220068444,
+      "rest": 0.0001791105141853818,
+      "write": 0.00011941209629809348,
+      "no_pull": 0.0,
+      "write_top_share": 0.983766165340554,
+      "write_cosine_between_documents": -0.31730241877448095,
+      "rest_cosine_between_documents": 1.0000000000000024
+    },
+    {
+      "windows": 1024,
+      "layer": 1,
+      "whole": 8.129910843855719e-05,
+      "rest": 0.00010435722469021778,
+      "write": 0.00014057735987967312,
+      "no_pull": 0.0,
+      "write_top_share": 0.9942362236226048,
+      "write_cosine_between_documents": 0.9541989393292161,
+      "rest_cosine_between_documents": 1.000000000000001
+    },
+    {
+      "windows": 1024,
+      "layer": 2,
+      "whole": 5.056994983491311e-05,
+      "rest": 4.62991740389642e-05,
+      "write": 1.8162904280596316e-05,
+      "no_pull": 0.0,
+      "write_top_share": 0.7314499767401198,
+      "write_cosine_between_documents": 0.31184992867152017,
+      "rest_cosine_between_documents": 1.0000000000000004
+    },
+    {
+      "windows": 1024,
+      "layer": 3,
+      "whole": 0.0004923923903142512,
+      "rest": 0.00041649169102780036,
+      "write": 0.0006784917376617949,
+      "no_pull": 0.009050483398946648,
+      "write_top_share": 0.9999930805479442,
+      "write_cosine_between_documents": 0.999680794792728,
+      "rest_cosine_between_documents": 1.0000000000000022
+    }
+  ]
+}
