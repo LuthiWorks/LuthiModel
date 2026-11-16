@@ -193,8 +193,8 @@ Results from the costing reads, for what they are worth:
 episode writes held off with `adaptation_eval`'s own `_read`; a pass at rate
 0 and pull 0 is checked to move no weight, and on every run it moved none.
 6 documents and 15 pairs a run; 1, 4, 64, 256 and 1,024 windows; one
-`rebuild_run`. Seven runs done: July 42 to 46, the rerun of 44, 768 seed 97.
-768 seed 46 (a run killed early) was still reading when I wrote this.
+`rebuild_run`. Eight runs: July 42 to 46, the rerun of 44, 768 seed 97, and
+768 seed 46 (a run killed early, added at 12:22; see the last point).
 
 - **The output side is the same for every document.** Median cosine between
   documents of +1.00 in every layer of every run at every rung; the lowest
@@ -212,6 +212,12 @@ episode writes held off with `adaptation_eval`'s own `_read`; a pass at rate
   to +0.77 in the first three layers, falling to +0.14 in the last. So a
   long read at 768 writes more of what is common to documents, and less of
   what is particular to one.
+- **768 seed 46, the run killed early, is unlike seed 97.** Its writes are
+  about ten times larger (1.6e-02 of the weight's norm in the last layer at
+  1,024 windows, against 1.5e-03), and in layers 3 to 6 they agree between
+  documents from the first window (+0.30 to +0.82, and +0.82 to +0.97 at
+  1,024). The output side is +1.00 there too. It is a run that had not
+  settled, so I would not set it beside seed 97 as a second seed.
 - **Write against pull.** In the July last layer the pull is 130 to 425 times
   the write alone at 1,024 windows (about 8e-03 against 3e-05 of the
   weight's norm), and the write in context is 15 to 40 times the write
