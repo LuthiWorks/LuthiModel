@@ -124,6 +124,15 @@ def main() -> int:
     res["reconstruction"] = reconstruction(run.result["config"])
     out.write_text(result_json.dumps(res), encoding="utf-8")
     print(f"wrote {out}")
+    # On Brian's card (ROCm) a process that returns with work still queued
+    # on the card does not exit: it spins. The last thing this script does
+    # on the card is restore the model, which is queued and never read back,
+    # so it hung 38 times in 38 on 2026-11-13. Waiting for the card here lets
+    # it exit. Found by bisection on 2026-11-16:
+    # redteam/terminal_fable_2026_11_16/probe_exit_hang.py.
+    if device.type == "cuda":
+        import torch
+        torch.cuda.synchronize()
     return 0
 
 
