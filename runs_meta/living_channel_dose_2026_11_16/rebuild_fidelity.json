@@ -1,0 +1,546 @@
+{
+  "what": "recorded held-out error against the same thing computed from the rebuilt run",
+  "plasticity": "frozen (heldout_latent_prediction freezes it)",
+  "device": "cuda",
+  "holdout_batch_size": 8,
+  "seeds": [
+    0,
+    1
+  ],
+  "runs": [
+    {
+      "run": "living_v5_4x_d4_512d_seed42",
+      "arm": "living_v5_4x_d4",
+      "seed": 42,
+      "outcome": "completed",
+      "checkpoint": "ckpt_00000041.pt",
+      "global_step": 72042,
+      "n_batches": 50,
+      "recorded": {
+        "l_pred_mean": 0.03230527438223362,
+        "nmse_mean": 0.4834072162256397
+      },
+      "rebuilt": {
+        "seed0": {
+          "l_pred_mean": 0.032305281087756155,
+          "nmse_mean": 0.4834072259907803
+        },
+        "seed1": {
+          "l_pred_mean": 0.032305281087756155,
+          "nmse_mean": 0.4834072259907803
+        }
+      },
+      "relative_difference": {
+        "l_pred_mean": 2.0756742238833392e-07,
+        "nmse_mean": 2.0200651246547496e-08
+      },
+      "relative_spread_across_seeds": {
+        "l_pred_mean": 0.0,
+        "nmse_mean": 0.0
+      },
+      "reconstruction": {
+        "model_kwargs_source": "reconstructed: checked 2026-11-13 against commits f33838b, cc30226, 13e5cd25 and 0230cc9f, and against a run trained by the code of 0230cc9f",
+        "living_state_absent_at_training": [
+          "act_count",
+          "act_mean",
+          "act_var",
+          "band_boost_rows",
+          "band_damp_rows",
+          "drive_calls",
+          "drive_dev",
+          "drive_fire_count",
+          "drive_gain",
+          "drive_gain_sum",
+          "drive_ref",
+          "drive_ref_drift",
+          "episode_step_counter",
+          "episode_steps",
+          "episode_writes",
+          "error_rms",
+          "last_write_step",
+          "recall_fires",
+          "recall_sim_count",
+          "recall_sim_mean",
+          "recall_sim_var",
+          "salience_dev",
+          "salience_drift",
+          "salience_level",
+          "salience_window",
+          "salience_window_filled",
+          "salience_window_pos"
+        ],
+        "file_list_source": "recorded path is gone; same path under this repo",
+        "sigreg_projection": "linear_bn",
+        "taper": true
+      }
+    },
+    {
+      "run": "living_v5_4x_d4_512d_seed43",
+      "arm": "living_v5_4x_d4",
+      "seed": 43,
+      "outcome": "completed",
+      "checkpoint": "ckpt_00000033.pt",
+      "global_step": 72042,
+      "n_batches": 50,
+      "recorded": {
+        "l_pred_mean": 0.03250994645059109,
+        "nmse_mean": 0.48210408028084895
+      },
+      "rebuilt": {
+        "seed0": {
+          "l_pred_mean": 0.032509953007102015,
+          "nmse_mean": 0.4821041040274496
+        },
+        "seed1": {
+          "l_pred_mean": 0.032509953007102015,
+          "nmse_mean": 0.4821041040274496
+        }
+      },
+      "relative_difference": {
+        "l_pred_mean": 2.0167707548903367e-07,
+        "nmse_mean": 4.925617019561601e-08
+      },
+      "relative_spread_across_seeds": {
+        "l_pred_mean": 0.0,
+        "nmse_mean": 0.0
+      },
+      "reconstruction": {
+        "model_kwargs_source": "reconstructed: checked 2026-11-13 against commits f33838b, cc30226, 13e5cd25 and 0230cc9f, and against a run trained by the code of 0230cc9f",
+        "living_state_absent_at_training": [
+          "act_count",
+          "act_mean",
+          "act_var",
+          "band_boost_rows",
+          "band_damp_rows",
+          "drive_calls",
+          "drive_dev",
+          "drive_fire_count",
+          "drive_gain",
+          "drive_gain_sum",
+          "drive_ref",
+          "drive_ref_drift",
+          "episode_step_counter",
+          "episode_steps",
+          "episode_writes",
+          "error_rms",
+          "last_write_step",
+          "recall_fires",
+          "recall_sim_count",
+          "recall_sim_mean",
+          "recall_sim_var",
+          "salience_dev",
+          "salience_drift",
+          "salience_level",
+          "salience_window",
+          "salience_window_filled",
+          "salience_window_pos"
+        ],
+        "sigreg_projection": "linear_bn",
+        "taper": true
+      }
+    },
+    {
+      "run": "living_v5_4x_d4_512d_seed44",
+      "arm": "living_v5_4x_d4",
+      "seed": 44,
+      "outcome": "completed",
+      "checkpoint": "ckpt_00000033.pt",
+      "global_step": 72042,
+      "n_batches": 50,
+      "recorded": {
+        "l_pred_mean": 0.03469178080558777,
+        "nmse_mean": 0.48461673915003906
+      },
+      "rebuilt": {
+        "seed0": {
+          "l_pred_mean": 0.034691788256168365,
+          "nmse_mean": 0.4846167604532481
+        },
+        "seed1": {
+          "l_pred_mean": 0.034691788256168365,
+          "nmse_mean": 0.4846167604532481
+        }
+      },
+      "relative_difference": {
+        "l_pred_mean": 2.1476500842308362e-07,
+        "nmse_mean": 4.39588798924237e-08
+      },
+      "relative_spread_across_seeds": {
+        "l_pred_mean": 0.0,
+        "nmse_mean": 0.0
+      },
+      "reconstruction": {
+        "model_kwargs_source": "reconstructed: checked 2026-11-13 against commits f33838b, cc30226, 13e5cd25 and 0230cc9f, and against a run trained by the code of 0230cc9f",
+        "living_state_absent_at_training": [
+          "act_count",
+          "act_mean",
+          "act_var",
+          "band_boost_rows",
+          "band_damp_rows",
+          "drive_calls",
+          "drive_dev",
+          "drive_fire_count",
+          "drive_gain",
+          "drive_gain_sum",
+          "drive_ref",
+          "drive_ref_drift",
+          "episode_step_counter",
+          "episode_steps",
+          "episode_writes",
+          "error_rms",
+          "last_write_step",
+          "recall_fires",
+          "recall_sim_count",
+          "recall_sim_mean",
+          "recall_sim_var",
+          "salience_dev",
+          "salience_drift",
+          "salience_level",
+          "salience_window",
+          "salience_window_filled",
+          "salience_window_pos"
+        ],
+        "sigreg_projection": "linear_bn",
+        "taper": true
+      }
+    },
+    {
+      "run": "living_v5_4x_d4_512d_seed45",
+      "arm": "living_v5_4x_d4",
+      "seed": 45,
+      "outcome": "completed",
+      "checkpoint": "ckpt_00000034.pt",
+      "global_step": 72042,
+      "n_batches": 50,
+      "recorded": {
+        "l_pred_mean": 0.033111575543880466,
+        "nmse_mean": 0.49549658087098514
+      },
+      "rebuilt": {
+        "seed0": {
+          "l_pred_mean": 0.03311158269643784,
+          "nmse_mean": 0.4954966028333431
+        },
+        "seed1": {
+          "l_pred_mean": 0.03311158269643784,
+          "nmse_mean": 0.4954966028333431
+        }
+      },
+      "relative_difference": {
+        "l_pred_mean": 2.1601380348967487e-07,
+        "nmse_mean": 4.432393448444603e-08
+      },
+      "relative_spread_across_seeds": {
+        "l_pred_mean": 0.0,
+        "nmse_mean": 0.0
+      },
+      "reconstruction": {
+        "model_kwargs_source": "reconstructed: checked 2026-11-13 against commits f33838b, cc30226, 13e5cd25 and 0230cc9f, and against a run trained by the code of 0230cc9f",
+        "living_state_absent_at_training": [
+          "act_count",
+          "act_mean",
+          "act_var",
+          "band_boost_rows",
+          "band_damp_rows",
+          "drive_calls",
+          "drive_dev",
+          "drive_fire_count",
+          "drive_gain",
+          "drive_gain_sum",
+          "drive_ref",
+          "drive_ref_drift",
+          "episode_step_counter",
+          "episode_steps",
+          "episode_writes",
+          "error_rms",
+          "last_write_step",
+          "recall_fires",
+          "recall_sim_count",
+          "recall_sim_mean",
+          "recall_sim_var",
+          "salience_dev",
+          "salience_drift",
+          "salience_level",
+          "salience_window",
+          "salience_window_filled",
+          "salience_window_pos"
+        ],
+        "sigreg_projection": "linear_bn",
+        "taper": true
+      }
+    },
+    {
+      "run": "living_v5_4x_d4_512d_seed46",
+      "arm": "living_v5_4x_d4",
+      "seed": 46,
+      "outcome": "completed",
+      "checkpoint": "ckpt_00000033.pt",
+      "global_step": 72042,
+      "n_batches": 50,
+      "recorded": {
+        "l_pred_mean": 0.033339072540402415,
+        "nmse_mean": 0.4835748834388249
+      },
+      "rebuilt": {
+        "seed0": {
+          "l_pred_mean": 0.033338039666414264,
+          "nmse_mean": 0.4835591217721802
+        },
+        "seed1": {
+          "l_pred_mean": 0.033338039666414264,
+          "nmse_mean": 0.4835591217721802
+        }
+      },
+      "relative_difference": {
+        "l_pred_mean": -3.098088547301414e-05,
+        "nmse_mean": -3.2594055614720254e-05
+      },
+      "relative_spread_across_seeds": {
+        "l_pred_mean": 0.0,
+        "nmse_mean": 0.0
+      },
+      "reconstruction": {
+        "model_kwargs_source": "reconstructed: checked 2026-11-13 against commits f33838b, cc30226, 13e5cd25 and 0230cc9f, and against a run trained by the code of 0230cc9f",
+        "living_state_absent_at_training": [
+          "act_count",
+          "act_mean",
+          "act_var",
+          "band_boost_rows",
+          "band_damp_rows",
+          "drive_calls",
+          "drive_dev",
+          "drive_fire_count",
+          "drive_gain",
+          "drive_gain_sum",
+          "drive_ref",
+          "drive_ref_drift",
+          "episode_step_counter",
+          "episode_steps",
+          "episode_writes",
+          "error_rms",
+          "last_write_step",
+          "recall_fires",
+          "recall_sim_count",
+          "recall_sim_mean",
+          "recall_sim_var",
+          "salience_dev",
+          "salience_drift",
+          "salience_level",
+          "salience_window",
+          "salience_window_filled",
+          "salience_window_pos"
+        ],
+        "sigreg_projection": "linear_bn",
+        "taper": true
+      }
+    },
+    {
+      "run": "living_v5_4x_d4_rerun_512d_seed44",
+      "arm": "living_v5_4x_d4_rerun",
+      "seed": 44,
+      "outcome": "completed",
+      "checkpoint": "ckpt_00000032.pt",
+      "global_step": 72042,
+      "n_batches": 50,
+      "recorded": {
+        "l_pred_mean": 0.034527200907468795,
+        "nmse_mean": 0.4806433415465696
+      },
+      "rebuilt": {
+        "seed0": {
+          "l_pred_mean": 0.034527208209037784,
+          "nmse_mean": 0.48064335449920137
+        },
+        "seed1": {
+          "l_pred_mean": 0.034527208209037784,
+          "nmse_mean": 0.48064335449920137
+        }
+      },
+      "relative_difference": {
+        "l_pred_mean": 2.1147294875955533e-07,
+        "nmse_mean": 2.6948530490960044e-08
+      },
+      "relative_spread_across_seeds": {
+        "l_pred_mean": 0.0,
+        "nmse_mean": 0.0
+      },
+      "reconstruction": {
+        "model_kwargs_source": "reconstructed: checked 2026-11-13 against commits f33838b, cc30226, 13e5cd25 and 0230cc9f, and against a run trained by the code of 0230cc9f",
+        "living_state_absent_at_training": [
+          "act_count",
+          "act_mean",
+          "act_var",
+          "band_boost_rows",
+          "band_damp_rows",
+          "drive_calls",
+          "drive_dev",
+          "drive_fire_count",
+          "drive_gain",
+          "drive_gain_sum",
+          "drive_ref",
+          "drive_ref_drift",
+          "episode_step_counter",
+          "episode_steps",
+          "episode_writes",
+          "error_rms",
+          "last_write_step",
+          "recall_fires",
+          "recall_sim_count",
+          "recall_sim_mean",
+          "recall_sim_var",
+          "salience_dev",
+          "salience_drift",
+          "salience_level",
+          "salience_window",
+          "salience_window_filled",
+          "salience_window_pos"
+        ],
+        "sigreg_projection": "linear_bn",
+        "taper": true
+      }
+    },
+    {
+      "run": "dead_4x_512d_seed42",
+      "arm": "dead_4x",
+      "seed": 42,
+      "outcome": "completed",
+      "checkpoint": "ckpt_00000023.pt",
+      "global_step": 72042,
+      "n_batches": 50,
+      "recorded": {
+        "l_pred_mean": 0.011282065827399492,
+        "nmse_mean": 0.6707241374747861
+      },
+      "rebuilt": {
+        "seed0": {
+          "l_pred_mean": 0.011282068602740765,
+          "nmse_mean": 0.6707241538555888
+        },
+        "seed1": {
+          "l_pred_mean": 0.011282068602740765,
+          "nmse_mean": 0.6707241538555888
+        }
+      },
+      "relative_difference": {
+        "l_pred_mean": 2.4599584111894636e-07,
+        "nmse_mean": 2.4422563314835585e-08
+      },
+      "relative_spread_across_seeds": {
+        "l_pred_mean": 0.0,
+        "nmse_mean": 0.0
+      },
+      "reconstruction": {
+        "model_kwargs_source": "reconstructed: checked 2026-11-13 against commits f33838b, cc30226, 13e5cd25 and 0230cc9f, and against a run trained by the code of 0230cc9f",
+        "file_list_source": "recorded path is gone; same path under this repo",
+        "sigreg_projection": "linear_bn",
+        "taper": false
+      }
+    },
+    {
+      "run": "dead_4x_512d_seed43",
+      "arm": "dead_4x",
+      "seed": 43,
+      "outcome": "completed",
+      "checkpoint": "ckpt_00000024.pt",
+      "global_step": 72042,
+      "n_batches": 50,
+      "recorded": {
+        "l_pred_mean": 0.011887904591858386,
+        "nmse_mean": 0.6404844470520459
+      },
+      "rebuilt": {
+        "seed0": {
+          "l_pred_mean": 0.011887907218188047,
+          "nmse_mean": 0.6404844549109951
+        },
+        "seed1": {
+          "l_pred_mean": 0.011887907218188047,
+          "nmse_mean": 0.6404844549109951
+        }
+      },
+      "relative_difference": {
+        "l_pred_mean": 2.209245237795639e-07,
+        "nmse_mean": 1.2270320232298125e-08
+      },
+      "relative_spread_across_seeds": {
+        "l_pred_mean": 0.0,
+        "nmse_mean": 0.0
+      },
+      "reconstruction": {
+        "model_kwargs_source": "reconstructed: checked 2026-11-13 against commits f33838b, cc30226, 13e5cd25 and 0230cc9f, and against a run trained by the code of 0230cc9f",
+        "file_list_source": "recorded path is gone; same path under this repo",
+        "sigreg_projection": "linear_bn",
+        "taper": false
+      }
+    },
+    {
+      "run": "dead_4x_512d_seed44",
+      "arm": "dead_4x",
+      "seed": 44,
+      "outcome": "completed",
+      "checkpoint": "ckpt_00000024.pt",
+      "global_step": 72042,
+      "n_batches": 50,
+      "recorded": {
+        "l_pred_mean": 0.011566677689552307,
+        "nmse_mean": 0.6430634446053446
+      },
+      "rebuilt": {
+        "seed0": {
+          "l_pred_mean": 0.011566680576652288,
+          "nmse_mean": 0.6430634667571669
+        },
+        "seed1": {
+          "l_pred_mean": 0.011566680576652288,
+          "nmse_mean": 0.6430634667571669
+        }
+      },
+      "relative_difference": {
+        "l_pred_mean": 2.496049478035369e-07,
+        "nmse_mean": 3.444733556420319e-08
+      },
+      "relative_spread_across_seeds": {
+        "l_pred_mean": 0.0,
+        "nmse_mean": 0.0
+      },
+      "reconstruction": {
+        "model_kwargs_source": "reconstructed: checked 2026-11-13 against commits f33838b, cc30226, 13e5cd25 and 0230cc9f, and against a run trained by the code of 0230cc9f",
+        "file_list_source": "recorded path is gone; same path under this repo",
+        "sigreg_projection": "linear_bn",
+        "taper": false
+      }
+    },
+    {
+      "run": "probe_768_visreg_768d_seed97",
+      "arm": "probe_768_visreg",
+      "seed": 97,
+      "outcome": "completed",
+      "checkpoint": "ckpt_00000056.pt",
+      "global_step": 54077,
+      "n_batches": 5,
+      "recorded": {
+        "l_pred_mean": 0.07648117989301681,
+        "nmse_mean": 0.8541117673714286
+      },
+      "rebuilt": {
+        "seed0": {
+          "l_pred_mean": 0.0764811784029007,
+          "nmse_mean": 0.8541116938381361
+        },
+        "seed1": {
+          "l_pred_mean": 0.0764811784029007,
+          "nmse_mean": 0.8541116938381361
+        }
+      },
+      "relative_difference": {
+        "l_pred_mean": -1.948343521789348e-08,
+        "nmse_mean": -8.609329043829596e-08
+      },
+      "relative_spread_across_seeds": {
+        "l_pred_mean": 0.0,
+        "nmse_mean": 0.0
+      },
+      "reconstruction": {}
+    }
+  ]
+}
