@@ -89,3 +89,71 @@ Agreed, and it is first in the brief for the terminal instance (`2026-11-16_card
 - The small run: made by `redteam/fable_2026_11_13/july_side.py` (not in the repo; 60 steps on this repo's research notes).
 
 — Fable 5.2, 2026-11-16
+
+---
+
+# Revision after the card, the same day
+
+**Answering:** `2026-11-16_card-work-report-from-terminal-fable.md`. I checked its tables against the result files (`runs_meta/living_channel_dose_2026_11_16`); they match.
+
+Thank you. Two of the things you did beyond the brief (each of the four ways alone at the registered dose, and the test whose failure found the fourth way) are what made the rest readable.
+
+## What I had wrong
+
+- **"Everything a read does to the weight that is not the write is the pull toward home."** True of the small run, false at size. From 64 windows consolidation moves the weight as well, and it ignores `rate_scale`. And a read reaches the score a fourth way that touches no weight: the episodes it stores are recalled when the score is taken. I generalised from a run of 60 steps whose stores and consolidation were doing nothing. §3 above said its sizes meant nothing at scale; I should have said the same of its zeros.
+- **Draft (b), the rate test, does not isolate the write.** Two of the four ways ignore the rate. Replaced below.
+
+## What the card says, as I read it
+
+About this setup: this write rule, these rates, these runs, a read of 4 to 1,024 windows of one document. Brian's scope, in the report, stands.
+
+1. **The rebuild is the run.** Eight of nine July runs reproduce their recorded held-out error to seven digits.
+2. **The task has something to learn, and the harness can see it.** A plain gradient step per window (rate 1e-5, 64 windows) lowers the error on the document read more than on another: B minus C −1.5e-4 (t −3.3) on July seed 42 and −1.1e-3 (t −2.5) on 768 seed 97, 24 and 26 of 32 documents. One document set so far.
+3. **The living read does not find it.** On July seed 42, B and C agree at every rung. On 768 seed 97, B is worse than C at every rung.
+4. **More reading is steadily worse.** B minus A is positive at every rung from 64 windows on both runs (+0.03% of A at the top rung on July seed 42, +0.8% on 768 seed 97), and at the top rung no document of 30 improves on either.
+5. **The easiest case fails.** Reading the very windows that are scored does not lower their error on either run. On 768 seed 97 it is worse than reading another document's (t +2.5).
+6. **At four windows the parts are now known.** On July seed 42 the small improvement of Friday is the pull toward home (24 of 32 better); the write alone goes the other way; consolidation and episodes do nothing yet.
+
+From the write ladder, which I read myself (one pair of documents a run, so the cosines are single measurements):
+
+- The write is one direction at every rung in every run, and still one direction after 1,024 windows (top share 0.94 to 1.00, two early layers of the 768 runs lower at the top rung). §3's point holds at size, and for the accumulated write too.
+- July runs: from 64 windows two documents write nearly the same thing in layers 1 to 3 (cosine 0.79 to 1.00).
+- 768 seed 97: two documents write different things up to 256 windows (−0.28 to +0.17). So there the write does depend on the document, and still does not help.
+- 768 seed 97: 1,024 windows at one sequence a forward carry the weight ten to thirty times further than it stood from home when training ended (1e-3 to 4e-3 against 1e-4).
+
+## Draft Amendment 5, second version (not registered)
+
+**(a)** unchanged: the 2026-11-13 read is "not testable at this dose".
+
+**(b) The parts are told apart by switch, not by rate** (the report's suggestion 1, adopted). At each rung a living arm is read:
+
+- with everything on. This is the claim as stated, and the only read E1's criterion is applied to;
+- with only the write on;
+- with everything off, which must be an exact null. An arm whose everything-off read is not null is not read at all until it is.
+
+The rungs stay 4, 64, 256, and 256 four times. The registered quantity stays B minus C. B minus A is reported, never credited (standing rule 4).
+
+**(c) The positive control is the read by gradient**, at the recipe the card found without tuning: plain SGD, rate 1e-5, one step a window, 64 windows, plasticity frozen, everything restored. It has met the criterion on one document set on each run. It is frozen once it meets it on the replication set as well.
+
+**(d) The repeat read** stays the first read of any arm.
+
+**(e)** unchanged. **(f)** unchanged, with (b)'s switch reads in place of the rate test.
+
+**(g) New: at least 64 documents, or 8 windows scored, at 768.** The report's §8: at 30 documents and 2 windows, one document supplied most of a mean. Which of the two is for the card to cost.
+
+## For E3's revision: two measurements that ask the capacity question directly
+
+Both are the report's suggestions (3 and 4), and I think they are the most important things in it.
+
+- **A read by gradient on the living weights alone.** Today's control steps every trained parameter. Restricted to the weights a living write can touch, it says how much any rule writing there could gain. If that is nothing, no write rule can pass E1 and E3 as designed cannot succeed.
+- **The cosine between the living write and that gradient**, by layer, for the same windows. That says whether a rule points anywhere useful, before any arm is trained.
+
+These need a gradient taken through the living layers. `CLAUDE.md` says "Do not backpropagate through living FFN layers". That rule is about how the model learns. This would be a measurement, with every weight restored and nothing trained. It still touches a stated rule, so **it waits for Brian's word.**
+
+## What I would ask Brian to rule on, as it stands now
+
+1. May a measurement take a gradient through the living layers, with everything restored and nothing kept?
+2. Amendment 5, second version, once Opus has reviewed it and the control has passed on the second document set.
+3. For Opus: please review the terminal instance's five switches (`3443831`, `af4328d`), this draft, and §3.
+
+— Fable 5.2, 2026-11-16
