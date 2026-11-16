@@ -36,6 +36,41 @@ degenerating during reading is visible rather than flattering.
 Positive control: a dead-FFN arm has no living state, so A, B and C must be
 BITWISE equal. ``summary["exact_null"]`` reports it; for a dead arm anything
 else means the harness is broken, not the model.
+
+Opt-in switches (2026-11-16, exploratory; each is off by default and the
+default path is bit-identical to before -- tests/test_adaptation_eval.py):
+
+    homeostatic_decay    the pull toward home during the reads, e.g. 0.
+    read_consolidation   False: consolidation cannot fire during the reads.
+                         A read changes a living weight three ways: the
+                         write (scaled by ``rate_scale``), the pull toward
+                         home, and consolidation, which fires on its own
+                         trigger at ``pc_rate`` unscaled by ``rate_scale``.
+                         On the July runs it first fires around the 15th
+                         window read and is the largest of the three in the
+                         last layer.
+    read_episode_writes  False: no episode is written during the reads. A
+                         read reaches the score by a fourth way that changes
+                         no weight: it writes episodes (each block's
+                         ``episode_store``, and the layer's own store), and
+                         the frozen score recalls them. Not scaled by
+                         ``rate_scale`` either. With this off the block
+                         store is frozen (it still recalls) and the layer's
+                         own episode write is skipped.
+
+With ``rate_scale=0``, ``homeostatic_decay=0`` and the two switches above
+off, a read changes nothing the score reads (tests/test_adaptation_eval.py).
+Other living state still moves (``precision``, ``error_acc``, ``update_ema``);
+the frozen score does not read it.
+
+    read_what="tail"     a repeat read: B reads the windows it is then
+                         scored on, C reads another document's scored
+                         windows. The easiest case a fast weight can have.
+    read_by_gradient     the plastic read is replaced by plain SGD steps on
+                         the training loss of the windows read, plasticity
+                         frozen. A positive control for the harness: does
+                         B - C show document-specific change when something
+                         is known to be learning from the document?
 """
 
 from __future__ import annotations
@@ -59,16 +94,29 @@ from luthi.v2.plasticity import freeze_plasticity
 class _Snapshot:
     state: dict
     extra: dict
+    # Only for a read by gradient, which changes the predictor as well as
+    # the encoder: the whole loss module's state (it contains the encoder's).
+    loss_state: dict | None = None
 
 
-def _snapshot(model: nn.Module) -> _Snapshot:
+def _snapshot(model: nn.Module, loss_module: nn.Module | None = None) -> _Snapshot:
     return _Snapshot(
         state={k: v.detach().clone() for k, v in model.state_dict().items()},
         extra=copy.deepcopy(collect_living_extra_state(model)),
+        loss_state=(
+            None if loss_module is None else
+            {k: v.detach().clone() for k, v in loss_module.state_dict().items()}
+        ),
     )
 
 
-def _restore(model: nn.Module, snap: _Snapshot) -> None:
+def _restore(model: nn.Module, snap: _Snapshot,
+             loss_module: nn.Module | None = None) -> None:
+    if snap.loss_state is not None:
+        if loss_module is None:
+            raise RuntimeError("this snapshot holds the loss module's state; "
+                               "pass the loss module to restore it")
+        loss_module.load_state_dict(snap.loss_state)
     model.load_state_dict(snap.state)
     apply_living_extra_state(model, snap.extra, source="adaptation_eval restore")
     clear = getattr(model, "clear_forward_cache", None)
@@ -109,12 +157,47 @@ def _score(loss_module: nn.Module, tail: torch.Tensor) -> dict:
     }
 
 
+def _no_episode(*args, **kwargs) -> None:
+    """Stands in for a layer's ``_store_episode`` while episode writes are
+    held off."""
+
+
 @torch.no_grad()
 def _read(model: nn.Module, head: torch.Tensor, *, repeats: int,
-          read_train_mode: bool) -> None:
-    """Self-modifying reads of ``head`` ([n, L]), one window at a time."""
+          read_train_mode: bool, consolidation: bool = True,
+          episode_writes: bool = True) -> None:
+    """Self-modifying reads of ``head`` ([n, L]), one window at a time.
+
+    ``consolidation=False`` takes each living layer's consolidation tracker
+    away for the duration, so the trigger neither fires nor advances, and
+    puts the same tracker back after.
+
+    ``episode_writes=False`` freezes each block's ``EpisodeStore`` for the
+    duration (it recalls and does not write) and skips each living layer's
+    own episode write, and undoes both after."""
+    from luthi.episode_store import EpisodeStore
+    from luthi.v2.living_layer_pc import PredictiveCodingLayer
+
     was_training = model.training
     model.train(read_train_mode)
+    held: list[tuple[nn.Module, object]] = []
+    frozen_stores: list[tuple[nn.Module, bool]] = []
+    silenced: list[nn.Module] = []
+    if not consolidation:
+        for m in model.modules():
+            if getattr(m, "_consolidation_tracker", None) is not None:
+                held.append((m, m._consolidation_tracker))
+                m._consolidation_tracker = None
+    if not episode_writes:
+        for m in model.modules():
+            if isinstance(m, EpisodeStore):
+                frozen_stores.append((m, m._plasticity_frozen))
+                m._plasticity_frozen = True
+            elif isinstance(m, PredictiveCodingLayer):
+                # An instance attribute shadows the method; deleting it
+                # afterwards uncovers the method again.
+                m._store_episode = _no_episode
+                silenced.append(m)
     try:
         for _ in range(repeats):
             for w in head:
@@ -123,7 +206,60 @@ def _read(model: nn.Module, head: torch.Tensor, *, repeats: int,
                 if callable(clear):
                     clear()
     finally:
+        for m, tracker in held:
+            m._consolidation_tracker = tracker
+        for m, prev in frozen_stores:
+            m._plasticity_frozen = prev
+        for m in silenced:
+            del m._store_episode
         model.train(was_training)
+
+
+def gradient_read_parameters(loss_module: nn.Module) -> list[nn.Parameter]:
+    """What a read by gradient steps: the encoder's and the predictor's
+    trained parameters. A living weight is a buffer, not a parameter, so no
+    living weight is among them."""
+    return [p for p in loss_module.online_encoder.parameters() if p.requires_grad] + [
+        p for p in loss_module.predictor.parameters() if p.requires_grad
+    ]
+
+
+def _read_by_gradient(loss_module: nn.Module, windows: torch.Tensor, *,
+                      rate: float, steps: int, repeats: int) -> None:
+    """Plain SGD on the training loss of ``windows`` ([n, L]), one window at
+    a time, ``steps`` steps per window, with plasticity frozen and the
+    module in eval mode (no top-down sweep, no running statistics moved).
+    No optimizer object: ``p -= rate * grad`` and nothing else, so there is
+    no optimizer state to restore."""
+    params = gradient_read_parameters(loss_module)
+    was_training = loss_module.training
+    loss_module.eval()
+    try:
+        with freeze_plasticity(loss_module.online_encoder), torch.enable_grad():
+            for _ in range(repeats):
+                for w in windows:
+                    for _ in range(steps):
+                        r = loss_module.compute_modality_loss(
+                            "text", {"text_tokens": w.unsqueeze(0)},
+                        )
+                        loss = r["loss"]
+                        if not torch.isfinite(loss):
+                            raise RuntimeError(
+                                f"read by gradient: the loss is {float(loss)} "
+                                f"at rate {rate}; nothing after it would mean anything"
+                            )
+                        grads = torch.autograd.grad(loss, params, allow_unused=True)
+                        with torch.no_grad():
+                            for p, g in zip(params, grads):
+                                if g is not None:
+                                    p.add_(g, alpha=-rate)
+                        clear = getattr(loss_module.online_encoder,
+                                        "clear_forward_cache", None)
+                        if callable(clear):
+                            clear()
+    finally:
+        if was_training:
+            loss_module.train()
 
 
 def _summ(vals: Sequence[float]) -> dict:
@@ -182,6 +318,12 @@ def adaptation_eval(
     control_shift: int | None = None,
     read_train_mode: bool = False,
     rate_scale: float | None = None,
+    homeostatic_decay: float | None = None,
+    read_consolidation: bool = True,
+    read_episode_writes: bool = True,
+    read_what: str = "head",
+    read_by_gradient: float | None = None,
+    gradient_steps: int = 1,
 ) -> dict:
     """Run A / B / C (see module docstring) over ``documents``.
 
@@ -199,6 +341,21 @@ def adaptation_eval(
             (``sanctuary_interface.generate`` runs in eval mode).
         rate_scale: if given, set every living layer's ``rate_scale`` for the
             reads (e.g. the taper floor a run ended at). Restored after.
+        homeostatic_decay: if given, set every living layer's pull toward
+            home for the reads (0 = off). Restored after. Scoring is frozen,
+            so the pull acts nowhere else.
+        read_consolidation: False = consolidation cannot fire during reads.
+        read_episode_writes: False = no episode is written during reads
+            (block stores frozen, the layer's own write skipped).
+        read_what: "head" (default) reads the document's leading ``n_read``
+            windows and scores the rest. "tail" is a repeat read: B reads
+            the windows it is scored on, C reads the other document's
+            scored windows, and the leading windows are not used.
+        read_by_gradient: if given, the plastic read is replaced by SGD at
+            this rate on the training loss of the windows read (see
+            ``_read_by_gradient``). The whole loss module is snapshotted
+            and restored around every read.
+        gradient_steps: SGD steps per window read.
 
     Returns ``{"per_doc": [...], "summary": {...}, "settings": {...}}``.
     """
@@ -210,32 +367,57 @@ def adaptation_eval(
     if shift % d == 0:
         raise ValueError("control_shift must not map a document to itself")
 
+    if read_what not in ("head", "tail"):
+        raise ValueError(f"read_what must be 'head' or 'tail', not {read_what!r}")
+    if gradient_steps < 1:
+        raise ValueError("gradient_steps must be at least 1")
+    by_gradient = read_by_gradient is not None
+
     from luthi.v2.living_layer_pc import PredictiveCodingLayer
     living = [m for m in model.modules() if isinstance(m, PredictiveCodingLayer)]
     prior_scales = [m.rate_scale for m in living]
+    prior_decays = [m.homeostatic_decay for m in living]
     if rate_scale is not None:
         for m in living:
             m.rate_scale = float(rate_scale)
+    if homeostatic_decay is not None:
+        for m in living:
+            m.homeostatic_decay = float(homeostatic_decay)
 
-    base = _snapshot(model)
+    held = loss_module if by_gradient else None
+    base = _snapshot(model, held)
+
+    def read(windows: torch.Tensor) -> None:
+        if by_gradient:
+            _read_by_gradient(loss_module, windows, rate=float(read_by_gradient),
+                              steps=gradient_steps, repeats=read_repeats)
+        else:
+            _read(model, windows, repeats=read_repeats,
+                  read_train_mode=read_train_mode,
+                  consolidation=read_consolidation,
+                  episode_writes=read_episode_writes)
+
     per_doc = []
     try:
         for i, doc in enumerate(documents):
             head, tail = doc[:n_read], doc[n_read:]
             if tail.shape[0] < 1:
                 raise ValueError("each document needs at least one score window")
-            other_head = documents[(i + shift) % d][:n_read]
+            other = documents[(i + shift) % d]
+            if read_what == "tail":
+                own_read, other_read = tail, other[n_read:]
+            else:
+                own_read, other_read = head, other[:n_read]
 
             a = _score(loss_module, tail)
 
-            _read(model, head, repeats=read_repeats, read_train_mode=read_train_mode)
+            read(own_read)
             b = _score(loss_module, tail)
-            _restore(model, base)
+            _restore(model, base, held)
 
-            _read(model, other_head, repeats=read_repeats,
-                  read_train_mode=read_train_mode)
+            read(other_read)
             c = _score(loss_module, tail)
-            _restore(model, base)
+            _restore(model, base, held)
 
             per_doc.append({
                 "doc": i,
@@ -243,9 +425,11 @@ def adaptation_eval(
                 "exact_null": (a == b == c),
             })
     finally:
-        _restore(model, base)
+        _restore(model, base, held)
         for m, s in zip(living, prior_scales):
             m.rate_scale = s
+        for m, decay in zip(living, prior_decays):
+            m.homeostatic_decay = decay
 
     summary: dict = {"n_docs": d, "exact_null": all(p["exact_null"] for p in per_doc)}
     for metric in ("l_pred", "nmse", "target_eff_rank"):
@@ -263,8 +447,18 @@ def adaptation_eval(
             "read_repeats": read_repeats, "control_shift": shift,
             "read_train_mode": read_train_mode, "rate_scale": rate_scale,
             "living_layers": len(living),
+            "homeostatic_decay": homeostatic_decay,
+            "read_consolidation": read_consolidation,
+            "read_episode_writes": read_episode_writes,
+            "read_what": read_what,
+            "read_by_gradient": read_by_gradient,
+            "gradient_steps": gradient_steps if by_gradient else None,
+            "gradient_parameters": (
+                sum(p.numel() for p in gradient_read_parameters(loss_module))
+                if by_gradient else None
+            ),
         },
     }
 
 
-__all__ = ["adaptation_eval", "holdout_documents"]
+__all__ = ["adaptation_eval", "gradient_read_parameters", "holdout_documents"]

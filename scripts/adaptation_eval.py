@@ -61,8 +61,28 @@ def main() -> int:
     ap.add_argument("--doc-phase", type=int, default=0,
                     help="0 = the primary documents; 1 = a disjoint replication "
                          "set (E1 counts a checkpoint only if both agree)")
+    # Opt-in switches (2026-11-16, exploratory). Each off by default; see
+    # luthi/v2/adaptation_eval.py.
+    ap.add_argument("--homeostatic-decay", type=float, default=None,
+                    help="the pull toward home during reads (default: as loaded); 0 = off")
+    ap.add_argument("--no-read-consolidation", action="store_true",
+                    help="consolidation cannot fire during reads")
+    ap.add_argument("--no-read-episode-writes", action="store_true",
+                    help="no episode is written during reads (block stores frozen, "
+                         "the layer's own episode write skipped)")
+    ap.add_argument("--read-what", choices=("head", "tail"), default="head",
+                    help="tail = a repeat read: B reads the windows it is scored on, "
+                         "C another document's; needs --read equal to --score")
+    ap.add_argument("--read-by-gradient", type=float, default=None, metavar="RATE",
+                    help="replace the plastic read by SGD at this rate on the loss "
+                         "of the windows read, plasticity frozen (a positive control)")
+    ap.add_argument("--gradient-steps", type=int, default=1,
+                    help="SGD steps per window, with --read-by-gradient")
     ap.add_argument("--out", default="")
     args = ap.parse_args()
+    if args.read_what == "tail" and args.read != args.score:
+        ap.error("--read-what tail reads the scored windows, so --read must equal "
+                 "--score (it sets how many leading windows are skipped)")
 
     from luthi.v2.adaptation_eval import adaptation_eval, holdout_documents
     from luthi.v2 import result_json
@@ -77,6 +97,12 @@ def main() -> int:
     res = adaptation_eval(
         run.loss_module, docs, n_read=args.read, read_repeats=args.repeats,
         read_train_mode=args.read_train_mode, rate_scale=args.rate_scale,
+        homeostatic_decay=args.homeostatic_decay,
+        read_consolidation=not args.no_read_consolidation,
+        read_episode_writes=not args.no_read_episode_writes,
+        read_what=args.read_what,
+        read_by_gradient=args.read_by_gradient,
+        gradient_steps=args.gradient_steps,
     )
     res["run"] = {"arm": run.result["arm"], "seed": run.result["seed"],
                   "checkpoint": run.checkpoint.name, "global_step": run.global_step}
