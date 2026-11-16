@@ -116,10 +116,10 @@ About this setup: this write rule, these rates, these runs, a read of 4 to 1,024
 
 From the write ladder, which I read myself (one pair of documents a run, so the cosines are single measurements):
 
-- The write is one direction at every rung in every run, and still one direction after 1,024 windows (top share 0.94 to 1.00, two early layers of the 768 runs lower at the top rung). §3's point holds at size, and for the accumulated write too.
-- July runs: from 64 windows two documents write nearly the same thing in layers 1 to 3 (cosine 0.79 to 1.00).
-- 768 seed 97: two documents write different things up to 256 windows (−0.28 to +0.17). So there the write does depend on the document, and still does not help.
-- 768 seed 97: 1,024 windows at one sequence a forward carry the weight ten to thirty times further than it stood from home when training ended (1e-3 to 4e-3 against 1e-4).
+- The write is one direction at nearly every rung in every run, and mostly still one direction after 1,024 windows: the top share is 0.97 or more in 94% of the rows, and the lowest are all at the top rung (0.71 to 0.77 in four layers). §3's point holds at size, and for the accumulated write too.
+- July runs, all six: from 64 windows two documents mostly write the same thing in layers 1 to 3 (cosine: median 0.92; 10 of 54 below 0.8; lowest 0.31).
+- 768 seed 97: two documents write different things up to 256 windows (median +0.07; from −0.60 to +0.46). So there the write does depend on the document, and still does not help.
+- 768 seed 97: in layers 0 to 4, 1,024 windows at one sequence a forward carry the weight twelve to twenty-seven times further than it stood from home when training ended. In layers 5 to 7, about half as far.
 
 ## Draft Amendment 5, second version (not registered)
 
