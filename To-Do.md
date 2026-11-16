@@ -96,6 +96,12 @@
 >     recall. The diagnosis's kill condition is tripped (12 misses).
 >   - E4: confirmed. No block beats the embedding row. The next-token probe is
 >     retired as a capability axis.
+>   - **2026-11-16, the order of work Brian supports (10:40;
+>     `docs/DECISIONS.md`, last entry):** read brief 4's gradient measurements;
+>     run E3 as registered; then Opus and Fable look at whether training should
+>     present text as a life does (one stream, in order; first check how the
+>     trainer orders and batches text today); tuning the write rule by gradient
+>     only after that, as its own registered experiment.
 >   - **2026-11-16, ruled by Brian (10:29):** Amendment 5 to E1 is registered
 >     (registry, last entry), and a measurement may take a gradient with respect
 >     to a living weight under three guards (`docs/DECISIONS.md`, last entry).

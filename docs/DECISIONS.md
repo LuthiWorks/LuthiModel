@@ -1294,3 +1294,38 @@ before any "working" verdict is trustworthy in either direction.
 >
 > **The second ruling** is registered as Amendment 5 in the registry
 > (`docs/research/2026-07-15_falsification-preregistration.md`, last entry).
+
+---
+
+## 2026-11-16 — On tuning the write rule by gradient: the order of work
+
+> Brian asked Fable (10:37): *"On whether training may tune the write rule's
+> own constants by gradient, what do you think? It seems at first like it might
+> ok, even good. But I am not knowledgable enough to decide."*
+>
+> Fable's answer, in short: sound in principle and probably good; a larger step
+> than it sounds; not needed yet. And a deeper problem than the rule's
+> constants: nothing in training gives a living weight a reason to be useful to
+> a document, because each training step mixes pieces of many texts and the
+> living weight sees their average, while a life is one stream in order.
+>
+> Fable recommended four things, in this order. Brian, 10:40:
+>
+> *"I support your recommendations."*
+>
+> 1. **Read the gradient measurements first** (brief 4). If no rule writing to
+>    the living weights could help, the question is moot.
+> 2. **Run E3 as registered.**
+> 3. **Before a learned rule or more hand-set ones, Opus and Fable look at
+>    whether training should present text the way a life does:** one stream, in
+>    order.
+> 4. **If tuning the rule by gradient is then taken up, it is its own
+>    registered experiment with two controls:** the dead arm and the hand-set
+>    rule.
+>
+> - **Standing as before:** training may not yet shape the write rule by
+>   gradient, and nothing is built toward it. It is open in principle.
+> - **Fable's claim in 3 is a reading, not yet a measurement.** It rests on E2's
+>   finding that the write's input is the same whatever the content. How the
+>   trainer orders and batches text was not checked before it was said, and is
+>   the first thing to check when 3 is taken up.
