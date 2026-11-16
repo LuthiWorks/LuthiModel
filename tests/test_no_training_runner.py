@@ -236,6 +236,54 @@ def test_a_job_that_spins_with_no_result_fails_at_the_limit(tmp_path):
     assert not out.exists()
 
 
+_RAISES_AND_SPINS = (
+    "import sys, traceback\n"
+    "try:\n"
+    "    raise RuntimeError('the loss is nan')\n"
+    "except RuntimeError:\n"
+    "    traceback.print_exc()\n"
+    "    sys.stderr.flush()\n"
+)
+
+
+def test_a_job_that_raises_and_then_spins_fails_without_waiting_out_the_limit(tmp_path):
+    """2026-11-16 on Brian's card: a job raised on a nan loss and did not
+    exit. Its log ended on the traceback and it wrote no result."""
+    outcome, out = _job(tmp_path, _RAISES_AND_SPINS + "while True: pass",
+                        exit_grace=0.5, timeout=600.0)
+    assert not outcome["ok"] and outcome["killed"] == "raised and did not exit"
+    assert outcome["seconds"] < 20
+    assert not out.exists()
+
+
+def test_a_traceback_in_the_log_does_not_fail_a_job_that_goes_on(tmp_path):
+    """A traceback that was handled, with the job still writing after it."""
+    code = (_RAISES_AND_SPINS
+            + "import time\n"
+            + "for i in range(8):\n"
+            + "    print('  working', i, flush=True); time.sleep(0.25)\n"
+            + _WRITES)
+    outcome, out = _job(tmp_path, code, exit_grace=1.0)
+    assert outcome["ok"] and outcome["killed"] is None
+    assert result_of(out) is not None
+
+
+def test_what_ends_on_a_traceback(tmp_path):
+    from scripts.run_no_training_experiments import ends_on_a_traceback
+
+    log = tmp_path / "a.log"
+    assert ends_on_a_traceback(log) is False                    # no log
+    log.write_text("UserWarning: something\n  return x\n")
+    assert ends_on_a_traceback(log) is False                    # no traceback
+    log.write_text("Traceback (most recent call last):\n  File \"a.py\", line 1\n"
+                   "RuntimeError: the loss is nan\n\n")
+    assert ends_on_a_traceback(log) is True
+    log.write_text("Traceback (most recent call last):\n  File \"a.py\", line 1\n")
+    assert ends_on_a_traceback(log) is False                    # still being written
+    log.write_text("Traceback (most recent call last):\n")
+    assert ends_on_a_traceback(log) is False
+
+
 def test_a_job_that_exits_badly_or_writes_nothing_fails(tmp_path):
     outcome, _ = _job(tmp_path, "raise SystemExit(3)")
     assert not outcome["ok"] and outcome["code"] == 3

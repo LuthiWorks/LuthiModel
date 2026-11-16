@@ -99,7 +99,59 @@ def switches() -> list[tuple[str, str, list[str]]]:
     return jobs
 
 
+# -- the second brief (2026-11-16) ------------------------------------------
+# At 768 the first brief's 30 documents of 2 scored windows let one document
+# supply most of a mean. The held-out set there (17,657 windows) allows 64
+# documents AND 8 scored windows at both rungs, so both are used.
+WIDE64 = ["--docs", "64", "--read", "64", "--score", "8"]
+WIDE256 = ["--docs", "64", "--read", "256", "--score", "8"]
+GRADIENT = ["--read-by-gradient", "1e-5", "--gradient-steps", "1"]
+PHASE1 = ["--doc-phase", "1"]
+ONLY = [
+    ("only_the_write", NO_PULL + NO_CONSOLIDATION + NO_EPISODES),
+    ("only_the_pull", NO_WRITE + NO_CONSOLIDATION + NO_EPISODES),
+    ("only_consolidation", NO_WRITE + NO_PULL + NO_EPISODES),
+    ("only_episodes", NO_WRITE + NO_PULL + NO_CONSOLIDATION),
+]
+EVERYTHING_OFF = NO_WRITE + NO_PULL + NO_CONSOLIDATION + NO_EPISODES
+
+
+def control2() -> list[tuple[str, str, list[str]]]:
+    """The gradient control on the second document set. First like for like
+    (the layout it passed on, shifted to the disjoint set); then, at 768, a
+    pair of disjoint sets at the wider layout. The wider layout's sets are
+    disjoint from each other but not from the first layout's."""
+    like = RUNGS[0][1] + GRADIENT
+    return [
+        (JULY42, "e1_read64_gradient_1e-5_phase1", like + PHASE1),
+        (P97, "e1_read64_gradient_1e-5_phase1", like + PHASE1),
+        (P97, "e1_read64_64docs_score8_gradient_1e-5", WIDE64 + GRADIENT),
+        (P97, "e1_read64_64docs_score8_gradient_1e-5_phase1", WIDE64 + GRADIENT + PHASE1),
+    ]
+
+
+def parts() -> list[tuple[str, str, list[str]]]:
+    """Which way carries the drift at 64 and 256 windows: each way alone.
+    July seed 42 at the first brief's layout, to sit beside its ladder.
+    768 seed 97 at the wider layout, with an everything-on read at that
+    layout to compare against. Everything off is read at 64 windows, where
+    it must be an exact null."""
+    jobs = []
+    for rung, july, wide in (("read64", RUNGS[0][1], WIDE64), ("read256", RUNGS[1][1], WIDE256)):
+        for what, flags in ONLY:
+            jobs.append((JULY42, f"e1_{rung}_{what}", july + flags))
+        if rung == "read64":
+            jobs.append((JULY42, f"e1_{rung}_everything_off", july + EVERYTHING_OFF))
+            jobs.append((P97, f"e1_{rung}_64docs_score8_everything_off", wide + EVERYTHING_OFF))
+        jobs.append((P97, f"e1_{rung}_64docs_score8", wide))
+        for what, flags in ONLY:
+            jobs.append((P97, f"e1_{rung}_64docs_score8_{what}", wide + flags))
+    return jobs
+
+
 PLANS = {
+    "control2": control2,
+    "parts": parts,
     "ladder": lambda: ladder([P97, JULY42]),
     "ladder-rest": lambda: ladder(OTHER_FINISHED),
     "switches": switches,

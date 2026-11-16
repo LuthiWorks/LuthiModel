@@ -170,6 +170,34 @@ def _local_backend(monkeypatch) -> str:
     return _backend_name(_device_fn()())
 
 
+def test_the_wait_for_the_card_is_registered_once(monkeypatch):
+    """A process that ends with work queued on the card does not exit on
+    Brian's card, so ``_device()`` registers a wait at exit. Once, however
+    many times it is called."""
+    spec = importlib.util.spec_from_file_location("_drv_wait", DRIVER)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    registered = []
+    monkeypatch.setattr(module.atexit, "register", registered.append)
+    assert module._WAITS_FOR_THE_CARD_AT_EXIT is False
+    module._wait_for_the_card_at_exit()
+    module._wait_for_the_card_at_exit()
+    assert registered == [module.torch.cuda.synchronize]
+
+
+def test_a_card_device_registers_the_wait_and_cpu_does_not(monkeypatch):
+    spec = importlib.util.spec_from_file_location("_drv_wait2", DRIVER)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    registered = []
+    monkeypatch.setattr(module.atexit, "register", registered.append)
+    monkeypatch.setenv("LUTHI_BACKEND", "auto")
+    monkeypatch.setenv("LUTHI_ALLOW_CPU", "1")
+    device = module._device()
+    on_the_card = device.type == "cuda"
+    assert registered == ([module.torch.cuda.synchronize] if on_the_card else [])
+
+
 def test_unknown_declared_backend_raises(monkeypatch):
     monkeypatch.setenv("LUTHI_BACKEND", "bogus")
     with pytest.raises(RuntimeError, match="not a known backend"):

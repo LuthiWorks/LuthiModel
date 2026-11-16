@@ -258,6 +258,34 @@ def set_aside(path: Path) -> Path | None:
     raise RuntimeError(f"too many earlier results beside {path}")
 
 
+_TRACEBACK = b"Traceback (most recent call last):"
+
+
+def ends_on_a_traceback(log: Path) -> bool:
+    """Whether the last thing in a job's log is a Python traceback.
+
+    True when the log holds a traceback header and its last line that is not
+    blank is flush left and is not the header itself: the shape of
+    ``RuntimeError: ...`` closing an uncaught exception. Anything written
+    after the traceback that is not part of one makes this False only if it
+    is indented; so this is a sign, not proof, and ``run_job`` also wants the
+    log to have gone quiet.
+    """
+    try:
+        with open(log, "rb") as f:
+            f.seek(0, 2)
+            f.seek(max(0, f.tell() - 65536))
+            tail = f.read()
+    except OSError:
+        return False
+    at = tail.rfind(_TRACEBACK)
+    if at < 0:
+        return False
+    lines = [ln for ln in tail[at:].splitlines() if ln.strip()]
+    last = lines[-1]
+    return len(lines) > 1 and not last[:1].isspace() and not last.startswith(_TRACEBACK)
+
+
 def run_job(cmd: list[str], out: Path, log: Path, *, exit_grace: float,
             timeout: float, poll: float = 2.0, heartbeat: float = 300.0) -> dict:
     """Run one job and wait for it, without trusting it to exit.
@@ -272,11 +300,19 @@ def run_job(cmd: list[str], out: Path, log: Path, *, exit_grace: float,
       done, and the report says so.
     - A job that has written no result after ``timeout`` seconds is killed
       and counts as failed.
+    - A job with no result whose log ends on a Python traceback, and has not
+      grown for ``exit_grace`` seconds, has raised and not exited. It is
+      killed and counts as failed, and the report says so. (2026-11-16: a
+      job raised on a nan loss and spun for 27 minutes; only the timeout
+      would have caught it.) A job that prints a traceback it has handled
+      and then works on for longer than ``exit_grace`` without writing a
+      line would be killed by this too. None of the jobs here does that.
     - While it waits, a line is printed every ``heartbeat`` seconds.
     """
     started = time.monotonic()
     written_at = None
     next_beat = heartbeat
+    log_size, log_quiet_since = -1, 0.0
     with open(log, "wb") as f:
         proc = subprocess.Popen(cmd, cwd=str(REPO_ROOT), stdout=f, stderr=subprocess.STDOUT)
         while True:
@@ -292,6 +328,15 @@ def run_job(cmd: list[str], out: Path, log: Path, *, exit_grace: float,
                 proc.wait()
                 return {"ok": True, "code": None, "killed": "did not exit after writing its result",
                         "seconds": elapsed}
+            if written_at is None:
+                size = log.stat().st_size
+                if size != log_size:
+                    log_size, log_quiet_since = size, elapsed
+                elif elapsed - log_quiet_since > exit_grace and ends_on_a_traceback(log):
+                    proc.kill()
+                    proc.wait()
+                    return {"ok": False, "code": None,
+                            "killed": "raised and did not exit", "seconds": elapsed}
             if written_at is None and elapsed > timeout:
                 proc.kill()
                 proc.wait()

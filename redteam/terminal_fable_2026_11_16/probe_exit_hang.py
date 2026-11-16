@@ -28,14 +28,24 @@ Measured, each twice or more, with other jobs running on the card:
     synchronize     yes   (the same, then torch.cuda.synchronize())
     read_back       yes   (the same, then .sum().item())
     empty_cache     yes   (the same, then del and torch.cuda.empty_cache())
+
+Added later the same day, after a job that raised (a nan loss) spun for 27
+minutes: does the path that raises hang too, and does a wait registered with
+atexit cover both paths? Results are in the commit that added these.
+
+    raise           (the same, then raise RuntimeError)
+    atexit          (atexit.register(torch.cuda.synchronize), the same, return)
+    atexit_raise    (atexit registered, the same, then raise RuntimeError)
 """
 
+import atexit
 import sys
 import time
 
 import torch
 
-CASES = ("host_to_card", "queued", "sleep", "synchronize", "read_back", "empty_cache")
+CASES = ("host_to_card", "queued", "sleep", "synchronize", "read_back", "empty_cache",
+         "raise", "atexit", "atexit_raise")
 what = sys.argv[1] if len(sys.argv) > 1 else ""
 if what not in CASES:
     raise SystemExit(f"one of: {', '.join(CASES)}")
@@ -43,6 +53,8 @@ if what not in CASES:
 if what == "host_to_card":
     a = torch.randn(512, 512).cuda()
 else:
+    if what.startswith("atexit"):
+        atexit.register(torch.cuda.synchronize)
     a = torch.randn(512, 512, device="cuda")
     b = a.clone()
     with torch.no_grad():
@@ -57,4 +69,7 @@ else:
     elif what == "empty_cache":
         del a, b, y
         torch.cuda.empty_cache()
+    elif what in ("raise", "atexit_raise"):
+        print(f"{what}: raising at {time.strftime('%H:%M:%S')}", flush=True)
+        raise RuntimeError("raised with work queued on the card")
 print(f"{what}: returning at {time.strftime('%H:%M:%S')}", flush=True)

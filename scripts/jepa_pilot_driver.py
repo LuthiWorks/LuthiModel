@@ -46,6 +46,7 @@ Smoke (CPU, minutes):
 from __future__ import annotations
 
 import argparse
+import atexit
 import dataclasses
 import json
 import math
@@ -978,6 +979,30 @@ def _device_fingerprint(device: torch.device) -> dict:
     return fp
 
 
+_WAITS_FOR_THE_CARD_AT_EXIT = False
+
+
+def _wait_for_the_card_at_exit() -> None:
+    """Register, once, a wait for the card when the process ends.
+
+    On Brian's card (ROCm, torch 2.9.1+rocm7.2.1) a process that ends with
+    work still queued on the card does not exit: it spins on one core.
+    ``adaptation_eval.py`` did it 38 times in 38 on 2026-11-13 (it ends on a
+    restore, queued and never read back), and on 2026-11-16 a job that
+    raised on a nan loss spun for 27 minutes. Waiting for the card first
+    lets the process go. ``atexit`` runs on a return and on an uncaught
+    exception alike; both were measured, with and without it, in
+    redteam/terminal_fable_2026_11_16/probe_exit_hang.py.
+
+    It does not run when the process is killed, or on ``os._exit``.
+    """
+    global _WAITS_FOR_THE_CARD_AT_EXIT
+    if _WAITS_FOR_THE_CARD_AT_EXIT:
+        return
+    atexit.register(torch.cuda.synchronize)
+    _WAITS_FOR_THE_CARD_AT_EXIT = True
+
+
 def _device() -> torch.device:
     """The accelerator, or a LOUD failure.
 
@@ -1102,6 +1127,8 @@ def _device() -> torch.device:
             "Refusing to run -- a declared backend that does not match the "
             "live one means the numbers would not be what the run claims."
         )
+    if resolved.type == "cuda":
+        _wait_for_the_card_at_exit()
     return resolved
 
 
