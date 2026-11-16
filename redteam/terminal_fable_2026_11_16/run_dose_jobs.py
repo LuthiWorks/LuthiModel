@@ -155,8 +155,29 @@ def parts() -> list[tuple[str, str, list[str]]]:
     return jobs
 
 
+# -- the third brief: what draft 3 of Amendment 5 costs on the card ---------
+A5 = ["--docs", "48", "--read", "64", "--score", "8"]
+
+
+def cost() -> list[tuple[str, str, list[str]]]:
+    """Draft 3's layout (64 windows read, 8 scored, 48 documents a set), read
+    three ways at 64 windows on one arm at each width, and once at the top
+    rung (64 windows read 16 times, 1,024 forwards a read) at 512. A read's
+    time goes with documents times forwards whichever ways are on, so the
+    768 top rung is costed from these and not run: it would not fit before
+    the card is wanted back."""
+    jobs = []
+    for run in (JULY42, P97):
+        jobs.append((run, "e1_a5_read64", A5))
+        jobs.append((run, "e1_a5_read64_everything_but_the_write", A5 + NO_WRITE))
+        jobs.append((run, "e1_a5_read64_only_the_write", A5 + ONLY[0][1]))
+    jobs.append((JULY42, "e1_a5_read64x16", A5 + ["--repeats", "16"]))
+    return jobs
+
+
 PLANS = {
     "control2": control2,
+    "cost": cost,
     "parts": parts,
     "ladder": lambda: ladder([P97, JULY42]),
     "ladder-rest": lambda: ladder(OTHER_FINISHED),
