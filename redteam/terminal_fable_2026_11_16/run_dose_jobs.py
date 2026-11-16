@@ -134,18 +134,24 @@ def parts() -> list[tuple[str, str, list[str]]]:
     """Which way carries the drift at 64 and 256 windows: each way alone.
     July seed 42 at the first brief's layout, to sit beside its ladder.
     768 seed 97 at the wider layout, with an everything-on read at that
-    layout to compare against. Everything off is read at 64 windows, where
-    it must be an exact null."""
+    layout to compare against.
+
+    Two reads added from Opus's review of the same day: everything but the
+    write (everything on minus this is the write's part in context, which
+    "only the write" can miss), and everything off at both rungs (it must
+    be an exact null, and 256 windows is past consolidation's first
+    firing)."""
     jobs = []
     for rung, july, wide in (("read64", RUNGS[0][1], WIDE64), ("read256", RUNGS[1][1], WIDE256)):
         for what, flags in ONLY:
             jobs.append((JULY42, f"e1_{rung}_{what}", july + flags))
-        if rung == "read64":
-            jobs.append((JULY42, f"e1_{rung}_everything_off", july + EVERYTHING_OFF))
-            jobs.append((P97, f"e1_{rung}_64docs_score8_everything_off", wide + EVERYTHING_OFF))
+        jobs.append((JULY42, f"e1_{rung}_everything_but_the_write", july + NO_WRITE))
+        jobs.append((JULY42, f"e1_{rung}_everything_off", july + EVERYTHING_OFF))
         jobs.append((P97, f"e1_{rung}_64docs_score8", wide))
         for what, flags in ONLY:
             jobs.append((P97, f"e1_{rung}_64docs_score8_{what}", wide + flags))
+        jobs.append((P97, f"e1_{rung}_64docs_score8_everything_but_the_write", wide + NO_WRITE))
+        jobs.append((P97, f"e1_{rung}_64docs_score8_everything_off", wide + EVERYTHING_OFF))
     return jobs
 
 

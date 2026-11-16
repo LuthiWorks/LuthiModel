@@ -197,6 +197,70 @@ def test_with_every_way_off_a_read_changes_nothing_the_score_reads():
     assert res["summary"]["exact_null"] is True
 
 
+def _loss_whose_consolidation_fires() -> JEPALoss:
+    """The toy's consolidation never fires in a test (its warmup is 1,000
+    forwards) and its layers' own stores stay empty (its salience is below
+    their floor of 0.1), so consolidation would have nothing to replay. This
+    one is warm after 4 forwards, fires on every forward after, and holds
+    episodes. From Opus's review of 2026-11-16
+    (redteam/opus_review_2026_11_16/probe_read_switches.py)."""
+    from luthi.v2.consolidation import ConsolidationTracker
+
+    lm = _loss(consolidation_enabled=True)
+    model = lm.online_encoder
+    for block in model.blocks:
+        block.living_ffn._consolidation_tracker = ConsolidationTracker(
+            window_size=4, trigger_window=1, threshold_factor=1e9)
+        block.living_ffn.salience_threshold = 0.0
+    g = torch.Generator().manual_seed(7)
+    ae._read(model, torch.randint(0, V, (8, L), generator=g), repeats=1,
+             read_train_mode=False)
+    assert all(int(b.living_ffn.episode_count) > 0 for b in model.blocks)
+    return lm
+
+
+def _consolidations(monkeypatch) -> list[int]:
+    """Episodes replayed by each firing, counted from outside: the eval
+    restores consolidation's own counters."""
+    import luthi.v2.consolidation as consolidation
+
+    replays: list[int] = []
+    real = consolidation.consolidate_layer
+
+    def counted(layer, **kw):
+        n = real(layer, **kw)
+        replays.append(int(n or 0))
+        return n
+
+    monkeypatch.setattr(consolidation, "consolidate_layer", counted)
+    return replays
+
+
+def test_consolidation_alone_carries_a_read_to_the_score(monkeypatch):
+    lm = _loss_whose_consolidation_fires()
+    replays = _consolidations(monkeypatch)       # counted from here: the eval's
+    res = adaptation_eval(lm, _docs(), n_read=2,
+                          read_repeats=3, rate_scale=0.0, homeostatic_decay=0.0,
+                          read_episode_writes=False)
+    assert replays and sum(replays) > 0          # it fired, and replayed something
+    assert res["summary"]["exact_null"] is False
+
+
+@pytest.mark.parametrize("read_train_mode", [False, True])
+def test_every_way_off_is_an_exact_null_where_consolidation_would_fire(
+        monkeypatch, read_train_mode):
+    # The null of the test above this pair is on a toy whose consolidation
+    # never fires. Here it would fire on every forward, and it is held.
+    lm = _loss_whose_consolidation_fires()
+    replays = _consolidations(monkeypatch)
+    res = adaptation_eval(lm, _docs(), n_read=2,
+                          read_repeats=3, read_train_mode=read_train_mode,
+                          rate_scale=0.0, homeostatic_decay=0.0,
+                          read_consolidation=False, read_episode_writes=False)
+    assert replays == []
+    assert res["summary"]["exact_null"] is True
+
+
 def test_the_episode_store_alone_carries_a_read_to_the_score():
     # The weight routes off, the episode writes left on: no weight moves and
     # the score still does. This is the fourth way, and rate_scale does not

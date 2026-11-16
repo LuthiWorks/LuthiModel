@@ -58,6 +58,17 @@ default path is bit-identical to before -- tests/test_adaptation_eval.py):
                          store is frozen (it still recalls) and the layer's
                          own episode write is skipped.
 
+"The write" here is everything ``rate_scale`` scales: the weight's update
+and the prediction's learning (``pred_learning_rate`` is scaled by it too).
+A read with only the write on therefore includes both.
+
+The ways do not add up. On 768 seed 97 at four windows the write alone
+gives B minus C of +5.5e-7, and the write's part of a whole read (everything
+on, minus everything but the write) is +2.1e-4, nearly all of it in one
+document where the write changes what the episode stores then hold (Opus's
+review of 2026-11-16). To say what the write contributes to a read, take
+both.
+
 With ``rate_scale=0``, ``homeostatic_decay=0`` and the two switches above
 off, a read changes nothing the score reads (tests/test_adaptation_eval.py).
 Other living state still moves (``precision``, ``error_acc``, ``update_ema``);
