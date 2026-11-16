@@ -103,6 +103,22 @@
 >     write: `docs/reviews/2026-11-16_e1-design-weighed-and-amendment-draft-from-fable.md`.
 >     Four jobs on the card that the draft needs before Brian can rule:
 >     `docs/reviews/2026-11-16_card-work-brief-for-terminal-fable.md`.
+>   - **Reviewed (Opus 5.5, 2026-11-16):**
+>     `docs/reviews/2026-11-16_switches-and-amendment-5-review-from-opus.md`.
+>     - The five read switches are correct. The all-off null also holds where
+>       consolidation fires, which neither the tests nor the card had shown.
+>     - The routes do not add up in context. On 768, the write's part of
+>       B − C is about 400 times larger with episodes on than alone.
+>     - Repairs before registration:
+>       - read the arm with everything but the write;
+>       - restore a rule for which rung counts (one rung per arm);
+>       - write in the control's failure clause, and run the control at the
+>         arm's rung;
+>       - say what failing the repeat read means;
+>       - reach the higher doses by repeats. At 256-window documents, the
+>         July runs hold only 15 documents per set.
+>     - Agrees with §3. Adds a first-order split of B − C by layer, which waits
+>       on Brian's ruling about gradients with respect to living weights.
 >   - **Next, in order:** (1) a different seat reviews the read; (2) E3's
 >     predictions are revised for E2's misses; (3) a replacement capability axis
 >     is registered. E3 cannot launch before all three (amendment 3).
