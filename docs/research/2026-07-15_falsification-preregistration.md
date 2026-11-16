@@ -1596,3 +1596,105 @@ is the entire point. Honor them after.
 > - **Independence:** this model line drafted and ratified the E-program
 >   (2026-10-19). The E1 design point is that line's own, and a seat from
 >   another family should weigh it.
+
+---
+
+> # 2026-11-16 — AMENDMENT 5 to E1, registered by Brian's ruling
+>
+> Brian, 2026-11-16, 10:29, on the text in
+> `docs/reviews/2026-11-16_amendment-5-draft-3-from-fable.md`: *"Also
+> agreed."* (`docs/DECISIONS.md`, last entry.) Drafted by Fable 5.2,
+> reviewed and repaired by Opus 5.5
+> (`docs/reviews/2026-11-16_switches-and-amendment-5-review-from-opus.md`),
+> on measurements by the Fable instance on Brian's card
+> (`docs/reviews/2026-11-16_card-work-report-from-terminal-fable.md`).
+> Entered by Fable 5.2. Nothing frozen above is edited. **It is a condition
+> of E3's launch.**
+>
+> The draft's two placeholder counts are fixed here from the card's reads of
+> the same morning, which is the one change from the text Brian ruled on:
+> 64 documents a set at 768, and 48 where the held-out set is the July
+> runs' (it holds at most 54).
+>
+> **Why.** E1 as registered read four windows. One read is one forward,
+> and a living weight holds a trace of about a thousand. A read reaches
+> the score by four routes (the write, the pull toward home,
+> consolidation, the episodes it stores), and the routes do not add up.
+>
+> **(a)** The 2026-11-13 read of E1 is entered as **"not testable at this
+> dose"**. Its numbers stand as description.
+>
+> **(b) Documents, doses and reads.**
+> - Documents: 64 windows read, 8 scored. Two disjoint sets: 64 documents
+>   a set in the 768 families, 48 a set on the July held-out set.
+> - Rungs: 4 windows; 64 windows; 64 windows read 4 times; 64 windows
+>   read 16 times.
+> - At each rung a living arm is read three ways: (1) everything on, the
+>   only read the criterion is applied to; (2) everything but the write;
+>   (3) only the write, as description.
+> - The write in context is read 1 minus read 2, document by document.
+> - Everything off is read once per arm, at its top rung, in eval mode,
+>   and must be an exact null. An arm whose all-off read is not null is
+>   not read until it is.
+>
+> **(c) Which rung counts,** decided before B minus C is looked at.
+> - A rung counts for an arm when, per document, B of read 1 minus B of
+>   read 2 has |t| ≥ 2 in either direction and a median size of at least
+>   10 parts per million of A.
+> - The arm's rung is the lowest rung that counts in at least two of
+>   three seeds. The criterion is applied there, once. Every other rung
+>   is description.
+> - If no rung counts, the result is "the write does not reach prediction
+>   within the span of the trace", reported apart from "the write reaches
+>   prediction and is blind to documents".
+>
+> **(d) The criterion,** at the arm's rung, on read 1: `nmse` B minus C
+> below 0 with t ≤ −2; the effective-rank guard; and B below C on more
+> than half the documents; on both document sets. One set alone is a
+> candidate, as in Amendment 1.
+>
+> **(e) The positive control: a read by gradient.** Plain SGD, rate 1e-5,
+> one step per forward, plasticity frozen, the encoder's and predictor's
+> trained parameters, everything restored before the next document.
+> - Read at 64 windows and at the arm's rung, on both document sets. It
+>   must meet (d).
+> - If it fails on either set, E1 is suspended for that family: it counts
+>   for and against nothing, and the recipe is not tuned.
+> - It is a check that the harness detects document-specific change, and
+>   not a scale.
+> - **Frozen at this recipe.** It was found without tuning (the lowest of
+>   three rates tried once) and has met (d) on both sets on July seed 42
+>   (t −3.3 and −3.4; 24 and 20 of 32 documents) and on 768 seed 97 in
+>   this amendment's layout (t −3.0 and −4.5; 49 and 52 of 64).
+>
+> **(f) The repeat read, first for any arm.** The model reads the 16
+> windows it is then scored on, four times; the other read is another
+> document's 16.
+> - Pass: B minus C below 0 with t ≤ −2 and B below C on more than half
+>   the documents.
+> - An arm that fails has its other reads entered as description only. It
+>   cannot meet (d). That counts against P3 and toward E3's second kill
+>   condition.
+> - A failed control (e) means the instrument cannot see. A failed repeat
+>   read means the mechanism cannot help on text it has just read, and is
+>   never recorded as "untestable".
+>
+> **(g)** Beside every E1 number: per living block, the distance from
+> home before the read, and the write's part of the change after it,
+> alone and in context, as shares of the weight.
+>
+> **(h)** E3's two uses of E1 (P3, and its second kill condition) are
+> read at the arm's rung under (c), on a family where (e) passed. P3
+> credits the covariance write only if the arm's pass does not survive
+> turning the write off: if read 2 also meets (d), the write is not what
+> passed.
+>
+> **Exploration already done under this text, on legacy runs, and not a
+> registered read** (July seed 42 and 768 seed 97; 30 or 32 documents, 2
+> scored): the repeat read fails on both; (d) is not met at any dose from
+> 4 to 1,024 forwards, and from 64 windows every dose makes the score
+> worse.
+>
+> **Also ruled the same morning** (`docs/DECISIONS.md`): a measurement may
+> take a gradient with respect to a living weight, under three guards,
+> with nothing kept. No living weight is trained by gradient.

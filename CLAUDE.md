@@ -39,7 +39,7 @@ Adopted after the program drifted toward instruments and stability and away from
 1. **Capacity before tuning.** Before tuning a mechanism's stability, dose, or schedule, show from its math and one probe that it *can* carry the information its claim requires. This question is legitimate in a working session; it needs no falsification run. It is the question that would have found, in April, that the living write is computed from batch means and that the block output store blends a constant into every forward.
 2. **The claim clock.** Every family that tests a living mechanism carries its matched dead control in the same registration, on the same backend, with the same trainer settings. A living-only family may be scored for health, never as evidence about the living channel.
 3. **Baselines, not floors.** A probe number is evidence of trunk computation only above the input-embedding baseline fitted with the same settings. A shuffled-label floor calibrates chance, not computation.
-4. **Measure the claim as stated.** The near-term goal is change at inference, so at least one registered instrument must measure with plasticity ON (`scripts/adaptation_eval.py`). Credit only document-specific change (read-own minus read-other), never raw change.
+4. **Measure the claim as stated.** The near-term goal is change at inference, so at least one registered instrument must measure with plasticity ON (`scripts/adaptation_eval.py`). Credit only document-specific change (read-own minus read-other), never raw change. *(Since 2026-11-16 E1 is read under Amendment 5 in the registry: a dose at which the write reaches the score, the write read in context, a read by gradient as the positive control, and a repeat read first.)*
 5. **Decompose the arm.** When a living arm differs from its control in more than one mechanism, the registration lists every difference and includes arms that separate them.
 
 ## Key Design Decisions — DO NOT REINVENT
@@ -141,7 +141,7 @@ What the final state is. What it means for the project.
 ## What NOT to Do
 
 - Do not wrap living weight operations in try/except — let NaN crash loudly
-- Do not backpropagate through living FFN layers — they train themselves
+- Do not backpropagate through living FFN layers — they train themselves. *No living weight is trained by gradient, in training or in a life. Since 2026-11-16, by Brian's ruling (`docs/DECISIONS.md`), a **measurement** may take a gradient with respect to a living weight when nothing is kept: in measurement code only, never through an `nn.Parameter` or an optimizer; refused in training mode; with a test that the model is bit-identical afterwards.*
 - Do not store episodes per-weight — use layer-level snapshots
 - Do not add CfC integration until Phase 4
 - Do not use the numpy proof-of-concept code as a translation source

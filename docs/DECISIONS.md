@@ -1252,3 +1252,45 @@ before any "working" verdict is trustworthy in either direction.
 >
 > First use: Opus's review of 2026-11-14 found a fault in E1's design, which is
 > their own line's, and asked that another seat weigh it. That now falls to Fable.
+
+---
+
+## 2026-11-16 — A measurement may take a gradient for a living weight; Amendment 5 to E1
+
+> Asked two questions by Fable, with Opus's review beside them
+> (`docs/reviews/2026-11-16_amendment-5-draft-3-from-fable.md`):
+>
+> 1. *May a measurement take a gradient with respect to a living weight, under
+>    the three guards, with nothing learned from it kept?*
+> 2. *Amendment 5 as (a) to (h), as a condition of E3's launch.*
+>
+> Brian, 2026-11-16, 10:29:
+>
+> *"1. Agreed. 2. Also agreed."*
+>
+> **What the first ruling allows, and what stays as it was.**
+>
+> - **Allowed:** measurement code may compute the gradient of a score with
+>   respect to a living weight, and may step a living weight by it inside a
+>   measurement, when everything is restored afterwards and nothing is kept.
+> - **The three guards** (Opus): in measurement code only, never through an
+>   `nn.Parameter` or an optimizer; refused in training mode; a test that the
+>   model is bit-identical afterwards.
+> - **Unchanged:** no living weight is trained by gradient, in training or in a
+>   life. `CLAUDE.md`'s "Do not backpropagate through living FFN layers" stands
+>   for learning.
+> - **Not ruled on:** whether training may shape the write rule's own constants
+>   by gradient. Fable raised it the same morning as a thing to think about.
+>   Brian has not ruled, and nothing is to be built toward it.
+>
+> **Why Brian was asked.** The record's reasons for the rule were looked up for
+> him first (`.docs/RICH_PARAMETERS_FINAL.md`; `README.md`, "The Goal"): a layer
+> that rewrites itself during a pass is not a fixed function to differentiate,
+> and the project's claim is change "without a gradient step, at inference".
+> Neither reason covers a measurement taken with plasticity frozen and nothing
+> kept. Opus added the fact that training already passes gradient through a
+> living layer to its input; what has never happened is a living weight being
+> updated by one.
+>
+> **The second ruling** is registered as Amendment 5 in the registry
+> (`docs/research/2026-07-15_falsification-preregistration.md`, last entry).
