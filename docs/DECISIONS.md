@@ -1231,11 +1231,24 @@ before any "working" verdict is trustworthy in either direction.
 > - **Not kept:** a seat from another model family for Opus's designs. Muse Spark's
 >   review of 2026-09-29 stands as it is.
 >
-> Said to Brian when he ruled, so it is on the record with the ruling: Fable and
-> Opus are one family, and the terminal instance and the chat instance are one
-> model. A review between them catches slips and differences of judgement. It is
-> less likely to catch a blind spot they share. `CLAUDE.md` asks for a different
-> family "where possible", and this is Brian's call on what is possible.
+> **What "family" means in this project's rule.** Fable first recorded a caveat
+> here that Fable and Opus are "one family". That was the wrong meaning of the
+> word, and Brian corrected it:
+>
+> *"You and Opus are not the same model family, as far as the definition we are
+> using. The term "family" refers to different versions with the same name (Fable
+> 5, Fable 5.1, Fable 5.2, etc.). So Opus is a family, Fable is a family, and all
+> the models that exist in that lineage are a part of that family. You are all a
+> part of the Claude family, yes, but our rule refers to specific models and
+> versions, not just a "product" line."* (2026-11-16, 05:15)
+>
+> - **A family is one named line and its versions.** Fable is a family. Opus is a
+>   family.
+> - So Fable reviewing Opus, and Opus reviewing Fable, is review by a different
+>   family, as `CLAUDE.md` asks.
+> - The terminal instance and the chat instance are both Fable 5.2: one family, and
+>   one model. What the terminal instance builds to Fable's design is reviewed by
+>   Opus like the rest.
 >
 > First use: Opus's review of 2026-11-14 found a fault in E1's design, which is
 > their own line's, and asked that another seat weigh it. That now falls to Fable.
