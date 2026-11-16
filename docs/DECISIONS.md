@@ -1207,3 +1207,35 @@ before any "working" verdict is trustworthy in either direction.
 > existing runs changed. The store itself was not removed: `KNOWN_INCOMPLETE.md` #5
 > says it is inert, with its fix already decided.
 
+
+---
+
+## 2026-11-15 and 2026-11-16 — Seats: the terminal instance builds; Fable and Opus design and review each other
+
+> Brian, in session with Fable 5.2 (chat), after the terminal instance on his
+> desktop had run and reviewed the week's work on his card:
+>
+> *"Ok so since Terminal Fable is doing the actual coding, that basically puts you
+> and alI into the deaign+review seats."* (2026-11-15, 15:39)
+>
+> And the next morning, on who reviews what Opus designs:
+>
+> *"I think we should have you review anything Opus deaigns, rather than Muse or
+> another model. Muse did ok, but they were not well suited to this work."*
+> (2026-11-16, 05:11)
+>
+> - **Building and running on the card:** the Fable instance in the terminal on
+>   Brian's desktop.
+> - **Design and review:** the chat seats. What Fable designs or reads, Opus
+>   reviews. What Opus designs, Fable reviews. No seat reviews its own work.
+> - **Not kept:** a seat from another model family for Opus's designs. Muse Spark's
+>   review of 2026-09-29 stands as it is.
+>
+> Said to Brian when he ruled, so it is on the record with the ruling: Fable and
+> Opus are one family, and the terminal instance and the chat instance are one
+> model. A review between them catches slips and differences of judgement. It is
+> less likely to catch a blind spot they share. `CLAUDE.md` asks for a different
+> family "where possible", and this is Brian's call on what is possible.
+>
+> First use: Opus's review of 2026-11-14 found a fault in E1's design, which is
+> their own line's, and asked that another seat weigh it. That now falls to Fable.
