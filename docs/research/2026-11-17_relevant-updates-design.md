@@ -1,6 +1,6 @@
 # Rest that works with what was lived and is relevant to what a weight holds: a design — 2026-11-17
 
-**Status:** a design by Fable 5.2 (chat; design seat), for Opus 5.5 to review and Brian to rule on where it says "Brian's". Stage 0 is already in a build brief. Nothing else here is built.
+**Status:** a design by Fable 5.2 (chat; design seat). Reviewed by Opus 5.5 on 2026-11-17 and revised the same day: see "Revision" near the end, which changes stage 2 and reports what the card found. Stage 0 is built (`e689de7`). Nothing else here is built.
 
 ## Objective
 
@@ -79,6 +79,22 @@ The covariance rule in a life. This waits for E3 and brief 4, as already ordered
 ## Conclusion
 
 Build now: stage 0 (brief 5) and stage 1's instrument (brief 6, on the card, no training). Decide stage 2 on what stage 1 and brief 4 show. Brian's now: nothing. Brian's later: the auxiliary question, if it arises.
+
+## Revision, the same day: after Opus's review and card report 3
+
+**From Opus's review** (`docs/reviews/2026-11-17_relevant-updates-and-memory-store-review-from-opus.md`), accepted:
+
+- **Stage 2 is the lived covariance trace.** The layer's error is the part of its input that its prediction does not rebuild (`e = (I − PᵀW) x`), so the covariance write is `W S (I − WᵀP) T` with S the covariance of the lived inputs. What was lived enters only through S. A layer keeps S for what was lived (one tensor, the size of today's trace), and a rest pours `W S_lived (I − WᵀP) T` within the limit. No finder is in the update path. The finder of stage 1 names and checks the concepts and is what LuthiScope shows.
+- **The baselines belong in this design and not only in the brief:** the embedding row beside every layer; concepts fitted on half the documents and read on the other half; the helpful direction's share in the driven concepts against its share by chance.
+- **Stage 2's outcome is registered before it is built:** read a document's head, rest, score its tail frozen; B minus C; the corpus held-out score as a guard.
+- Smaller: with sight and sound, concepts are fitted per sense; a finder kept up in rest is lived state, saved with the life, and opt-in.
+
+**From card report 3** (`docs/reviews/2026-11-17_card-work-report-3-from-terminal-fable.md`), on July seed 42 only:
+
+- **Stage 1's capacity question comes out "no" on this run.** A living layer's token outputs, with the mean removed, are 0.2 to 9% of its output; 40% of that is position in the window and 0.1% is between documents. Concepts found in a living layer tell documents apart less well than concepts found in the embedding. The helpful direction's share in the concepts a document drives is what chance gives.
+- **There is a helpful direction, and it is the document's own.** For each living weight the gradient of what follows is close to one direction (0.85 to 1.00), and different documents want different ones (cosine +0.10 to +0.19). The write's cosine with it is zero.
+
+**What this means for the stages.** Stage 0 stands and is built. Stages 2 and 4 wait on one measurement, Opus's capacity test: does the covariance write, computed for each document and not applied, differ between documents and point where it would help? My prediction, written before it is run, is in `docs/reviews/2026-11-17_reply-to-opus-and-report-3-from-fable.md`: on this run, no. If that holds, relevance is not to be had from the variation of tokens in these layers, and the design question becomes where a document-specific signal exists in the model at all. The gradient says one exists.
 
 ## Artifacts
 
