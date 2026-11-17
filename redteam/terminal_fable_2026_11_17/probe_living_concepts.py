@@ -106,6 +106,10 @@ def main() -> int:
     ap.add_argument("--passages", type=int, default=10)
     ap.add_argument("--shuffles", type=int, default=20)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--remove-position", action="store_true",
+                    help="remove each position's own mean before fitting and reading, "
+                         "not the one mean over tokens (brief 7, item 4: 40%% of a living "
+                         "layer's token variation is position in the window)")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
@@ -176,23 +180,35 @@ def main() -> int:
             every = max(1, math.ceil(fit_total / args.fit_tokens))
             pick = torch.arange(args.seed % every, seq, every, device=device)
             kept: list[list[torch.Tensor]] = [[] for _ in rows]
+            by_position = None
+            fit_windows = 0
             for di in fit_docs:
                 for w in docs[di]:
                     outs, _ = forward(w)
+                    if by_position is None:
+                        by_position = [torch.zeros_like(o, dtype=torch.float64) for o in outs]
+                    fit_windows += 1
                     for r in range(n_rows):
                         kept[r].append(outs[r][pick].float().cpu())
+                        by_position[r] += outs[r].double()
             fit = [torch.cat(k) for k in kept]
             del kept
-            means = [f.mean(dim=0) for f in fit]
+            if args.remove_position:
+                # One mean a position, [seq, d], from every token of the fit half.
+                means = [(b / fit_windows).float().cpu() for b in by_position]
+                centred = [f - m[pick.cpu()].repeat(fit_windows, 1) for f, m in zip(fit, means)]
+            else:
+                means = [f.mean(dim=0) for f in fit]
+                centred = [f - m for f, m in zip(fit, means)]
             protos: list[dict[int, torch.Tensor]] = []
             for r in range(n_rows):
-                x = (fit[r] - means[r]).to(device)
+                x = centred[r].to(device)
                 protos.append({k: kmeans_cosine(x, k, iters=args.kmeans_iters,
                                                 seed=args.seed + 1000 * r + k)
                                for k in args.k})
                 del x
             fit_tokens = int(fit[0].shape[0])
-            del fit
+            del fit, centred
             means = [m.to(device) for m in means]
             print(f"fitted on {fit_tokens} tokens of {len(fit_docs)} documents "
                   f"({(time.monotonic() - started) / 60:.1f} min)", flush=True)
@@ -202,7 +218,7 @@ def main() -> int:
             assign = {(r, k): torch.empty(n_tok, dtype=torch.int16) for r in range(n_rows)
                       for k in args.k}
             sim = {r: torch.empty(n_tok, dtype=torch.float32) for r in range(n_rows)}
-            dims = [int(m.shape[0]) for m in means]
+            dims = [int(m.shape[-1]) for m in means]
             s1 = [torch.zeros(d_, dtype=torch.float64, device=device) for d_ in dims]
             s2 = [torch.zeros(d_, d_, dtype=torch.float64, device=device) for d_ in dims]
             by_doc = [torch.zeros(n_r, d_, dtype=torch.float64, device=device) for d_ in dims]
@@ -474,6 +490,8 @@ def main() -> int:
                       "holdout_windows": int(windows.shape[0])},
         "settings": {"k": args.k, "fit_tokens": fit_tokens, "fit_every_nth_token": every,
                      "kmeans_iters": args.kmeans_iters, "seed": args.seed,
+                     "mean_removed": ("each position's own" if args.remove_position
+                                      else "one mean over tokens"),
                      "read_tokens": n_tok, "one_window_a_forward": True,
                      "passages_k": args.passages_k, "device": str(device)},
         "guards": {"plasticity_frozen_for_every_forward": True,
