@@ -1,0 +1,2366 @@
+{
+  "what": "brief 7, items 2 and 3: the covariance write each document would make (closed form, nothing applied), and the two sides of the helpful direction",
+  "run": {
+    "arm": "living_v5_4x_d4",
+    "seed": 42,
+    "checkpoint": "ckpt_00000041.pt",
+    "global_step": 72042
+  },
+  "documents": {
+    "n_docs": 48,
+    "n_read": 64,
+    "n_score": 8,
+    "phase": 0,
+    "control_shift": 24,
+    "pairs_for_sides": 1128,
+    "pairs_for_whole_writes": 66
+  },
+  "settings": {
+    "closed_form": "W S (I - W^T P) T; S averaged over the read windows, centred within each; no cap, no clamp",
+    "trust": "precision as saved",
+    "relative_trust_layers": 4,
+    "living_layers": 4,
+    "device": "cuda"
+  },
+  "guards": {
+    "bit_identical_afterwards": true,
+    "buffers_left_requiring_grad": 0,
+    "plasticity_frozen_for_every_forward": true
+  },
+  "summary_by_layer": [
+    {
+      "layer": 0,
+      "relative_trust": true,
+      "covariance_write": {
+        "cosine_between_documents": {
+          "n": 66,
+          "median": 0.9471888967603463,
+          "min": 0.8582327276560353,
+          "max": 0.9629529451376635
+        },
+        "output_side_cosine_between_documents": {
+          "n": 1128,
+          "median": 0.6171762165557879,
+          "min": 9.56453201054988e-06,
+          "max": 0.9800169999044454
+        },
+        "input_side_cosine_between_documents": {
+          "n": 1128,
+          "median": 0.6168032517071005,
+          "min": -0.04717084123306614,
+          "max": 0.9766415882296744
+        },
+        "top_share": {
+          "n": 48,
+          "median": 0.02873723223236562,
+          "min": 0.02760734237433189,
+          "max": 0.06772311714837806
+        },
+        "size_share_of_weight": {
+          "n": 48,
+          "median": 139593.6590558252,
+          "min": 138620.26813745618,
+          "max": 150564.290773353
+        },
+        "against_helpful_own": {
+          "n": 48,
+          "median": 0.0034931072039569616,
+          "min": -0.007150090395262138,
+          "max": 0.01196674348817873
+        },
+        "against_helpful_others": {
+          "n": 48,
+          "median": 0.004002315964793163,
+          "min": -0.0038167410435919593,
+          "max": 0.013369168765769046
+        },
+        "own_above_others_in": 17,
+        "documents": 48
+      },
+      "helpful_direction": {
+        "top_share": {
+          "n": 48,
+          "median": 0.8484740351717122,
+          "min": 0.7990044810336598,
+          "max": 0.9834116741652217
+        },
+        "input_side_against_mean_input": {
+          "n": 48,
+          "median": 0.9994368744181013,
+          "min": 0.9979070874323613,
+          "max": 0.9995955997897861
+        },
+        "output_side_against_mean_output": {
+          "n": 48,
+          "median": -0.014562166425610309,
+          "min": -0.12641712316560225,
+          "max": 0.11322511223537174
+        },
+        "output_side_cosine_between_documents": {
+          "n": 1128,
+          "median": 0.11045850024354184,
+          "min": -0.2308350533030734,
+          "max": 0.48599491213056223
+        },
+        "input_side_cosine_between_documents": {
+          "n": 1128,
+          "median": 0.9990272793701173,
+          "min": 0.9949342311826905,
+          "max": 0.9994528988147467
+        }
+      }
+    },
+    {
+      "layer": 1,
+      "relative_trust": true,
+      "covariance_write": {
+        "cosine_between_documents": {
+          "n": 66,
+          "median": 0.9474366637795899,
+          "min": 0.8621774667613478,
+          "max": 0.9624174233692379
+        },
+        "output_side_cosine_between_documents": {
+          "n": 1128,
+          "median": 0.8744934517011129,
+          "min": 0.0013871170343832363,
+          "max": 0.9837992708520847
+        },
+        "input_side_cosine_between_documents": {
+          "n": 1128,
+          "median": 0.8712281060228806,
+          "min": -0.026599269210101372,
+          "max": 0.9816329464973322
+        },
+        "top_share": {
+          "n": 48,
+          "median": 0.027145023858052945,
+          "min": 0.02574896107069528,
+          "max": 0.07293613839115022
+        },
+        "size_share_of_weight": {
+          "n": 48,
+          "median": 45545.9646985149,
+          "min": 45252.34563350493,
+          "max": 49637.72310458527
+        },
+        "against_helpful_own": {
+          "n": 48,
+          "median": 0.000625260053175272,
+          "min": -0.005845935420784615,
+          "max": 0.008078081997910392
+        },
+        "against_helpful_others": {
+          "n": 48,
+          "median": 0.0006375744228261656,
+          "min": -0.0062998340193718295,
+          "max": 0.008663198440340204
+        },
+        "own_above_others_in": 24,
+        "documents": 48
+      },
+      "helpful_direction": {
+        "top_share": {
+          "n": 48,
+          "median": 0.9830872944650141,
+          "min": 0.9772113094314667,
+          "max": 0.9985850104940251
+        },
+        "input_side_against_mean_input": {
+          "n": 48,
+          "median": 0.9999502347889377,
+          "min": 0.9998203177352849,
+          "max": 0.9999620605966325
+        },
+        "output_side_against_mean_output": {
+          "n": 48,
+          "median": 0.0014118403827273775,
+          "min": -0.10822066817330862,
+          "max": 0.10057953916775632
+        },
+        "output_side_cosine_between_documents": {
+          "n": 1128,
+          "median": 0.11551801809073566,
+          "min": -0.24633232688489726,
+          "max": 0.4798623779737743
+        },
+        "input_side_cosine_between_documents": {
+          "n": 1128,
+          "median": 0.9999074596565992,
+          "min": 0.9996205986522009,
+          "max": 0.9999435775905581
+        }
+      }
+    },
+    {
+      "layer": 2,
+      "relative_trust": true,
+      "covariance_write": {
+        "cosine_between_documents": {
+          "n": 66,
+          "median": 0.9474846693046509,
+          "min": 0.8661854667749719,
+          "max": 0.9623672538141007
+        },
+        "output_side_cosine_between_documents": {
+          "n": 1128,
+          "median": 0.800674960865003,
+          "min": 0.0001944639837292817,
+          "max": 0.975148478793064
+        },
+        "input_side_cosine_between_documents": {
+          "n": 1128,
+          "median": 0.7936959916359959,
+          "min": -0.019578972391025126,
+          "max": 0.9759438941766538
+        },
+        "top_share": {
+          "n": 48,
+          "median": 0.027305107850066027,
+          "min": 0.026384733731248285,
+          "max": 0.06792629020401329
+        },
+        "size_share_of_weight": {
+          "n": 48,
+          "median": 30166.048948544456,
+          "min": 29932.253262681956,
+          "max": 32628.758288799905
+        },
+        "against_helpful_own": {
+          "n": 48,
+          "median": 0.0008314060619459089,
+          "min": -0.004628274571402997,
+          "max": 0.0045538467890203285
+        },
+        "against_helpful_others": {
+          "n": 48,
+          "median": 0.0009329849838524974,
+          "min": -0.0040744253474826455,
+          "max": 0.0045023937803463365
+        },
+        "own_above_others_in": 23,
+        "documents": 48
+      },
+      "helpful_direction": {
+        "top_share": {
+          "n": 48,
+          "median": 0.9928117884723139,
+          "min": 0.9905571489121445,
+          "max": 0.9993966911955112
+        },
+        "input_side_against_mean_input": {
+          "n": 48,
+          "median": 0.9999791265772711,
+          "min": 0.9999193479690676,
+          "max": 0.9999836850268264
+        },
+        "output_side_against_mean_output": {
+          "n": 48,
+          "median": -0.01294547438236095,
+          "min": -0.06803030882755183,
+          "max": 0.07327507104279844
+        },
+        "output_side_cosine_between_documents": {
+          "n": 1128,
+          "median": 0.12048563014031732,
+          "min": -0.2550908536340249,
+          "max": 0.47006677646607514
+        },
+        "input_side_cosine_between_documents": {
+          "n": 1128,
+          "median": 0.9999615428424351,
+          "min": 0.9998417538349713,
+          "max": 0.9999763473875555
+        }
+      }
+    },
+    {
+      "layer": 3,
+      "relative_trust": true,
+      "covariance_write": {
+        "cosine_between_documents": {
+          "n": 66,
+          "median": 0.947972387686171,
+          "min": 0.8658971272055845,
+          "max": 0.9628329031441858
+        },
+        "output_side_cosine_between_documents": {
+          "n": 1128,
+          "median": 0.36574293072720876,
+          "min": 0.0016007320636740759,
+          "max": 0.9762509669525407
+        },
+        "input_side_cosine_between_documents": {
+          "n": 1128,
+          "median": 0.3569164235831359,
+          "min": -0.01237015015015787,
+          "max": 0.9740976442904101
+        },
+        "top_share": {
+          "n": 48,
+          "median": 0.026227739802618,
+          "min": 0.025380154955214233,
+          "max": 0.06057173608811198
+        },
+        "size_share_of_weight": {
+          "n": 48,
+          "median": 29038.130522256062,
+          "min": 28853.562041104167,
+          "max": 31290.389736896916
+        },
+        "against_helpful_own": {
+          "n": 48,
+          "median": 0.000792886846937979,
+          "min": -6.151810989685665e-05,
+          "max": 0.001872513507932698
+        },
+        "against_helpful_others": {
+          "n": 48,
+          "median": 0.0008548377132223662,
+          "min": -0.00010155065132839118,
+          "max": 0.0020046751199936244
+        },
+        "own_above_others_in": 20,
+        "documents": 48
+      },
+      "helpful_direction": {
+        "top_share": {
+          "n": 48,
+          "median": 0.9973188618487072,
+          "min": 0.9964998153264905,
+          "max": 0.9997720410718341
+        },
+        "input_side_against_mean_input": {
+          "n": 48,
+          "median": 0.9999920895507577,
+          "min": 0.9999713449364599,
+          "max": 0.9999939376473185
+        },
+        "output_side_against_mean_output": {
+          "n": 48,
+          "median": -0.02306439640323317,
+          "min": -0.13518535947723131,
+          "max": 0.0768960600713483
+        },
+        "output_side_cosine_between_documents": {
+          "n": 1128,
+          "median": 0.1234043748885639,
+          "min": -0.24462435594687026,
+          "max": 0.4667135208672838
+        },
+        "input_side_cosine_between_documents": {
+          "n": 1128,
+          "median": 0.999985759329239,
+          "min": 0.999940427187599,
+          "max": 0.9999912431335347
+        }
+      }
+    }
+  ],
+  "per_doc": [
+    {
+      "doc": 0,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.7990044810336598,
+          "input_side_against_mean_input": 0.9992567737306697,
+          "output_side_against_mean_output": 0.11322511223537174,
+          "covariance_write_against_helpful_own": 0.0030072318764006564,
+          "covariance_write_against_helpful_others": 0.0040364851034399955,
+          "covariance_write_top_share": 0.028922350922270385,
+          "covariance_write_size_share_of_weight": 139341.0338864647
+        },
+        {
+          "helpful_top_share": 0.9772113094314667,
+          "input_side_against_mean_input": 0.9999366065315728,
+          "output_side_against_mean_output": -0.011690991961203854,
+          "covariance_write_against_helpful_own": -0.005845935420784615,
+          "covariance_write_against_helpful_others": -0.0062998340193718295,
+          "covariance_write_top_share": 0.02574896107069528,
+          "covariance_write_size_share_of_weight": 45527.24603478792
+        },
+        {
+          "helpful_top_share": 0.9905571489121445,
+          "input_side_against_mean_input": 0.9999746040308943,
+          "output_side_against_mean_output": 0.04658402042297126,
+          "covariance_write_against_helpful_own": 0.0013572102854191909,
+          "covariance_write_against_helpful_others": 0.0014312851535813584,
+          "covariance_write_top_share": 0.02748264701514356,
+          "covariance_write_size_share_of_weight": 30158.375687455788
+        },
+        {
+          "helpful_top_share": 0.9964998153264905,
+          "input_side_against_mean_input": 0.9999905297566255,
+          "output_side_against_mean_output": -0.003526737163372391,
+          "covariance_write_against_helpful_own": 0.0007912916791889525,
+          "covariance_write_against_helpful_others": 0.0008726755586047635,
+          "covariance_write_top_share": 0.025943543300268723,
+          "covariance_write_size_share_of_weight": 29022.84955615712
+        }
+      ]
+    },
+    {
+      "doc": 1,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.8868537980391042,
+          "input_side_against_mean_input": 0.9995418218544,
+          "output_side_against_mean_output": -0.003911267536966849,
+          "covariance_write_against_helpful_own": 0.0035667368425257406,
+          "covariance_write_against_helpful_others": 0.003968146826146331,
+          "covariance_write_top_share": 0.028820850679315224,
+          "covariance_write_size_share_of_weight": 139380.8363167935
+        },
+        {
+          "helpful_top_share": 0.9884610232775761,
+          "input_side_against_mean_input": 0.9999507064838583,
+          "output_side_against_mean_output": 0.01238666869312283,
+          "covariance_write_against_helpful_own": 0.0017241822957390696,
+          "covariance_write_against_helpful_others": 0.001266163235401539,
+          "covariance_write_top_share": 0.026977927235943333,
+          "covariance_write_size_share_of_weight": 45663.02184158282
+        },
+        {
+          "helpful_top_share": 0.9951739250083813,
+          "input_side_against_mean_input": 0.9999798067185897,
+          "output_side_against_mean_output": 0.06120444872714892,
+          "covariance_write_against_helpful_own": 0.0028685847661033765,
+          "covariance_write_against_helpful_others": 0.001783592033882484,
+          "covariance_write_top_share": 0.027820107080698864,
+          "covariance_write_size_share_of_weight": 30249.089942229748
+        },
+        {
+          "helpful_top_share": 0.9981857951110567,
+          "input_side_against_mean_input": 0.9999922411148755,
+          "output_side_against_mean_output": -0.019803223814473622,
+          "covariance_write_against_helpful_own": 0.00047506022663569125,
+          "covariance_write_against_helpful_others": 0.00036069906633215914,
+          "covariance_write_top_share": 0.02639936260388006,
+          "covariance_write_size_share_of_weight": 29126.65931881453
+        }
+      ]
+    },
+    {
+      "doc": 2,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.847457483596737,
+          "input_side_against_mean_input": 0.9995259277639517,
+          "output_side_against_mean_output": -0.05414577940091775,
+          "covariance_write_against_helpful_own": 0.002787015562718309,
+          "covariance_write_against_helpful_others": 0.0025278458086160378,
+          "covariance_write_top_share": 0.02826374054776535,
+          "covariance_write_size_share_of_weight": 139759.9863652775
+        },
+        {
+          "helpful_top_share": 0.9837118289398036,
+          "input_side_against_mean_input": 0.9999594086292387,
+          "output_side_against_mean_output": -0.0009313999944777882,
+          "covariance_write_against_helpful_own": -0.0021178958116901,
+          "covariance_write_against_helpful_others": -0.0018143024892458277,
+          "covariance_write_top_share": 0.02657713791075309,
+          "covariance_write_size_share_of_weight": 45743.21178447733
+        },
+        {
+          "helpful_top_share": 0.9931580677055688,
+          "input_side_against_mean_input": 0.9999825944153746,
+          "output_side_against_mean_output": 0.045292828903840884,
+          "covariance_write_against_helpful_own": 0.0023495502873626126,
+          "covariance_write_against_helpful_others": 0.001285197434483319,
+          "covariance_write_top_share": 0.02780717070027167,
+          "covariance_write_size_share_of_weight": 30281.13432144805
+        },
+        {
+          "helpful_top_share": 0.9974520719258699,
+          "input_side_against_mean_input": 0.999993745302218,
+          "output_side_against_mean_output": -0.04201174924120296,
+          "covariance_write_against_helpful_own": 0.0007077568805703506,
+          "covariance_write_against_helpful_others": 0.0007860419029856955,
+          "covariance_write_top_share": 0.027427335503684352,
+          "covariance_write_size_share_of_weight": 29170.769567852007
+        }
+      ]
+    },
+    {
+      "doc": 3,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.8426781901441203,
+          "input_side_against_mean_input": 0.9993788055553385,
+          "output_side_against_mean_output": -0.10565749196151906,
+          "covariance_write_against_helpful_own": 0.005361228223253174,
+          "covariance_write_against_helpful_others": 0.005247420208544182,
+          "covariance_write_top_share": 0.02862244301485947,
+          "covariance_write_size_share_of_weight": 139366.04626785108
+        },
+        {
+          "helpful_top_share": 0.9812767573991148,
+          "input_side_against_mean_input": 0.9999351097946686,
+          "output_side_against_mean_output": 0.01968036495424975,
+          "covariance_write_against_helpful_own": 0.0005643436869526038,
+          "covariance_write_against_helpful_others": 0.00039215191924677086,
+          "covariance_write_top_share": 0.02617578801754385,
+          "covariance_write_size_share_of_weight": 45479.346911637746
+        },
+        {
+          "helpful_top_share": 0.992033139441621,
+          "input_side_against_mean_input": 0.9999732652031292,
+          "output_side_against_mean_output": 0.03226464236874591,
+          "covariance_write_against_helpful_own": 1.5735262818771328e-05,
+          "covariance_write_against_helpful_others": -0.0002702889027566858,
+          "covariance_write_top_share": 0.0267191965345293,
+          "covariance_write_size_share_of_weight": 30145.985650343584
+        },
+        {
+          "helpful_top_share": 0.996962898692458,
+          "input_side_against_mean_input": 0.9999903306037518,
+          "output_side_against_mean_output": 0.02569142608109189,
+          "covariance_write_against_helpful_own": 0.0003546320650047518,
+          "covariance_write_against_helpful_others": 0.00045922493241927037,
+          "covariance_write_top_share": 0.0260344803071529,
+          "covariance_write_size_share_of_weight": 29016.2278879823
+        }
+      ]
+    },
+    {
+      "doc": 4,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.8275737091964515,
+          "input_side_against_mean_input": 0.999433127731293,
+          "output_side_against_mean_output": -0.021982778179186275,
+          "covariance_write_against_helpful_own": 0.005214644866717267,
+          "covariance_write_against_helpful_others": 0.005910006700938042,
+          "covariance_write_top_share": 0.028935241325376015,
+          "covariance_write_size_share_of_weight": 139593.41683308408
+        },
+        {
+          "helpful_top_share": 0.9806078018107208,
+          "input_side_against_mean_input": 0.9999514332876794,
+          "output_side_against_mean_output": -0.10822066817330862,
+          "covariance_write_against_helpful_own": 0.008078081997910392,
+          "covariance_write_against_helpful_others": 0.008663198440340204,
+          "covariance_write_top_share": 0.027638320637066158,
+          "covariance_write_size_share_of_weight": 45649.7003521789
+        },
+        {
+          "helpful_top_share": 0.9917550313144543,
+          "input_side_against_mean_input": 0.9999800726916024,
+          "output_side_against_mean_output": 0.07327507104279844,
+          "covariance_write_against_helpful_own": -0.00392457803570222,
+          "covariance_write_against_helpful_others": -0.003951194603874324,
+          "covariance_write_top_share": 0.027709672504921495,
+          "covariance_write_size_share_of_weight": 30273.986021430497
+        },
+        {
+          "helpful_top_share": 0.9969055267357066,
+          "input_side_against_mean_input": 0.9999927298871683,
+          "output_side_against_mean_output": 0.01621773752166328,
+          "covariance_write_against_helpful_own": 0.0010670853478030136,
+          "covariance_write_against_helpful_others": 0.0009145105067445718,
+          "covariance_write_top_share": 0.0268442109998806,
+          "covariance_write_size_share_of_weight": 29087.564991302257
+        }
+      ]
+    },
+    {
+      "doc": 5,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.8509244562567331,
+          "input_side_against_mean_input": 0.9992934224199462,
+          "output_side_against_mean_output": -0.020262378768399217,
+          "covariance_write_against_helpful_own": 0.0010912771717494173,
+          "covariance_write_against_helpful_others": 0.002172442042667112,
+          "covariance_write_top_share": 0.03422968603196701,
+          "covariance_write_size_share_of_weight": 141832.623194094
+        },
+        {
+          "helpful_top_share": 0.9836503631382283,
+          "input_side_against_mean_input": 0.9999296280569621,
+          "output_side_against_mean_output": 0.012138037974674946,
+          "covariance_write_against_helpful_own": 0.0017040971410752634,
+          "covariance_write_against_helpful_others": 0.001541589854413262,
+          "covariance_write_top_share": 0.031028424809296015,
+          "covariance_write_size_share_of_weight": 46004.41810712185
+        },
+        {
+          "helpful_top_share": 0.9930845981726995,
+          "input_side_against_mean_input": 0.9999691554665379,
+          "output_side_against_mean_output": -0.035211599229479446,
+          "covariance_write_against_helpful_own": 0.002272705058738698,
+          "covariance_write_against_helpful_others": 0.002774676105342184,
+          "covariance_write_top_share": 0.033602174657422754,
+          "covariance_write_size_share_of_weight": 30485.921500727563
+        },
+        {
+          "helpful_top_share": 0.9974592764348466,
+          "input_side_against_mean_input": 0.9999892814178881,
+          "output_side_against_mean_output": 0.013945803263471617,
+          "covariance_write_against_helpful_own": 0.00040604285805283453,
+          "covariance_write_against_helpful_others": 0.0004474259330288662,
+          "covariance_write_top_share": 0.03222037764917842,
+          "covariance_write_size_share_of_weight": 29333.594754647725
+        }
+      ]
+    },
+    {
+      "doc": 6,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.8321323002969682,
+          "input_side_against_mean_input": 0.9993779572468755,
+          "output_side_against_mean_output": -0.04832668258349797,
+          "covariance_write_against_helpful_own": 0.0013286154718161675,
+          "covariance_write_against_helpful_others": 0.0031439052823482314,
+          "covariance_write_top_share": 0.032318925256070344,
+          "covariance_write_size_share_of_weight": 141339.81314216065
+        },
+        {
+          "helpful_top_share": 0.9813337484766097,
+          "input_side_against_mean_input": 0.9999391070646526,
+          "output_side_against_mean_output": -0.0639002234819456,
+          "covariance_write_against_helpful_own": -0.0004841852305971361,
+          "covariance_write_against_helpful_others": -0.0006879273309414474,
+          "covariance_write_top_share": 0.029409428658728906,
+          "covariance_write_size_share_of_weight": 45870.49070530295
+        },
+        {
+          "helpful_top_share": 0.9922133945784325,
+          "input_side_against_mean_input": 0.9999760719976697,
+          "output_side_against_mean_output": 0.004487714882488537,
+          "covariance_write_against_helpful_own": -0.003026158114202996,
+          "covariance_write_against_helpful_others": -0.002191258733095628,
+          "covariance_write_top_share": 0.03124229533962132,
+          "covariance_write_size_share_of_weight": 30406.400802046293
+        },
+        {
+          "helpful_top_share": 0.9971179111706999,
+          "input_side_against_mean_input": 0.9999911898774463,
+          "output_side_against_mean_output": 0.016036887141727754,
+          "covariance_write_against_helpful_own": 0.0007498557450581189,
+          "covariance_write_against_helpful_others": 0.0008484078140350366,
+          "covariance_write_top_share": 0.030145242479345805,
+          "covariance_write_size_share_of_weight": 29307.664259098103
+        }
+      ]
+    },
+    {
+      "doc": 7,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.8499324044853326,
+          "input_side_against_mean_input": 0.9995179245947668,
+          "output_side_against_mean_output": -0.09726784095492665,
+          "covariance_write_against_helpful_own": 0.009329065552138058,
+          "covariance_write_against_helpful_others": 0.01016372293635329,
+          "covariance_write_top_share": 0.039440074773801674,
+          "covariance_write_size_share_of_weight": 142045.89342199484
+        },
+        {
+          "helpful_top_share": 0.9833041288803799,
+          "input_side_against_mean_input": 0.9999503145065196,
+          "output_side_against_mean_output": 0.003397291399152854,
+          "covariance_write_against_helpful_own": 0.001034762273209948,
+          "covariance_write_against_helpful_others": 0.00017986110639369726,
+          "covariance_write_top_share": 0.034123679037903094,
+          "covariance_write_size_share_of_weight": 46119.009780683635
+        },
+        {
+          "helpful_top_share": 0.9928349370101373,
+          "input_side_against_mean_input": 0.9999786400976344,
+          "output_side_against_mean_output": 0.010419404241015603,
+          "covariance_write_against_helpful_own": -0.0005952236639145937,
+          "covariance_write_against_helpful_others": -0.00048157816290029517,
+          "covariance_write_top_share": 0.03591569072440761,
+          "covariance_write_size_share_of_weight": 30522.342707808522
+        },
+        {
+          "helpful_top_share": 0.9973139715609719,
+          "input_side_against_mean_input": 0.9999920117646518,
+          "output_side_against_mean_output": -0.0077888060204222,
+          "covariance_write_against_helpful_own": 0.0011104276962585564,
+          "covariance_write_against_helpful_others": 0.0010515505484905436,
+          "covariance_write_top_share": 0.03610856816349003,
+          "covariance_write_size_share_of_weight": 29418.966597688137
+        }
+      ]
+    },
+    {
+      "doc": 8,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.8545056336801685,
+          "input_side_against_mean_input": 0.9995125260873011,
+          "output_side_against_mean_output": -0.06676693469081112,
+          "covariance_write_against_helpful_own": 0.01196674348817873,
+          "covariance_write_against_helpful_others": 0.013369168765769046,
+          "covariance_write_top_share": 0.03647761141942742,
+          "covariance_write_size_share_of_weight": 142265.5077084963
+        },
+        {
+          "helpful_top_share": 0.9837644043098321,
+          "input_side_against_mean_input": 0.9999513418842255,
+          "output_side_against_mean_output": 0.09040260475356315,
+          "covariance_write_against_helpful_own": -0.00255213360302698,
+          "covariance_write_against_helpful_others": -0.0018691966907822453,
+          "covariance_write_top_share": 0.03132679764310642,
+          "covariance_write_size_share_of_weight": 46097.03089988804
+        },
+        {
+          "helpful_top_share": 0.9931450506417749,
+          "input_side_against_mean_input": 0.9999790237707765,
+          "output_side_against_mean_output": -0.025368904806719543,
+          "covariance_write_against_helpful_own": 0.0019231212625524087,
+          "covariance_write_against_helpful_others": 0.0008073082743125912,
+          "covariance_write_top_share": 0.03400335487962937,
+          "covariance_write_size_share_of_weight": 30544.90354694171
+        },
+        {
+          "helpful_top_share": 0.9974490842588442,
+          "input_side_against_mean_input": 0.9999921673368636,
+          "output_side_against_mean_output": 0.0768960600713483,
+          "covariance_write_against_helpful_own": 0.0005505199986005848,
+          "covariance_write_against_helpful_others": 0.0006131932334267533,
+          "covariance_write_top_share": 0.033821490621573594,
+          "covariance_write_size_share_of_weight": 29404.41448865215
+        }
+      ]
+    },
+    {
+      "doc": 9,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.8698030907260297,
+          "input_side_against_mean_input": 0.9995955997897861,
+          "output_side_against_mean_output": -0.004164640828276681,
+          "covariance_write_against_helpful_own": 0.0013269320184879706,
+          "covariance_write_against_helpful_others": 0.002929877192492132,
+          "covariance_write_top_share": 0.037146395593986845,
+          "covariance_write_size_share_of_weight": 142213.383931093
+        },
+        {
+          "helpful_top_share": 0.9858746327353194,
+          "input_side_against_mean_input": 0.9999526063668649,
+          "output_side_against_mean_output": -0.028356334808179975,
+          "covariance_write_against_helpful_own": 0.004446326549754396,
+          "covariance_write_against_helpful_others": 0.006433737946932674,
+          "covariance_write_top_share": 0.03267859208622204,
+          "covariance_write_size_share_of_weight": 46107.52046830871
+        },
+        {
+          "helpful_top_share": 0.9939947721619977,
+          "input_side_against_mean_input": 0.9999802698159146,
+          "output_side_against_mean_output": 0.013202061985916828,
+          "covariance_write_against_helpful_own": 0.0008465968808580936,
+          "covariance_write_against_helpful_others": 0.0016577240438488338,
+          "covariance_write_top_share": 0.03468132247847139,
+          "covariance_write_size_share_of_weight": 30476.31633953955
+        },
+        {
+          "helpful_top_share": 0.9977404119140394,
+          "input_side_against_mean_input": 0.9999923280514335,
+          "output_side_against_mean_output": -0.04654459995371583,
+          "covariance_write_against_helpful_own": 2.2033211979470822e-05,
+          "covariance_write_against_helpful_others": 0.00024142991076157386,
+          "covariance_write_top_share": 0.03400164888152163,
+          "covariance_write_size_share_of_weight": 29425.588354844887
+        }
+      ]
+    },
+    {
+      "doc": 10,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.8407024536832701,
+          "input_side_against_mean_input": 0.9994266449347294,
+          "output_side_against_mean_output": -0.000661097315666375,
+          "covariance_write_against_helpful_own": 0.00621013846722269,
+          "covariance_write_against_helpful_others": 0.006412218692250695,
+          "covariance_write_top_share": 0.037054580897089885,
+          "covariance_write_size_share_of_weight": 142055.35525259303
+        },
+        {
+          "helpful_top_share": 0.9817881101349324,
+          "input_side_against_mean_input": 0.9999515062998952,
+          "output_side_against_mean_output": 0.04917208876026306,
+          "covariance_write_against_helpful_own": 0.0026984896056392008,
+          "covariance_write_against_helpful_others": 0.002654549308254499,
+          "covariance_write_top_share": 0.02782706029809066,
+          "covariance_write_size_share_of_weight": 45862.828757408504
+        },
+        {
+          "helpful_top_share": 0.99230950116084,
+          "input_side_against_mean_input": 0.9999798139607301,
+          "output_side_against_mean_output": 0.03538421475782215,
+          "covariance_write_against_helpful_own": -0.0009743161879707679,
+          "covariance_write_against_helpful_others": -0.0017572333748615073,
+          "covariance_write_top_share": 0.03082875937977743,
+          "covariance_write_size_share_of_weight": 30391.364668158036
+        },
+        {
+          "helpful_top_share": 0.9970427939107234,
+          "input_side_against_mean_input": 0.9999924973982542,
+          "output_side_against_mean_output": -0.05073757330763253,
+          "covariance_write_against_helpful_own": 0.0008103934913747853,
+          "covariance_write_against_helpful_others": 0.0007337730718942084,
+          "covariance_write_top_share": 0.029971694403556386,
+          "covariance_write_size_share_of_weight": 29277.602642474056
+        }
+      ]
+    },
+    {
+      "doc": 11,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.8848307876671906,
+          "input_side_against_mean_input": 0.9995774659989074,
+          "output_side_against_mean_output": -0.07625377395074569,
+          "covariance_write_against_helpful_own": 0.004125946227201754,
+          "covariance_write_against_helpful_others": 0.004604727882017245,
+          "covariance_write_top_share": 0.028745452026209865,
+          "covariance_write_size_share_of_weight": 138941.04948753634
+        },
+        {
+          "helpful_top_share": 0.9876830222668956,
+          "input_side_against_mean_input": 0.9999620605966325,
+          "output_side_against_mean_output": 0.07961035185370356,
+          "covariance_write_against_helpful_own": -0.0007472826277368122,
+          "covariance_write_against_helpful_others": -0.0006519215583493027,
+          "covariance_write_top_share": 0.026570816479909633,
+          "covariance_write_size_share_of_weight": 45445.30849544622
+        },
+        {
+          "helpful_top_share": 0.9948066354786474,
+          "input_side_against_mean_input": 0.9999836850268264,
+          "output_side_against_mean_output": -0.011076545746797435,
+          "covariance_write_against_helpful_own": -0.0012510162407577507,
+          "covariance_write_against_helpful_others": -0.0009843324001784501,
+          "covariance_write_top_share": 0.028169394296330107,
+          "covariance_write_size_share_of_weight": 30108.246508449556
+        },
+        {
+          "helpful_top_share": 0.998078266984696,
+          "input_side_against_mean_input": 0.9999939376473185,
+          "output_side_against_mean_output": 0.027898100563957973,
+          "covariance_write_against_helpful_own": 0.0008350902687810392,
+          "covariance_write_against_helpful_others": 0.0009631062530479048,
+          "covariance_write_top_share": 0.02563037435634376,
+          "covariance_write_size_share_of_weight": 28989.351919505745
+        }
+      ]
+    },
+    {
+      "doc": 12,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.8669437293604214,
+          "input_side_against_mean_input": 0.9994076292126928,
+          "output_side_against_mean_output": 0.04273459634825754,
+          "covariance_write_against_helpful_own": 0.0033909776484971604,
+          "covariance_write_against_helpful_others": 0.004117307999464409,
+          "covariance_write_top_share": 0.027803285995136866,
+          "covariance_write_size_share_of_weight": 138995.74421981358
+        },
+        {
+          "helpful_top_share": 0.9853471417600482,
+          "input_side_against_mean_input": 0.9999496663647577,
+          "output_side_against_mean_output": 0.011030285240130841,
+          "covariance_write_against_helpful_own": -0.0008977934568747155,
+          "covariance_write_against_helpful_others": -0.0006629683719149279,
+          "covariance_write_top_share": 0.026796671050223885,
+          "covariance_write_size_share_of_weight": 45436.96890899121
+        },
+        {
+          "helpful_top_share": 0.9937634839617376,
+          "input_side_against_mean_input": 0.9999775228476216,
+          "output_side_against_mean_output": 0.0021542380094561188,
+          "covariance_write_against_helpful_own": -0.0010357056982866156,
+          "covariance_write_against_helpful_others": -0.0007817460019191209,
+          "covariance_write_top_share": 0.027788135663387697,
+          "covariance_write_size_share_of_weight": 30082.674014597684
+        },
+        {
+          "helpful_top_share": 0.9976931435728619,
+          "input_side_against_mean_input": 0.9999914160621906,
+          "output_side_against_mean_output": -0.03342914265495157,
+          "covariance_write_against_helpful_own": 0.0002593553907270208,
+          "covariance_write_against_helpful_others": 0.00020725167047295053,
+          "covariance_write_top_share": 0.02557641447797525,
+          "covariance_write_size_share_of_weight": 28964.41943428624
+        }
+      ]
+    },
+    {
+      "doc": 13,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.8218099762814017,
+          "input_side_against_mean_input": 0.9994109096210583,
+          "output_side_against_mean_output": -0.08265724864605625,
+          "covariance_write_against_helpful_own": 0.0051265503474462,
+          "covariance_write_against_helpful_others": 0.00585804029098662,
+          "covariance_write_top_share": 0.02760734237433189,
+          "covariance_write_size_share_of_weight": 139292.3909502872
+        },
+        {
+          "helpful_top_share": 0.9804511514189633,
+          "input_side_against_mean_input": 0.9999555238246902,
+          "output_side_against_mean_output": -0.01848152007645439,
+          "covariance_write_against_helpful_own": 0.00021259425580628482,
+          "covariance_write_against_helpful_others": 0.00035266340722733103,
+          "covariance_write_top_share": 0.02755525286276337,
+          "covariance_write_size_share_of_weight": 45533.349909761615
+        },
+        {
+          "helpful_top_share": 0.9919577063178173,
+          "input_side_against_mean_input": 0.9999812681518289,
+          "output_side_against_mean_output": -0.011366510145978611,
+          "covariance_write_against_helpful_own": -0.0036381315316378017,
+          "covariance_write_against_helpful_others": -0.0033878767973817884,
+          "covariance_write_top_share": 0.026721168634309733,
+          "covariance_write_size_share_of_weight": 30113.736379965314
+        },
+        {
+          "helpful_top_share": 0.9969887712187907,
+          "input_side_against_mean_input": 0.9999935806665472,
+          "output_side_against_mean_output": -0.13518535947723131,
+          "covariance_write_against_helpful_own": 0.0011379817977279242,
+          "covariance_write_against_helpful_others": 0.0013221440057076751,
+          "covariance_write_top_share": 0.025520751686734615,
+          "covariance_write_size_share_of_weight": 29013.202762984736
+        }
+      ]
+    },
+    {
+      "doc": 14,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.8723853444122562,
+          "input_side_against_mean_input": 0.9994685925341885,
+          "output_side_against_mean_output": -0.06914650673649302,
+          "covariance_write_against_helpful_own": 0.003356817877910759,
+          "covariance_write_against_helpful_others": 0.003909148307974838,
+          "covariance_write_top_share": 0.028216578677829764,
+          "covariance_write_size_share_of_weight": 139422.4976137886
+        },
+        {
+          "helpful_top_share": 0.9863571997979496,
+          "input_side_against_mean_input": 0.9999466623973083,
+          "output_side_against_mean_output": 0.10057953916775632,
+          "covariance_write_against_helpful_own": 0.0006088997107852769,
+          "covariance_write_against_helpful_others": 0.0012099511383367942,
+          "covariance_write_top_share": 0.02685181910205858,
+          "covariance_write_size_share_of_weight": 45526.630116975735
+        },
+        {
+          "helpful_top_share": 0.9942142118532427,
+          "input_side_against_mean_input": 0.9999770575861618,
+          "output_side_against_mean_output": -0.05195384677548244,
+          "covariance_write_against_helpful_own": 0.0015801715007465044,
+          "covariance_write_against_helpful_others": 0.0019244442917598105,
+          "covariance_write_top_share": 0.02641216857928283,
+          "covariance_write_size_share_of_weight": 30174.06159418002
+        },
+        {
+          "helpful_top_share": 0.9978239619025654,
+          "input_side_against_mean_input": 0.9999918450369765,
+          "output_side_against_mean_output": -0.025677723855303806,
+          "covariance_write_against_helpful_own": 0.0007944820146870055,
+          "covariance_write_against_helpful_others": 0.0008499547484852614,
+          "covariance_write_top_share": 0.02625119131421015,
+          "covariance_write_size_share_of_weight": 29093.44328890567
+        }
+      ]
+    },
+    {
+      "doc": 15,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.8350369702107949,
+          "input_side_against_mean_input": 0.9994524305954076,
+          "output_side_against_mean_output": -0.0920624911312932,
+          "covariance_write_against_helpful_own": 0.009709197660827071,
+          "covariance_write_against_helpful_others": 0.010589390100285105,
+          "covariance_write_top_share": 0.028009546295171293,
+          "covariance_write_size_share_of_weight": 139302.4317295343
+        },
+        {
+          "helpful_top_share": 0.9823135738470332,
+          "input_side_against_mean_input": 0.9999514971015687,
+          "output_side_against_mean_output": 0.019506259161616652,
+          "covariance_write_against_helpful_own": -0.0008529279870026119,
+          "covariance_write_against_helpful_others": -0.0017743571263458967,
+          "covariance_write_top_share": 0.027191542940998452,
+          "covariance_write_size_share_of_weight": 45445.39017494111
+        },
+        {
+          "helpful_top_share": 0.9924966046323006,
+          "input_side_against_mean_input": 0.9999801414071162,
+          "output_side_against_mean_output": -0.015913768364922132,
+          "covariance_write_against_helpful_own": 0.0007121011051627842,
+          "covariance_write_against_helpful_others": 0.0010751994714240495,
+          "covariance_write_top_share": 0.026478015464322456,
+          "covariance_write_size_share_of_weight": 30106.508707489782
+        },
+        {
+          "helpful_top_share": 0.9972020235119999,
+          "input_side_against_mean_input": 0.9999927203859211,
+          "output_side_against_mean_output": -0.020451068951162537,
+          "covariance_write_against_helpful_own": 0.0006974590634411431,
+          "covariance_write_against_helpful_others": 0.0006469766106444526,
+          "covariance_write_top_share": 0.025798163410150295,
+          "covariance_write_size_share_of_weight": 29003.164120621448
+        }
+      ]
+    },
+    {
+      "doc": 16,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.8505521280675384,
+          "input_side_against_mean_input": 0.9994277937936854,
+          "output_side_against_mean_output": 0.01792056139585462,
+          "covariance_write_against_helpful_own": 0.0034519404016357448,
+          "covariance_write_against_helpful_others": 0.003846652663853907,
+          "covariance_write_top_share": 0.028058770258751014,
+          "covariance_write_size_share_of_weight": 140087.69512642059
+        },
+        {
+          "helpful_top_share": 0.9833152934191292,
+          "input_side_against_mean_input": 0.9999415055246137,
+          "output_side_against_mean_output": 0.06982664020048035,
+          "covariance_write_against_helpful_own": -0.0012672959384309043,
+          "covariance_write_against_helpful_others": -0.001613771184336948,
+          "covariance_write_top_share": 0.027445921463875644,
+          "covariance_write_size_share_of_weight": 45661.1715463858
+        },
+        {
+          "helpful_top_share": 0.9929344862832514,
+          "input_side_against_mean_input": 0.9999755906198727,
+          "output_side_against_mean_output": -0.020338305595001407,
+          "covariance_write_against_helpful_own": 0.0037009723803458363,
+          "covariance_write_against_helpful_others": 0.003934333029365936,
+          "covariance_write_top_share": 0.026937994810020936,
+          "covariance_write_size_share_of_weight": 30275.68075208269
+        },
+        {
+          "helpful_top_share": 0.9973237521364426,
+          "input_side_against_mean_input": 0.9999909129006326,
+          "output_side_against_mean_output": -0.03575678662254312,
+          "covariance_write_against_helpful_own": 0.001872513507932698,
+          "covariance_write_against_helpful_others": 0.0020046751199936244,
+          "covariance_write_top_share": 0.02582741953816456,
+          "covariance_write_size_share_of_weight": 29161.654900321995
+        }
+      ]
+    },
+    {
+      "doc": 17,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.8635456058258746,
+          "input_side_against_mean_input": 0.9994809904618063,
+          "output_side_against_mean_output": -0.12285798960786423,
+          "covariance_write_against_helpful_own": 0.005885511844701813,
+          "covariance_write_against_helpful_others": 0.005239337861131905,
+          "covariance_write_top_share": 0.029028897405504923,
+          "covariance_write_size_share_of_weight": 139494.33494878683
+        },
+        {
+          "helpful_top_share": 0.9858969355362576,
+          "input_side_against_mean_input": 0.9999547666475987,
+          "output_side_against_mean_output": 0.039742324243588756,
+          "covariance_write_against_helpful_own": 0.001972154658108161,
+          "covariance_write_against_helpful_others": 0.0022471614356837123,
+          "covariance_write_top_share": 0.028062423090440197,
+          "covariance_write_size_share_of_weight": 45511.05507155226
+        },
+        {
+          "helpful_top_share": 0.9940504714456365,
+          "input_side_against_mean_input": 0.9999812385083497,
+          "output_side_against_mean_output": 0.018088723870053825,
+          "covariance_write_against_helpful_own": -0.003581195826295196,
+          "covariance_write_against_helpful_others": -0.004057853391856701,
+          "covariance_write_top_share": 0.027398657692871194,
+          "covariance_write_size_share_of_weight": 30167.536185612655
+        },
+        {
+          "helpful_top_share": 0.997782506616647,
+          "input_side_against_mean_input": 0.9999930937956872,
+          "output_side_against_mean_output": 0.029000068148485596,
+          "covariance_write_against_helpful_own": 0.0009280621357829117,
+          "covariance_write_against_helpful_others": 0.0010156682591968005,
+          "covariance_write_top_share": 0.02632486697657824,
+          "covariance_write_size_share_of_weight": 29038.521403643197
+        }
+      ]
+    },
+    {
+      "doc": 18,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.8433653683482981,
+          "input_side_against_mean_input": 0.9995686372343291,
+          "output_side_against_mean_output": 0.0140989125455903,
+          "covariance_write_against_helpful_own": 0.0023800111205176016,
+          "covariance_write_against_helpful_others": 0.0034617082731821726,
+          "covariance_write_top_share": 0.028542799787394813,
+          "covariance_write_size_share_of_weight": 139866.86674199934
+        },
+        {
+          "helpful_top_share": 0.9818577174898484,
+          "input_side_against_mean_input": 0.9999594150869469,
+          "output_side_against_mean_output": -0.05439344999882393,
+          "covariance_write_against_helpful_own": 0.001308755463315536,
+          "covariance_write_against_helpful_others": 0.0013795853001527518,
+          "covariance_write_top_share": 0.026100927866724414,
+          "covariance_write_size_share_of_weight": 45715.143342439245
+        },
+        {
+          "helpful_top_share": 0.9923393007852723,
+          "input_side_against_mean_input": 0.9999829710223385,
+          "output_side_against_mean_output": -0.018667861423028734,
+          "covariance_write_against_helpful_own": 0.002432855405006663,
+          "covariance_write_against_helpful_others": 0.0023103645791251472,
+          "covariance_write_top_share": 0.02688848993055148,
+          "covariance_write_size_share_of_weight": 30268.509466959782
+        },
+        {
+          "helpful_top_share": 0.9971604963701745,
+          "input_side_against_mean_input": 0.9999937689688928,
+          "output_side_against_mean_output": -0.10494041909920623,
+          "covariance_write_against_helpful_own": 0.0006427785476774304,
+          "covariance_write_against_helpful_others": 0.0008020728950645328,
+          "covariance_write_top_share": 0.02604814089367525,
+          "covariance_write_size_share_of_weight": 29132.292127733806
+        }
+      ]
+    },
+    {
+      "doc": 19,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.8476348457423494,
+          "input_side_against_mean_input": 0.9993120751814111,
+          "output_side_against_mean_output": -0.05768415796035795,
+          "covariance_write_against_helpful_own": 0.00606624943474038,
+          "covariance_write_against_helpful_others": 0.006037880648798221,
+          "covariance_write_top_share": 0.028780659482195107,
+          "covariance_write_size_share_of_weight": 139185.76690790392
+        },
+        {
+          "helpful_top_share": 0.9827308282735877,
+          "input_side_against_mean_input": 0.9999346408135367,
+          "output_side_against_mean_output": -0.0054548078332783585,
+          "covariance_write_against_helpful_own": 0.0021498723036332957,
+          "covariance_write_against_helpful_others": 0.0023032805680092304,
+          "covariance_write_top_share": 0.027161654423015536,
+          "covariance_write_size_share_of_weight": 45498.49319202503
+        },
+        {
+          "helpful_top_share": 0.9927570647323938,
+          "input_side_against_mean_input": 0.9999727570572825,
+          "output_side_against_mean_output": -0.05615374836955556,
+          "covariance_write_against_helpful_own": -0.0008443356980800833,
+          "covariance_write_against_helpful_others": -0.0009764862232650587,
+          "covariance_write_top_share": 0.0272197081117377,
+          "covariance_write_size_share_of_weight": 30147.9003230574
+        },
+        {
+          "helpful_top_share": 0.9972740231115629,
+          "input_side_against_mean_input": 0.9999902795277922,
+          "output_side_against_mean_output": -0.0017127374662366285,
+          "covariance_write_against_helpful_own": 0.0009955096756382215,
+          "covariance_write_against_helpful_others": 0.0011277445991194279,
+          "covariance_write_top_share": 0.02632345179483056,
+          "covariance_write_size_share_of_weight": 29013.82634091532
+        }
+      ]
+    },
+    {
+      "doc": 20,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.8241559796245624,
+          "input_side_against_mean_input": 0.9994273675614435,
+          "output_side_against_mean_output": -0.12641712316560225,
+          "covariance_write_against_helpful_own": 0.008831777422748639,
+          "covariance_write_against_helpful_others": 0.010128545160323377,
+          "covariance_write_top_share": 0.028566008757260706,
+          "covariance_write_size_share_of_weight": 139717.4369664451
+        },
+        {
+          "helpful_top_share": 0.9799310179838784,
+          "input_side_against_mean_input": 0.9999438715641217,
+          "output_side_against_mean_output": -0.00947182705571945,
+          "covariance_write_against_helpful_own": -0.0025433908142636777,
+          "covariance_write_against_helpful_others": -0.0015928784344306566,
+          "covariance_write_top_share": 0.027190112108121514,
+          "covariance_write_size_share_of_weight": 45568.343626906884
+        },
+        {
+          "helpful_top_share": 0.9915863893407161,
+          "input_side_against_mean_input": 0.9999773267835977,
+          "output_side_against_mean_output": -0.00816509888996703,
+          "covariance_write_against_helpful_own": 0.0021928940616386607,
+          "covariance_write_against_helpful_others": 0.003145592620386418,
+          "covariance_write_top_share": 0.027111344904521592,
+          "covariance_write_size_share_of_weight": 30185.74219131015
+        },
+        {
+          "helpful_top_share": 0.9968635203165447,
+          "input_side_against_mean_input": 0.999991512461045,
+          "output_side_against_mean_output": 0.03949125544832863,
+          "covariance_write_against_helpful_own": 0.0018484016338090983,
+          "covariance_write_against_helpful_others": 0.0018758408948765875,
+          "covariance_write_top_share": 0.02590722479224989,
+          "covariance_write_size_share_of_weight": 29033.469801489846
+        }
+      ]
+    },
+    {
+      "doc": 21,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.8902346583487704,
+          "input_side_against_mean_input": 0.9995320950991372,
+          "output_side_against_mean_output": -0.06601904153804045,
+          "covariance_write_against_helpful_own": 0.0024733967389358696,
+          "covariance_write_against_helpful_others": 0.000965296136834818,
+          "covariance_write_top_share": 0.028814724303474887,
+          "covariance_write_size_share_of_weight": 139857.88466789393
+        },
+        {
+          "helpful_top_share": 0.9885137256091274,
+          "input_side_against_mean_input": 0.9999518039206191,
+          "output_side_against_mean_output": -0.021589703434392447,
+          "covariance_write_against_helpful_own": 0.004145305329886685,
+          "covariance_write_against_helpful_others": 0.003595648671755211,
+          "covariance_write_top_share": 0.027181731642795522,
+          "covariance_write_size_share_of_weight": 45558.579487268194
+        },
+        {
+          "helpful_top_share": 0.9951471781758484,
+          "input_side_against_mean_input": 0.9999803087719465,
+          "output_side_against_mean_output": -0.016806190533328443,
+          "covariance_write_against_helpful_own": 0.0017981965753043714,
+          "covariance_write_against_helpful_others": 0.0026052924859773325,
+          "covariance_write_top_share": 0.027647021169461578,
+          "covariance_write_size_share_of_weight": 30164.561711476257
+        },
+        {
+          "helpful_top_share": 0.9981794857961671,
+          "input_side_against_mean_input": 0.9999928671042018,
+          "output_side_against_mean_output": 0.02398698755674525,
+          "covariance_write_against_helpful_own": 0.0009104076627130125,
+          "covariance_write_against_helpful_others": 0.0010442048557717828,
+          "covariance_write_top_share": 0.026061882727009267,
+          "covariance_write_size_share_of_weight": 29116.57053194305
+        }
+      ]
+    },
+    {
+      "doc": 22,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.8408551960734502,
+          "input_side_against_mean_input": 0.9993731673964297,
+          "output_side_against_mean_output": 0.011425564408775495,
+          "covariance_write_against_helpful_own": 0.004941128988471036,
+          "covariance_write_against_helpful_others": 0.004964799969350686,
+          "covariance_write_top_share": 0.028632973505848897,
+          "covariance_write_size_share_of_weight": 139911.73839586938
+        },
+        {
+          "helpful_top_share": 0.9820777219110834,
+          "input_side_against_mean_input": 0.9999366235554217,
+          "output_side_against_mean_output": -0.003388898168342968,
+          "covariance_write_against_helpful_own": 0.0026004834002579967,
+          "covariance_write_against_helpful_others": 0.0013220096926821758,
+          "covariance_write_top_share": 0.02722256409900696,
+          "covariance_write_size_share_of_weight": 45685.88205626037
+        },
+        {
+          "helpful_top_share": 0.9924467086264076,
+          "input_side_against_mean_input": 0.9999732739204251,
+          "output_side_against_mean_output": -0.031237845468347028,
+          "covariance_write_against_helpful_own": -2.7281078759738357e-05,
+          "covariance_write_against_helpful_others": 0.0013572682976857855,
+          "covariance_write_top_share": 0.027044477215811033,
+          "covariance_write_size_share_of_weight": 30270.424344066363
+        },
+        {
+          "helpful_top_share": 0.997157353611188,
+          "input_side_against_mean_input": 0.9999904093078131,
+          "output_side_against_mean_output": -0.0548099137421161,
+          "covariance_write_against_helpful_own": 0.0009641542935304676,
+          "covariance_write_against_helpful_others": 0.001041678392097932,
+          "covariance_write_top_share": 0.02677728897237719,
+          "covariance_write_size_share_of_weight": 29139.142508289024
+        }
+      ]
+    },
+    {
+      "doc": 23,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.8292537018932985,
+          "input_side_against_mean_input": 0.9994276416608152,
+          "output_side_against_mean_output": 0.013756629765387494,
+          "covariance_write_against_helpful_own": 0.005481923443334406,
+          "covariance_write_against_helpful_others": 0.004152567880897412,
+          "covariance_write_top_share": 0.028550769164922028,
+          "covariance_write_size_share_of_weight": 139650.989723298
+        },
+        {
+          "helpful_top_share": 0.9806568518028467,
+          "input_side_against_mean_input": 0.9999440926720655,
+          "output_side_against_mean_output": -0.0005736106336980991,
+          "covariance_write_against_helpful_own": -0.0020094085105888558,
+          "covariance_write_against_helpful_others": -0.0023142121433494343,
+          "covariance_write_top_share": 0.027327931817509258,
+          "covariance_write_size_share_of_weight": 45558.663084884065
+        },
+        {
+          "helpful_top_share": 0.991951826779112,
+          "input_side_against_mean_input": 0.9999766742799143,
+          "output_side_against_mean_output": 0.023606997948086895,
+          "covariance_write_against_helpful_own": -0.0017830102787165813,
+          "covariance_write_against_helpful_others": -0.002390128512717825,
+          "covariance_write_top_share": 0.027361971172080474,
+          "covariance_write_size_share_of_weight": 30168.00751023015
+        },
+        {
+          "helpful_top_share": 0.9970174348161269,
+          "input_side_against_mean_input": 0.9999914702393725,
+          "output_side_against_mean_output": -0.060330834895899445,
+          "covariance_write_against_helpful_own": 0.00108727645310374,
+          "covariance_write_against_helpful_others": 0.0010474632547652636,
+          "covariance_write_top_share": 0.02571132301050795,
+          "covariance_write_size_share_of_weight": 29060.542285128173
+        }
+      ]
+    },
+    {
+      "doc": 24,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.8792144603321884,
+          "input_side_against_mean_input": 0.9995126964631227,
+          "output_side_against_mean_output": -0.08744226890247118,
+          "covariance_write_against_helpful_own": 0.0032986683741754734,
+          "covariance_write_against_helpful_others": 0.0019389123841351784,
+          "covariance_write_top_share": 0.028590675269198285,
+          "covariance_write_size_share_of_weight": 139261.73822967496
+        },
+        {
+          "helpful_top_share": 0.9865470911246901,
+          "input_side_against_mean_input": 0.9999531026004176,
+          "output_side_against_mean_output": 0.024956984132455815,
+          "covariance_write_against_helpful_own": -0.0029934040602222376,
+          "covariance_write_against_helpful_others": -0.0026761852979917235,
+          "covariance_write_top_share": 0.026652026629081026,
+          "covariance_write_size_share_of_weight": 45393.88146691042
+        },
+        {
+          "helpful_top_share": 0.9943695067891049,
+          "input_side_against_mean_input": 0.9999800760019316,
+          "output_side_against_mean_output": -0.02264087885102084,
+          "covariance_write_against_helpful_own": 0.001713637340400449,
+          "covariance_write_against_helpful_others": 0.001515120113265572,
+          "covariance_write_top_share": 0.027181417949911704,
+          "covariance_write_size_share_of_weight": 30080.79589644241
+        },
+        {
+          "helpful_top_share": 0.9979065104692418,
+          "input_side_against_mean_input": 0.999992433560615,
+          "output_side_against_mean_output": -0.03847868669988551,
+          "covariance_write_against_helpful_own": 0.00042137457990604,
+          "covariance_write_against_helpful_others": 0.0004070106063344737,
+          "covariance_write_top_share": 0.026140277711427087,
+          "covariance_write_size_share_of_weight": 28953.627537974946
+        }
+      ]
+    },
+    {
+      "doc": 25,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.8382623676986387,
+          "input_side_against_mean_input": 0.9994161384863091,
+          "output_side_against_mean_output": 0.01867602607178225,
+          "covariance_write_against_helpful_own": 0.0015640923229199842,
+          "covariance_write_against_helpful_others": 0.0007786055497628146,
+          "covariance_write_top_share": 0.028414373250026524,
+          "covariance_write_size_share_of_weight": 140886.91952505885
+        },
+        {
+          "helpful_top_share": 0.982008460606058,
+          "input_side_against_mean_input": 0.999949628600108,
+          "output_side_against_mean_output": 0.049941355037673614,
+          "covariance_write_against_helpful_own": -0.0013023873846735093,
+          "covariance_write_against_helpful_others": -0.0010098094138013217,
+          "covariance_write_top_share": 0.02614433013253985,
+          "covariance_write_size_share_of_weight": 45952.92567736523
+        },
+        {
+          "helpful_top_share": 0.9924387093909848,
+          "input_side_against_mean_input": 0.9999797444109548,
+          "output_side_against_mean_output": 0.0715811417381845,
+          "covariance_write_against_helpful_own": -0.004280511199542919,
+          "covariance_write_against_helpful_others": -0.0033059092535344396,
+          "covariance_write_top_share": 0.027687234402039223,
+          "covariance_write_size_share_of_weight": 30463.12794731944
+        },
+        {
+          "helpful_top_share": 0.9971666292852703,
+          "input_side_against_mean_input": 0.9999924480015424,
+          "output_side_against_mean_output": -0.04778313236478699,
+          "covariance_write_against_helpful_own": 0.0004540320545778781,
+          "covariance_write_against_helpful_others": 0.00021848800247561365,
+          "covariance_write_top_share": 0.027096900640398616,
+          "covariance_write_size_share_of_weight": 29352.936553507556
+        }
+      ]
+    },
+    {
+      "doc": 26,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.8479893427704608,
+          "input_side_against_mean_input": 0.9995481385344595,
+          "output_side_against_mean_output": 0.0547799788842159,
+          "covariance_write_against_helpful_own": 0.0063230393171613405,
+          "covariance_write_against_helpful_others": 0.007258598242341759,
+          "covariance_write_top_share": 0.028613389691737896,
+          "covariance_write_size_share_of_weight": 139496.9239886091
+        },
+        {
+          "helpful_top_share": 0.9828704600496483,
+          "input_side_against_mean_input": 0.9999596818545609,
+          "output_side_against_mean_output": 0.0036517164069217282,
+          "covariance_write_against_helpful_own": 0.0008939728271151202,
+          "covariance_write_against_helpful_others": 0.0017496597695568176,
+          "covariance_write_top_share": 0.026445682842251277,
+          "covariance_write_size_share_of_weight": 45559.181273012095
+        },
+        {
+          "helpful_top_share": 0.9927886399344905,
+          "input_side_against_mean_input": 0.9999823438681442,
+          "output_side_against_mean_output": -0.01571640931093155,
+          "covariance_write_against_helpful_own": 0.002181660088939576,
+          "covariance_write_against_helpful_others": 0.0019626840773895792,
+          "covariance_write_top_share": 0.026951321487210713,
+          "covariance_write_size_share_of_weight": 30131.264872561453
+        },
+        {
+          "helpful_top_share": 0.9973529640755694,
+          "input_side_against_mean_input": 0.9999936962489624,
+          "output_side_against_mean_output": -0.013509031006802293,
+          "covariance_write_against_helpful_own": 0.0006143247960173545,
+          "covariance_write_against_helpful_others": 0.00035198938449626846,
+          "covariance_write_top_share": 0.026044955997814062,
+          "covariance_write_size_share_of_weight": 28971.272761541106
+        }
+      ]
+    },
+    {
+      "doc": 27,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.8534288718730308,
+          "input_side_against_mean_input": 0.9993441471198258,
+          "output_side_against_mean_output": -0.02956330795856506,
+          "covariance_write_against_helpful_own": 0.0010385495363459906,
+          "covariance_write_against_helpful_others": 0.0010223783603101977,
+          "covariance_write_top_share": 0.03313257633850809,
+          "covariance_write_size_share_of_weight": 140542.89214667445
+        },
+        {
+          "helpful_top_share": 0.9839128002430106,
+          "input_side_against_mean_input": 0.9999461022635918,
+          "output_side_against_mean_output": 0.0918736880256405,
+          "covariance_write_against_helpful_own": 0.0010759795500715993,
+          "covariance_write_against_helpful_others": 0.0006081936159087813,
+          "covariance_write_top_share": 0.027067113684743332,
+          "covariance_write_size_share_of_weight": 45513.55545493044
+        },
+        {
+          "helpful_top_share": 0.9934106776792058,
+          "input_side_against_mean_input": 0.9999776106298569,
+          "output_side_against_mean_output": -0.005628655017367094,
+          "covariance_write_against_helpful_own": -0.00030466724776637627,
+          "covariance_write_against_helpful_others": 0.0009085926168443435,
+          "covariance_write_top_share": 0.02688218894864319,
+          "covariance_write_size_share_of_weight": 30143.247706003913
+        },
+        {
+          "helpful_top_share": 0.997532150695642,
+          "input_side_against_mean_input": 0.9999916578186293,
+          "output_side_against_mean_output": -0.08871815745722271,
+          "covariance_write_against_helpful_own": 0.0015737367330034462,
+          "covariance_write_against_helpful_others": 0.0017075646882904038,
+          "covariance_write_top_share": 0.025765691941979252,
+          "covariance_write_size_share_of_weight": 28983.285484187963
+        }
+      ]
+    },
+    {
+      "doc": 28,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.9834116741652217,
+          "input_side_against_mean_input": 0.9993884850964516,
+          "output_side_against_mean_output": -0.021708672020605814,
+          "covariance_write_against_helpful_own": -0.007150090395262138,
+          "covariance_write_against_helpful_others": -0.0038167410435919593,
+          "covariance_write_top_share": 0.05348771334730567,
+          "covariance_write_size_share_of_weight": 141229.7220816571
+        },
+        {
+          "helpful_top_share": 0.9985850104940251,
+          "input_side_against_mean_input": 0.9999526663045292,
+          "output_side_against_mean_output": -0.07175385350761952,
+          "covariance_write_against_helpful_own": 0.004751311326812285,
+          "covariance_write_against_helpful_others": 0.004447257593564921,
+          "covariance_write_top_share": 0.027073736461508065,
+          "covariance_write_size_share_of_weight": 45350.83426806755
+        },
+        {
+          "helpful_top_share": 0.9993966911955112,
+          "input_side_against_mean_input": 0.9999813917674617,
+          "output_side_against_mean_output": -0.036833103675224514,
+          "covariance_write_against_helpful_own": 0.0034933988706101317,
+          "covariance_write_against_helpful_others": 0.0045023937803463365,
+          "covariance_write_top_share": 0.027971692735631118,
+          "covariance_write_size_share_of_weight": 30012.3080581555
+        },
+        {
+          "helpful_top_share": 0.9997720410718341,
+          "input_side_against_mean_input": 0.9999926220669505,
+          "output_side_against_mean_output": -0.05223125475530517,
+          "covariance_write_against_helpful_own": 0.0001716544760723253,
+          "covariance_write_against_helpful_others": 0.0001801077518417688,
+          "covariance_write_top_share": 0.02647915686277966,
+          "covariance_write_size_share_of_weight": 28895.506868381348
+        }
+      ]
+    },
+    {
+      "doc": 29,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.8489587275729635,
+          "input_side_against_mean_input": 0.9995383691124431,
+          "output_side_against_mean_output": -0.010918022130350638,
+          "covariance_write_against_helpful_own": 0.00633466127949921,
+          "covariance_write_against_helpful_others": 0.005783027462582075,
+          "covariance_write_top_share": 0.028158684579626236,
+          "covariance_write_size_share_of_weight": 138676.47465687475
+        },
+        {
+          "helpful_top_share": 0.9835689369482497,
+          "input_side_against_mean_input": 0.9999584747937801,
+          "output_side_against_mean_output": 0.039013202215708635,
+          "covariance_write_against_helpful_own": -0.003576478752741682,
+          "covariance_write_against_helpful_others": -0.004341783341416178,
+          "covariance_write_top_share": 0.026964287143973326,
+          "covariance_write_size_share_of_weight": 45286.39798819005
+        },
+        {
+          "helpful_top_share": 0.9929228447951255,
+          "input_side_against_mean_input": 0.9999821630110595,
+          "output_side_against_mean_output": 0.014968503906864427,
+          "covariance_write_against_helpful_own": -0.0024839734969524904,
+          "covariance_write_against_helpful_others": -0.0018694694969176853,
+          "covariance_write_top_share": 0.027157381345877966,
+          "covariance_write_size_share_of_weight": 30026.499373880226
+        },
+        {
+          "helpful_top_share": 0.9973317409947376,
+          "input_side_against_mean_input": 0.9999935538103562,
+          "output_side_against_mean_output": 0.06332302495093435,
+          "covariance_write_against_helpful_own": 6.788616381257145e-05,
+          "covariance_write_against_helpful_others": 0.0001433734711710196,
+          "covariance_write_top_share": 0.02589275866816988,
+          "covariance_write_size_share_of_weight": 28939.703417889214
+        }
+      ]
+    },
+    {
+      "doc": 30,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.8247194647804281,
+          "input_side_against_mean_input": 0.9994053397030506,
+          "output_side_against_mean_output": -0.03343489871299487,
+          "covariance_write_against_helpful_own": 0.010505357914176347,
+          "covariance_write_against_helpful_others": 0.010610560602492382,
+          "covariance_write_top_share": 0.02855033021956553,
+          "covariance_write_size_share_of_weight": 138998.02665678886
+        },
+        {
+          "helpful_top_share": 0.9795159848615501,
+          "input_side_against_mean_input": 0.9999402398988914,
+          "output_side_against_mean_output": -0.0013467369494424744,
+          "covariance_write_against_helpful_own": -0.0016878241481088681,
+          "covariance_write_against_helpful_others": -0.0024072402564381174,
+          "covariance_write_top_share": 0.026264574400314187,
+          "covariance_write_size_share_of_weight": 45381.70533550367
+        },
+        {
+          "helpful_top_share": 0.9912778614875828,
+          "input_side_against_mean_input": 0.999974155395502,
+          "output_side_against_mean_output": 0.04023416965453709,
+          "covariance_write_against_helpful_own": -0.0028547640494731063,
+          "covariance_write_against_helpful_others": -0.0032879646841729514,
+          "covariance_write_top_share": 0.02672961975290184,
+          "covariance_write_size_share_of_weight": 30078.792009632056
+        },
+        {
+          "helpful_top_share": 0.996757505664034,
+          "input_side_against_mean_input": 0.9999908629947297,
+          "output_side_against_mean_output": 0.06138961910763727,
+          "covariance_write_against_helpful_own": 0.0004367353996538189,
+          "covariance_write_against_helpful_others": 0.0005123820457702139,
+          "covariance_write_top_share": 0.025380154955214233,
+          "covariance_write_size_share_of_weight": 28988.303814545714
+        }
+      ]
+    },
+    {
+      "doc": 31,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.8329924963996255,
+          "input_side_against_mean_input": 0.9995079783869896,
+          "output_side_against_mean_output": 0.02178680050756404,
+          "covariance_write_against_helpful_own": 0.007964967405739069,
+          "covariance_write_against_helpful_others": 0.007191977079387551,
+          "covariance_write_top_share": 0.03956816606045395,
+          "covariance_write_size_share_of_weight": 140670.30213540976
+        },
+        {
+          "helpful_top_share": 0.9814058926566922,
+          "input_side_against_mean_input": 0.9999527530188904,
+          "output_side_against_mean_output": -0.017848197101886468,
+          "covariance_write_against_helpful_own": 0.002749778195936491,
+          "covariance_write_against_helpful_others": 0.0019808413438751568,
+          "covariance_write_top_share": 0.026810064176015672,
+          "covariance_write_size_share_of_weight": 45290.53903682575
+        },
+        {
+          "helpful_top_share": 0.9922426072082021,
+          "input_side_against_mean_input": 0.9999812973787389,
+          "output_side_against_mean_output": -0.03903795811709938,
+          "covariance_write_against_helpful_own": 0.0008834386600374567,
+          "covariance_write_against_helpful_others": -0.00016522917322499316,
+          "covariance_write_top_share": 0.027265851062048978,
+          "covariance_write_size_share_of_weight": 29932.253262681956
+        },
+        {
+          "helpful_top_share": 0.9971623605940424,
+          "input_side_against_mean_input": 0.9999929709109204,
+          "output_side_against_mean_output": 0.022007345043427495,
+          "covariance_write_against_helpful_own": 0.0018033536140206687,
+          "covariance_write_against_helpful_others": 0.0016103634745500777,
+          "covariance_write_top_share": 0.025999401704224444,
+          "covariance_write_size_share_of_weight": 28853.562041104167
+        }
+      ]
+    },
+    {
+      "doc": 32,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.8682408164023135,
+          "input_side_against_mean_input": 0.9995078607561846,
+          "output_side_against_mean_output": -0.033125091678324926,
+          "covariance_write_against_helpful_own": 0.0035342740062781785,
+          "covariance_write_against_helpful_others": 0.002545096442328838,
+          "covariance_write_top_share": 0.028013334909445218,
+          "covariance_write_size_share_of_weight": 138620.26813745618
+        },
+        {
+          "helpful_top_share": 0.9855151222445573,
+          "input_side_against_mean_input": 0.9999507291966461,
+          "output_side_against_mean_output": 0.026155300368860553,
+          "covariance_write_against_helpful_own": 0.002938930103358609,
+          "covariance_write_against_helpful_others": 0.003982934979822233,
+          "covariance_write_top_share": 0.02648421905051651,
+          "covariance_write_size_share_of_weight": 45329.358874096564
+        },
+        {
+          "helpful_top_share": 0.9940384450397575,
+          "input_side_against_mean_input": 0.9999795036566347,
+          "output_side_against_mean_output": -0.06132123618470405,
+          "covariance_write_against_helpful_own": 0.00026207919701764614,
+          "covariance_write_against_helpful_others": 0.0005076949093910613,
+          "covariance_write_top_share": 0.027078549572072366,
+          "covariance_write_size_share_of_weight": 30024.448541801336
+        },
+        {
+          "helpful_top_share": 0.9977670502551078,
+          "input_side_against_mean_input": 0.9999924448617047,
+          "output_side_against_mean_output": -0.014240009942910279,
+          "covariance_write_against_helpful_own": -1.5795664860138685e-05,
+          "covariance_write_against_helpful_others": -5.9000663433396725e-05,
+          "covariance_write_top_share": 0.026076654724963122,
+          "covariance_write_size_share_of_weight": 28902.82734660616
+        }
+      ]
+    },
+    {
+      "doc": 33,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.8231057384168065,
+          "input_side_against_mean_input": 0.9993829727246191,
+          "output_side_against_mean_output": 0.008013588010000074,
+          "covariance_write_against_helpful_own": 0.0026865565916700984,
+          "covariance_write_against_helpful_others": 0.0018917309480750498,
+          "covariance_write_top_share": 0.028860772159757096,
+          "covariance_write_size_share_of_weight": 138709.20704313592
+        },
+        {
+          "helpful_top_share": 0.9806933084398944,
+          "input_side_against_mean_input": 0.999936032737838,
+          "output_side_against_mean_output": 0.026484707832867587,
+          "covariance_write_against_helpful_own": -0.0003368571360067705,
+          "covariance_write_against_helpful_others": -0.0012955549180192634,
+          "covariance_write_top_share": 0.026857469227255314,
+          "covariance_write_size_share_of_weight": 45252.34563350493
+        },
+        {
+          "helpful_top_share": 0.9920723623292672,
+          "input_side_against_mean_input": 0.9999724784981947,
+          "output_side_against_mean_output": 0.062425190820387486,
+          "covariance_write_against_helpful_own": 0.0005810699246627783,
+          "covariance_write_against_helpful_others": 3.2666225027136256e-05,
+          "covariance_write_top_share": 0.026384733731248285,
+          "covariance_write_size_share_of_weight": 29997.366198555505
+        },
+        {
+          "helpful_top_share": 0.9970429873895443,
+          "input_side_against_mean_input": 0.9999898209199454,
+          "output_side_against_mean_output": -0.04167252338069196,
+          "covariance_write_against_helpful_own": 0.00039921303125262683,
+          "covariance_write_against_helpful_others": 0.00014256699535763692,
+          "covariance_write_top_share": 0.0268107786926459,
+          "covariance_write_size_share_of_weight": 28871.24132917871
+        }
+      ]
+    },
+    {
+      "doc": 34,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.8306590211555779,
+          "input_side_against_mean_input": 0.9994703525107146,
+          "output_side_against_mean_output": -0.005913686903598529,
+          "covariance_write_against_helpful_own": 0.005193185851463416,
+          "covariance_write_against_helpful_others": 0.005225331238836348,
+          "covariance_write_top_share": 0.027753078620732372,
+          "covariance_write_size_share_of_weight": 139006.84190133453
+        },
+        {
+          "helpful_top_share": 0.9797776689321948,
+          "input_side_against_mean_input": 0.9999497285752987,
+          "output_side_against_mean_output": -0.014240822271189313,
+          "covariance_write_against_helpful_own": 0.0011540083974863136,
+          "covariance_write_against_helpful_others": 0.0013036653658009755,
+          "covariance_write_top_share": 0.027198564475714518,
+          "covariance_write_size_share_of_weight": 45431.55665919661
+        },
+        {
+          "helpful_top_share": 0.9915243115801746,
+          "input_side_against_mean_input": 0.9999800689377684,
+          "output_side_against_mean_output": -0.03130392730255849,
+          "covariance_write_against_helpful_own": 0.0017855539772570015,
+          "covariance_write_against_helpful_others": 0.0016421122202840831,
+          "covariance_write_top_share": 0.026926208659796863,
+          "covariance_write_size_share_of_weight": 30100.89047653453
+        },
+        {
+          "helpful_top_share": 0.9968296392051603,
+          "input_side_against_mean_input": 0.9999927545338468,
+          "output_side_against_mean_output": -0.03856880722966844,
+          "covariance_write_against_helpful_own": 0.0013126652834922266,
+          "covariance_write_against_helpful_others": 0.00146457747247533,
+          "covariance_write_top_share": 0.02706131044544077,
+          "covariance_write_size_share_of_weight": 28946.790682348605
+        }
+      ]
+    },
+    {
+      "doc": 35,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.8324876704705132,
+          "input_side_against_mean_input": 0.9994544353129484,
+          "output_side_against_mean_output": 0.05595022646944761,
+          "covariance_write_against_helpful_own": -0.0005795426091510696,
+          "covariance_write_against_helpful_others": -0.000911102375722901,
+          "covariance_write_top_share": 0.028729012438521374,
+          "covariance_write_size_share_of_weight": 139568.2824076629
+        },
+        {
+          "helpful_top_share": 0.9809882388740682,
+          "input_side_against_mean_input": 0.999950155071356,
+          "output_side_against_mean_output": -0.017491893186852885,
+          "covariance_write_against_helpful_own": 0.005231278326536441,
+          "covariance_write_against_helpful_others": 0.003516816910700776,
+          "covariance_write_top_share": 0.027453760893034328,
+          "covariance_write_size_share_of_weight": 45513.87275007536
+        },
+        {
+          "helpful_top_share": 0.9919749471445132,
+          "input_side_against_mean_input": 0.9999770864540382,
+          "output_side_against_mean_output": -0.036713067224293384,
+          "covariance_write_against_helpful_own": 0.001223838254173764,
+          "covariance_write_against_helpful_others": 0.0009573773508606513,
+          "covariance_write_top_share": 0.02653470786503865,
+          "covariance_write_size_share_of_weight": 30114.68101364183
+        },
+        {
+          "helpful_top_share": 0.9970304488412315,
+          "input_side_against_mean_input": 0.9999919941171503,
+          "output_side_against_mean_output": -0.07972986325307506,
+          "covariance_write_against_helpful_own": 0.000749749219439373,
+          "covariance_write_against_helpful_others": 0.0008967226874884539,
+          "covariance_write_top_share": 0.02574117805730969,
+          "covariance_write_size_share_of_weight": 29028.706669205625
+        }
+      ]
+    },
+    {
+      "doc": 36,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.8276095980015589,
+          "input_side_against_mean_input": 0.999365718077322,
+          "output_side_against_mean_output": 0.01633201836869116,
+          "covariance_write_against_helpful_own": 0.0007855647387917719,
+          "covariance_write_against_helpful_others": 0.000982561057667527,
+          "covariance_write_top_share": 0.02793125053922939,
+          "covariance_write_size_share_of_weight": 139234.42229552983
+        },
+        {
+          "helpful_top_share": 0.9807400838711202,
+          "input_side_against_mean_input": 0.999938576015398,
+          "output_side_against_mean_output": -0.021068912446172598,
+          "covariance_write_against_helpful_own": 0.000641620395565267,
+          "covariance_write_against_helpful_others": 0.0001832248254731006,
+          "covariance_write_top_share": 0.026098994379318875,
+          "covariance_write_size_share_of_weight": 45380.59131615123
+        },
+        {
+          "helpful_top_share": 0.9919946449389595,
+          "input_side_against_mean_input": 0.9999751650386599,
+          "output_side_against_mean_output": -0.014524438618743292,
+          "covariance_write_against_helpful_own": 0.0045538467890203285,
+          "covariance_write_against_helpful_others": 0.0032230001848114263,
+          "covariance_write_top_share": 0.026390417163168266,
+          "covariance_write_size_share_of_weight": 30018.05733173132
+        },
+        {
+          "helpful_top_share": 0.9969970711665431,
+          "input_side_against_mean_input": 0.9999907000007847,
+          "output_side_against_mean_output": -0.01092584842160024,
+          "covariance_write_against_helpful_own": 0.001000322450304226,
+          "covariance_write_against_helpful_others": 0.0011020992831878454,
+          "covariance_write_top_share": 0.025935166842589733,
+          "covariance_write_size_share_of_weight": 28933.021618443123
+        }
+      ]
+    },
+    {
+      "doc": 37,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.8547269636104198,
+          "input_side_against_mean_input": 0.9995358108511035,
+          "output_side_against_mean_output": -0.07259373267251301,
+          "covariance_write_against_helpful_own": 0.00896576539530411,
+          "covariance_write_against_helpful_others": 0.00785930529973389,
+          "covariance_write_top_share": 0.029361534725459923,
+          "covariance_write_size_share_of_weight": 138986.32708500954
+        },
+        {
+          "helpful_top_share": 0.9835033560145255,
+          "input_side_against_mean_input": 0.999952551689769,
+          "output_side_against_mean_output": -0.02763841489387758,
+          "covariance_write_against_helpful_own": -0.004564336797774016,
+          "covariance_write_against_helpful_others": -0.004141349810949563,
+          "covariance_write_top_share": 0.02705184326320891,
+          "covariance_write_size_share_of_weight": 45391.86073738999
+        },
+        {
+          "helpful_top_share": 0.9930208353470525,
+          "input_side_against_mean_input": 0.9999794699779163,
+          "output_side_against_mean_output": -0.026866013693278405,
+          "covariance_write_against_helpful_own": -0.0006801905825671683,
+          "covariance_write_against_helpful_others": -0.0013643655689267592,
+          "covariance_write_top_share": 0.02730150101852352,
+          "covariance_write_size_share_of_weight": 30026.723801708547
+        },
+        {
+          "helpful_top_share": 0.9973842673800941,
+          "input_side_against_mean_input": 0.9999919474024942,
+          "output_side_against_mean_output": 0.04036102619159226,
+          "covariance_write_against_helpful_own": -6.151810989685665e-05,
+          "covariance_write_against_helpful_others": -0.00010155065132839118,
+          "covariance_write_top_share": 0.026254992166605744,
+          "covariance_write_size_share_of_weight": 28931.507737699994
+        }
+      ]
+    },
+    {
+      "doc": 38,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.8829236098922749,
+          "input_side_against_mean_input": 0.999528774148008,
+          "output_side_against_mean_output": -0.018206310720869978,
+          "covariance_write_against_helpful_own": 0.0004718666159951214,
+          "covariance_write_against_helpful_others": 0.0004279502207464766,
+          "covariance_write_top_share": 0.0282847056932246,
+          "covariance_write_size_share_of_weight": 139593.90127856634
+        },
+        {
+          "helpful_top_share": 0.9875101917043831,
+          "input_side_against_mean_input": 0.9999543220273226,
+          "output_side_against_mean_output": 0.008337511419718068,
+          "covariance_write_against_helpful_own": 0.0027375269279852434,
+          "covariance_write_against_helpful_others": 0.0027368069941917854,
+          "covariance_write_top_share": 0.026616155192623548,
+          "covariance_write_size_share_of_weight": 45563.37540851547
+        },
+        {
+          "helpful_top_share": 0.9947239308891956,
+          "input_side_against_mean_input": 0.9999815355868479,
+          "output_side_against_mean_output": -0.030364000400846327,
+          "covariance_write_against_helpful_own": 0.0018223249630389378,
+          "covariance_write_against_helpful_others": 0.002447812976180428,
+          "covariance_write_top_share": 0.02687727674441793,
+          "covariance_write_size_share_of_weight": 30268.476479207387
+        },
+        {
+          "helpful_top_share": 0.9980483226049494,
+          "input_side_against_mean_input": 0.9999936914447328,
+          "output_side_against_mean_output": -0.08386034773968945,
+          "covariance_write_against_helpful_own": 0.00048553168699768203,
+          "covariance_write_against_helpful_others": 0.0003783819917652299,
+          "covariance_write_top_share": 0.02584893932551382,
+          "covariance_write_size_share_of_weight": 29039.869937784166
+        }
+      ]
+    },
+    {
+      "doc": 39,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.836947478605211,
+          "input_side_against_mean_input": 0.9994280757196332,
+          "output_side_against_mean_output": -0.08775996518380763,
+          "covariance_write_against_helpful_own": 0.005937709202732233,
+          "covariance_write_against_helpful_others": 0.006719328301679969,
+          "covariance_write_top_share": 0.028554245538454395,
+          "covariance_write_size_share_of_weight": 139330.0553564159
+        },
+        {
+          "helpful_top_share": 0.9813470583897304,
+          "input_side_against_mean_input": 0.9999479815845256,
+          "output_side_against_mean_output": -0.0024182620837050564,
+          "covariance_write_against_helpful_own": 0.0009463011586192902,
+          "covariance_write_against_helpful_others": 0.0009892393582671486,
+          "covariance_write_top_share": 0.02712839329309035,
+          "covariance_write_size_share_of_weight": 45406.60496186142
+        },
+        {
+          "helpful_top_share": 0.9920869530819137,
+          "input_side_against_mean_input": 0.999977581524759,
+          "output_side_against_mean_output": 0.052262467866531825,
+          "covariance_write_against_helpful_own": -0.004628274571402997,
+          "covariance_write_against_helpful_others": -0.0040744253474826455,
+          "covariance_write_top_share": 0.027216333669772545,
+          "covariance_write_size_share_of_weight": 30049.974934816306
+        },
+        {
+          "helpful_top_share": 0.9970608259811148,
+          "input_side_against_mean_input": 0.9999911713917765,
+          "output_side_against_mean_output": 0.004604207738132184,
+          "covariance_write_against_helpful_own": 0.0010234967045574252,
+          "covariance_write_against_helpful_others": 0.0008968005247190644,
+          "covariance_write_top_share": 0.02545758629223299,
+          "covariance_write_size_share_of_weight": 28969.95124001863
+        }
+      ]
+    },
+    {
+      "doc": 40,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.8213695716292609,
+          "input_side_against_mean_input": 0.9994406211049094,
+          "output_side_against_mean_output": 0.06725559246005039,
+          "covariance_write_against_helpful_own": 0.002455423752957237,
+          "covariance_write_against_helpful_others": 0.003141837759104241,
+          "covariance_write_top_share": 0.02870396949933662,
+          "covariance_write_size_share_of_weight": 139544.3697387024
+        },
+        {
+          "helpful_top_share": 0.9801789358213675,
+          "input_side_against_mean_input": 0.9999443237968471,
+          "output_side_against_mean_output": -0.0019443087992255166,
+          "covariance_write_against_helpful_own": 3.430991075556498e-06,
+          "covariance_write_against_helpful_others": 0.0002214318510822077,
+          "covariance_write_top_share": 0.026847893272484494,
+          "covariance_write_size_share_of_weight": 45503.16770146455
+        },
+        {
+          "helpful_top_share": 0.9918524855269192,
+          "input_side_against_mean_input": 0.9999759414528798,
+          "output_side_against_mean_output": -0.02270202162545041,
+          "covariance_write_against_helpful_own": -0.0005268913665885553,
+          "covariance_write_against_helpful_others": -0.001636824671793095,
+          "covariance_write_top_share": 0.027655793267654973,
+          "covariance_write_size_share_of_weight": 30127.96868358401
+        },
+        {
+          "helpful_top_share": 0.9969819202716463,
+          "input_side_against_mean_input": 0.9999914014152287,
+          "output_side_against_mean_output": -0.013236854900360535,
+          "covariance_write_against_helpful_own": 0.0009981626936216151,
+          "covariance_write_against_helpful_others": 0.0008597206779594708,
+          "covariance_write_top_share": 0.0264571613352496,
+          "covariance_write_size_share_of_weight": 29085.124726883172
+        }
+      ]
+    },
+    {
+      "doc": 41,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.8502625413661189,
+          "input_side_against_mean_input": 0.9995845929201133,
+          "output_side_against_mean_output": -0.03951285479657614,
+          "covariance_write_against_helpful_own": 0.005437874606292994,
+          "covariance_write_against_helpful_others": 0.00597248403132302,
+          "covariance_write_top_share": 0.03628061444597357,
+          "covariance_write_size_share_of_weight": 142807.38344849477
+        },
+        {
+          "helpful_top_share": 0.9826565526938256,
+          "input_side_against_mean_input": 0.9999605473690539,
+          "output_side_against_mean_output": -0.012482795939016324,
+          "covariance_write_against_helpful_own": -0.0010112857078488507,
+          "covariance_write_against_helpful_others": -0.0014365314804154193,
+          "covariance_write_top_share": 0.028730900291339904,
+          "covariance_write_size_share_of_weight": 46458.53489132291
+        },
+        {
+          "helpful_top_share": 0.9926272238450862,
+          "input_side_against_mean_input": 0.9999821804333946,
+          "output_side_against_mean_output": 0.07016679356925778,
+          "covariance_write_against_helpful_own": 0.002490976385756089,
+          "covariance_write_against_helpful_others": 0.0020861995904442434,
+          "covariance_write_top_share": 0.029619049460150322,
+          "covariance_write_size_share_of_weight": 30717.099039875062
+        },
+        {
+          "helpful_top_share": 0.997261019221474,
+          "input_side_against_mean_input": 0.9999932370658117,
+          "output_side_against_mean_output": -0.054324818328461075,
+          "covariance_write_against_helpful_own": 0.0008853670923535799,
+          "covariance_write_against_helpful_others": 0.0005849665935054464,
+          "covariance_write_top_share": 0.02738659445834397,
+          "covariance_write_size_share_of_weight": 29408.156259962994
+        }
+      ]
+    },
+    {
+      "doc": 42,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.8557095241494689,
+          "input_side_against_mean_input": 0.999413947519018,
+          "output_side_against_mean_output": 0.05068142784329888,
+          "covariance_write_against_helpful_own": 0.0012855085603180293,
+          "covariance_write_against_helpful_others": 0.0010250002562633136,
+          "covariance_write_top_share": 0.028458224098861416,
+          "covariance_write_size_share_of_weight": 139429.01693346904
+        },
+        {
+          "helpful_top_share": 0.9837725674753541,
+          "input_side_against_mean_input": 0.9999435457144672,
+          "output_side_against_mean_output": -0.011374172541241756,
+          "covariance_write_against_helpful_own": 0.0014214977741587444,
+          "covariance_write_against_helpful_others": 0.0011913723904545441,
+          "covariance_write_top_share": 0.026683733249030468,
+          "covariance_write_size_share_of_weight": 45479.783033326436
+        },
+        {
+          "helpful_top_share": 0.9930894574586909,
+          "input_side_against_mean_input": 0.9999768062824995,
+          "output_side_against_mean_output": -0.023520947030292137,
+          "covariance_write_against_helpful_own": -0.0007683195087295212,
+          "covariance_write_against_helpful_others": -0.00030169151496836806,
+          "covariance_write_top_share": 0.027308714681608535,
+          "covariance_write_size_share_of_weight": 30110.037296516544
+        },
+        {
+          "helpful_top_share": 0.9974076442889196,
+          "input_side_against_mean_input": 0.9999913611218225,
+          "output_side_against_mean_output": 0.002007623350432171,
+          "covariance_write_against_helpful_own": 0.0012003575657550097,
+          "covariance_write_against_helpful_others": 0.001245261010145325,
+          "covariance_write_top_share": 0.02556483185276571,
+          "covariance_write_size_share_of_weight": 29037.739640868927
+        }
+      ]
+    },
+    {
+      "doc": 43,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.9082634575193702,
+          "input_side_against_mean_input": 0.9979070874323613,
+          "output_side_against_mean_output": -0.0036590937170101825,
+          "covariance_write_against_helpful_own": 0.004021274555518337,
+          "covariance_write_against_helpful_others": 0.005197738875046303,
+          "covariance_write_top_share": 0.028857552159814455,
+          "covariance_write_size_share_of_weight": 140275.75243837445
+        },
+        {
+          "helpful_top_share": 0.9900712463662026,
+          "input_side_against_mean_input": 0.9998203177352849,
+          "output_side_against_mean_output": 0.04426279190585967,
+          "covariance_write_against_helpful_own": 0.005314636900189525,
+          "covariance_write_against_helpful_others": 0.005239495401797271,
+          "covariance_write_top_share": 0.02716362613667147,
+          "covariance_write_size_share_of_weight": 45711.941448406236
+        },
+        {
+          "helpful_top_share": 0.9958682229084092,
+          "input_side_against_mean_input": 0.9999193479690676,
+          "output_side_against_mean_output": -0.009683444971141191,
+          "covariance_write_against_helpful_own": 0.002488122631589891,
+          "covariance_write_against_helpful_others": 0.0027178070805028895,
+          "covariance_write_top_share": 0.026970004183107077,
+          "covariance_write_size_share_of_weight": 30231.164398924207
+        },
+        {
+          "helpful_top_share": 0.9984499482682825,
+          "input_side_against_mean_input": 0.9999713449364599,
+          "output_side_against_mean_output": -0.04259129371836679,
+          "covariance_write_against_helpful_own": 0.0007013151490640361,
+          "covariance_write_against_helpful_others": 0.0007855597559033118,
+          "covariance_write_top_share": 0.02620428829102585,
+          "covariance_write_size_share_of_weight": 29032.186751271736
+        }
+      ]
+    },
+    {
+      "doc": 44,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.8872626881273304,
+          "input_side_against_mean_input": 0.9993209663853503,
+          "output_side_against_mean_output": 0.040327494899502346,
+          "covariance_write_against_helpful_own": -0.001146138537839343,
+          "covariance_write_against_helpful_others": 0.0008414979178061635,
+          "covariance_write_top_share": 0.04138823640552949,
+          "covariance_write_size_share_of_weight": 148161.87122789942
+        },
+        {
+          "helpful_top_share": 0.987279275094407,
+          "input_side_against_mean_input": 0.9999449029417015,
+          "output_side_against_mean_output": 0.01949242606214908,
+          "covariance_write_against_helpful_own": -0.0017600065730813937,
+          "covariance_write_against_helpful_others": -0.0006386194896535691,
+          "covariance_write_top_share": 0.04245227813508062,
+          "covariance_write_size_share_of_weight": 48784.80451484229
+        },
+        {
+          "helpful_top_share": 0.9945945761028216,
+          "input_side_against_mean_input": 0.9999756422025664,
+          "output_side_against_mean_output": 0.024753946439488632,
+          "covariance_write_against_helpful_own": 0.0008162152430337242,
+          "covariance_write_against_helpful_others": 0.0015448827090830178,
+          "covariance_write_top_share": 0.042352390996921035,
+          "covariance_write_size_share_of_weight": 32088.276842125273
+        },
+        {
+          "helpful_top_share": 0.997982619988652,
+          "input_side_against_mean_input": 0.9999908452562852,
+          "output_side_against_mean_output": -0.11722401296377762,
+          "covariance_write_against_helpful_own": 0.0009806556807668355,
+          "covariance_write_against_helpful_others": 0.0013300292409262231,
+          "covariance_write_top_share": 0.039037567372368624,
+          "covariance_write_size_share_of_weight": 30823.34514423051
+        }
+      ]
+    },
+    {
+      "doc": 45,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.8737656249744304,
+          "input_side_against_mean_input": 0.999468286364465,
+          "output_side_against_mean_output": 0.009267508863909335,
+          "covariance_write_against_helpful_own": 1.3906003729590025e-05,
+          "covariance_write_against_helpful_others": 0.0002797351965422265,
+          "covariance_write_top_share": 0.04728297618189625,
+          "covariance_write_size_share_of_weight": 147929.39955488243
+        },
+        {
+          "helpful_top_share": 0.9858102962073543,
+          "input_side_against_mean_input": 0.9999558812253412,
+          "output_side_against_mean_output": 0.03917112903362322,
+          "covariance_write_against_helpful_own": -0.0004819832804394223,
+          "covariance_write_against_helpful_others": 0.0006669552297435499,
+          "covariance_write_top_share": 0.05047387725288165,
+          "covariance_write_size_share_of_weight": 48663.236548616434
+        },
+        {
+          "helpful_top_share": 0.9939862439865189,
+          "input_side_against_mean_input": 0.9999819837243041,
+          "output_side_against_mean_output": -0.047401181719626415,
+          "covariance_write_against_helpful_own": 0.0009297085240561013,
+          "covariance_write_against_helpful_others": 0.0005577418485920443,
+          "covariance_write_top_share": 0.04732449052541711,
+          "covariance_write_size_share_of_weight": 32001.07406727648
+        },
+        {
+          "helpful_top_share": 0.9977208710574335,
+          "input_side_against_mean_input": 0.9999932647244667,
+          "output_side_against_mean_output": -0.11595636005274869,
+          "covariance_write_against_helpful_own": 0.0011077501859453932,
+          "covariance_write_against_helpful_others": 0.001106363558013497,
+          "covariance_write_top_share": 0.04262588653344094,
+          "covariance_write_size_share_of_weight": 30685.077038309046
+        }
+      ]
+    },
+    {
+      "doc": 46,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.8622420903628565,
+          "input_side_against_mean_input": 0.9992328335054373,
+          "output_side_against_mean_output": 0.05584209628267009,
+          "covariance_write_against_helpful_own": -0.0016562821870108344,
+          "covariance_write_against_helpful_others": -0.0007443573619936712,
+          "covariance_write_top_share": 0.045684800219739176,
+          "covariance_write_size_share_of_weight": 148264.54465075984
+        },
+        {
+          "helpful_top_share": 0.9842482763766452,
+          "input_side_against_mean_input": 0.9999306240098036,
+          "output_side_against_mean_output": 0.06264645724723107,
+          "covariance_write_against_helpful_own": 0.0005526919238583532,
+          "covariance_write_against_helpful_others": 0.0012842516051588583,
+          "covariance_write_top_share": 0.048707805535714695,
+          "covariance_write_size_share_of_weight": 48764.57103509981
+        },
+        {
+          "helpful_top_share": 0.9934290361060332,
+          "input_side_against_mean_input": 0.9999712269346842,
+          "output_side_against_mean_output": -0.06803030882755183,
+          "covariance_write_against_helpful_own": 0.004207931401813262,
+          "covariance_write_against_helpful_others": 0.0042254902228849546,
+          "covariance_write_top_share": 0.04895240707470665,
+          "covariance_write_size_share_of_weight": 32113.724104281126
+        },
+        {
+          "helpful_top_share": 0.9975909588216373,
+          "input_side_against_mean_input": 0.9999894727814452,
+          "output_side_against_mean_output": -0.08378331587418146,
+          "covariance_write_against_helpful_own": 0.000647848198838832,
+          "covariance_write_against_helpful_others": 0.0009389665299542716,
+          "covariance_write_top_share": 0.0431432382928467,
+          "covariance_write_size_share_of_weight": 30789.19674771205
+        }
+      ]
+    },
+    {
+      "doc": 47,
+      "by_layer": [
+        {
+          "helpful_top_share": 0.8281784715333828,
+          "input_side_against_mean_input": 0.9994876868295782,
+          "output_side_against_mean_output": 0.09330276267375195,
+          "covariance_write_against_helpful_own": -0.0034943111662601696,
+          "covariance_write_against_helpful_others": -0.00231889492032096,
+          "covariance_write_top_share": 0.06772311714837806,
+          "covariance_write_size_share_of_weight": 150564.290773353
+        },
+        {
+          "helpful_top_share": 0.9805221561121455,
+          "input_side_against_mean_input": 0.9999535981252093,
+          "output_side_against_mean_output": -0.00871859666306878,
+          "covariance_write_against_helpful_own": 0.001523584732252656,
+          "covariance_write_against_helpful_others": 0.0021103195860261953,
+          "covariance_write_top_share": 0.07293613839115022,
+          "covariance_write_size_share_of_weight": 49637.72310458527
+        },
+        {
+          "helpful_top_share": 0.9918605558131566,
+          "input_side_against_mean_input": 0.9999792293837655,
+          "output_side_against_mean_output": -0.03278116358048335,
+          "covariance_write_against_helpful_own": 0.0033901532390087836,
+          "covariance_write_against_helpful_others": 0.0023056679120246246,
+          "covariance_write_top_share": 0.06792629020401329,
+          "covariance_write_size_share_of_weight": 32628.758288799905
+        },
+        {
+          "helpful_top_share": 0.9969640754738586,
+          "input_side_against_mean_input": 0.9999924055553833,
+          "output_side_against_mean_output": -0.09244263343555148,
+          "covariance_write_against_helpful_own": 0.001406125879540748,
+          "covariance_write_against_helpful_others": 0.0012121457769170164,
+          "covariance_write_top_share": 0.06057173608811198,
+          "covariance_write_size_share_of_weight": 31290.389736896916
+        }
+      ]
+    }
+  ],
+  "minutes": 1.7359333333336204,
+  "reconstruction": {
+    "model_kwargs_source": "reconstructed: checked 2026-11-13 against commits f33838b, cc30226, 13e5cd25 and 0230cc9f, and against a run trained by the code of 0230cc9f",
+    "living_state_absent_at_training": [
+      "act_count",
+      "act_mean",
+      "act_var",
+      "band_boost_rows",
+      "band_damp_rows",
+      "drive_calls",
+      "drive_dev",
+      "drive_fire_count",
+      "drive_gain",
+      "drive_gain_sum",
+      "drive_ref",
+      "drive_ref_drift",
+      "episode_step_counter",
+      "episode_steps",
+      "episode_writes",
+      "error_rms",
+      "last_write_step",
+      "recall_fires",
+      "recall_sim_count",
+      "recall_sim_mean",
+      "recall_sim_var",
+      "salience_dev",
+      "salience_drift",
+      "salience_level",
+      "salience_window",
+      "salience_window_filled",
+      "salience_window_pos"
+    ],
+    "file_list_source": "recorded path is gone; same path under this repo",
+    "sigreg_projection": "linear_bn",
+    "taper": true
+  }
+}

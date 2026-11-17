@@ -129,6 +129,12 @@ def main() -> int:
                 var = (target - target.mean(dim=(0, 1), keepdim=True)).pow(2).mean()
                 nmse = l_pred / var
                 held = (predicted - target.detach()).pow(2).mean() / var.detach()
+                # Addendum 2, item 5: the score with only the variance held. It
+                # splits what is not learning into the target's path and the
+                # variance's.
+                var_held = l_pred / var.detach()
+                grads_var_held = torch.autograd.grad(
+                    var_held, [layer.weight for layer in layers], retain_graph=True)
                 grads = torch.autograd.grad(nmse, [layer.weight for layer in layers], retain_graph=True)
                 learning = torch.autograd.grad(held, [layer.weight for layer in layers], retain_graph=True)
                 outs = torch.autograd.grad(nmse, [c[2] for c in calls], retain_graph=True)
@@ -166,6 +172,7 @@ def main() -> int:
         ]
         wanted = [by_layer_learning[i][0][1].sum(0) for i in range(len(grads))]   # context call
         return {"nmse": float(nmse.detach()), "g": [g.detach().double() for g in grads],
+                "g_var_held": [g.detach().double() for g in grads_var_held],
                 "mean_surprise": mean_surprise, "wanted": wanted,
                 "learning": [g.detach().double() for g in learning],
                 "no_backward": no_backward, "no_backward_learning": no_backward_learning,
@@ -214,7 +221,19 @@ def main() -> int:
             l_offset = sum(torch.outer(d.sum(0), x.mean(0)) for x, d in l_calls)
             l_shared = sum(dt.T @ x for (x, _), (_, dt) in zip(l_calls, l_top)) if same_calls else None
             own_learning, other_learning = head(i, "learning", layer), head(j, "learning", layer)
+            target_path = t["g_var_held"][layer] - lg        # through the target, variance held
+            variance_path = g - t["g_var_held"][layer]       # through the variance alone
             rows.append({
+                # Addendum 2, item 5.
+                "error_rule_from_head_cosine_with_tail_whole_downhill":
+                    cosine(head(i, "no_backward_learning", layer), -g),
+                "error_rule_from_another_head_cosine_with_tail_whole_downhill":
+                    cosine(head(j, "no_backward_learning", layer), -g),
+                "target_path_share_of_size": float(target_path.norm() / g.norm()),
+                "variance_path_share_of_size": float(variance_path.norm() / g.norm()),
+                "learning_against_target_path_cosine": cosine(lg, target_path),
+                "learning_against_variance_path_cosine": cosine(lg, variance_path),
+                "learning_against_all_the_rest_cosine": cosine(lg, g - lg),
                 "learning_offset_cosine": cosine(lg, l_offset),
                 "learning_one_signal_for_all_layers_cosine": None if l_shared is None else cosine(lg, l_shared),
                 "learning_no_backward_rule_cosine_with_downhill": cosine(t["no_backward_learning"][layer], -lg),
@@ -286,6 +305,11 @@ def main() -> int:
         return statistics.median(vals) if vals else None
 
     summary = {key: [med(key, layer) for layer in range(n_layers)] for key in (
+        "error_rule_from_head_cosine_with_tail_whole_downhill",
+        "error_rule_from_another_head_cosine_with_tail_whole_downhill",
+        "target_path_share_of_size", "variance_path_share_of_size",
+        "learning_against_target_path_cosine", "learning_against_variance_path_cosine",
+        "learning_against_all_the_rest_cosine",
         "check_relative_error", "offset_cosine", "one_signal_for_all_layers_cosine",
         "head_to_tail_cosine_own", "head_to_tail_cosine_other",
         "learning_part_cosine", "learning_part_share_of_size",

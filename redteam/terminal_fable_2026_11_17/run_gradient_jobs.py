@@ -156,6 +156,13 @@ def main() -> int:
     ap.add_argument("--job-timeout-minutes", type=float, default=90.0)
     ap.add_argument("--exit-grace-seconds", type=float, default=30.0)
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--only", default="",
+                    help="take only the jobs whose result name holds this text")
+    ap.add_argument("--keep-going", action="store_true",
+                    help="a job that fails does not stop the rest (a read that runs away "
+                         "raises, and that is a result); failures are listed at the end "
+                         "and the exit code is still 1. A result left by a failed job is "
+                         "never there: the job writes it last.")
     args = ap.parse_args()
     if args.workers > 3:
         raise SystemExit("three jobs at a time is the ceiling on this machine")
@@ -163,6 +170,8 @@ def main() -> int:
     todo = []
     for run, what, script, flags in PLANS[args.plan]():
         out = INTO / run / f"{what}.json"
+        if args.only and args.only not in f"{run}/{what}":
+            continue
         cmd = [sys.executable, "-u", script, "--run-dir", str(RUNS / run),
                "--out", str(out)] + flags
         job = {"label": f"{run} -> {what}.json", "out": out, "cmd": cmd}
@@ -185,6 +194,8 @@ def main() -> int:
         job["out"].parent.mkdir(parents=True, exist_ok=True)
         if job["out"].exists():
             raise RuntimeError(f"{job['out']} exists and is not a whole result")
+        if args.keep_going and job["out"].with_suffix(".failed").exists():
+            return      # it failed before, with the same code; its log is beside it
         outcome = run_job(job["cmd"], job["out"], job["out"].with_suffix(".log"),
                           exit_grace=args.exit_grace_seconds,
                           timeout=args.job_timeout_minutes * 60, heartbeat=1e9)
@@ -196,7 +207,10 @@ def main() -> int:
                       f"{'  (did not exit; killed)' if outcome['killed'] else ''}", flush=True)
             else:
                 failed.append(job["label"])
-                stop.set()
+                if not args.keep_going:
+                    stop.set()
+                job["out"].with_suffix(".failed").write_text(
+                    f"{outcome['killed'] or 'exit ' + str(outcome['code'])}", encoding="utf-8")
                 print(f"[{at}] FAILED {job['label']}  after {outcome['seconds'] / 60:.1f} min "
                       f"({outcome['killed'] or 'exit ' + str(outcome['code'])}); "
                       f"see {job['out'].with_suffix('.log')}", flush=True)
