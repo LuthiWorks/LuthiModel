@@ -65,7 +65,43 @@ def m2() -> list[tuple[str, str, str, list[str]]]:
     return jobs
 
 
-PLANS = {"m1": m1, "m2": m2}
+# -- brief 8, Part 2: the read by a fixed map of the prediction's error -----
+RATES = ("1e-5", "1e-4", "1e-3")
+# The repeat read of the first card brief: B reads the windows it is scored on.
+REPEAT = ["--docs", "32", "--read", "16", "--score", "16", "--repeats", "4",
+          "--read-what", "tail"]
+
+
+def _by_map(run: str, name: str, layout: list[str], kind: str, rate: str):
+    kind_name = "" if kind == "map" else f"_{kind}"
+    return (run, f"e1_{name}_error_map{kind_name}_{rate}", EVAL,
+            layout + ["--read-by-error-map", rate, "--error-map-kind", kind])
+
+
+def error_map() -> list[tuple[str, str, str, list[str]]]:
+    """In the order the brief gives: the repeat read first, then 64 windows
+    on both document sets; the map itself before what stands beside it
+    (the map fitted with the errors shuffled, the common part alone, and M2
+    on the repeat read's documents; M2 at 64 windows is in the m2 plan)."""
+    jobs = []
+    for run in (JULY42, P97):
+        jobs += [_by_map(run, "repeat16x4", REPEAT, "map", rate) for rate in RATES]
+        for suffix, phase in PHASES:
+            jobs += [_by_map(run, f"read64{suffix}", LAYOUT[run] + phase, "map", rate)
+                     for rate in RATES]
+    for run in (JULY42, P97):
+        for kind in ("shuffled", "common"):
+            for suffix, phase in PHASES:
+                jobs += [_by_map(run, f"read64{suffix}", LAYOUT[run] + phase, kind, rate)
+                         for rate in RATES]
+            jobs += [_by_map(run, "repeat16x4", REPEAT, kind, rate) for rate in RATES]
+        jobs += [(run, f"e1_repeat16x4_living_gradient_{rate}", EVAL,
+                  REPEAT + ["--read-by-gradient", rate, "--gradient-steps", "1",
+                            "--gradient-read-what", "living"]) for rate in RATES]
+    return jobs
+
+
+PLANS = {"m1": m1, "m2": m2, "error_map": error_map}
 
 
 def main() -> int:

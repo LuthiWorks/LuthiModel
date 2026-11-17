@@ -90,6 +90,12 @@ the frozen score does not read it.
                          in ``living_weight_gradient.py``). What any rule
                          writing to the living weights could gain from a
                          read. Nothing is kept.
+    read_by_error_map    the plastic read is replaced by a rule with no
+                         backward pass: each living weight moves by a fixed
+                         map of the prediction's mean error, fitted
+                         beforehand on windows no document holds
+                         (``error_map_read.py``; brief 8 of 2026-11-17).
+                         Plasticity is frozen, so every other way is off.
 """
 
 from __future__ import annotations
@@ -329,8 +335,17 @@ def holdout_documents(
     document sets. E1 counts a checkpoint only when its effect replicates on
     a disjoint set (registry, 2026-10-19 amendment). Phase 0 is the original
     selection, bit for bit."""
+    return [windows[first:stop] for first, stop in holdout_document_ranges(
+        windows.shape[0], n_read=n_read, n_score=n_score, n_docs=n_docs, phase=phase)]
+
+
+def holdout_document_ranges(
+    total: int, *, n_read: int, n_score: int, n_docs: int, phase: int = 0,
+) -> list[tuple[int, int]]:
+    """Which held-out windows each document of ``holdout_documents`` is:
+    ``(first, past the last)``. For anything that must share no window with
+    the documents."""
     per = n_read + n_score
-    total = windows.shape[0]
     if n_docs * per > total:
         raise ValueError(
             f"holdout has {total} windows; {n_docs} documents of {per} windows "
@@ -344,7 +359,7 @@ def holdout_documents(
             f"phase {phase}. Lower n_docs or the phase."
         )
     off = phase * per
-    return [windows[i * stride + off : i * stride + off + per] for i in range(n_docs)]
+    return [(i * stride + off, i * stride + off + per) for i in range(n_docs)]
 
 
 def adaptation_eval(
@@ -363,6 +378,8 @@ def adaptation_eval(
     read_by_gradient: float | None = None,
     gradient_steps: int = 1,
     gradient_read_what: str = "trained",
+    read_by_error_map=None,
+    error_map_rate: float | None = None,
 ) -> dict:
     """Run A / B / C (see module docstring) over ``documents``.
 
@@ -398,6 +415,10 @@ def adaptation_eval(
         gradient_read_what: "trained" steps the trained parameters; "living"
             steps the living weights and nothing else (a measurement; see
             the module docstring).
+        read_by_error_map: fitted ``error_map_read.ErrorMaps``; the read
+            moves each living weight by the map of the prediction's error,
+            at ``error_map_rate``, with no backward pass. The caller fits
+            the maps on windows no document here holds.
 
     Returns ``{"per_doc": [...], "summary": {...}, "settings": {...}}``.
     """
@@ -420,6 +441,13 @@ def adaptation_eval(
     if gradient_read_what == "living" and not by_gradient:
         raise ValueError("gradient_read_what='living' needs read_by_gradient")
     step_shares: list[list[float]] = []
+    by_error_map = read_by_error_map is not None
+    if by_error_map and by_gradient:
+        raise ValueError("a read is by gradient or by error map, not both")
+    if by_error_map and error_map_rate is None:
+        raise ValueError("read_by_error_map needs error_map_rate")
+    if error_map_rate is not None and not by_error_map:
+        raise ValueError("error_map_rate needs read_by_error_map")
 
     from luthi.v2.living_layer_pc import PredictiveCodingLayer
     living = [m for m in model.modules() if isinstance(m, PredictiveCodingLayer)]
@@ -436,7 +464,18 @@ def adaptation_eval(
     base = _snapshot(model, held)
 
     def read(windows: torch.Tensor) -> None:
-        if by_gradient:
+        if by_error_map:
+            from luthi.v2.error_map_read import read_by_error_map as _by_map
+            was_training = loss_module.training
+            loss_module.eval()
+            try:
+                _by_map(loss_module, windows, read_by_error_map,
+                        rate=float(error_map_rate), repeats=read_repeats,
+                        step_shares=step_shares)
+            finally:
+                if was_training:
+                    loss_module.train()
+        elif by_gradient:
             _read_by_gradient(loss_module, windows, rate=float(read_by_gradient),
                               steps=gradient_steps, repeats=read_repeats,
                               what=gradient_read_what, step_shares=step_shares)
@@ -502,6 +541,14 @@ def adaptation_eval(
             "read_what": read_what,
             "read_by_gradient": read_by_gradient,
             "gradient_steps": gradient_steps if by_gradient else None,
+            "read_by_error_map": (
+                None if not by_error_map else {
+                    "kind": read_by_error_map.kind, "rate": float(error_map_rate),
+                    "fitted_on": read_by_error_map.fitted_on,
+                    "ridge": read_by_error_map.ridge,
+                    "check_on_windows_held_back": read_by_error_map.check,
+                }
+            ),
             "gradient_read_what": gradient_read_what if by_gradient else None,
             "gradient_parameters": (
                 None if not by_gradient else
@@ -523,4 +570,5 @@ def adaptation_eval(
     }
 
 
-__all__ = ["adaptation_eval", "gradient_read_parameters", "holdout_documents"]
+__all__ = ["adaptation_eval", "gradient_read_parameters", "holdout_documents",
+           "holdout_document_ranges"]

@@ -165,13 +165,16 @@ def test_a_living_weight_stays_a_buffer_and_no_optimizer_is_involved():
 def test_nothing_in_the_training_path_imports_the_module():
     # The trainer and the model must not be able to reach it: it is imported
     # by measurement code only (adaptation_eval, lazily, and probes).
-    allowed = {"adaptation_eval.py", "living_weight_gradient.py"}
+    # error_map_read (brief 8) is measurement code too: it steps living
+    # weights by hand, and is held to the same rule.
+    allowed = {"adaptation_eval.py", "living_weight_gradient.py", "error_map_read.py"}
     users = []
     for path in list((REPO_ROOT / "luthi").rglob("*.py")) + list(
             (REPO_ROOT / "scripts").glob("*.py")):
         if path.name in allowed:
             continue
-        if "living_weight_gradient" in path.read_text(encoding="utf-8", errors="replace"):
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if "living_weight_gradient" in text or "error_map_read" in text:
             users.append(str(path.relative_to(REPO_ROOT)))
     assert users == []
 

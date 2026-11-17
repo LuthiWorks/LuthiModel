@@ -82,6 +82,14 @@ def main() -> int:
                     default="trained",
                     help="living = the read by gradient steps the living weights "
                          "and nothing else, by hand, restored after (a measurement)")
+    ap.add_argument("--read-by-error-map", type=float, default=None, metavar="RATE",
+                    help="replace the plastic read by a fixed map of the prediction's "
+                         "error onto each living weight, at this rate; no backward pass "
+                         "(brief 8 of 2026-11-17; luthi/v2/error_map_read.py)")
+    ap.add_argument("--error-map-kind", choices=("map", "shuffled", "common"), default="map")
+    ap.add_argument("--error-map-fit-windows", type=int, default=512,
+                    help="held-out windows the map is fitted on; none is in a document "
+                         "of either document set of this layout")
     ap.add_argument("--out", default="")
     args = ap.parse_args()
     if args.read_what == "tail" and args.read != args.score:
@@ -98,6 +106,23 @@ def main() -> int:
     windows = run.text_ds.holdout_window_tokens().to(device)
     docs = holdout_documents(windows, n_read=args.read, n_score=args.score,
                              n_docs=args.docs, phase=args.doc_phase)
+    maps = None
+    if args.read_by_error_map is not None:
+        from luthi.v2.adaptation_eval import holdout_document_ranges
+        from luthi.v2.error_map_read import fit_error_maps, windows_outside_documents
+        # Fitted on windows that are in no document of this layout, in
+        # either document set, so the fit and the read share nothing.
+        taken = [r for phase in (0, 1) for r in holdout_document_ranges(
+            int(windows.shape[0]), n_read=args.read, n_score=args.score,
+            n_docs=args.docs, phase=phase)]
+        fit_at = windows_outside_documents(int(windows.shape[0]), taken,
+                                           args.error_map_fit_windows)
+        maps = fit_error_maps(run.loss_module.eval(), windows[fit_at],
+                              kind=args.error_map_kind)
+        print(f"error map ({maps.kind}) fitted on {maps.fitted_on} windows; on "
+              f"{maps.check['windows_held_back']} held back: "
+              + " ".join(f"{c['cosine']:+.2f}" for c in maps.check["median_by_layer"]),
+              flush=True)
     res = adaptation_eval(
         run.loss_module, docs, n_read=args.read, read_repeats=args.repeats,
         read_train_mode=args.read_train_mode, rate_scale=args.rate_scale,
@@ -108,6 +133,7 @@ def main() -> int:
         read_by_gradient=args.read_by_gradient,
         gradient_steps=args.gradient_steps,
         gradient_read_what=args.gradient_read_what,
+        read_by_error_map=maps, error_map_rate=args.read_by_error_map,
     )
     res["run"] = {"arm": run.result["arm"], "seed": run.result["seed"],
                   "checkpoint": run.checkpoint.name, "global_step": run.global_step}
