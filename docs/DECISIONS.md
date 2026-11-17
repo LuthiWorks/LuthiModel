@@ -1329,3 +1329,62 @@ before any "working" verdict is trustworthy in either direction.
 >   finding that the write's input is the same whatever the content. How the
 >   trainer orders and batches text was not checked before it was said, and is
 >   the first thing to check when 3 is taken up.
+
+---
+
+## 2026-11-17 — Opus's four findings on rest, memory and dreaming: Brian's rulings
+
+> Opus's review of 2026-11-14
+> (`docs/reviews/2026-11-14_rest-memory-and-dreaming-review-from-opus.md`) ended
+> with four things for Brian to rule on. Fable laid them out with a
+> recommendation on each and an order: fix the store's faults and the small
+> fixes in 1 and 2 now; hold the real-length measurement (4) until the
+> living-channel program has said what the living write can carry. Brian,
+> 2026-11-17, 05:22:
+>
+> *"1. We remove the corpus from the rest and have it work with only what was
+> lived and is relevant to the concept(s) represented by that weight or weight
+> matrix. It may turn out that in order to actually get the model to update each
+> weight with oniy relevant data that we may need to be able to identify the
+> concepts present in the matrix. This may help us help the model actually
+> update correctly instead of with noise and randomness.*
+>
+> *2. Sounds good, lets start with your recommendation.*
+>
+> *3. The store needs serious reworking then. Why is it expanding by 5gb each
+> day beyond the limit? We can't let that happen, it will be out of space in a
+> couple weeks.*
+>
+> *4. Ok, we'll address that too, in time.*
+>
+> *We'll follow your suggested order of fixes."*
+>
+> **1. Rest pours only what was lived.** What corpus replay wrote is taken out
+> of the half-day's trace. To build now.
+> - **And a direction, not yet a design:** a weight should be updated only with
+>   what is relevant to the concepts it represents, which may need a way to
+>   identify the concepts a matrix holds. Brian's, 2026-11-17. Nothing is built
+>   toward it yet. It is taken up with E3's revision, where the card's finding
+>   of 2026-11-16 points the same way: the output side of the living write is
+>   the same for every document, so the write cannot tell what it is about.
+>
+> **2. The three readings,** as Fable recommended, which are Opus's three fixes:
+> - letting go acts only after a recall the mind chose, not during a revisit
+>   that rest made;
+> - once rest is chosen, whether it continues is judged against the window as
+>   it stood when rest began;
+> - the lean's running mean is subtracted before it is read as a choice.
+>
+> Each is to be measured on lives of several seeds before it is trusted.
+>
+> **3. The memory store is reworked.** It may not grow past its limit. The
+> faults Opus found are fixed (the moment count saved with the life; ids taken
+> from the files as well as the lines; summaries stored compactly and counted in
+> the limit). The rework's shape is Brian's to rule on once it is laid out.
+>
+> **4. The real-length measurement** of what a rest should integrate: later.
+>
+> **Also adopted from the review, as method:** lives are compared across several
+> seeds with the spread reported, and the thread count is part of the recipe. A
+> tiny life recalled 71 times on one CPU thread and 4 on two, with the same code
+> and seed.
