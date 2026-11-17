@@ -117,6 +117,21 @@
 >       both finished runs; the plain error with no map already points
 >       downhill; what one window wants says little about the next. Part 2 is
 >       changed: `docs/reviews/2026-11-17_brief-8-addendum-after-part-1-for-terminal-fable.md`.
+>     - **Reviewed (Opus 5.5, 2026-11-17), with Part 1 and the addendum:**
+>       `docs/reviews/2026-11-17_write-that-hears-the-error-review-from-opus.md`.
+>       Agrees with the addendum's reading and its no-map first arm. Before
+>       Part 2 runs:
+>       - The held score must score the prediction against the targets
+>         encoded before the read (A's). As a value, the probe's `held`
+>         equals nmse. Report the target's drift beside it.
+>       - On July a fail on nmse could hide learning. The sign-turned control
+>         may not hurt on nmse with nothing wrong; on the held score it
+>         should.
+>       - At 768 the map's cosine roughly doubled when the fit went from 128
+>         to 256 windows (the 64-document run), so the map is not ruled out.
+>       - For Brian: whether a living write may use the model's own
+>         prediction error, written after the forward pass from one error
+>         shared by every layer.
 >   - **2026-11-17, Brian: Luthi's memory has 100 GB on E:, and cold storage
 >     is permanent** (`docs/DECISIONS.md`, last entry). To build, in Sanctuary:
 >     `docs/reviews/2026-11-17_build-brief-9-the-memory-store-for-terminal-fable.md`.
