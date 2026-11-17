@@ -150,8 +150,13 @@ def apply_living_extra_state(
     state: dict[str, dict[str, Any]] | None,
     *,
     source: str = "checkpoint",
+    drop_older_day_trace: bool = False,
 ) -> None:
     """Restore lived state collected by :func:`collect_living_extra_state`.
+
+    ``drop_older_day_trace``: a half-day's trace saved before 2026-11-17 is
+    refused (it raises) unless this is True, in which case it is dropped
+    and the trace starts again (``luthi/v2/day_trace.py``).
 
     ``state=None`` (old checkpoint, key absent) warns once and returns —
     the degraded resume: consolidation re-warms and the delay cursor
@@ -264,7 +269,8 @@ def apply_living_extra_state(
                         horizon=entry["day_trace"]["horizon"],
                         limit=entry["day_trace"]["limit"],
                     )
-                module._day_trace.load_state_dict(entry["day_trace"])
+                module._day_trace.load_state_dict(
+                    entry["day_trace"], drop_older=drop_older_day_trace)
             else:
                 logger.warning(
                     "%s %s for %r carries a half-day's trace but the module "

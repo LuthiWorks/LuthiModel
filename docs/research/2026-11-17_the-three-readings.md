@@ -82,7 +82,7 @@ Each traced layer keeps `lived`: the part of `weight − home` that lived forwar
 
 **What a lived forward adds, said exactly.** The brief asked for the write and not the pull or consolidation. The code takes the new part of the displacement where the trace was always noted: after the write and before consolidation. So consolidation adds nothing, as asked. What it adds is the write less the pull's share of it, and home's own small follow of the weight (about 1e-6 a forward). That is the quantity Opus's probe splits out, which is why the two can be compared exactly.
 
-**A trace saved before today is not carried over.** It averaged where the weight stood. Loading one keeps its settings and what it has poured, drops its averages, starts again, and logs it (`dropped_an_older_trace`). The other choice was to refuse to load; I judged a life should start.
+**A trace saved before today is refused.** It averaged where the weight stood. Loading one raises, unless the caller passes `drop_older_day_trace=True` to `apply_living_extra_state`; then it keeps its settings and what it has poured, drops its averages, starts again, and logs it (`dropped_an_older_trace`). I first built it to drop with a log line. Chat Fable's reply the same day: a saved trace is part of a life, and lived state is not dropped in silence. Changed at 09:45.
 
 ### Must hold: Opus's probe on two lives
 

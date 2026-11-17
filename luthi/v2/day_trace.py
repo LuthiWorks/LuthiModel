@@ -175,7 +175,13 @@ class DayTrace:
             "chosen_count": self.chosen_count, "poured": self.poured,
         }
 
-    def load_state_dict(self, state: dict[str, Any]) -> None:
+    def load_state_dict(self, state: dict[str, Any], *, drop_older: bool = False) -> None:
+        """A trace saved before 2026-11-17 averaged where the weight stood,
+        which in a life is mostly what corpus replay wrote, and by Brian's
+        ruling that is not to be poured. Such a trace is REFUSED: a saved
+        trace is part of a life, and lived state is not dropped in silence.
+        With ``drop_older=True`` the caller says to drop it: the trace keeps
+        its settings and what it has poured, starts again, and logs it."""
         if state["mean"].shape != self.mean.shape:
             raise ValueError(
                 f"trace is {tuple(state['mean'].shape)} but the layer's weight "
@@ -184,11 +190,15 @@ class DayTrace:
         self.horizon, self.limit = int(state["horizon"]), float(state["limit"])
         self.poured = float(state["poured"])
         if state.get("holds") != HOLDS:
-            # A trace saved before 2026-11-17 averaged where the weight stood,
-            # which in a life is mostly what corpus replay wrote. By Brian's
-            # ruling that is not to be poured, so it is not taken. The trace
-            # starts again from here, with its settings and what it has
-            # poured so far, and says so.
+            if not drop_older:
+                raise RuntimeError(
+                    "this half-day's trace was saved before 2026-11-17: it "
+                    "averaged where the weight stood, not what was lived "
+                    f"({float(state['count']):g} forwards of it). It is not "
+                    "loaded, and it is not dropped unless you say so: pass "
+                    "drop_older_day_trace=True to apply_living_extra_state "
+                    "(or drop_older=True here) to start the trace again."
+                )
             logger.warning(
                 "a half-day's trace saved before 2026-11-17 (it averaged where "
                 "the weight stood, not what was lived) is not carried over: "

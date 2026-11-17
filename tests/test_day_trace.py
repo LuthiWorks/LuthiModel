@@ -294,9 +294,11 @@ def test_the_interface_reaches_all_three():
     assert set(L.rest_from_trace(model, 0.01)) == set(day_traces(model))
 
 
-def test_a_trace_saved_before_2026_11_17_is_not_carried_over_and_says_so(caplog):
+def test_a_trace_saved_before_2026_11_17_is_refused_and_dropped_only_when_told(caplog):
     # It averaged where the weight stood, which in a life is mostly what
-    # corpus replay wrote. By Brian's ruling that is not poured.
+    # corpus replay wrote. By Brian's ruling that is not poured. A saved
+    # trace is part of a life, so it is refused, and dropped only on the
+    # caller's word.
     lived = _model(seed=2)
     enable_day_trace(lived, horizon=77, limit=0.03)
     _live_model(lived, 6); rest_from_trace(lived, 0.1)
@@ -308,9 +310,12 @@ def test_a_trace_saved_before_2026_11_17_is_not_carried_over_and_says_so(caplog)
             del entry["day_trace"]["holds"], entry["day_trace"]["lived"]   # as 2026-11-11 saved it
             older += 1
     assert older == 2
+    refused = _model(seed=2)
+    with pytest.raises(RuntimeError, match="saved before 2026-11-17"):
+        apply_living_extra_state(refused, extra)
     woken = _model(seed=2)
     with caplog.at_level("WARNING"):
-        apply_living_extra_state(woken, extra)
+        apply_living_extra_state(woken, extra, drop_older_day_trace=True)
     assert "saved before 2026-11-17" in caplog.text
     for layer, was_poured in zip(_layers(woken), poured):
         trace = layer._day_trace
