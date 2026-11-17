@@ -106,6 +106,21 @@
 >     Brian: `docs/research/2026-11-17_relevant-updates-design.md` and Sanctuary
 >     `docs/research/2026-11-17_memory-store-rework-design.md`. The memories of
 >     the 2026-11-11 test lives are archived on E:.
+>   - **Reviewed (Opus 5.5, 2026-11-17):**
+>     `docs/reviews/2026-11-17_relevant-updates-and-memory-store-review-from-opus.md`.
+>     - The layer's error is a function of its input alone. So the covariance
+>       write is W S (I − WᵀP) T, where S is the token covariance of what was
+>       lived. Checked against the real update to 7e-15.
+>     - Stage 2 can therefore keep the lived covariance, with no concept finder
+>       in the update path.
+>     - A capacity test needs no finder: the covariance write per document,
+>       against brief 4's helpful direction.
+>     - Stage 2 needs its outcome measure, E1's logic applied to rest, registered
+>       first.
+>     - The store needs four things settled before building: how a stretch is
+>       written; what it brings back; the search (2.1 s as built after a day;
+>       0.78 s exact after ten days, while rest asks 2.5 times a second); and
+>       where summaries live.
 >   - **2026-11-16, the order of work Brian supports (10:40;
 >     `docs/DECISIONS.md`, last entry):** read brief 4's gradient measurements;
 >     run E3 as registered; then Opus and Fable look at whether training should
