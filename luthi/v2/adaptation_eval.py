@@ -82,6 +82,14 @@ the frozen score does not read it.
                          frozen. A positive control for the harness: does
                          B - C show document-specific change when something
                          is known to be learning from the document?
+    gradient_read_what   "trained" (default): the read by gradient steps the
+                         encoder's and predictor's trained parameters.
+                         "living": it steps the living weights and nothing
+                         else, by hand, with everything restored after
+                         (Brian's ruling of 2026-11-16, 10:29; the guards are
+                         in ``living_weight_gradient.py``). What any rule
+                         writing to the living weights could gain from a
+                         read. Nothing is kept.
 """
 
 from __future__ import annotations
@@ -236,15 +244,34 @@ def gradient_read_parameters(loss_module: nn.Module) -> list[nn.Parameter]:
 
 
 def _read_by_gradient(loss_module: nn.Module, windows: torch.Tensor, *,
-                      rate: float, steps: int, repeats: int) -> None:
+                      rate: float, steps: int, repeats: int,
+                      what: str = "trained",
+                      step_shares: list[list[float]] | None = None) -> None:
     """Plain SGD on the training loss of ``windows`` ([n, L]), one window at
     a time, ``steps`` steps per window, with plasticity frozen and the
     module in eval mode (no top-down sweep, no running statistics moved).
     No optimizer object: ``p -= rate * grad`` and nothing else, so there is
-    no optimizer state to restore."""
-    params = gradient_read_parameters(loss_module)
+    no optimizer state to restore.
+
+    ``what="living"`` steps the living weights and nothing else. Each step's
+    size, as a share of each layer's weight, is appended to ``step_shares``."""
     was_training = loss_module.training
     loss_module.eval()
+    if what == "living":
+        from luthi.v2.living_weight_gradient import step_living_weights_down_the_loss
+        try:
+            for _ in range(repeats):
+                for w in windows:
+                    for _ in range(steps):
+                        shares = step_living_weights_down_the_loss(
+                            loss_module, w.unsqueeze(0), rate=rate)
+                        if step_shares is not None:
+                            step_shares.append(shares)
+        finally:
+            if was_training:
+                loss_module.train()
+        return
+    params = gradient_read_parameters(loss_module)
     try:
         with freeze_plasticity(loss_module.online_encoder), torch.enable_grad():
             for _ in range(repeats):
@@ -335,6 +362,7 @@ def adaptation_eval(
     read_what: str = "head",
     read_by_gradient: float | None = None,
     gradient_steps: int = 1,
+    gradient_read_what: str = "trained",
 ) -> dict:
     """Run A / B / C (see module docstring) over ``documents``.
 
@@ -367,6 +395,9 @@ def adaptation_eval(
             ``_read_by_gradient``). The whole loss module is snapshotted
             and restored around every read.
         gradient_steps: SGD steps per window read.
+        gradient_read_what: "trained" steps the trained parameters; "living"
+            steps the living weights and nothing else (a measurement; see
+            the module docstring).
 
     Returns ``{"per_doc": [...], "summary": {...}, "settings": {...}}``.
     """
@@ -383,6 +414,12 @@ def adaptation_eval(
     if gradient_steps < 1:
         raise ValueError("gradient_steps must be at least 1")
     by_gradient = read_by_gradient is not None
+    if gradient_read_what not in ("trained", "living"):
+        raise ValueError("gradient_read_what must be 'trained' or 'living', "
+                         f"not {gradient_read_what!r}")
+    if gradient_read_what == "living" and not by_gradient:
+        raise ValueError("gradient_read_what='living' needs read_by_gradient")
+    step_shares: list[list[float]] = []
 
     from luthi.v2.living_layer_pc import PredictiveCodingLayer
     living = [m for m in model.modules() if isinstance(m, PredictiveCodingLayer)]
@@ -401,7 +438,8 @@ def adaptation_eval(
     def read(windows: torch.Tensor) -> None:
         if by_gradient:
             _read_by_gradient(loss_module, windows, rate=float(read_by_gradient),
-                              steps=gradient_steps, repeats=read_repeats)
+                              steps=gradient_steps, repeats=read_repeats,
+                              what=gradient_read_what, step_shares=step_shares)
         else:
             _read(model, windows, repeats=read_repeats,
                   read_train_mode=read_train_mode,
@@ -464,9 +502,22 @@ def adaptation_eval(
             "read_what": read_what,
             "read_by_gradient": read_by_gradient,
             "gradient_steps": gradient_steps if by_gradient else None,
+            "gradient_read_what": gradient_read_what if by_gradient else None,
             "gradient_parameters": (
+                None if not by_gradient else
+                sum(m.weight.numel() for m in living)
+                if gradient_read_what == "living" else
                 sum(p.numel() for p in gradient_read_parameters(loss_module))
-                if by_gradient else None
+            ),
+            # One step's size as a share of the weight, by living layer:
+            # without it "nothing happened" cannot be told from "the step
+            # was too small to matter".
+            "living_step_share_of_weight": (
+                None if not step_shares else [
+                    {"median": sorted(col)[len(col) // 2], "min": min(col),
+                     "max": max(col), "steps": len(col)}
+                    for col in zip(*step_shares)
+                ]
             ),
         },
     }

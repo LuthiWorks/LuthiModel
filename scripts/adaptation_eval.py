@@ -78,6 +78,10 @@ def main() -> int:
                          "of the windows read, plasticity frozen (a positive control)")
     ap.add_argument("--gradient-steps", type=int, default=1,
                     help="SGD steps per window, with --read-by-gradient")
+    ap.add_argument("--gradient-read-what", choices=("trained", "living"),
+                    default="trained",
+                    help="living = the read by gradient steps the living weights "
+                         "and nothing else, by hand, restored after (a measurement)")
     ap.add_argument("--out", default="")
     args = ap.parse_args()
     if args.read_what == "tail" and args.read != args.score:
@@ -103,6 +107,7 @@ def main() -> int:
         read_what=args.read_what,
         read_by_gradient=args.read_by_gradient,
         gradient_steps=args.gradient_steps,
+        gradient_read_what=args.gradient_read_what,
     )
     res["run"] = {"arm": run.result["arm"], "seed": run.result["seed"],
                   "checkpoint": run.checkpoint.name, "global_step": run.global_step}
