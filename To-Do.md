@@ -138,10 +138,27 @@
 >       read; on July nmse can hide learning; the map is not ruled out at 768.
 >       The test as it now stands:
 >       `docs/reviews/2026-11-17_brief-8-addendum-2-after-opus-for-terminal-fable.md`.
+>     - **Amendment 6 to E1, drafted (Opus 5.5, 2026-11-17), for chat Fable to
+>       review and Brian to rule before gate 2's held score is read:**
+>       `docs/reviews/2026-11-17_amendment-6-draft-from-opus.md`. Credit needs
+>       both nmse and the held score. A one-score result is named, not
+>       credited, and still trips the diagnosis's kill condition. An exact
+>       split of nmse minus held into drift, alignment and variance is
+>       reported beside every E1 number.
 >   - **2026-11-17, Brian: Luthi's memory has 100 GB on E:, and cold storage
 >     is permanent** (`docs/DECISIONS.md`, last entry). To build, in Sanctuary:
 >     `docs/reviews/2026-11-17_build-brief-9-the-memory-store-for-terminal-fable.md`.
->     Its parts D (cold storage) and E (importance) are for Opus to review.
+>     - **Parts D and E reviewed (Opus 5.5, 2026-11-17):**
+>       `docs/reviews/2026-11-17_memory-store-cold-and-importance-review-from-opus.md`.
+>       - Before a life uses cold storage: two lives must not share a cold
+>         folder, an id in cold is never reused, and a move writes its line
+>         first.
+>       - With cold on the life's drive, every write needs the free-space
+>         guard, the life's checkpoints included. Where cold lives is Brian's.
+>       - `memory_salience` is not the strength of the choice to remember.
+>         Record the choice's own margin, and each recall's likeness to its
+>         cue, from the first record.
+>       - Both terms of the first formula grow with a stretch's length.
 >   - **Reviewed (Opus 5.5, 2026-11-17):**
 >     `docs/reviews/2026-11-17_relevant-updates-and-memory-store-review-from-opus.md`.
 >     - The layer's error is a function of its input alone. So the covariance
