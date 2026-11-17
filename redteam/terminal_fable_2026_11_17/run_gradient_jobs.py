@@ -146,7 +146,26 @@ def error() -> list[tuple[str, str, str, list[str]]]:
     return jobs
 
 
-PLANS = {"m1": m1, "m2": m2, "error_map": error_map, "error": error}
+def m2_held() -> list[tuple[str, str, str, list[str]]]:
+    """M2 and the whole-model control at 1e-5 again, with the held score:
+    both meet the registered criterion on nmse, and so does the error read
+    with its sign turned, which lowers nmse by moving the targets. So which
+    of the two these do has to be read."""
+    jobs = []
+    for run in (JULY42, P97):
+        for suffix, phase in PHASES:
+            jobs.append((run, f"e1_read64_living_gradient_1e-5_held{suffix}", EVAL,
+                         LAYOUT[run] + phase + ["--read-by-gradient", "1e-5", "--gradient-steps", "1",
+                                                "--gradient-read-what", "living", "--held-score"]))
+    for run in (JULY42, P97):
+        for suffix, phase in PHASES:
+            jobs.append((run, f"e1_read64_gradient_1e-5_held{suffix}", EVAL,
+                         LAYOUT[run] + phase + ["--read-by-gradient", "1e-5", "--gradient-steps", "1",
+                                                "--held-score"]))
+    return jobs
+
+
+PLANS = {"m1": m1, "m2": m2, "error_map": error_map, "error": error, "m2_held": m2_held}
 
 
 def main() -> int:
