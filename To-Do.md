@@ -106,6 +106,13 @@
 >     Brian: `docs/research/2026-11-17_relevant-updates-design.md` and Sanctuary
 >     `docs/research/2026-11-17_memory-store-rework-design.md`. The memories of
 >     the 2026-11-11 test lives are archived on E:.
+>   - **2026-11-17, Brian: explore the room M1 found and make it happen**
+>     (`docs/DECISIONS.md`, last entry). The exploration and a design, for Opus
+>     to review: `docs/research/2026-11-17_a-write-that-hears-the-prediction-error.md`.
+>     For the card, after brief 7's stopped jobs:
+>     `docs/reviews/2026-11-17_card-work-brief-8-for-terminal-fable.md`.
+>     Nothing is built into the model; a ruling is asked of Brian only after
+>     the card has measured it on finished runs.
 >   - **Reviewed (Opus 5.5, 2026-11-17):**
 >     `docs/reviews/2026-11-17_relevant-updates-and-memory-store-review-from-opus.md`.
 >     - The layer's error is a function of its input alone. So the covariance
