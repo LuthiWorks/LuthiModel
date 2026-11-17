@@ -27,8 +27,24 @@ part of sleep that learns from it.
 
 Words only. A dream's picture and sound are not learned from here.
 
-``step_size`` is the length of the step over all trained parameters. 0.01 is
+``step_size`` is the length of the step over the parameters it moves. 0.01 is
 the value the measurement used on a 32-wide trunk, and is a placeholder.
+
+Four guards (2026-11-17), from Opus's review of 2026-11-14 (section 1):
+
+1. **The parameters stepped are ``actor._core_params()``**, the set the lived
+   optimizer owns, which is the set the retention gate snapshots and rolls
+   back. So the two are the same by construction. Before, the step took every
+   trained parameter of the loss module; in a run with trained speech it would
+   also have moved ``output_proj``, which the gate does not see.
+2. **Only parameters with a gradient are copied before the step.** Before,
+   every trained parameter was cloned for every dream.
+3. **The check reads NMSE**, the prediction loss over the target's variance,
+   not the raw prediction loss (the standing rule on scale: a raw loss can be
+   lowered by quieter targets). ``before`` and ``after`` are NMSE.
+4. **A kept dream's step is fed to the staleness machinery** as a lived step
+   is: ``staleness.observe_drift`` (the drift band and ``theta_version``) and
+   the K-M9-7 feed. A step that is undone moved nothing and feeds nothing.
 """
 
 from __future__ import annotations
@@ -53,7 +69,10 @@ def _loss(loss_module: Any, tokens: torch.Tensor, *, for_learning: bool):
                 return loss_module.compute_modality_loss("text", {"text_tokens": tokens})["loss"]
             with torch.no_grad():
                 out = loss_module.compute_modality_loss("text", {"text_tokens": tokens})
-                return float(out["l_pred"].item())
+                # NMSE, as the held-out instrument and adaptation_eval read it.
+                target = out["target_latents"][:, out["ctx_len"]:, :]
+                var = float((target - target.mean(dim=(0, 1), keepdim=True)).pow(2).mean().item())
+                return float(out["l_pred"].item()) / max(var, 1e-12)
     finally:
         loss_module.train(was_training)
 
@@ -73,8 +92,10 @@ def learn_from_dream(
         real: real kept moments' words, each ``[1, tokens]``. The check is
             read on these, and they are never learned from here.
 
-    Returns ``{"kept": bool, "before": float, "after": float}``: whether the
-    step stayed, and the prediction loss on the real moments around it.
+    Returns ``{"kept": bool, "before": float, "after": float,
+    "parameters_stepped": int}``: whether the step stayed, the NMSE on the
+    real moments around it, and how many parameters the step moved (and so
+    how many were copied first).
     """
     if step_size <= 0:
         raise ValueError(f"step_size must be above 0; got {step_size}")
@@ -84,7 +105,10 @@ def learn_from_dream(
         if words.dim() != 2 or words.shape[0] != 1 or words.shape[1] < MIN_TOKENS:
             raise ValueError(f"a {name} is [1, at least {MIN_TOKENS} tokens]; got {tuple(words.shape)}")
     loss_module = actor.loss_module
-    params = [p for p in loss_module.parameters() if p.requires_grad]
+    # The lived-trained core: exactly what the retention gate rolls back.
+    params = [p for p in actor._core_params() if p.requires_grad]
+    if not params:
+        raise RuntimeError("this life's trainer has no lived-trained core to learn with")
     device = params[0].device
     dream = dream.to(device)
     real = [r.to(device) for r in real]
@@ -107,16 +131,23 @@ def learn_from_dream(
     if not torch.isfinite(size):
         raise RuntimeError("the learning direction from a dream is not finite")
     if float(size) == 0.0:
-        return {"kept": False, "before": before, "after": before}
-    saved = [p.detach().clone() for p in params]
+        return {"kept": False, "before": before, "after": before, "parameters_stepped": 0}
+    stepped = [(p, g) for p, g in zip(params, grads) if g is not None]
+    saved = [p.detach().clone() for p, _ in stepped]
     with torch.no_grad():
-        for p, g in zip(params, grads):
-            if g is not None:
-                p.add_(g, alpha=-step_size / float(size))
+        for p, g in stepped:
+            p.add_(g, alpha=-step_size / float(size))
     after = on_real()
     kept = after <= before
     if not kept:
         with torch.no_grad():
-            for p, was in zip(params, saved):
+            for (p, _), was in zip(stepped, saved):
                 p.copy_(was)
-    return {"kept": kept, "before": before, "after": after}
+    else:
+        # The trunk moved, as it does at a lived step: the drift band and
+        # theta_version hear of it, and so does K-M9-7 (runner.py, the lived
+        # step). The step's length is ``step_size`` by construction.
+        actor.staleness.observe_drift(float(step_size))
+        actor.m9_kills.observe_staleness(in_failover=actor.staleness.in_failover())
+    return {"kept": kept, "before": before, "after": after,
+            "parameters_stepped": len(stepped)}

@@ -293,6 +293,11 @@ class M9Config:
     rest_choice_window: int = 256
     rest_choice_warmup: int = 32
     rest_choice_width: float = 3.0
+    # How the three choices are read (2026-11-17, rest_choice.py): with the
+    # lean's drift taken out, and a chosen rest held against the bar as it
+    # stood when it began; or "as_built_2026_11_11", kept for comparison.
+    choice_reading: str = "drift_removed"
+    choice_drift_span: int = 64
 
     # ---- Recall as a choice (2026-11-11, Sanctuary docs/research/2026-11-11_looking-back.md) ----
     # Off by default, like rest. On: each decoded action is also read for
@@ -819,6 +824,10 @@ class M9Trainer(JEPATrainer):
                 window=self.m9_config.rest_choice_window,
                 warmup=self.m9_config.rest_choice_warmup,
                 width=self.m9_config.rest_choice_width,
+                reading=self.m9_config.choice_reading,
+                drift_span=self.m9_config.choice_drift_span,
+                # Rest lasts for as long as it is chosen (it holds, by
+                # default); the other two are single moments.
             ).to(self.device)
         self.recall_choice: Optional[RestChoice] = None
         if self.m9_config.recall_choice:
@@ -828,6 +837,9 @@ class M9Trainer(JEPATrainer):
                 warmup=self.m9_config.recall_choice_warmup,
                 width=self.m9_config.recall_choice_width,
                 seed=RECALL_DIRECTION_SEED,
+                reading=self.m9_config.choice_reading,
+                drift_span=self.m9_config.choice_drift_span,
+                holds=False,
             ).to(self.device)
         self.let_go_choice: Optional[RestChoice] = None
         if self.m9_config.let_go_choice:
@@ -837,6 +849,9 @@ class M9Trainer(JEPATrainer):
                 warmup=self.m9_config.let_go_choice_warmup,
                 width=self.m9_config.let_go_choice_width,
                 seed=LET_GO_DIRECTION_SEED,
+                reading=self.m9_config.choice_reading,
+                drift_span=self.m9_config.choice_drift_span,
+                holds=False,
             ).to(self.device)
 
     # ------------------------------------------------------------------

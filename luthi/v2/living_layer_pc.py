@@ -1311,6 +1311,15 @@ class PredictiveCodingLayer(nn.Module):
             else:
                 gain_progress = 0.0
 
+            # The half-day's trace keeps what LIVED forwards write (2026-11-17).
+            # For that it needs the displacement from home as this forward
+            # found it. Only when a trace is kept and this is a lived moment.
+            _trace_before = (
+                (self.weight - self.set_point)
+                if self._day_trace is not None and not self._day_record_suspended
+                else None
+            )
+
             T = self.inference_steps_per_forward
             for inner_step in range(T):
                 # Recompute output for inner_step > 0 since the weight
@@ -1438,11 +1447,21 @@ class PredictiveCodingLayer(nn.Module):
                 else:
                     salience, pred_error = result
 
-            # The half-day's trace: once per lived forward, after the write.
-            # A forward that is not a lived moment (corpus replay in a life,
-            # run inside suspend_day_record) is not noted.
-            if self._day_trace is not None and not self._day_record_suspended:
-                self._day_trace.note(self.weight, self.set_point)
+            # The half-day's trace, after the write and before consolidation.
+            # What lived forwards wrote fades at EVERY forward that reaches
+            # here (plasticity on), by this forward's own pull toward home,
+            # as the displacement itself does. It gains only at a lived
+            # forward: what was new in the displacement. A forward that is
+            # not a lived moment (corpus replay in a life, run inside
+            # suspend_day_record: ``_day_record_suspended`` means "not a
+            # lived moment") adds nothing.
+            if self._day_trace is not None:
+                _keep = (1.0 - self.homeostatic_decay * self._wake_attenuation) ** T
+                self._day_trace.fade(_keep)
+                if _trace_before is not None:
+                    self._day_trace.note(
+                        self.weight - self.set_point - _keep * _trace_before
+                    )
 
             # Gain path only: feed the resolution traces once per forward with
             # the final inner step's prediction-error magnitude, so the next

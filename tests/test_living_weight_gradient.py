@@ -201,6 +201,12 @@ def test_the_score_is_the_harness_score():
 def test_the_gradient_predicts_what_a_small_change_does_to_the_score():
     lm = _loss().double()
     tail = _tail()
+    if ae._score(lm, tail)["nmse"] != ae._score(lm, tail)["nmse"]:
+        # Found 2026-11-17: under torch 2.4.1+cpu (Sanctuary's interpreter)
+        # the predictor gives nan in float64 for this split, before any
+        # gradient is asked for. Under torch 2.9.1 (the interpreter runs use)
+        # it does not. The check needs float64, so it cannot be made there.
+        pytest.skip(f"the harness's own score is nan in float64 under torch {torch.__version__}")
     _, grads = lwg.score_and_its_gradient(lm, tail)
     layers = lwg.living_layers(lm.online_encoder)
     gen = torch.Generator().manual_seed(5)

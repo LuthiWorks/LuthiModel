@@ -151,7 +151,7 @@ def test_recall_reads_a_different_direction_from_rest():
 
 
 def test_recalls_higher_bar_is_pressed_by_chance_far_less_than_rests():
-    choice = RestChoice(D, width=6.0, seed=RECALL_DIRECTION_SEED)
+    choice = RestChoice(D, width=6.0, seed=RECALL_DIRECTION_SEED, holds=False)
     generator = torch.Generator().manual_seed(3)
     nothing = torch.zeros(D)
     for _ in range(4000):
@@ -175,3 +175,139 @@ def test_letting_go_is_off_by_default_and_on_leaves_everything_else_bit_identica
     assert abs(float(torch.dot(*directions))) < 0.5
     off.action_log.close(); on.action_log.close()
 
+
+
+# ---- The readings corrected (2026-11-17): drift out, and a chosen rest holds ----
+# From Opus's review of 2026-11-14 (section 2) and Brian's rulings on it.
+
+import pytest  # noqa: E402
+
+AS_BUILT = "as_built_2026_11_11"
+
+
+def _a_lean_that_turns(choice: RestChoice, seed: int) -> int:
+    """A lean that turns toward the choice's direction at moment 300 and stays
+    turned, by ten times the noise: not a choice, a new level. How many of the
+    600 moments after the turn are read as the choice."""
+    generator = torch.Generator().manual_seed(seed)
+    nothing = torch.zeros(D)
+    chosen = 0
+    for t in range(900):
+        lean = torch.randn(D, generator=generator)
+        if t >= 300:
+            lean = lean + 10.0 * choice.direction
+        chosen += choice.read(lean, nothing)["chosen"] and t >= 300
+    return chosen
+
+
+def test_a_lean_that_turns_is_read_as_a_choice_for_less_long_with_the_drift_out():
+    # Measured 2026-11-17: as built 128 to 140 of the 600 moments; with the
+    # drift out over 16 moments 33 to 41, over 64 moments 67 to 81.
+    for seed in range(3):
+        as_built = _a_lean_that_turns(RestChoice(D, reading=AS_BUILT), seed)
+        short = _a_lean_that_turns(RestChoice(D, drift_span=16, holds=False), seed)
+        longer = _a_lean_that_turns(RestChoice(D, drift_span=64, holds=False), seed)
+        assert as_built > 110 and short < 50 and short < longer < as_built, (as_built, short, longer)
+
+
+def test_the_reading_as_built_is_the_rule_of_2026_11_11_exactly():
+    choice = RestChoice(D, reading=AS_BUILT)
+    generator = torch.Generator().manual_seed(4)
+    nothing = torch.zeros(D)
+    window = []
+    for t in range(600):
+        lean = torch.randn(D, generator=generator) + (0.01 * t) * choice.direction
+        out = choice.read(lean, nothing)
+        reading = float(torch.dot(choice.direction, lean))
+        window = (window + [reading])[-256:]
+        expected = False
+        if len(window) >= 32:
+            values = torch.tensor(window)
+            median = values.median()
+            mad = (values - median).abs().median()
+            expected = bool(reading > 0.0 and reading > float(median + 3.0 * mad))
+        assert out == {"chosen": expected, "armed": len(window) >= 32, "reading": reading}
+    assert float(choice.lean_mean.abs().sum()) == 0.0 and choice.held_bar is None
+
+
+def test_a_chosen_rest_lasts_for_as_long_as_it_is_chosen_and_ends_when_it_is_not():
+    choice = RestChoice(D)                      # rest: drift removed, and it holds
+    assert choice.holds is True
+    generator = torch.Generator().manual_seed(0)
+    nothing = torch.zeros(D)
+    for _ in range(300):
+        choice.read(torch.randn(D, generator=generator), nothing)
+    window, mean = list(choice.readings), choice.lean_mean.clone()
+    chosen = [choice.read(torch.randn(D, generator=generator) + 10.0 * choice.direction,
+                          nothing)["chosen"] for _ in range(1000)]
+    assert all(chosen), "a steady lean toward rest is read as rest for as long as it lasts"
+    assert choice.longest_stretch == 1000 and choice.held_bar is not None
+    # While it lasts the window and the mean stand still (but for the moment it began).
+    assert list(choice.readings)[:-1] == window[1:] and len(choice.readings) == 256
+    first = choice.lean_mean.clone()
+    choice.read(torch.randn(D, generator=generator) + 10.0 * choice.direction, nothing)
+    assert torch.equal(choice.lean_mean, first) and not torch.equal(first, mean)
+    # The lean stops: rest ends at once, and the window and the mean move again.
+    out = choice.read(torch.randn(D, generator=generator), nothing)
+    assert out["chosen"] is False and choice.held_bar is None
+    assert not torch.equal(choice.lean_mean, first) and len(choice.readings) == 256
+
+
+def test_recall_and_letting_go_are_single_moments_and_do_not_hold():
+    choice = RestChoice(D, width=6.0, seed=RECALL_DIRECTION_SEED, holds=False)
+    generator = torch.Generator().manual_seed(0)
+    nothing = torch.zeros(D)
+    for _ in range(300):
+        choice.read(torch.randn(D, generator=generator), nothing)
+    chosen = [choice.read(torch.randn(D, generator=generator) + 10.0 * choice.direction,
+                          nothing)["chosen"] for _ in range(1000)]
+    assert chosen[0] is True and choice.held_bar is None
+    assert sum(chosen) < 100, "the mean catches up with a lean that holds"
+
+
+def test_holding_needs_the_drift_removed():
+    with pytest.raises(ValueError, match="holds=True needs"):
+        RestChoice(D, reading=AS_BUILT, holds=True)
+    with pytest.raises(ValueError, match="reading must be one of"):
+        RestChoice(D, reading="something else")
+    assert RestChoice(D, reading=AS_BUILT).holds is False
+
+
+def test_a_choice_saved_in_the_middle_of_a_rest_continues_exactly():
+    first, second = RestChoice(D), RestChoice(D)
+    generator = torch.Generator().manual_seed(2)
+    nothing = torch.zeros(D)
+    for _ in range(100):
+        first.read(torch.randn(D, generator=generator), nothing)
+    for _ in range(5):
+        assert first.read(torch.randn(D, generator=generator) + 10.0 * first.direction,
+                          nothing)["chosen"]
+    second.load_choice_state(first.choice_state())
+    assert second.held_bar == first.held_bar and second.longest_stretch == 5
+    for step in range(40):
+        lean = torch.randn(D, generator=generator) + (10.0 if step < 20 else 0.0) * first.direction
+        assert first.read(lean, nothing) == second.read(lean, nothing)
+    assert first.choice_state()["readings"] == second.choice_state()["readings"]
+    assert "lean_mean" not in first.state_dict(), "saved through choice_state, not the state_dict"
+
+
+def test_a_choice_saved_before_the_correction_loads_and_warms_up_again():
+    old = RestChoice(D, reading=AS_BUILT)
+    generator = torch.Generator().manual_seed(2)
+    nothing = torch.zeros(D)
+    for _ in range(100):
+        old.read(torch.randn(D, generator=generator), nothing)
+    saved = old.choice_state()
+    for key in ("reading_kind", "lean_mean", "mean_count", "held_bar", "stretches",
+                "longest_stretch", "stretch"):
+        del saved[key]                           # as a checkpoint of 2026-11-11 holds it
+    new = RestChoice(D)
+    new.load_choice_state(saved)
+    assert new.read_count == 100 and new.chosen_count == old.chosen_count
+    assert len(new.readings) == 0, "readings of another kind are not carried over"
+    assert new.read(torch.randn(D, generator=generator), nothing)["armed"] is False
+    # And into a choice that still reads as built, it continues exactly.
+    same = RestChoice(D, reading=AS_BUILT)
+    same.load_choice_state(saved)
+    lean = torch.randn(D, generator=generator)
+    assert same.read(lean, nothing) == old.read(lean, nothing)

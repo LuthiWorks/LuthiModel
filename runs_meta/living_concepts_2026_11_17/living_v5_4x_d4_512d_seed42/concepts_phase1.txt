@@ -1,0 +1,1220 @@
+Concepts of living_v5_4x_d4 seed 42 (living_v5_4x_d4_512d_seed42), K = 256, document set 1.
+For each row, its most used concepts, and for each the passages that drive it
+most. The driving token is in [[double brackets]]. Fitted on half the
+documents; these passages are from the other half.
+
+========================================================================
+EMBEDDING
+========================================================================
+concept 224: 14.38% of tokens, driven in 24 of 24 documents
+    ever lived you do not begin to appreciate me."[[ ]]   "
+    or and the aid of Schamir. These were the[[ ]] enchanter
+    ings which, mercifully perhaps, were veiled[[ ]] from Manuel 
+    ter, after the fashion that lean-faced Rajah[[ ]] dealt with 
+    [[ ]] banks whose 
+    slice of bread (thus each[[ ]] turgesc
+    ravage the strait waste fastness of[[ ]] snow. She s
+    while the siccant sheets and coverlets that[[ ]] pillowed 
+    shattering makes an[[ ]] end of him:
+    e[[ ]] will live perpetu
+
+concept 3: 1.52% of tokens, driven in 24 of 24 documents
+    2nd [[  ]]    3rd
+    success. On his fine estate, with    [[  ]] his large famil
+    about him, he lives the life  [[  ]]   of a simple peas
+    to 1-1/2 hours.    [[  ]]        
+    [[  ]]Ightham
+    ing Cross, Cannon Street, or  [[  ]]London Bridge. S
+    [[  ]]   3rd
+      [[  ]]   appear. L
+    to 11-1/2 hours.    [[  ]]        
+    --1-1/2 hours.    [[  ]]        
+
+concept 240: 1.03% of tokens, driven in 24 of 24 documents
+    break the crust  and bullyrag [[']]em--hot, 
+    more images, you are  always saying, [[']]No, we will let
+    too remembers  what she half forgets. [[']]We that of old 
+    , as it were."    "H[[']]m!" Ni
+    aduct, or St.    Paul[[']]s. South-Eastern 
+    aduct, and St.    Paul[[']]s. South-Eastern 
+    gate    Hill, or St. Paul[[']]s. South-Eastern 
+    Yarmouth--"Royal," "Queen[[']]
+    s. Chief of these may be mentioned St. Ethelbert[[']]s and the  
+    ation Obtainable.=--"King Arthur[[']]s," "Cast
+
+concept 35: 0.93% of tokens, driven in 24 of 24 documents
+    little far-off grief."    [[[]]Illustration] 
+                        [[[]]phi]
+    in the  flour.    [[[]]Illustration: APPARAT
+    º.         [[[]]_On the title._
+      twelve years old.    [[[]]Illustr
+      wire to B.    [[[]]Illustration] 
+    working a button hole.    [[[]]Illustration: FIG
+    :--          [[[]]Greek: "Kod
+      [[[]]Illustration: FIG
+    ary Monthly_, 1888.    [[[]]Footnote 1: 
+
+concept 16: 0.78% of tokens, driven in 24 of 24 documents
+         Or, careless of thy act[[ion, ]]think,  
+    wheel itself is free to revolve in a forward direct[[ion, ]]but is  
+    had  the honor of drawing your attent[[ion, ]]do not exhaust the list
+    been  injured, after some ship fash[[ion, ]]by Mrs. Crompt
+     that my sturdy Flemish  compan[[ion, ]]who had accompanied me 
+    said Julius, in reply to my wife's quest[[ion, ]]"was a nigg
+    . An anonymous vers[[ion, ]]"by a member of the 
+     friendly relations with the gay world of fash[[ion, ]]with its dinner 
+     away, and we beheld in every direct[[ion, ]]vast and irregular 
+    treadle's mot[[ion, ]]to instantly 
+
+concept 51: 0.78% of tokens, driven in 24 of 24 documents
+    devoted the body to  corruption, supported [[my ]]spirits.  
+    , so engrossing was [[my ]]occupation, 
+    my hope, her name shall be the last word in [[my ]]mouth. Try
+    er's wound beguiles the pain of it--[[my ]]uncle's 
+    moment that I pass with that envelope before [[my ]]eyes I see 
+    scarlet fever. Elizabeth was saved, but [[my ]]mother sickened
+    ."    "Yes, yes, [[my ]]dearest, I know 
+    it a bit, for I must turn this over in [[my ]]mind,"  
+     these two possessions  content you, king of [[my ]]heart?" she 
+     that these men ought to be my  fellows and [[my ]]intimates. Instead
+
+concept 129: 0.78% of tokens, driven in 24 of 24 documents
+    right creature that ever lived you do not begin [[to ]]appreciate me."
+    s, Manuel was told, who made images, [[to ]]which they now and then
+    halala? That, and that only, was the point [[to ]]which Sir John 
+    great affair of the trial. Would he be able so [[to ]]represent these 
+    an ambitious but futile attempt  [[to ]]cover the whole chim
+    slumberous pare, under arching trees, [[to ]]her labors went
+    that go, with thunder for weapon, [[to ]]ravage the stra
+     envelope,' said he, 'are [[to ]]my mind the strong
+    amount of material contained in it, and found that I  would have [[to ]]buy several hundred 
+     from  which I meant [[to ]]order the new lum
+
+concept 38: 0.76% of tokens, driven in 24 of 24 documents
+     marked with a cross, which were commonly worn suspen[[ded ]]from the neck as
+      that she could endure such a seclu[[ded ]]life. One can 
+     then.' The gardener winked and nod[[ded ]]his  head
+    so, said they, my lord had  comman[[ded ]]that he and my lad
+    eye  of the needle has ascen[[ded ]]above the cloth; then
+       "Married and lived thirteen wed[[ded ]]years in Covington
+      wife and did as she was bid. She wor[[ded ]]her refusal as 
+    was coming up the lane; at least, a huge fa[[ded ]]cotton umbre
+    se."    The Arabian yiel[[ded ]]his hand without hesit
+    up and  rubbing his eyes deman[[ded ]]what present store of 
+
+concept 107: 0.75% of tokens, driven in 24 of 24 documents
+    crowded close together to peer within, spoil[[ing the ]]table  of its 
+    I," cried Susanah, shutt[[ing the ]]door in a hu
+    eyes. The more he considered it, the more bewitch[[ing the ]]scene  
+    grave, with the  stone slab hav[[ing the ]]well-known lines:
+    is the  arrangement for automatically lengthen[[ing the ]]throw of the fe
+    note, and you must direct the stork to br[[ing the ]]boy baby 
+    er chariot, lion-drawn, grind[[ing the ]]sands,  
+    at  all."    Dur[[ing the ]]following three year
+    upper portions of  the machine, exhibit[[ing the ]]conveying clamp
+        "But far from their choir[[ing the ]]high King sat, 
+
+concept 117: 0.74% of tokens, driven in 24 of 24 documents
+    !' he said to himself,  as he took [[his ]]place in the railway 
+    a  little distasteful to all except [[his ]]mother. Mr. Cal
+     mute. Robert Bolton stood up and repeated all [[his ]]arguments, appealing
+    those of a more or less intelligent animal.  But [[his ]]words are very often 
+    e (as I have not seen it  noticed by [[his ]]commentators), that the 
+    on the affair [[his ]]fingers made him 
+    who married Lyof, a diplomat; and finally [[his ]]passion settled
+    end of the Shcherbatsky family, belonging like [[his ]]own  to the 
+    which Stepan was  apt to smile in [[his ]]good-humoured 
+    -minted farthing beside  [[his ]]treasure chests, as 
+
+concept 254: 0.72% of tokens, driven in 24 of 24 documents
+    mis'able. Ef I wuz in yo[[' ]]place, I 'd stop 
+    I mought buy you fum  yo[[' ]]marster, ef 
+    long ez  she libs, you is sho[[' ]]ter hab troub
+    of the ground, upon the bones of four great birds[[' ]]feet.  
+    a black cat, en runs down ter yo[[' ]]cabin en brid
+    is done studied 'bout all dem things,[[' ]]sez de cun
+    k, en w'at kin run des ez fas[[' ]]ez a  
+     be anything fer a[[' ]]hour er 
+    es that  shrivel far apart?[[' ]]Yes, she to-
+    ma'm,' sezee; 'is yo[[' ]]name Sis' 
+
+concept 176: 0.72% of tokens, driven in 24 of 24 documents
+    ly gave him his tea at breakfast with a [[st]]ernly forbidd
+    ' come out 'n de woods an' [[st]]ahted up 
+    an' so nobody didn'  '[[st]]urb Ben in de 
+    at had happen' ter Dan, en so she [[st]]a'ted  
+    ought buy you fum  yo' mar[[st]]er, ef I could 
+    :  but between now and a while they will be [[st]]umbled on, and 
+    ' out dat my boy had  [[st]]a'ted de 
+    jay-bird went back ter his mar[[st]]er, en tol' 
+    de crick, an' Primus  [[st]]ahted off 
+    uz a mon[[st]]'us sma
+
+concept 152: 0.71% of tokens, driven in 24 of 24 documents
+       "Well, the walls were covered with [[g]]ay frescoes from 
+    , and least of all did the  thaumatur[[g]]ists themselves,-
+    he took the child very [[g]]ently and deposited 
+        Levin made his way to the [[g]]ate of the Zoological 
+    Cambridge.' Then the gardener retreated within a little [[g]]ate of  
+    .    As Manuel entered the [[g]]allery one of the mag
+    at yuther brickyahd youer [[g]]winter see now
+    done?" He rose and put on his dressing [[g]]own and rang for 
+    ond'rin' w'at he wuz [[g]]wineter do.
+    . But when he was in front of the  iron [[g]]ates he stopped and 
+
+concept 131: 0.70% of tokens, driven in 24 of 24 documents
+          It was presently nois[[ed ]]abroad that Que
+      from Manuel by the peculiarly perfum[[ed ]]obscurity. 
+    of scar[[ed ]]squawking and 
+    iring the high King sat, in a gold-fac[[ed ]]vest and 
+    sheets and coverlets that  pillow[[ed ]]kingly dreams, 
+    an, still young, and two little children. He look[[ed ]]at them, and as
+    ither was it flying? That night we cover[[ed ]]two  hundred 
+     an ugly and rickety, short-temper[[ed ]]tribe, said Man
+    ous  and affect[[ed ]]pseudo-magician
+    unquickened.  Freydis smil[[ed ]]at these caric
+
+concept 106: 0.66% of tokens, driven in 24 of 24 documents
+     light flooded the cabin, a room of [[about ]]twenty feet by ten
+    talk to me about my private affairs,--or [[about ]]hers. You 
+    3.    'Not a doubt [[about ]]it. I should do 
+    ed! Poor fellow! We can only hope [[about ]]Dick. I have been
+     'No other man's opinion shall be necessary to me [[about ]]anything. I will 
+    .'    'Do you know anything [[about ]]my position and prospect
+    do it if you weren't so stubborn [[about ]]using a  
+    serving-folk had ceased their scurrying [[about ]]and the house had gr
+    It is a long and straggling town of [[about ]]2000 inhabitant
+    have been talking with Uncle  Julius [[about ]]it, and he says he 
+
+concept 136: 0.65% of tokens, driven in 24 of 24 documents
+    .  =Nearest Station.[[=]]--Marazion
+    SETSHIRE      [[=]]How to get ther
+    convenient, though the drive is a little longer.)  [[=]]Distance from London
+    d.    [[=]]Accommodation Ob
+          3rd  =Fares.[[=]]--Single 
+    SETSHIRE      [[=]]How to get there
+    d.  21s. 2d.    [[=]]Accommodation Ob
+    tainable.[[=]]--At Am
+    ATHEDRAL      [[=]]How to get ther
+    ..   21s. 6d.    [[=]]Accommodation Ob
+
+concept 21: 0.65% of tokens, driven in 24 of 24 documents
+    heart to  heart, with our young lip[[s and ]]our souls too 
+    and gathered up his  wife's letter[[s and ]]his wife's photograph
+    dreaming of more francs  and sequin[[s and ]]Louis d'or
+    . He  had lived on the place many year[[s and ]]knew the neighborho
+    s  as her quivering red lip[[s and ]]shining hair! 
+    while the siccant sheet[[s and ]]coverlets that
+    productive agency of the press, that the fame of author[[s and ]]their  work
+    a last look at all the natural marvel[[s and ]]art treasures 
+    year when there are no strangers in the village, the ruin[[s and ]]the  village 
+     animal to think them over with, so that the thought[[s and ]]opinions of the
+
+concept 182: 0.63% of tokens, driven in 24 of 24 documents
+     possible. 'My dear Aunt Polly, [[it ]]won't do; 
+    ? You can tell me. Of course I know what [[it ]]is that he has 
+    tedious,  terrible day, and then [[it ]]may be that I shall be 
+    his wife, I suppose I should have to take [[it ]]as a fact.' 
+      should be known.    Thus [[it ]]had come to pass that 
+     thunder for weapon, to ravage the stra[[it ]]waste fastness 
+    and was still Maria Shand, and was [[it ]]not too probable
+    dearest, I know you believe that, and I think [[it ]]is  delight
+     with long suspending cords which keep [[it ]]nearly always in a vert
+    parted that [[it ]]would be better for us 
+
+concept 212: 0.61% of tokens, driven in 24 of 24 documents
+    inveigled your cousin's affection[[s, and ]]now you say that you can 
+     thereby gained in stitching linen good[[s, and ]]in sewing 
+    walking. His breast heaved with  sob[[s, and ]]I heard him mur
+    most profligate       character[[s, and ]]all are perfectly typ
+    only to nourish a family of  cowslip[[s, and ]]so on and on until 
+    es, their different lives, their  different joy[[s, and ]]what will be the effect of 
+     village outside. A storm was raging on the mountain[[s, and ]]I wandered out
+    flash discovered him to me hanging among the rock[[s, and ]]he soon  
+    anger of the Mrs. Cromptons, Mrs. Callander[[s, and ]]Miss Greens 
+    I  donned my sea garment[[s, and ]]placed all my not
+
+concept 108: 0.61% of tokens, driven in 24 of 24 documents
+    after certain enchanters came to Upper Morven[[, ]]to  seek 
+    at labor. By the light of a charcoal fire[[, ]]clay  imag
+      Blackbirds," says Freydis[[, ]]in a whisper
+     and bullyrag 'em--hot[[, ]]fierce and angr
+      banks whose coinage--oh[[, ]]neat!--
+    light of the cold fair ends  of the north[[, ]]like a fleshly blos
+    that go[[, ]]with thunder for 
+    "    "Why, Manuel[[, ]]I am surprised at you
+    of an  animal to think them over with[[, ]]so that the thoughts and opin
+    were  shiftless, spiteful[[, ]]untruthful, and in 
+
+========================================================================
+LAYER 0
+========================================================================
+concept 215: 1.27% of tokens, driven in 24 of 24 documents
+    iafer, I am not happy to-night." [[ ]]  "Y
+    day, he had an imperative desire to test his powers [[in]]  that lin
+    e a room, such as an office, lighted by [[ ]]a single lamp. The 
+    I am ruined past all help."   [[ ]]Tatyana's 
+    very difficult to answer. Caldigate had been forced [[ ]]to answer it to himself 
+    ed itself in her eyes and her smile. And [[he]]  did not refr
+    er big black niggers--he was [[ ]]mo'd'n 
+     as human  thinking cannot conceive [[of]]. An emperor is made 
+    them. At present I am concerned simply with this envelop[[e, ]]on which I 
+    ed, and sent down into the kitchen to let me know that [[he]]  should be gl
+
+concept 152: 1.13% of tokens, driven in 24 of 24 documents
+    wanted ter 'cuse some er de y[[u]]ther niggers 
+    ed to be an antiquated mechanism, viz.,  [[an ]]apparatus for making bou
+    and gold.      And when [[sh]]e is gently co
+    us,"       the first of Mar[[y ]]Shelley's bo
+    life, while going on a pedestrian tour through France[[,]]  thrust 
+    tell her  troubles. And she was not disappoint[[ed, ]]for in a lengthy and 
+    quered        [[One ]]morning about the midd
+    , nothing was said  about the morrow. The even[[ing ]]would have seemed to be very 
+    end to it. But married men can attend [[to ]]business quite as well as
+    to the yard. The man,  touching his hat[[, and ]]with a motion of his 
+
+concept 31: 1.08% of tokens, driven in 24 of 24 documents
+    word lady, but her courage  fail[[ed ]]her.  
+    d, so dat de  w'ite folk[[s ]]useter hab 
+    oram. 'And now my own, own wif[[e, ]]my  real 
+    est. I took quite as much  interest as [[you ]]in the matter when we were 
+    '    'He has had leis[[ure ]]in jail.'
+    oak tree, en ez long ez it stay[[s]]  dere 
+    blessed Jesu was merciful  sometimes [[made ]]me falter, the 
+    ;--if only anything could be done to rescu[[e ]]him!  
+      made fer dat tree ag'[[in]]. It wuz 
+    years later a drama in blank verse. Tenn[[y]]son's early
+
+concept 218: 1.02% of tokens, driven in 24 of 24 documents
+    helley's father is apparent throughout, but [[ ]]     prob
+    odly city in which he  dwells.'[[ ]]   But
+    'Without waiting for the other trial?'[[ ]]   '
+    e him where no human arm could save.[[ ]]     
+    Royal Hotel," "Central Hotel," [[ ]]  "Chubb
+    . On his fine estate, with      [[ ]]his large family and 
+    ence is made for admission to the abbey. [[ ]]  [Illustr
+    THORS AND BOOKS, NO. 2  [[ ]] To revive 
+    4d.  49s. 4d.   45s.[[ ]]   =
+    Varies between 7 and 9-1/2 hours.[[ ]]     
+
+concept 197: 0.98% of tokens, driven in 24 of 24 documents
+    awne.  a boiled duck[[e in ]]white broathe.
+    pure and  innocent being. I loo[[k ]]on my life with 
+      His grandfather, Mr. George Tenn[[y]]son, M.P., 
+    you should talk  about the end of anything. Did [[you ]]ever look 
+         This life of ours--had [[I ]]fourfold the wit
+    94), is an engraving of a fool, wearing cap[[ and ]]bells, seated 
+        'Days are days with me, [[my ]]boy. I can't 
+    shut up Captain Nemo and his crew [[in the ]]Nautilus
+     kind used for sacred purposes in the East: each of these [[had a ]]silver  handle
+      ain' no tellin' w'en [[it]]'s gwine 
+
+concept 18: 0.97% of tokens, driven in 24 of 24 documents
+    monies, and dreaming of more francs  [[and ]]sequins and Lou
+    ingle  37s. 10d.  24s. [[ ]]0d.  20
+    cleared away, it would seem, and had let call[[ the ]]cook, 
+      er ha'r on de plantation[[. B]]efo' dat
+     impertinent and ill-behaved before, for [[she ]]had since become a gr
+    s, but of the man who  had endured because [[he ]]wished to, and 
+    rodere delectat," &c. is taken[[.]]    
+    eve'y now an' den he'd g[[it ]]holt er sum
+    and to prevent collision between bobbin and[[ ]] needle.
+    , be worth  your acceptance, as a pendant [[to the ]]one _prescribed
+
+concept 146: 0.93% of tokens, driven in 24 of 24 documents
+    ma. Don't you think baby is very like [[his ]]father?' 
+    guiding powers of hand and eye; it is[[ this ]]limit,  
+    awake, she stepped over briskly and began [[to]]  arrange 
+      are extremely interesting. The abbey was foun[[ded in ]]1090, and was 
+    niggers hahder'n eber, ez [[ef]]  he want
+    his foot is swoll' up so he [[can]]'t  walk
+    a_'_d_, cutting the normal at [[_]]x_, we determin
+     glimpse of the American shore; but Cap[[tain ]]Nemo bent 
+        'Is he--nervous [[about ]]it?' 
+    :         1. By [[L]]loyd. Quer
+
+concept 86: 0.93% of tokens, driven in 24 of 24 documents
+    komas."]      [[  ]]   2. By 
+      *       *       * [[  ]]    * 
+    milder tones tell Grief,  [[  ]]Then e'en Death
+    advocating a form of socialism which he  [[  ]]   considers to 
+                        [[  ]]       
+       9s. 5-1/2d.  [[  ]]       
+                        [[  ]]      D
+     1778:--      [[  ]]  "Ingem
+    armature.             [[  ]]        
+    1/2 hours.        [[  ]]        
+
+concept 239: 0.93% of tokens, driven in 24 of 24 documents
+     done. But there is another aspect in which you will regard [[the ]]question.  
+    be led to  make a fool of himself and [[to ]]upset their mann
+    =--Single  17s. 6d. [[  ]]...    
+     copy:--      [[  ]]  "Trist
+    ia Babington.  But everything had been alter[[ed ]]since that. He had 
+    's face, so as  almost to prevent[[ the ]]possibility of continued pret
+       a prophetic book, shadowing forth[[ the ]]wonderful possibilities
+    jealousy of his good friend the Archbishop[[.]]    
+     be, full of anger or full of joy, can keep[[ the ]]fulness in ab
+    Yes, the journey," repeated Tatyana, lett[[ing ]]her eyes d
+
+concept 87: 0.88% of tokens, driven in 24 of 24 documents
+    an'  arrer. Youer y[[all]]er ez dat 
+    Polly gave him his tea at breakfast [[with a ]]sternly forb
+    low,    And all the country to the west[[ ]]     L
+     "So dis cunjuh man [[']]mence' by 
+    relieve them, was taken ill and died ther[[e in ]]1216.  
+    her gentle voice; "I have caught [[cold]]."   
+          *    The sun [[lo]]oked bright the 
+    to another young lady, and that she had never return[[ed ]]it, there  
+    to  see the house and grounds on Friday[[s, ]]between 11 and 1
+    'til one  day, w'en he went [[down ]]by de crick 
+
+concept 246: 0.86% of tokens, driven in 24 of 24 documents
+    had been heard  upon the gravel. 'No[[, ]]ma'am, no
+     our behalf, and get thee out of the camp[[ ]]with thy life and thy 
+    ."    So Manuel set[[ the ]]head upon the table, and 
+    ing the well-known lines:--    [[ ]] GOOD FR
+    miserable; man will not associate with me; but [[one ]]as  deform
+    year er  mo'; en w'en [[I ]]got religion I made 
+    digate was a wicked bigamist; but the [[S]]quire and the rest of th
+    do him  good."    [["]]Though I am persu
+    ,--As I see this matter is not yet explain[[ed, ]]I venture a 
+    or design, with such headlong speed? We heard [[a ]]roaring nois
+
+concept 208: 0.85% of tokens, driven in 24 of 24 documents
+      catalogue for 1808 it appears as a [[_]]standing_ fig
+     Registers of the Stationers' Company,[[_]] the following entry
+    have been made in wheel  feeders. The whe[[el ]]feed was originally 
+    is. She wuz lookin' kind[[er ]]down in de mou
+    career for which I was best  adapted. But[[, as ]]to the envelope, the 
+    like the toast the worse for being  [[to]]asted by an old 
+    ; under  "berefellarii[[,"]] the commentary is 
+    be  bright for his sake;--for his s[[ake ]]there should again be 
+    he had read it. It was  written from a summ[[er ]]resort. "You had 
+    Smith;--unless indeed  you tell [[me ]]that you are going to make 
+
+concept 247: 0.84% of tokens, driven in 24 of 24 documents
+    assi and her father to poison the prisoner[[.]]    
+    razed and the materials sold.    [[The ]]Church of Holy Trin
+    one hundred feet above the river  Swale.[[]]]    
+    ion of John Neville's work.  [[The ]]Baron's H
+    'f up an' take his med'cin[[e. ]]Mars  
+     'Who is it?' whisper[[ed the ]]mayor. The may
+    her husband no further question.    [[The ]]prayer that was address
+    ."    "I'll read to [[you ]]with pleasure," I 
+    you. Some folks 'lows a hoss trad[[er ]]ain' got no 
+    myself when I think of the small matter which, like the point [[on ]]a  railway
+
+concept 40: 0.82% of tokens, driven in 24 of 24 documents
+          were stopped by official prudence [[as ]]to the matter which was
+    door banged on us,  and [[for ]]half an hour 
+    deficient in the appearances of solemnity as to have [[im]]bued the 
+    with a woman's sleeve wreathed [[about ]]his  hel
+     slender pittance, or on such aid [[as ]]Joseph could give 
+    led together in a  jury-box [[should ]]say otherwise. She had 
+    hour,  and were not apparently very sweet [[to ]]Miss Young. Of
+    "    "Ah, yes, [[my ]]squinting bo
+    ess, with  soft red willing lip[[s ]]so near: and 
+    exhibiting all the known  translations, arranged in [[double ]]columns, might be made a 
+
+concept 77: 0.78% of tokens, driven in 24 of 24 documents
+    om, barber, co[[ok]], sempster
+    in' 'long de road[[, ]]an' stah
+    by her in Caldigate[['s ]]company, as they lo
+    ants occupied the rooms lo[[ok]]ing out to the road
+    awn. But you ain' lo[[ok]]in'  
+    se, I decided to tear down the [[old ]]schoolhouse, and use 
+    spoken so plainly as [[to]]  leave no 
+    rumours would be likely to caus[[e]]  displeas
+    see little Mose once mo[[']]. En w'en 
+      cannot keep clean [[for ]]longer than three minut
+
+concept 229: 0.76% of tokens, driven in 24 of 24 documents
+    ated astride  on the back of a lob[[st]]er, with a broken re
+    ,--if he could live through it so as to see the end [[of]]  it,-
+     the world of Cambridge would probably support the Bol[[ton]]s by their
+    done, sooner or later," and straightening [[himself]] and lighting a
+    . Then the  whole submarine trem[[b]]led; there was a 
+    Crespo, in the North Pacific  Ocean. We [[were ]]told to make a heart
+    Il Bronzo vespertin con fle[[b]]il rombo."
+    ask the attorney's advice. 'How much [[of]]  it is tru
+    wit    That as his share to any [[man ]]doth fall,
+      He then went down to the House, and amid[[st]] the turmoil
+
+concept 184: 0.73% of tokens, driven in 24 of 24 documents
+    leave little "life"  in the thread[[. But ]]in spite of this 
+    w'at's gwine ter happen in d[[is ]]worl'. Ten
+    le up there got an idea that she was one of the luck[[y]]  ones,-
+    ie. It wuz  so fur down [[ter ]]Robeson d
+    interesting she became. Dick, who was  [[himself]] the very imp of 
+    who I am! I do not need to see your colour[[s ]]to  know 
+    !' said Maria, who had not imagined this[[. But ]]still a man 
+    spell. The most  guiltless-lo[[ok]]ing has somewhere 
+     Then there came a request from Babington[[ that ]]Dick Shand 
+    sho' nuff long come Dasdy [[one]]  mornin
+
+concept 210: 0.73% of tokens, driven in 24 of 24 documents
+    ies, but had succeeded in amassing a considerable fortune. [[']]Oh, I  
+    her  solitude.'    [[']]You'll be 
+    to come here, if you will.'    [[']]And him?'
+    do a thing de; wusser he got [[']]stid  
+    do no good; he wuk at it ha[[']]f de night w
+    opl, Mars Dugal' up [[']]n tuk Henry 
+    ia Caldigate.'    [[']]Oh, John!
+    he hadn'  got ter de No[[']]th befo,' 
+    in lack dat, en he made a great  [[']]miration w'en 
+    shoulders from the low berth.    [[']]A book of 
+
+concept 85: 0.73% of tokens, driven in 24 of 24 documents
+    Nearest Station.=--Harlech[[.]]  =
+                        [[  ]]      
+    ness fled along the shore.    [[_]]Quarterly_, 
+    nobler feeling. All his art    H[[e ]]lavished on the 
+    tensity of magnetization.           [[  ]]      
+    es To Cambridgeshire     [[ ]]  The 
+    , but whereabouts at Woodstock?"  [[ ]] "It was 
+     the postmaster, who from the beginning had never been [[a ]]believer 
+    the property that we owe the existence of this unique relic[[.]]   
+    his afflicted son's. My Uncl[[e ]]Toby, who had 
+
+concept 216: 0.72% of tokens, driven in 24 of 24 documents
+    18s. 8d.          [[ ]] Return  
+    I was  drinking a good deal just[[ th]]en.' His present 
+     25s. 1d.        [[  ]]  Return 
+    time. She had gathered  another armful[[ and ]]was advancing toward the 
+    el  is placed. The reply to such a quer[[y ]]is, of course, that to 
+       'Why a Cambridgeshire jur[[y]]?' asked old 
+    read is drawn from the shuttle,  [[_]]g_. The sh
+      "'It's a' ole nigg[[er ]]'oman down 
+    gentleman's health in a glass of  sack[[ th]]yself, and take a 
+    igned respect which I  am sure you [[all ]]feel. That she was happ
+
+========================================================================
+LAYER 1
+========================================================================
+concept 153: 1.33% of tokens, driven in 24 of 24 documents
+            [Omega] [[ ]]Intensity of a 
+    . I will ask you to leave me. I want to[[ ]] collect myself 
+      descendant of the Vernon family. [[ ]]  [Illustr
+      ...    20s.   [[ ]]=Accommodation 
+    he received at the siege of  Namur[[, ]]rendering him un
+    named from the visit of Charles II. on his way to [[ ]]London in 1660
+    't on speaking terms when they were said to be [[ ]]married.' 
+    , Hugh of Avalon in 1192 [[ ]]built the Choir
+    I am informed, as high as  2,50[[0 ]]to the minute. L
+    If you would be gentle I would explain it.' [[ ]]  'I will 
+
+concept 215: 1.20% of tokens, driven in 24 of 24 documents
+    omenoio."]     [[ ]]  There is also 
+     dis cunjuh man had p'[[is]]en' de v
+    you're to go out to Botany Bay,' [[said ]]Jemima. 
+    old-fashioned house, built, it is said[[, ]]about  1775
+    84,  the birth of Edward II., [[the ]]first Prince of Wal
+    ives.  Through the slumberous par[[e, ]]under arching tre
+    was as obdurate as ever. Something of [[his ]]ground was cut from 
+    ded, 'No,' he said to his  wif[[e, ]]'I don't care 
+    renew life where death had apparently devoted the body [[to]]  corruption, 
+    slight change in the humidity of  [[the ]]atmosphere is sufficient to th
+
+concept 149: 1.13% of tokens, driven in 24 of 24 documents
+            [[  ]]   1st 
+    poem that he wrought[[,]]    That 
+     clump [[of th]]ick-grown ced
+            [[  ]]        
+    eful than before. [[']]You must remember, 
+    en his dadd[[y ]]would  
+    9s. 0d. [[ ]]6s. 6d. 
+    ate and Mrs. [[ ]]Smith were very 
+    he could repel [[Mrs. ]]Callander and the Cap
+    bricating brush.[[ ]] Some makers 
+
+concept 184: 1.06% of tokens, driven in 24 of 24 documents
+     of your union. This expectation will now be [[ ]]the consolation of your 
+    was convinced that Becky was the most virtuous as[[ ]] she was one of the most 
+    BOOK OF SETTLEMENT  [[ ]]   TO
+    would they address her letters? Never[[, ]]never  would 
+    emember their motives, their different lives, their[[ ]] different joys, and 
+    e des de same. So he gin it up[[, ]]en tried ter 
+      Of fading leaves and dreary skies[[,]]    A 
+     soft and free,    Call[[ing ]]my love to me
+    's mother; at all events the reunion of the family [[in]]  London was 
+       =How to get there.=[[--]]Train from Char
+
+concept 145: 1.05% of tokens, driven in 24 of 24 documents
+    ousand Leagues Under the Sea    [[ ]]      
+    ed she'd  be'n cunju[[']]d, en wu
+    ----'    'Well?[[']]    
+    bin' nuffin' fit ter eat, [[']]mence ter 
+    a marster, w'en he had one, but it [[']]peared lak 
+    ster begin ter git skeered les[[']]n  he 
+    Punchbowl." On the left-hand side[[, ]]in the  
+    wanted ter 'cuse some er de y[[u]]ther niggers 
+    e fer eve'y dollar he los' [[']]long er dat 
+        1st       2nd     [[ ]]3rd  
+
+concept 6: 1.04% of tokens, driven in 24 of 24 documents
+    wich use the same device for paring the seam[[s ]]in  bo
+      =Fares.=--Single [[ ]]41s. 0d. 
+    them. At present I am concerned simply with this envelop[[e, ]]on which I 
+    day, he had an imperative desire to test his powers [[in]]  that lin
+    fluities. The poor  wretch whom [[you ]]see rolling himself
+     long-dead delights. Such thirsting breed[[s ]]no good for 
+    iafer, I am not happy to-night." [[ ]]  "Y
+        'How is he fed?[[']]    
+    position. Overlooking the Wear from a considerable [[height ]]appear the two 
+    down as the murderer of her stepson Edward--afterward[[s ]]named  
+
+concept 55: 1.04% of tokens, driven in 24 of 24 documents
+      [[ ]]He stood for a moment 
+    ;--[[but ]]still it was possible. Th
+    did Nor[[man ]]chapter-house.
+    stitch[[ed ]]in this way, will 
+    e and ferv[[ent ]]poetry was a protest 
+    its [[ ]]considerable breadth, and 
+    as sing[[ing ]]page in my lad
+    'im[[, ]]w'iles at de 
+    severe.[[ ]]   "I 
+    , with all [[her ]]care, and with all 
+
+concept 131: 1.03% of tokens, driven in 24 of 24 documents
+    myself when I think of the small matter which, like the point [[on ]]a  railway
+    where the forest hoar       [[ S]]eems wh
+    one hundred feet above the river  Swale.[[]]]    
+    assi and her father to poison the prisoner[[.]]    
+    86      In holland [[br]]own she stands to 
+    fer ter fix a mixtry ter [[ ]]kyo it up
+    of modesty, or of anger--it was a [[bl]]ush of joy; he 
+    you. Some folks 'lows a hoss trad[[er ]]ain' got no 
+    sure to find you here the moment I want you[[.]]    
+    wide beaks buzz plain  Sax[[on ]]as ever spoke 
+
+concept 71: 1.02% of tokens, driven in 24 of 24 documents
+    don't think even your position  entitles [[you ]]to talk to me 
+    old oaken settles as well as less ancient  [[on]]es. The timber fram
+    high above  the ordinary plane of life, in [[her ]]estimation, that no 
+    John?'    'I have meant [[you ]]to know always,
+     w'at 's mo', I 'spec' [[you ]]dunno w'at 
+    the world,--that all the world should be imposed [[on]],--so that he 
+    'You have no right to dictate to your father,' [[said ]]the wife angrily
+    ed;  and when commerce, or rather trade [[by ]]barter, had render
+    heat, and thus maintains the temperature of the skin--[[that ]]part of us  
+    as do other girls. When he came and told [[me ]]that he had seen me 
+
+concept 115: 1.00% of tokens, driven in 24 of 24 documents
+    first Earl of Rutland, married Henry, [[Ear]]l of Westmor
+    could be no necessity for a  journey to [[S]]ydney. 
+     of artistic creation, must, I imagine, [[very ]]often fail to follow
+    farmer. But  Dick had discussed the matter [[with ]]Mr. Bromle
+    d  never come the day on which th[[ey]],--they,-
+    de minute dis man sot  [[ey]]es on Mahaly, 
+    en were  sitting over their win[[e, ]]in a well-furnished 
+        *       *       [[* ]]      *
+    that the impression has been procured by fraud in the [[S]]ydney  
+    I  would have to buy several hundred feet [[of ]]lumber additional, 
+
+concept 120: 0.98% of tokens, driven in 24 of 24 documents
+    awn. But you ain' lookin[[']]  ez well 
+    er & Wilson's system. We have in th[[e]]  first plac
+    t out of Northampton       [[  ]]        
+    doing all the work itself, and ceasing to act [[as ]]soon as the bobb
+    cruple of declaring her admiration [[for]]  the high-
+         A primary batter[[y ]]would be represented as in 
+    machines for many  years, but no [[se]]wing apparatus could be 
+           _[[The ]]Norman Crusad
+    and hook shaft  respectively[[.]]    
+    pardoned him because he was not guil[[ty]].'   
+
+concept 159: 0.94% of tokens, driven in 24 of 24 documents
+    [[I ]]cannot submit 
+    [[  ]]        
+    [[I ]]desert  him 
+    [[e, ]]refuse  
+    [[ a ]]reconciliation.
+    [[er ]]ter gin '
+    [[a ]]couple er hund
+    [[two ]]occasions the st
+    [[er ]]w'at 'low
+    [[my ]]wife. As this 
+
+concept 82: 0.93% of tokens, driven in 24 of 24 documents
+    must come with me, Mr. Shand,' he said[[, ]]'and we must take 
+    should it consort with his pleasure to concur [[with ]]us in  
+    broiled with impatience to put his design [[in ]]execution; and so, without
+    er Sewing Machines_.--The fast[[est ]]practicable speed of 
+    simplest and best form of  remedy. The [[heat ]]we feel, and which 
+      w'ite folks.    [["]]But dey ain
+    y. Colonel  Dobbin quitt[[ed the ]]service immediately after his 
+    eered.    "'Hoddy, [[D]]asdy honey
+    supper!"    The fac[[es ]]of these ten became angr
+    me take matters in hand I can convince you to th[[e]]  contrary
+
+concept 119: 0.90% of tokens, driven in 24 of 24 documents
+    I can understand  that.' There might be a dut[[y ]]very necessary for her 
+    too."--"The best engineers call them gaz[[on]]s, Trim," 
+      THE GRAY WOLFS [[HA]]'NT  
+    ."    My Uncle Tob[[y ]]blushed as red 
+    ly.  =Nearest Station[[.]]=--Newark
+    two used to have long friendly talks together [[ ]]when Manuel's 
+    ,--much that was wrong. 'I do not think[[ th]]ey  will 
+    ed at de tree, en tried ter climb [[up ]]on it; en 
+    machines have conducted experiments with the same object in view[[, and ]]the  result 
+    ! Mrs. Pride has come down, has she[[?]]" old Osbor
+
+concept 226: 0.88% of tokens, driven in 24 of 24 documents
+    ion was to show that, looking at probabilities, and[[ ]] judging from all
+    spell. The most  guiltless-lo[[ok]]ing has somewhere 
+    !"    "But I cannot [[put ]]aside the thought
+    from both that of the  _Times[[_]], and the correction of your 
+    motion feeder in  Wheeler & Wilson[['s ]]machine is an arrangement enabl
+    had kissed the young lady on that even[[ing ]]four years ago.
+     If an _actual_ bill of f[[are ]]in a gentleman's house
+    monotony of chairs and tables.'  [[ ]] While Shand 
+    place in every choice  collection of English bo[[ok]]s.   
+    about using a  wastebasket instead [[of that ]]desk," she 
+
+concept 89: 0.87% of tokens, driven in 24 of 24 documents
+    mega]  Intensity of a current[[. ]]        
+    ance, and  raise the kite.--[[_]]La Nature_.
+     the nose off his own face by  know[[ing ]]more than he need know
+    hidden from him till he was far away from her[[.]]    
+    the  family likeness obtaining throughout East [[Ang]]lia. The Nor
+    reathe gentle fragrance rare and [[sweet]],   
+     parlour with the Corporal, "but I can [[ask ]]his son again."
+    did not  hear; one hand was stretch[[ed ]]out, seemingly to 
+    _Of Button Hole Machines_.-[[-]]The mechanism of but
+    yo' dribe ter-day, but be[[in]]' ez it's 
+
+concept 240: 0.87% of tokens, driven in 24 of 24 documents
+    ;--if only anything could be done to rescu[[e ]]him!  
+    e in time. That was her creed, and as it was [[ ]]supported by Dick, 
+    just how much more she was going to  stand from [[S]]ister Math, and about the 
+    years later a drama in blank verse. Tenn[[y]]son's early
+    , you may go to him.'    [[']]No other man's opin
+      fitted up with the most primitive material[[s, and ]]however badly ma
+    ation, rushed upon her," says one  [[  ]]   of her bio
+    word lady, but her courage  fail[[ed ]]her.  
+      doing anything he fancied by any gl[[imm]]er of control,--
+     the godfather, whether it should not be called [[after ]]him."  
+
+concept 15: 0.84% of tokens, driven in 24 of 24 documents
+                R_{a[[}]]  Resist
+    Wheeler &  Wilson's manufacturing machin[[e and ]]upon Singer's highly 
+    ing to him. 'You do  not suppose that [[I ]]would go to him because 
+    eastern coast of South America, and by May 17 were [[some ]]five hundred  
+     alone can gratify. You must create a female [[for ]]me with whom I can 
+    taught me, while  she sat pal[[e and ]]fair, her hand
+    ing his rheumatism, had advanced in two str[[ides]],  and 
+    t of a galvanometer.          [[_]]s_  
+    once,--the whole story. He was to atone [[for ]]having left  
+    y Hall.    The reason, [[or ]]rather the rise, 
+
+concept 166: 0.83% of tokens, driven in 24 of 24 documents
+    he helped to forge posterity.  [[ ]] Now she lo
+    Litchfield, Connecticut,      [[ ]]on June 14, 18
+    It could not be that all this journeying  [[ ]] Should e'
+    first comedy in 1850. This was      [[ ]]followed by several comic 
+      'I do love your father dearly, [[and ]]I endeavour, by 
+    ffor 2 minct pyes       [[  ]]        
+        At the same time that Epsom[[ ]]began to become known as a 
+     =Distance from London.=--118[[ ]]miles.  
+     on awhile 'bout de crap[[s ]]en de weather, 
+    bed long ernuff ter do any wush[[in]]'.   
+
+concept 207: 0.78% of tokens, driven in 24 of 24 documents
+    e. Letters in the post-office are hurri[[ed ]]quickly through the
+      adhering to her general theory that it was better [[to ]]appear omniscient
+    I, mamma,' said Jemima, break[[ing ]]her silence 
+    ows. Her hand touched his sore leg. H[[e]]  winc
+    cat, en runs down ter yo' cab[[in ]]en bridles you, 
+    back of a beautiful white bull.  Next[[, ]]riding on a d
+    she would entrench  herself,--[[how ]]improbable it was 
+    . The inhabitants of the ship were inimical  [[to ]]Mrs. Smith. She was a 
+      elsewhere, exercised to good effect his [[in]]valuable gift for 
+    to your father,' said the wife angrily.[[ ]]   '
+
+========================================================================
+LAYER 2
+========================================================================
+concept 146: 2.06% of tokens, driven in 24 of 24 documents
+         My vows in song to th[[e]]e;    
+            1st      2nd [[  ]]   3rd 
+    w'en he dahted in de woods ag[[']]in.  
+      'Hardly.'    [[']]Then I don't
+    very  intimate.    [[']]I suppose it
+    destroy her happiness.'    [[']]Her happiness 
+    ed at any time as they may please. Let the[[ ]] laws be what they 
+    engers of Night.    And the stream[[, ]]dark-hued and 
+    that she didn't  want Caldigate [[to ]]know about her mon
+    Yet, singing, they sing as no whit[[e]]  bird 
+
+concept 137: 1.42% of tokens, driven in 24 of 24 documents
+    oured rag."    Philip answer[[ed ]]calmly he would have 
+    intentionall or accidentall view of the following    [[  ]] pages in this 
+    spread to the southern counties and to    [[  ]] London, where a 
+    ate under the  force of any argument. But [[he ]]thought it possible that he 
+    hs 'til he fin'lly 'low[[ed ]]dey wuz
+     commercial town. Many parliaments have been held in its chapter-[[house]],  and 
+       1st      2nd     [[ ]]3rd  
+      =Fares.=--Single [[ ]]37s. 10d. 
+    my cousin. All that was settled, I  [[though]]t, when I went 
+    Co._    ST. DAVID[[S ]]CATHEDR
+
+concept 79: 1.32% of tokens, driven in 24 of 24 documents
+    -Single   5s. 11d.  3[[s. ]]9d.  2
+       The western breeze hath messages [[for ]]me;  
+    's return was soon common in Cambridge. The tidings, [[of]]  course, were 
+    fully, fearfully. And then  Jan[[e ]]wrote; wrote that the 
+    the stream whose waters, bubbling swift[[ly ]]over the pebbl
+    be perceived. It goes without saying that such an arrangement [[of]]  automatic 
+      across from Mr. Seely's office. [[']]Where is Mrs. 
+    retarded.    The pictur[[e ]]on the screen giv
+    one revolution sufficed to cast it over  [[the ]]spool, a second 
+    better for us to  be in our grav[[es]]. But even then I will 
+
+concept 151: 1.06% of tokens, driven in 24 of 24 documents
+     that he  had kissed the young lad[[y ]]on that evening 
+    charges and  employments of dignity and power[[; ]]but that is not my 
+     parochial church of Alhalow[[s, ]]a three-aisled 
+    en I hits at her  en miss[[es ]]her? Er s
+    , he could come and take me  away.'[[ ]]   '
+    love of  liberty and enlargement is a sister[[-]]passion to it. These 
+      terribly, had no right to exact so terr[[ible ]]a vengeanc
+    tuk Tenie nigh 'bout [[all ]]night fer ter 
+    fellow just when he has got  married and [[come ]]into a nice property
+    ampere.                 [[  ]]        
+
+concept 209: 1.00% of tokens, driven in 24 of 24 documents
+     crooked in the spine, and regular operators were [[to ]]become regular  
+    huckleberry bush.   [[ ]]"Nex' 
+    "Mossgrove" (Temperance), [["]]Grasmere Hot
+    in the railway carriage.    [["]]Grigory M
+    one of Raymond Bérenger's friends?[["]]    
+    en if you think that there are secrets between me and[[ ]] Hester.'
+    er vesper chimes have died away, [[ ]]  Where shall 
+    n' do no good; he wuk at [[it ]]ha'f de 
+    it the words "God is Love." On the bas[[e]]  are the words 
+    �, et inventæ crucis, cum [[ ]]hujusmodi 
+
+concept 188: 0.98% of tokens, driven in 24 of 24 documents
+     If an _actual_ bill of f[[are ]]in a gentleman's house
+    her  solitude.'    [[']]You'll be 
+    one and nothing. As you decide, so it shall be[[. I]], too, am 
+    But cousin Julia and aunt Polly were [[enem]]ies against whom it 
+    opl, Mars Dugal' up [[']]n tuk Henry 
+    tell his new discovery.    '[[You ]]have got it all 
+    who I am! I do not need to see your colour[[s ]]to  know 
+    is literally from Charron (_De la [[S]]agesse_, I. 
+    his brother had parted, not  with the kind[[est ]]feelings, up in London
+    spell. The most  guiltless-lo[[ok]]ing has somewhere 
+
+concept 50: 0.93% of tokens, driven in 24 of 24 documents
+    It could not be that all this journeying  [[ ]] Should e'
+    first comedy in 1850. This was      [[ ]]followed by several comic 
+    ffor 2 minct pyes       [[  ]]        
+    he helped to forge posterity.  [[ ]] Now she lo
+      Mingle in tender lovingness[[,]]    
+      'I do love your father dearly, [[and ]]I endeavour, by 
+    Litchfield, Connecticut,      [[ ]]on June 14, 18
+      That future years may find her where  [[  ]]In days of June 
+      was to join the _Raisonnable[[_]], of 64 guns, 
+    preposterous fabrication."    [["]]I said just now
+
+concept 78: 0.92% of tokens, driven in 24 of 24 documents
+    aly, 'dat's my name, en I b[[']]longs ter Mar
+        In Autumn's pathway [[']]mid the gl
+    ch 'im roun' all right, leas[[']]ways  
+     "So dis cunjuh man [[']]mence' by 
+    night!'    'So indeed, [[do ]]I,--and the 
+    ,  havin' tuk in consid[[']]able noo gr
+    low,    And all the country to the west[[ ]]     L
+                 1st   [[  ]] 2nd     
+    of  such a friend. More than three month[[s had ]]now passed since the letter
+    Polly gave him his tea at breakfast [[with a ]]sternly forb
+
+concept 199: 0.92% of tokens, driven in 24 of 24 documents
+        'I am much obliged to you; but [[I ]]do not know any word 
+    take him  roun' ag'in, [[']]cep'n' 
+    now----?'    '[[I ]]suppose I shall 
+    Eliza's  child, too! [[I ]]know I shall have 
+     no chance ter say no mo' ter [[']]im.  
+    'How can I unless he tells me?[[']]    
+    nex' spring, atter  de sap [[']]mence' ter 
+    ; den I got ter go ter  Mis[[s ]]Jinnie'
+      'Yes.'    [[']]And was that all
+    Toby himself.    "If [[I ]]durst presume
+
+concept 205: 0.84% of tokens, driven in 24 of 24 documents
+    out of which scrambled and hastily scamper[[ed ]]away a small 
+    day in de winter Mars Dugal[[' ]]went ter town, 
+    hooks of Wheeler & Wilson are provided [[with a ]]differential  
+     cunjuh man mought do one thing [[er ]]'nudder 
+    s are low and spent;      [[The ]]dancers bid far
+    Royal Crown Hotel," etc.   [[ ]]Rochester, a most 
+     _IV.--Colonel Dobbin [[Leav]]es the Army_ 
+    country proprietor, occupied with  farming, or [[am]]using himself with hunt
+    speak ter 'em, but changed his min' an[[' ]]slip' back ag
+      from Manuel by the peculiarly perfum[[ed ]]obscurity. 
+
+concept 67: 0.84% of tokens, driven in 24 of 24 documents
+     a diagram, in which it will be observed that the feeding [[ ]]arrangements are placed above the 
+     he, etc., etc. So Tristram was [[I ]]called, and Tristr
+      offered you an hundred times, and you have [[e]]jected him, you 
+     thus," thought Aleksei, "can [[I ]]conform to the require
+     After Sir John Joram's speech[[, and ]]when the work of the second 
+                        [[  ]]        
+    all expended               [[  ]]        
+    stain of perjury would  [[be ]]there. But it will be 
+    ter me den?'    "'[[I ]]is done studied '
+    ee;    Gracious and slender[[,]]      
+
+concept 85: 0.82% of tokens, driven in 24 of 24 documents
+    in' 'long de road[[, ]]an' stah
+    s as I have encountered I hav[[e]]  slain
+    rumours would be likely to caus[[e]]  displeas
+       I can find no [[other ]]person, at the period 
+    And what are we to do now[[?]]' asked Mrs. Robert 
+    remains.    [[_]]Literary Monthly
+    spoken so plainly as [[to]]  leave no 
+    , all in a tremble, [[to ]]kiss her 
+    dis yer  man [[']]lowed Sis
+      Michigan," whose [[work]]s are included by Dr
+
+concept 201: 0.82% of tokens, driven in 24 of 24 documents
+    it, with the result that between 1761 and  [[  ]]   1767 
+    inquisitive  Oldys devot[[ed ]]eighteen pages to 
+    at them, and as  he stretched his arm[[s ]]toward them the fier
+    past is  not sacred to you, and the present[[--]]-well, the present 
+    Swan Hotel," "Crown  [[ ]] Hotel," 
+    minds with nobler feeling. All his art  [[ ]] He lavished 
+    s that is always of interest to know  about[[.]]    
+      5s. 6d.  3s. 9d. [[ ]]3s. 0d. 
+    ala at the time, and who remember the  [[  ]]  marriage well. D
+       And the tall aloe soar[[ing ]]into the flood  
+
+concept 58: 0.82% of tokens, driven in 24 of 24 documents
+        'You have been having a gr[[and ]]time of it with Mrs. 
+    plain  understanding for everybody concerned. And [[with ]]Niafer that 
+    .  =Distance from London.=[[--]]118 miles.
+    was  that religious bias, which had so much to do [[with ]]her daily life, very
+    out his first comedy in 1850. This was  [[  ]]   followed by several 
+    "I did not know ..."    [["]]There is nothing to 
+    had  runned away. He got de dog[[s ]]out, but de las
+    he got dere Ben stepped out an' retch[[ed ]]fer im.
+    miles.  =Average Time.=[[--]]Varies between 6-
+    ed out the valise from beneath the berth, whil[[e]]  Shand 
+
+concept 165: 0.81% of tokens, driven in 24 of 24 documents
+    cleared away, it would seem, and had let call[[ the ]]cook, 
+    monies, and dreaming of more francs  [[and ]]sequins and Lou
+       [Illustration: _Photochrom[[ ]]Co., Ltd.
+    his own hands. It is hardly  too much [[to ]]say that he was pressed to 
+    left him, because she did not know what more  [[to ]]say. She went away 
+     thin paper.    Before [[rais]]ing the kite, the 
+    told her at once. Then Mr. Seely returned [[to]]  Cambridge, and 
+    ter-night, en I'll fix you [[up]].'   
+    ingle  37s. 10d.  24s. [[ ]]0d.  20
+    at follers folks w'at 'sturb[[s ]]dat trac' 
+
+concept 247: 0.81% of tokens, driven in 24 of 24 documents
+    ous intensity of a lamp, in candles.   [[  ]]      _
+    er--captain,  officers, master[[s, ]]sailors, and cab
+    ,--if he could live through it so as to see the end [[of]]  it,-
+     'Does he think you ought to give back[[ the ]]money?' 
+    most  guiltless-looking [[has ]]somewhere in the lower 
+    ; but that is allways p'd    [[  ]] for, though 
+    . Then the  whole submarine trem[[b]]led; there was a 
+     while could have continued so many doings. But[[ the ]]tale-tellers 
+    ated astride  on the back of a lob[[st]]er, with a broken re
+    room?"_)    Well[[, he ]]found all going well 
+
+concept 190: 0.74% of tokens, driven in 24 of 24 documents
+    own pocket the  fund had been suppli[[ed ]]upon which the poor widow
+    e  Nautilus. When I aw[[ok]]e next morning the 
+    woods.    "W'en S[[ad]]'day come an
+    ask the attorney's advice. 'How much [[of]]  it is tru
+    show that, looking at probabilities, and  [[judg]]ing from all that was known
+    husband and the French  governess, declared she [[would ]]no longer live with him
+    wieldy to be shown  here, I am enable[[d to ]]exhibit a few photograph
+    done, sooner or later," and straightening [[himself]] and lighting a
+    wuz befo'  he got [[drunk]]. It wuz 
+             Chapter [[XVI]]    
+
+concept 75: 0.69% of tokens, driven in 24 of 24 documents
+    like the toast the worse for being  [[to]]asted by an old 
+    picturesque town. "The  Pantil[[es]]," with its row of 
+     son, en so he 'termine' f[[er ]]ter let on lack 
+     though she were starving; not now. A man [[who ]]gives  
+    alone with  her baby, and with no information [[but ]]what had been conveyed to 
+    earliest known instance of the use of a beaver hat [[in]]  England? 
+    bout Aun' Peggy, Sis[[' ]]Becky went 
+    ness.'    'Oh, y[[es]]. It is all understood some
+    I collected the  instruments of life around [[me, ]]that I might infus
+    atter dey run  on awhile [[']]bout de cr
+
+concept 200: 0.68% of tokens, driven in 24 of 24 documents
+    nex' day, fer ter stay a mont[[' ]]er so. 
+    in' 'bout dat spavin[[' ]]hoss; en 
+    has  not ever entered into Death's keep[[ing]]. It is through weigh
+    works are included by Dr. Crothers in _[[The ]]Hundred 
+    ' hab no chance ter say no mo[[' ]]ter 'im.
+    he still illusioned, that poem would never [[have ]]wasted  
+      gone for much. Then, when Crink[[et]]t and Mrs. Smith 
+    school at Louth, Tennyson returned [[to]]  Somers
+    cannot concern  myself in asking for a pard[[on ]]for him. My 
+    he received at the siege of  Namur[[, ]]rendering him un
+
+concept 141: 0.68% of tokens, driven in 24 of 24 documents
+    word lady, but her courage  fail[[ed ]]her.  
+    e in time. That was her creed, and as it was [[ ]]supported by Dick, 
+    lofty palaces and  fair wood[[s and ]]pastures and eas
+    ;--if only anything could be done to rescu[[e ]]him!  
+    ation, rushed upon her," says one  [[  ]]   of her bio
+    -world place, and, keeping on past the thatch[[ed ]]cottages of the
+         flatter himself that his single, [[un]]supported, desult
+      =Fares.=--Single [[ ]]39s. 0d. 
+    I will not remain so. You will have to chain me, and [[to ]]gag me, and 
+    ourne is built. After leaving the tropics they [[had ]]gone down south,
+
+========================================================================
+LAYER 3
+========================================================================
+concept 75: 1.62% of tokens, driven in 24 of 24 documents
+    engers of Night.    And the stream[[, ]]dark-hued and 
+    ed at any time as they may please. Let the[[ ]] laws be what they 
+    al  circumstances of the case. As the Home Offic[[e ]]had decided that the man
+            1st      2nd [[  ]]   3rd 
+    ; he  lived a life of religious reti[[re]]ment, and gained a 
+    ing her in his arms.    "[[I ]]can't live without 
+    very  intimate.    [[']]I suppose it
+    thankful for the confidence placed in her when offenc[[es are ]]confessed.  
+      face down on the edge of the box. Tear[[s ]]began falling from her 
+      'Hardly.'    [[']]Then I don't
+
+concept 230: 1.28% of tokens, driven in 24 of 24 documents
+    'im[[, ]]w'iles at de 
+    ess, for[[, ]]with the  
+      [[ ]]He stood for a moment 
+    as sing[[ing ]]page in my lad
+    evim[[es ]]he ha' ter 
+    ten inch[[es ]]of  thre
+    I ain[[' ]]narvous;
+    , with all [[her ]]care, and with all 
+    look[[ed at ]]it. It was Julius
+    . He didn[[' ]]hab no 
+
+concept 218: 1.13% of tokens, driven in 24 of 24 documents
+    ose were the words which he did speak, and as he spok[[e ]]there  was a 
+    years Tunbridge Wells became the resort of th[[e]]  moni
+     he was convinced that Bagwax was supposed to have [[distingu]]ished himself. 
+    base of the bank, and the face of it  seem[[ed ]]freshly disturbed and 
+      had to be made in the fabric were [[un]]necessarily large, and could not 
+    half what he had  put into Polyeuk[[a]]. He hoped that, 
+    to be trained by his father. The rectory possessed [[a]]  good 
+    yet heard the judge, and that  with such a [[jur]]y the Judge will 
+    Colchester.    Great Eastern Railway[[.]]  =N
+    for the friends, I do.'    [[']]As I care very 
+
+concept 120: 1.06% of tokens, driven in 24 of 24 documents
+    '--'but he knows me not,'  [[said ]]he a second time, 
+    ate it. But you really like  your [[to]]bacco.' 
+       The western breeze hath messages [[for ]]me;  
+      Upon the sunset slopes, while mirrored [[in]]    H
+      And all those gems were mine,  [[  ]]I'd give them 
+    one revolution sufficed to cast it over  [[the ]]spool, a second 
+     that what you would say, if  you [[said ]]what you thought?
+     subject to the outraged laws of his country.' [[Mr]]s. Smirkie, as 
+    this also!--belongs to earth, but has been over[[lo]]oked by him as 
+    tain Munday, who at heart was not afraid [[of]]  his passeng
+
+concept 217: 1.04% of tokens, driven in 24 of 24 documents
+    for two hours, the dark eyes of the captain seem[[ed ]]to  fill
+    founded with lobsters) "when they will [[ ]]     be 
+    ed out the valise from beneath the berth, whil[[e]]  Shand 
+         Costa:--    [[ ]]     "
+    , and therefore in that dear time when we served lov[[e]]  together I 
+    .  =Distance from London.=[[--]]118 miles.
+    ide the  chamberlain.   [[ ]]On their sudden 
+    connected together by a simple link. An examination of the devic[[e ]]itself  shows 
+    Average Time.=--Varies between 3 [[to ]]4-3/4 hour
+     'sturb Ben in de woods. He stay[[ed ]]hid a day 
+
+concept 201: 1.04% of tokens, driven in 24 of 24 documents
+        1st       2nd     [[ ]]3rd  
+    tell her  troubles. And she was not disappoint[[ed, ]]for in a lengthy and 
+               1st     [[ ]]2nd      
+    ed she'd  be'n cunju[[']]d, en wu
+    ----'    'Well?[[']]    
+    no copy, and do not know the      [[ ]]opening line.
+    ONDELIED      [["]]LICHEN"
+    , whom I made for man's worship when earth [[was ]]younger and fairer
+    ed when they left the  ship. 'As we are [[prepar]]ed to acknowledge that
+    figures were written on  it. And yet he had [[never ]]looked at it 
+
+concept 247: 1.03% of tokens, driven in 24 of 24 documents
+    daughter, after  their silent breakfast[[.]]    
+     very greatly bothering about humankind[[.]]    
+    de minute dis man sot  [[ey]]es on Mahaly, 
+    d  never come the day on which th[[ey]],--they,-
+     of artistic creation, must, I imagine, [[very ]]often fail to follow
+    that's a right  distinction, Trim[[," ]]said my Uncl
+    himself.'    'No doubt;[[--]]and so in real 
+    could be no necessity for a  journey to [[S]]ydney. 
+      Why is this, and how is it that a [[very ]]big shuttle 
+    did not know him. Her face was white and th[[in]]; her  
+
+concept 145: 1.01% of tokens, driven in 24 of 24 documents
+    It could not be that all this journeying  [[ ]] Should e'
+    he helped to forge posterity.  [[ ]] Now she lo
+    first comedy in 1850. This was      [[ ]]followed by several comic 
+    Litchfield, Connecticut,      [[ ]]on June 14, 18
+    when  the surfaces became covered with oil[[.]]    
+      'I do love your father dearly, [[and ]]I endeavour, by 
+      LINCOLN CATHEDRAL[[.]]    
+     =Distance from London.=--118[[ ]]miles.  
+    ament breaks; the room becomes dark. The bell[[ ]]push  is not 
+        At the same time that Epsom[[ ]]began to become known as a 
+
+concept 206: 0.95% of tokens, driven in 24 of 24 documents
+    es To Cambridgeshire     [[ ]]  The 
+    Charing Cross, Cannon Street, or [[ ]]  London Br
+     Are the most exquisite and strong, [[ ]]     
+    . Have you got a sister?'  [[ ]] 'No
+     _Literary Monthly_, 1893. [[ ]]   
+    ments as he went about the hut doing what was [[ ]]requisite, were 
+     'It isn't that.'   [[ ]]'Then what the 
+         2nd      3rd [[ ]]=Fares.
+    75s. 4d  (available for one month).[[ ]]   
+    sewing machines. The principle of the friction [[ ]]disk has 
+
+concept 12: 0.91% of tokens, driven in 24 of 24 documents
+    partially of metal and partially of felt or [[h]]emp, has affor
+    said already. During the breakfast she had seen [[in]]  the curv
+    I can understand  that.' There might be a dut[[y ]]very necessary for her 
+    ion of Her Majesty's regret that  [[he ]]as an innocent person 
+    two used to have long friendly talks together [[ ]]when Manuel's 
+    hood, I ought to come and speak to you,' [[said ]]Dick. The 'some
+    he had learned before this how  impregnable [[was ]]that will of fan
+    I never was convinced of the prisoner's guilt,' [[said ]]the  barr
+    somebody ter talk ter--dat [[he ]]jes' made 
+    e, he  attended to matters in the court [[for ]]some time, and on 
+
+concept 98: 0.85% of tokens, driven in 24 of 24 documents
+      de nex' night it was rainin,' [[an]]' fer two 
+              [[P]]UNKAS.
+    him who  should drive the carriage up [[to the ]]Grange, so that 
+    bout it, an' fin'lly he tol[[' ]]'im ef he 
+    es, en dey  des kep' a-[[with]]'in' en 
+    'r 'mence' ter drap out[[; ]]en when de 
+    deficient in the appearances of solemnity as to have [[im]]bued the 
+    . One day he  became violently agitated [[after ]]looking through the 
+    er bearing a statue of Edward I.,  [[and ]]by Queen Ele
+     Morgan's throne, of remarkable workmanship[[;]]  the fine 
+
+concept 126: 0.80% of tokens, driven in 24 of 24 documents
+    eous person ever  believed in the repentance of [[an ]]enemy? 
+       "Now, by St. George," [[said ]]Richard, again heav
+    ship. 'As we are prepared to acknowledge that there was [[an ]]engagement, I 
+          About three week[[s ]]after the 18th of Jun
+    ,    AND CVRST B[[E ]]HE YT
+    who I am! I do not need to see your colour[[s ]]to  know 
+     If an _actual_ bill of f[[are ]]in a gentleman's house
+     [Illustration: _G.W. Wil[[son ]]& Co._ 
+    er some low-down free nigger dat [[do]]an b'long
+    's new and peculiar habits were observed at [[d]]inner. Mr.
+
+concept 159: 0.78% of tokens, driven in 24 of 24 documents
+    could  be run by foot power, [[but]], after some trial
+    . By Dr. Coote. 4to. Lond. 1794[[:]]--   
+    s  especially associated with his memory. It is a somewhat [[remarkable ]]fact  that this 
+    ung his bell for his man Trim,--[["]]Trim," qu
+    ,    When the wing'd bearer bor[[e ]]Jove's nect
+    ber, and contained  but one room, to [[which ]]one window gave 
+    n' ter eat; fer he had done eat [[up ]]de bread an
+    all of  Storisende. "For even [[if ]]some errors may have 
+    canon of St. David's, who was, says [[h]]e, 'an able
+    literated, are cleaner, finer, and better perceiv[[ed ]]than they 
+
+concept 25: 0.77% of tokens, driven in 24 of 24 documents
+    oured rag."    Philip answer[[ed ]]calmly he would have 
+    spread to the southern counties and to    [[  ]] London, where a 
+    misery other  than what may come from [[an ]]absence of fretful 
+    ' Curlydown took his glass, and look[[ed ]]at the  
+        The Nautilus was [[now ]]making its top speed
+    poured freely into the sympathetic ear of a[[ ]] Northern-
+     commercial town. Many parliaments have been held in its chapter-[[house]],  and 
+    story.  That is my story. Now [[I ]]must show you why 
+    you think that clay would make good brick[[, ]]Julius?" 
+        "Now there is garnered [[such ]]might and lovel
+
+concept 81: 0.77% of tokens, driven in 24 of 24 documents
+     a diagram, in which it will be observed that the feeding [[ ]]arrangements are placed above the 
+     thus," thought Aleksei, "can [[I ]]conform to the require
+                        [[  ]]        
+    write to my father and tell  him that [[I ]]should like to go to 
+    sion on Tuesdays,  Thurs[[day]]s, and Fridays, 
+    him with us, we could tend and look [[to]]  him. Th
+     'In a man's own line,--y[[es]],' said Curly
+    e Toby could not  shut his [[ey]]es. The more he considered 
+     But he was promulgating a doctrine which [[her ]]conscience required her 
+    .      Wine   [[  ]]        
+
+concept 141: 0.75% of tokens, driven in 24 of 24 documents
+    k along the main Winchester road brings one [[to the ]]charming  
+    as and houses. A few years back there was scarcely [[a ]]vestige  
+    doan  wanter go down ter Rob[[es]]on, I kin fix
+    , he could sing en whistle des lack [[a ]]mawkin'-
+    folks 'lows a hoss trader ain[[' ]]got no conscience, 
+    2 hours.          [[  ]]        
+    on the rock," and every year it is a  [[great ]]attraction to the many visitor
+    at A', the instantaneous axis moves downward and [[to the ]]right, as the 
+     The loss of Clelia left Fabrice [[in]]consolable. He sh
+     executioner. Edith could no longer remain silent[[:]]    
+
+concept 96: 0.69% of tokens, driven in 24 of 24 documents
+    '    "'Yas, I knows [[my ]]Ben w'at 
+       A.--PRACTICAL ELECTRIC[[ ]]UNITS. 
+    six years old Tennyson was sent to the grammar[[ ]]school at  
+    are,    And with yielding lip[[s ]]caressing, they 
+    at once be taken away from him. What a triumph[[ ]]it would be  
+    changed their  place, coming now by night under [[my ]]lady's casement
+    from Waterloo Station. L. and S.W[[.]]    Rail
+    clay rose in almost a sheer perpendicular [[for ]]about ten feet,
+     discovery of a submarine forest extending [[for ]]some miles round 
+      wuz sol' away widout [[my ]]gittin' 
+
+concept 165: 0.65% of tokens, driven in 24 of 24 documents
+    18s. 8d.          [[ ]] Return  
+    an will rise or fall  more or less rapidly, [[and ]]give a quantity of 
+    time. She had gathered  another armful[[ and ]]was advancing toward the 
+    to the  Broad country. A "broad[[," ]]it should be mentioned, 
+    s,  all of which had been arranged beforeh[[and]]. Nor could he 
+    read is drawn from the shuttle,  [[_]]g_. The sh
+    windings of the stream.  The sun makes danc[[ing ]]spots of dark and 
+     once more came into the possession of the de Haut[[s]]; and it should be
+    very much the best for him not to say anything about [[it ]]if he could 
+    s are so unlovely, and their  men [[such ]]absurdly fine 
+
+concept 156: 0.64% of tokens, driven in 24 of 24 documents
+    whole face beamed with delight.    [["]]Tatyana," 
+    Judge Bramber's summing up.' [[ ]]  'I 
+                        [[  ]]   C_{
+          *       *     [[  ]]*   
+    e's aide-de-camp, with order to remove [[F]]abrice from the cit
+    tensity of a current.           [[  ]]        
+    frazzle; en he'd done it, too, [[for]]  Mars 
+    commodation Obtainable.=--"Sp[[a ]]Hotel," "The 
+     Paddington _via_ Chester, 282 mil[[es]]. Fares 
+    Suddenly I perceived in the gloom a figure [[which ]]stole from behind 
+
+concept 228: 0.64% of tokens, driven in 24 of 24 documents
+    ma. Don't you think baby is very like [[his ]]father?' 
+    a_'_d_, cutting the normal at [[_]]x_, we determin
+    Northern Rly.  =Nearest [[St]]ation.=--
+    awake, she stepped over briskly and began [[to]]  arrange 
+    see it."    My Uncl[[e ]]Toby blush
+    ERIES    _Ancient Motto[[_]]    
+    wife,--unlovely  unfemin[[in]]e, and abhorrent 
+    complete,  and must remain so always[[."]]    
+    kind of life, the Babingtons were worldly. There sure[[ly ]]never was a 
+    ided for ten years,  continued at the ab[[be]]y and died ab
+

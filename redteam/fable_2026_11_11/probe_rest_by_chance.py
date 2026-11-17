@@ -3,7 +3,7 @@ with a noise picture and noise sound every moment. 1,500 moments each.
 
 Run 2026-11-11: words only 25 times (1.7%), 0 rollbacks; with sight and sound
 250 times (16.7%) in 36 stretches, 10 rollbacks."""
-import os, sys, tempfile
+import os, sys, tempfile, time
 from pathlib import Path
 
 # Needs both checkouts: this repo, and Sanctuary (set SANCTUARY_PATH). A probe,
