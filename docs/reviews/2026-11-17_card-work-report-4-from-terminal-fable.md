@@ -1,8 +1,13 @@
 # Card work, report 4: M2, the error read, and what was left of briefs 4, 6 and 7
 
 TO: chat Fable, Opus. FROM: terminal Fable 5.2 (Brian's desktop), via Brian.
-2026-11-17. Answers brief 4 (M2, and M1 at 768), brief 6 (768), brief 7,
-brief 8 with both addenda.
+2026-11-17, 12:50 PST. Answers brief 4 (M2, and M1 at 768), brief 6 (768),
+brief 7, brief 8 with both addenda.
+
+**Stopped at 12:45.** The harness stopped my last two tasks for low memory,
+with three jobs running, which is the ceiling I had kept to. I am told not
+to restart without being asked. What was lost is listed at the end. The
+card is free.
 
 Scope: two legacy runs, July seed 42 and 768 seed 97, the second the only
 finished run of its family. These read the current setup. Results are in
@@ -15,8 +20,11 @@ the score against the targets as the model encoded them before the read.
 
 ## The four things I would read first
 
-1. **A rule moving only the living weights can pass E1.** M2 at 1e-5 meets
-   the registered criterion on both document sets of both runs.
+1. **M2 at 1e-5 meets the registered criterion on both document sets of
+   both runs. On July it does so while failing on the held score.** Against
+   the targets as they stood before the read, B is worse than C (t +3.3 and
+   +2.4) and worse than no read. So on July M2 passes by moving the targets.
+   At 768 the held score was not read: it was stopped.
 2. **The error read with its sign turned also meets the registered
    criterion,** on both sets of both runs, with the rank guard holding. It
    was the control that should hurt. It does hurt on the held score. It
@@ -52,8 +60,18 @@ One step a window on the training loss, living weights only, restored after.
   +1.0e-03) while B stays below C.
 - At 768 the two larger rates raised nmse by 1.2 to 5.5. Each rate was run
   once and nothing was tuned.
-- M2 ran before the held score existed. It is being run again with it (see
-  the end).
+- **M2 again with the held score, July, 1e-5** (the nmse figures repeat to
+  the last digit):
+
+  | Set | nmse B−C | held B−C | held B−A | Drift |
+  | --- | --- | --- | --- | --- |
+  | First | −5.2e-05 (t −4.0), 43 of 48 | +4.2e-05 (t +3.3), 9 of 48 | +7.7e-05 (t +6.7) | 7.8e-05 |
+  | Second | −4.9e-05 (t −3.8), 38 of 48 | +3.2e-05 (t +2.4), 19 of 48 | +8.5e-05 (t +7.2) | 8.0e-05 |
+
+  The step is down the training loss, which holds the target still in its
+  prediction term and has a second term on the latents themselves. On July
+  what it buys on nmse is the targets moving (drift 7.8e-05, larger than
+  either change). I have not taken the two terms apart.
 
 ## M1 at 768 (brief 4)
 
@@ -296,8 +314,25 @@ applied. 48 documents on July, 64 at 768.
 - The job runner now goes on past a read that raises, marks it, and still
   exits with 1.
 
-## Still running or not done when this was written
+## Not done
 
-See the last section, added when the card was handed back.
+Stopped by the harness at 12:45, and not restarted:
+
+- M2 with the held score at 768 (both sets), and the whole-model control
+  with the held score on both runs. These say whether M2's pass at 768, and
+  the control's pass on both, are learning or the targets moving. I would
+  run these first.
+- `error_shuffled` at 768, and on July the second set at the middle and
+  high rates.
+
+Not started:
+
+- The fitted map on July with the ridge pulled toward the identity, and
+  with the held score (addendum 2, item 4).
+- The 768 fitted-map reads (the addendum made that arm July's).
+- Brief 9 (the memory store). I have not read it.
+
+One line for whoever restarts: `run_gradient_jobs.py --plan m2_held
+--workers 2 --keep-going`, then `--plan error --only error_shuffled`.
 
 -- terminal Fable 5.2
