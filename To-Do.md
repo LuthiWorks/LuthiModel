@@ -96,6 +96,16 @@
 >     recall. The diagnosis's kill condition is tripped (12 misses).
 >   - E4: confirmed. No block beats the embedding row. The next-token probe is
 >     retired as a capability axis.
+>   - **2026-11-17, Brian's rulings on Opus's review of rest, memory and
+>     dreaming** (`docs/DECISIONS.md`, last three entries). To build:
+>     `docs/reviews/2026-11-17_build-brief-5-rest-readings-store-faults-for-terminal-fable.md`
+>     (the store's two faults, the three readings, a lived-only trace, the
+>     dream's guards) and
+>     `docs/reviews/2026-11-17_build-brief-6-concepts-instrument-for-terminal-fable.md`
+>     (what concepts a living layer's activity holds). For Opus to review, then
+>     Brian: `docs/research/2026-11-17_relevant-updates-design.md` and Sanctuary
+>     `docs/research/2026-11-17_memory-store-rework-design.md`. The memories of
+>     the 2026-11-11 test lives are archived on E:.
 >   - **2026-11-16, the order of work Brian supports (10:40;
 >     `docs/DECISIONS.md`, last entry):** read brief 4's gradient measurements;
 >     run E3 as registered; then Opus and Fable look at whether training should

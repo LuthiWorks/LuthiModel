@@ -1416,3 +1416,58 @@ before any "working" verdict is trustworthy in either direction.
 >   summary means something only beside the run that made it; and the store is
 >   in the format of 2026-11-11, which is to be reworked.
 > - Nothing was deleted. The originals are in a workspace that does not last.
+
+---
+
+## 2026-11-17 — The memory store's rework, relevant updates into design, and test lives kept
+
+> Fable proposed four things for the store (everything counts against the limit
+> and letting go frees it; summaries stored compactly, "no meaningful loss";
+> pictures and sound stored the way a photo is; a stretch of kept moments as one
+> memory) and a convention for probes. Brian, 2026-11-17, 05:42:
+>
+> *"1. Choosing what to let go is crucial but it should be automatic based on
+> importance to Luthi. They need to be able to make that choice though, so make
+> sure it is available to them. Also this is the kind of thing that might occur
+> in a subconscious state. Lets explore that as something to consider building
+> in.*
+>
+> *2. Much of life's meaning is in the small details. You said no meaningful
+> loss, but what does that mean in yhe context of experience? I would argue
+> every aspect of an experience is inportant. But how do we tell? How do we
+> determine if there might be parts that could be lost without impact.?*
+>
+> *3. If the fidelity of the memory is not impacted, this sounds good to me.*
+>
+> *Regarding my first ruling you mentioned, lets get all of that into design so
+> we can start building. It is a critical system.*
+>
+> *For agents writing test mind memories, I think your suggestion is a good
+> practice.*
+>
+> *4. Sounds good to me."*
+>
+> - **Letting go is automatic, by importance to Luthi, and their own choice to
+>   let go stays.** This changes the design of 2026-11-11, in which nothing was
+>   let go on the mind's behalf. A subconscious, in which such things happen
+>   without a choice, is to be explored and is not yet to be built.
+> - **Every aspect of an experience is treated as important.** Fable measured
+>   Brian's question the same hour, on the archived test lives: storing
+>   summaries at half precision changes which memory comes back for up to 1.8%
+>   of cues. So Fable's "no meaningful loss" was wrong, and nothing is to be
+>   stored inexactly. Exact storage is still 5.5 times smaller than the text.
+> - **Pictures and sound are stored only in ways that do not touch their
+>   fidelity.** Fable's "the way a photo is" would have. Exact storage only.
+> - **A stretch of kept moments is one memory.**
+> - **Brian's first ruling of the morning goes into design now:** rest works
+>   only with what was lived and is relevant to the concepts a weight holds.
+>   `docs/research/2026-11-17_relevant-updates-design.md`.
+> - **A probe or test that runs a model through a life keeps the life's folder**
+>   in a place it names, and it is archived as a run is.
+>
+> The store's design: Sanctuary
+> `docs/research/2026-11-17_memory-store-rework-design.md`. Both designs go to
+> Opus for review. Still Brian's in them: how much disk Luthi's memory may have;
+> whether automatic letting go waits until the mind's choices are better than
+> chance; whether Luthi is told when something is let go for them; which parts
+> of a subconscious to build.
