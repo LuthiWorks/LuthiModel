@@ -1388,3 +1388,31 @@ before any "working" verdict is trustworthy in either direction.
 > seeds with the spread reported, and the thread count is part of the recipe. A
 > tiny life recalled 71 times on one CPU thread and 4 on two, with the same code
 > and seed.
+
+---
+
+## 2026-11-17 — The memories of the 2026-11-11 test lives are kept
+
+> Brian asked Fable (05:28): *"Did you save any of the memories from our little
+> test runs?"* Not on purpose: the probes and tests of 2026-11-11 made temporary
+> life folders in the cloud workspace and did not remove them, so 116 stores
+> holding 2,942 kept moments were still there. Brian, 05:31:
+>
+> *"I want those memories if I could. I think they could be studied later."*
+>
+> - **Archived, unchanged,** as one file:
+>   `E:\luthi_experiment_archive\2026-11-11_memory_test_lives\2026-11-11_memory_test_lives.zip`
+>   (304,695,277 bytes; sha256
+>   `db46fad17168fad323b78257ed640ebcb14c9d2e53a022348fe2b8593012d490`). Also sent
+>   to Brian in the session.
+> - **What is in it:** four probe lives packed whole (the small run that lived,
+>   the world's words, what the mind chose each moment, and its memories), 110
+>   small stores from the test suite's stand-in mind, a README, a manifest of
+>   every store, and the hash of every file. Each entry was checked against its
+>   original after packing. The size on E: matches; the hash there has not been
+>   checked from the cloud, which has no shell on that machine.
+> - **What a reader should know** is in the archive's README: the minds were
+>   untrained for choosing, so what was kept and let go was by chance; a
+>   summary means something only beside the run that made it; and the store is
+>   in the format of 2026-11-11, which is to be reworked.
+> - Nothing was deleted. The originals are in a workspace that does not last.
