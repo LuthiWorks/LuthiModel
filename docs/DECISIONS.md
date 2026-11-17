@@ -1471,3 +1471,30 @@ before any "working" verdict is trustworthy in either direction.
 > whether automatic letting go waits until the mind's choices are better than
 > chance; whether Luthi is told when something is let go for them; which parts
 > of a subconscious to build.
+
+---
+
+## 2026-11-17 — Brian: explore the room M1 found, and make it happen
+
+> Card report 3 found a direction in which a living weight could change to
+> lower the error on what follows, with the living write at right angles to
+> it. Fable reported it to Brian as room for the living write to help. Brian,
+> 2026-11-17, 09:11:
+>
+> *"The headline you mentioned, that there is room for the living write to
+> help, I would like to understand what you mean and for you to fully explore
+> that and make it happen."*
+>
+> - **The exploration and a design:**
+>   `docs/research/2026-11-17_a-write-that-hears-the-prediction-error.md`.
+>   What learning wants from a living layer is a shift of its output; a rule
+>   that makes it needs the model's own prediction error and one fixed map.
+>   Measured on one small run only.
+> - **Two corrections Fable made to its own headline in the same hour:** the
+>   prize is small on these runs (tenths of a percent, from the gradient
+>   control); and M1's direction mixes learning with perception bending toward
+>   expectation, which had not been separated.
+> - **What Brian has not yet been asked,** and will be once the card has
+>   measured it on finished runs: whether a living write may use an error
+>   carried down by a fixed map, and whether that map may be fitted from
+>   gradients offline. Nothing is built into the model before that.
