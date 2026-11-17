@@ -38,12 +38,32 @@ context tokens, so the mean is used. M2 steps down the TRAINING loss, whose
 scale is not this one's. So "the same rate" is not the same step: each
 step's size is recorded as a share of the weight, as M2's is.
 
-Three kinds, for the comparison the brief asks for:
+Three fitted kinds, for the comparison the brief asks for:
 
     "map"       as above
     "shuffled"  the map fitted with the errors shuffled between windows:
                 does the error's content matter, or only its common part?
     "common"    no map: every window moves the weight by the fitted mean
+
+Four kinds that need nothing fitted (addenda 1 and 2 to brief 8, after
+Part 1 and Opus's review of 2026-11-17). They take nothing from a gradient
+anywhere:
+
+    "error"           weight -= rate * outer(e, x): the first arm. ``e`` is
+                      the mean over the target tokens of (the prediction
+                      minus what was then perceived); ``x`` the layer's mean
+                      input over the context tokens.
+    "error_turned"    the same with the sign turned. It should hurt, on the
+                      held score (``adaptation_eval``'s ``held_score``).
+    "error_shuffled"  ``e`` taken from a window of another document.
+    "bias"            the weight is not touched. Each living layer's OUTPUT
+                      is shifted by a vector that moves, a window, by what
+                      "error" at the same rate would add to the output of
+                      the layer's mean input: -rate * (x . x) * e. If it does
+                      what "error" does, the weight is adding nothing to a
+                      shift (Opus). The addendum writes the shift as
+                      -rate * e; the (x . x) is there so that one rate means
+                      the same shift for both kinds.
 
 Under Brian's ruling of 2026-11-16 a measurement may step a living weight
 by hand when everything is restored afterwards and nothing is kept. The
@@ -62,7 +82,8 @@ import torch.nn as nn
 from luthi.v2.living_weight_gradient import living_layers
 from luthi.v2.plasticity import freeze_plasticity
 
-KINDS = ("map", "shuffled", "common")
+KINDS = ("map", "shuffled", "common")                                  # fitted
+UNFITTED = ("error", "error_turned", "error_shuffled", "bias")         # nothing fitted
 
 
 @dataclass
@@ -74,6 +95,40 @@ class ErrorMaps:
     fitted_on: int
     ridge: float
     check: dict                          # on fit windows held back from the fit
+
+
+def unfitted(kind: str) -> ErrorMaps:
+    """What ``read_by_error_map`` takes for a kind that needs nothing fitted."""
+    if kind not in UNFITTED:
+        raise ValueError(f"kind must be one of {UNFITTED}; got {kind!r}")
+    return ErrorMaps(kind=kind, e_mean=torch.zeros(0), wanted_mean=[], maps=[],
+                     fitted_on=0, ridge=0.0, check={})
+
+
+class LivingBias:
+    """A vector added to each living layer's output, for the "bias" kind.
+    Zero until a read moves it. ``remove()`` takes the hooks away."""
+
+    def __init__(self, model: nn.Module) -> None:
+        self.layers = living_layers(model)
+        self.vectors = [torch.zeros(layer.weight.shape[0], dtype=torch.float64,
+                                    device=layer.weight.device) for layer in self.layers]
+        self._handles = [layer.register_forward_hook(self._shift(i))
+                         for i, layer in enumerate(self.layers)]
+
+    def _shift(self, i: int):
+        def hook(module, inputs, output):
+            return output + self.vectors[i].to(output.dtype)
+        return hook
+
+    def zero(self) -> None:
+        for v in self.vectors:
+            v.zero_()
+
+    def remove(self) -> None:
+        for h in self._handles:
+            h.remove()
+        self._handles = []
 
 
 def _clear(model: nn.Module) -> None:
@@ -207,28 +262,85 @@ def fit_error_maps(loss_module: nn.Module, windows: torch.Tensor, *, kind: str =
 @torch.no_grad()
 def read_by_error_map(loss_module: nn.Module, windows: torch.Tensor, maps: ErrorMaps, *,
                       rate: float, repeats: int = 1,
-                      step_shares: list[list[float]] | None = None) -> None:
+                      step_shares: list[list[float]] | None = None,
+                      errors_from: torch.Tensor | None = None,
+                      bias: LivingBias | None = None,
+                      before_each=None) -> None:
     """Read ``windows`` ([n, L]), one at a time, moving every living weight
     after each by the rule in the module docstring. No backward pass. The
-    weights are left moved; the caller restores them."""
+    weights are left moved; the caller restores them.
+
+    ``errors_from``: for "error_shuffled", another document's windows; window
+    k takes its error from window k of these. ``bias``: for "bias", the
+    shifts to move. ``before_each(window)``: called before each window's
+    step, for a read in context (the caller makes the plastic forward there).
+
+    Each step's size is appended to ``step_shares`` as a share of the
+    layer's weight; for "bias", as a share of the layer's output for its
+    mean input."""
     _refuse_training(loss_module)
     layers = living_layers(loss_module.online_encoder)
-    if len(layers) != len(maps.maps):
+    kind = maps.kind
+    if kind in KINDS and len(layers) != len(maps.maps):
         raise ValueError(f"the maps are for {len(maps.maps)} living layers; "
                          f"this model has {len(layers)}")
+    if kind not in KINDS + UNFITTED:
+        raise ValueError(f"unknown kind {kind!r}")
+    if (kind == "error_shuffled") != (errors_from is not None):
+        raise ValueError("errors_from is given for 'error_shuffled' and for no other kind")
+    if (kind == "bias") != (bias is not None):
+        raise ValueError("a LivingBias is given for 'bias' and for no other kind")
+    if errors_from is not None and errors_from.shape[0] < windows.shape[0]:
+        raise ValueError("errors_from has fewer windows than are read")
     for _ in range(repeats):
-        for w in windows:
+        for k, w in enumerate(windows):
+            if before_each is not None:
+                before_each(w)
             e, x_mean, _ = _window_signals(loss_module, w.unsqueeze(0), wanted=False)
+            if errors_from is not None:
+                e, _, _ = _window_signals(loss_module, errors_from[k].unsqueeze(0), wanted=False)
             shares = []
-            for layer, F, u_mean, x in zip(layers, maps.maps, maps.wanted_mean, x_mean):
-                given = u_mean + F @ (e - maps.e_mean)
+            for i, (layer, x) in enumerate(zip(layers, x_mean)):
+                if kind in KINDS:
+                    given = maps.wanted_mean[i] + maps.maps[i] @ (e - maps.e_mean)
+                elif kind == "error_turned":
+                    given = -e
+                else:
+                    given = e
+                if given.shape[0] != layer.weight.shape[0]:
+                    raise RuntimeError(
+                        f"the error is {given.shape[0]} wide and living layer {i}'s output "
+                        f"is {layer.weight.shape[0]}; this rule needs them equal")
+                if kind == "bias":
+                    move = given * float(x @ x)
+                    if not torch.isfinite(move).all():
+                        raise RuntimeError("a step of the bias is not finite")
+                    typical = (layer.weight.double() @ x).norm()
+                    shares.append(float(rate * move.norm() / typical))
+                    bias.vectors[i].add_(move, alpha=-rate)
+                    continue
                 step = torch.outer(given, x)
                 if not torch.isfinite(step).all():
-                    raise RuntimeError("a step by the error map is not finite")
+                    raise RuntimeError("a step by the error is not finite")
                 shares.append(float(rate * step.norm() / layer.weight.double().norm()))
                 layer.weight.add_(step.to(layer.weight.dtype), alpha=-rate)
             if step_shares is not None:
                 step_shares.append(shares)
+
+
+def step_share_at_rate_one(loss_module: nn.Module, windows: torch.Tensor) -> list[float]:
+    """For setting a rate from size: the median, over ``windows``, of one
+    "error" step at rate 1 as a share of each living layer's weight. Nothing
+    is moved."""
+    _refuse_training(loss_module)
+    layers = living_layers(loss_module.online_encoder)
+    by_layer: list[list[float]] = [[] for _ in layers]
+    with torch.no_grad():
+        for w in windows:
+            e, x_mean, _ = _window_signals(loss_module, w.unsqueeze(0), wanted=False)
+            for i, (layer, x) in enumerate(zip(layers, x_mean)):
+                by_layer[i].append(float(e.norm() * x.norm() / layer.weight.double().norm()))
+    return [sorted(v)[len(v) // 2] for v in by_layer]
 
 
 def windows_outside_documents(total: int, documents: Sequence[tuple[int, int]],
@@ -248,5 +360,6 @@ def windows_outside_documents(total: int, documents: Sequence[tuple[int, int]],
     return [free[(k * len(free)) // count] for k in range(count)]
 
 
-__all__ = ["ErrorMaps", "KINDS", "fit_error_maps", "read_by_error_map",
+__all__ = ["ErrorMaps", "KINDS", "UNFITTED", "LivingBias", "fit_error_maps",
+           "read_by_error_map", "step_share_at_rate_one", "unfitted",
            "windows_outside_documents"]

@@ -95,7 +95,18 @@ the frozen score does not read it.
                          map of the prediction's mean error, fitted
                          beforehand on windows no document holds
                          (``error_map_read.py``; brief 8 of 2026-11-17).
-                         Plasticity is frozen, so every other way is off.
+                         Plasticity is frozen, so every other way is off,
+                         unless ``error_map_in_context`` is set: then each
+                         window is first read as a plastic read reads it,
+                         with every way on, and the rule's step follows.
+    held_score           also score B and C against the targets as the model
+                         encoded them BEFORE the read (arm A's), over A's
+                         variance: ``held``. nmse lets the target move with
+                         the model, so it can fall because what is perceived
+                         bent toward what was expected. ``drift`` is how far
+                         the read moved the targets, in the same units
+                         (Opus's review of 2026-11-17). nmse B - C stays the
+                         registered criterion; these two are description.
 """
 
 from __future__ import annotations
@@ -180,6 +191,45 @@ def _score(loss_module: nn.Module, tail: torch.Tensor) -> dict:
         "nmse": l_pred / max(var, 1e-12),
         "target_eff_rank": _eff_rank(target),
     }
+
+
+@torch.no_grad()
+def _score_held(loss_module: nn.Module, tail: torch.Tensor,
+                against: tuple[torch.Tensor, torch.Tensor] | None,
+                ) -> tuple[dict, tuple[torch.Tensor, torch.Tensor]]:
+    """``_score``, and beside it the score with the target held still.
+
+    ``against`` is arm A's ``(target block, its variance)``; None for arm A
+    itself, which then returns its own. ``held`` is the prediction against
+    those targets over that variance, and ``drift`` is this model's targets
+    against them, over the same variance. For arm A ``held`` is taken by the
+    same arithmetic as for B and C, so that where a read changes nothing the
+    three are bitwise equal."""
+    was_training = loss_module.training
+    loss_module.eval()
+    try:
+        with freeze_plasticity(loss_module.online_encoder):
+            r = loss_module.compute_modality_loss("text", {"text_tokens": tail})
+    finally:
+        if was_training:
+            loss_module.train()
+    l_pred = float(r["l_pred"].item())
+    target = r["target_latents"][:, r["ctx_len"]:, :]
+    centered = target - target.mean(dim=(0, 1), keepdim=True)
+    var_t = centered.pow(2).mean()
+    var = float(var_t.item())
+    if against is None:
+        against = (target.clone(), var_t.clone())
+    held_target, held_var = against
+    scale = held_var.clamp(min=1e-12)
+    score = {
+        "l_pred": l_pred,
+        "nmse": l_pred / max(var, 1e-12),
+        "target_eff_rank": _eff_rank(target),
+        "held": float(((r["predicted_target"] - held_target).pow(2).mean() / scale).item()),
+        "drift": float(((target - held_target).pow(2).mean() / scale).item()),
+    }
+    return score, against
 
 
 def _no_episode(*args, **kwargs) -> None:
@@ -380,6 +430,8 @@ def adaptation_eval(
     gradient_read_what: str = "trained",
     read_by_error_map=None,
     error_map_rate: float | None = None,
+    error_map_in_context: bool = False,
+    held_score: bool = False,
 ) -> dict:
     """Run A / B / C (see module docstring) over ``documents``.
 
@@ -418,7 +470,13 @@ def adaptation_eval(
         read_by_error_map: fitted ``error_map_read.ErrorMaps``; the read
             moves each living weight by the map of the prediction's error,
             at ``error_map_rate``, with no backward pass. The caller fits
-            the maps on windows no document here holds.
+            the maps on windows no document here holds. For a kind that
+            needs nothing fitted, ``error_map_read.unfitted(kind)``.
+        error_map_in_context: each window is first read with plasticity on
+            (the write, the pull, consolidation, the stores, as the read
+            switches leave them), then the rule's step is taken.
+        held_score: add ``held`` and ``drift`` to every score (module
+            docstring).
 
     Returns ``{"per_doc": [...], "summary": {...}, "settings": {...}}``.
     """
@@ -448,6 +506,22 @@ def adaptation_eval(
         raise ValueError("read_by_error_map needs error_map_rate")
     if error_map_rate is not None and not by_error_map:
         raise ValueError("error_map_rate needs read_by_error_map")
+    if error_map_in_context and not by_error_map:
+        raise ValueError("error_map_in_context needs read_by_error_map")
+    map_kind = read_by_error_map.kind if by_error_map else None
+    if map_kind == "bias" and error_map_in_context:
+        raise ValueError("the bias kind is read alone, not in context")
+    # "error_shuffled" takes each window's error from a third document: not
+    # the one read and not the one scored.
+    shift2 = max(1, d // 4)
+    if map_kind == "error_shuffled" and (d < 4 or shift2 % d == 0 or shift2 == shift % d
+                                         or (shift + shift2) % d == 0):
+        raise ValueError("error_shuffled needs at least 4 documents, so that the error "
+                         "can come from a document that is neither read nor scored")
+    living_bias = None
+    if map_kind == "bias":
+        from luthi.v2.error_map_read import LivingBias
+        living_bias = LivingBias(model)
 
     from luthi.v2.living_layer_pc import PredictiveCodingLayer
     living = [m for m in model.modules() if isinstance(m, PredictiveCodingLayer)]
@@ -463,7 +537,11 @@ def adaptation_eval(
     held = loss_module if by_gradient else None
     base = _snapshot(model, held)
 
-    def read(windows: torch.Tensor) -> None:
+    def plastic(window: torch.Tensor) -> None:
+        _read(model, window.unsqueeze(0), repeats=1, read_train_mode=read_train_mode,
+              consolidation=read_consolidation, episode_writes=read_episode_writes)
+
+    def read(windows: torch.Tensor, errors_from: torch.Tensor | None = None) -> None:
         if by_error_map:
             from luthi.v2.error_map_read import read_by_error_map as _by_map
             was_training = loss_module.training
@@ -471,7 +549,10 @@ def adaptation_eval(
             try:
                 _by_map(loss_module, windows, read_by_error_map,
                         rate=float(error_map_rate), repeats=read_repeats,
-                        step_shares=step_shares)
+                        step_shares=step_shares,
+                        errors_from=errors_from if map_kind == "error_shuffled" else None,
+                        bias=living_bias,
+                        before_each=plastic if error_map_in_context else None)
             finally:
                 if was_training:
                     loss_module.train()
@@ -492,20 +573,37 @@ def adaptation_eval(
             if tail.shape[0] < 1:
                 raise ValueError("each document needs at least one score window")
             other = documents[(i + shift) % d]
+            third = documents[(i + shift2) % d]
+            fourth = documents[(i + shift + shift2) % d]
             if read_what == "tail":
                 own_read, other_read = tail, other[n_read:]
+                own_errors, other_errors = third[n_read:], fourth[n_read:]
             else:
                 own_read, other_read = head, other[:n_read]
+                own_errors, other_errors = third[:n_read], fourth[:n_read]
 
-            a = _score(loss_module, tail)
+            if held_score:
+                a, before_the_read = _score_held(loss_module, tail, None)
+            else:
+                a = _score(loss_module, tail)
 
-            read(own_read)
-            b = _score(loss_module, tail)
-            _restore(model, base, held)
+            def score() -> dict:
+                if held_score:
+                    return _score_held(loss_module, tail, before_the_read)[0]
+                return _score(loss_module, tail)
 
-            read(other_read)
-            c = _score(loss_module, tail)
-            _restore(model, base, held)
+            def restore() -> None:
+                _restore(model, base, held)
+                if living_bias is not None:
+                    living_bias.zero()
+
+            read(own_read, own_errors)
+            b = score()
+            restore()
+
+            read(other_read, other_errors)
+            c = score()
+            restore()
 
             per_doc.append({
                 "doc": i,
@@ -514,13 +612,19 @@ def adaptation_eval(
             })
     finally:
         _restore(model, base, held)
+        if living_bias is not None:
+            living_bias.remove()
         for m, s in zip(living, prior_scales):
             m.rate_scale = s
         for m, decay in zip(living, prior_decays):
             m.homeostatic_decay = decay
 
     summary: dict = {"n_docs": d, "exact_null": all(p["exact_null"] for p in per_doc)}
-    for metric in ("l_pred", "nmse", "target_eff_rank"):
+    if held_score:
+        # How far a read moved the targets, in the held score's units.
+        summary["drift"] = {"B": _summ([p["B"]["drift"] for p in per_doc]),
+                            "C": _summ([p["C"]["drift"] for p in per_doc])}
+    for metric in ("l_pred", "nmse", "target_eff_rank") + (("held",) if held_score else ()):
         summary[metric] = {
             "A_mean": _summ([p["A"][metric] for p in per_doc])["mean"],
             "B_minus_A": _summ([p["B"][metric] - p["A"][metric] for p in per_doc]),
@@ -541,9 +645,11 @@ def adaptation_eval(
             "read_what": read_what,
             "read_by_gradient": read_by_gradient,
             "gradient_steps": gradient_steps if by_gradient else None,
+            "held_score": held_score,
             "read_by_error_map": (
                 None if not by_error_map else {
                     "kind": read_by_error_map.kind, "rate": float(error_map_rate),
+                    "in_context": error_map_in_context,
                     "fitted_on": read_by_error_map.fitted_on,
                     "ridge": read_by_error_map.ridge,
                     "check_on_windows_held_back": read_by_error_map.check,

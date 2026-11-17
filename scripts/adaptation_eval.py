@@ -86,7 +86,17 @@ def main() -> int:
                     help="replace the plastic read by a fixed map of the prediction's "
                          "error onto each living weight, at this rate; no backward pass "
                          "(brief 8 of 2026-11-17; luthi/v2/error_map_read.py)")
-    ap.add_argument("--error-map-kind", choices=("map", "shuffled", "common"), default="map")
+    ap.add_argument("--error-map-kind", default="map",
+                    choices=("map", "shuffled", "common",
+                             "error", "error_turned", "error_shuffled", "bias"),
+                    help="map, shuffled, common: fitted. error, error_turned, "
+                         "error_shuffled, bias: nothing fitted (addendum 2 to brief 8)")
+    ap.add_argument("--error-map-in-context", action="store_true",
+                    help="each window is first read with every other way on, then the "
+                         "rule's step is taken")
+    ap.add_argument("--held-score", action="store_true",
+                    help="also score B and C against arm A's targets over A's variance, "
+                         "and report how far the read moved the targets")
     ap.add_argument("--error-map-fit-windows", type=int, default=512,
                     help="held-out windows the map is fitted on; none is in a document "
                          "of either document set of this layout")
@@ -107,7 +117,11 @@ def main() -> int:
     docs = holdout_documents(windows, n_read=args.read, n_score=args.score,
                              n_docs=args.docs, phase=args.doc_phase)
     maps = None
-    if args.read_by_error_map is not None:
+    if args.read_by_error_map is not None and args.error_map_kind in (
+            "error", "error_turned", "error_shuffled", "bias"):
+        from luthi.v2.error_map_read import unfitted
+        maps = unfitted(args.error_map_kind)
+    elif args.read_by_error_map is not None:
         from luthi.v2.adaptation_eval import holdout_document_ranges
         from luthi.v2.error_map_read import fit_error_maps, windows_outside_documents
         # Fitted on windows that are in no document of this layout, in
@@ -134,6 +148,8 @@ def main() -> int:
         gradient_steps=args.gradient_steps,
         gradient_read_what=args.gradient_read_what,
         read_by_error_map=maps, error_map_rate=args.read_by_error_map,
+        error_map_in_context=args.error_map_in_context,
+        held_score=args.held_score,
     )
     res["run"] = {"arm": run.result["arm"], "seed": run.result["seed"],
                   "checkpoint": run.checkpoint.name, "global_step": run.global_step}
@@ -143,7 +159,8 @@ def main() -> int:
     s = res["summary"]
     print(f"arm={run.result['arm']} seed={run.result['seed']} "
           f"docs={s['n_docs']} phase={args.doc_phase} exact_null={s['exact_null']}")
-    for metric in ("nmse", "l_pred", "target_eff_rank"):
+    for metric in ("nmse", "l_pred", "target_eff_rank") + (
+            ("held",) if args.held_score else ()):
         m = s[metric]
         print(f"  {metric:<16} A={m['A_mean']:.5f}  "
               f"B-A={m['B_minus_A']['mean']:+.5f} (t={m['B_minus_A']['t']:+.2f})  "

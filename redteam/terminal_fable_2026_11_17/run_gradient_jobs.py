@@ -101,7 +101,52 @@ def error_map() -> list[tuple[str, str, str, list[str]]]:
     return jobs
 
 
-PLANS = {"m1": m1, "m2": m2, "error_map": error_map}
+# -- addendum 2 to brief 8: the error read that needs nothing fitted -------
+def _error_rates(run: str) -> list[tuple[str, str]]:
+    """(name, rate) for the three rates of the error read. ``error_rates.json``
+    (set_error_rates.py) holds the rate at which one window's step is the
+    share of the weight M2's is at 1e-5. The other two are 10 and 100 times
+    it. They are not matched to M2's own steps at 1e-4 and 1e-3, because at
+    768 M2 ran away at those rates (its step grew to 2 and 6 percent of the
+    weight a window, and nmse rose by more than 1), so there is no M2 step
+    of the intended size to match there. On July the two ways agree to 16%."""
+    import json
+    low = json.loads((INTO / run / "error_rates.json").read_text(encoding="utf-8"))[
+        "error_rate_for_m2_rate"]["1e-5"]
+    return [("low", f"{low:.6g}"), ("mid", f"{10 * low:.6g}"), ("high", f"{100 * low:.6g}")]
+
+
+def _by_error(run: str, name: str, layout: list[str], kind: str, rate_name: str, rate: str,
+              extra: tuple[str, ...] = ()):
+    tag = "_in_context" if "--error-map-in-context" in extra else ""
+    return (run, f"e1_{name}_{kind}{tag}_{rate_name}", EVAL,
+            layout + ["--read-by-error-map", rate, "--error-map-kind", kind, "--held-score",
+                      *extra])
+
+
+def error() -> list[tuple[str, str, str, list[str]]]:
+    """The first arm on both runs, the repeat read first; then the sign
+    turned; then once in context at the middle rate; then the bias; then
+    the errors of another document. Every read reports the held score."""
+    layouts = lambda run: [("repeat16x4", REPEAT)] + [
+        (f"read64{suffix}", LAYOUT[run] + phase) for suffix, phase in PHASES]
+    jobs = []
+    for kind in ("error", "error_turned"):
+        for run in (JULY42, P97):
+            for name, layout in layouts(run):
+                jobs += [_by_error(run, name, layout, kind, n, r) for n, r in _error_rates(run)]
+    for run in (JULY42, P97):
+        mid = _error_rates(run)[1]
+        jobs += [_by_error(run, name, layout, "error", mid[0], mid[1], ("--error-map-in-context",))
+                 for name, layout in layouts(run)]
+    for kind in ("bias", "error_shuffled"):
+        for run in (JULY42, P97):
+            for name, layout in layouts(run):
+                jobs += [_by_error(run, name, layout, kind, n, r) for n, r in _error_rates(run)]
+    return jobs
+
+
+PLANS = {"m1": m1, "m2": m2, "error_map": error_map, "error": error}
 
 
 def main() -> int:

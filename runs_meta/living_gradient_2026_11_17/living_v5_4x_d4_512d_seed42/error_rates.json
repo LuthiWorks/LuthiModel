@@ -1,0 +1,96 @@
+{
+  "what": "the error read's rates, set so a step is the share of the weight M2's is",
+  "run": {
+    "arm": "living_v5_4x_d4",
+    "seed": 42,
+    "checkpoint": "ckpt_00000041.pt",
+    "global_step": 72042
+  },
+  "m2_median_step_share_by_layer": {
+    "1e-5": [
+      1.2773745010276901e-06,
+      1.9986593657088945e-06,
+      2.8301680512860314e-06,
+      7.621029601462545e-06
+    ],
+    "1e-4": [
+      1.2483343333558057e-05,
+      1.9585606461282143e-05,
+      2.7735352767142437e-05,
+      7.482158694206917e-05
+    ],
+    "1e-3": [
+      0.0001470881159506292,
+      0.00023228010364137678,
+      0.0003298849214942473,
+      0.0008934106025791547
+    ]
+  },
+  "error_step_share_at_rate_one_by_layer": [
+    0.857121928961462,
+    0.9759091842283347,
+    0.96427907485631,
+    1.8016165542145557
+  ],
+  "windows": 128,
+  "error_rate_for_m2_rate": {
+    "1e-5": 2.491503294946662e-06,
+    "1e-4": 2.4415936619271344e-05,
+    "1e-3": 0.00029005964674213745
+  },
+  "error_step_share_by_layer_at_those_rates": {
+    "1e-5": [
+      2.135522110178521e-06,
+      2.431480948073605e-06,
+      2.4025044922526154e-06,
+      4.4887335810560165e-06
+    ],
+    "1e-4": [
+      2.0927434692510653e-05,
+      2.3827736788283824e-05,
+      2.3543776774981273e-05,
+      4.3988155599932624e-05
+    ],
+    "1e-3": [
+      0.0002486164839295011,
+      0.0002830718732296783,
+      0.00027969844781365643,
+      0.000522576261280261
+    ]
+  },
+  "reconstruction": {
+    "model_kwargs_source": "reconstructed: checked 2026-11-13 against commits f33838b, cc30226, 13e5cd25 and 0230cc9f, and against a run trained by the code of 0230cc9f",
+    "living_state_absent_at_training": [
+      "act_count",
+      "act_mean",
+      "act_var",
+      "band_boost_rows",
+      "band_damp_rows",
+      "drive_calls",
+      "drive_dev",
+      "drive_fire_count",
+      "drive_gain",
+      "drive_gain_sum",
+      "drive_ref",
+      "drive_ref_drift",
+      "episode_step_counter",
+      "episode_steps",
+      "episode_writes",
+      "error_rms",
+      "last_write_step",
+      "recall_fires",
+      "recall_sim_count",
+      "recall_sim_mean",
+      "recall_sim_var",
+      "salience_dev",
+      "salience_drift",
+      "salience_level",
+      "salience_window",
+      "salience_window_filled",
+      "salience_window_pos"
+    ],
+    "file_list_source": "recorded path is gone; same path under this repo",
+    "sigreg_projection": "linear_bn",
+    "taper": true
+  }
+}
