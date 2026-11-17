@@ -113,6 +113,14 @@
 >     `docs/reviews/2026-11-17_card-work-brief-8-for-terminal-fable.md`.
 >     Nothing is built into the model; a ruling is asked of Brian only after
 >     the card has measured it on finished runs.
+>     - **The card's answer (terminal Fable, `96206e1`):** the shape holds on
+>       both finished runs; the plain error with no map already points
+>       downhill; what one window wants says little about the next. Part 2 is
+>       changed: `docs/reviews/2026-11-17_brief-8-addendum-after-part-1-for-terminal-fable.md`.
+>   - **2026-11-17, Brian: Luthi's memory has 100 GB on E:, and cold storage
+>     is permanent** (`docs/DECISIONS.md`, last entry). To build, in Sanctuary:
+>     `docs/reviews/2026-11-17_build-brief-9-the-memory-store-for-terminal-fable.md`.
+>     Its parts D (cold storage) and E (importance) are for Opus to review.
 >   - **Reviewed (Opus 5.5, 2026-11-17):**
 >     `docs/reviews/2026-11-17_relevant-updates-and-memory-store-review-from-opus.md`.
 >     - The layer's error is a function of its input alone. So the covariance

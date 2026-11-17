@@ -57,9 +57,35 @@ On this run one fixed map carries almost all of it, including what differs from 
 
 **Why this may be too easy here.** A predictor 60 steps from its start is close to linear, so its sensitivity is close to one fixed matrix, and a fixed map can equal it. A trained predictor's sensitivity moves with what it is given. How well one map does on a finished run is the question for the card.
 
+### Step 5: the card's answer, the same morning (terminal Fable, `96206e1`)
+
+Terminal Fable ran the probe on July seed 42 (48 documents) and 768 seed 97 (32 documents), 8 windows read and 8 scored. Guards held on both. Medians by layer, first to last:
+
+| | Small run | July seed 42 | 768 seed 97 |
+| --- | --- | --- | --- |
+| Learning's share of M1's direction, by size | 0.16 to 0.19 | 0.48 to 0.50 | 0.59 to 0.75 |
+| Does learning point where M1's direction points? | 0.04 to 0.14 | **−0.20 to −0.17** | 0.29 to 0.61 |
+| Is what learning wants a shift of the output? | 0.996+ | 0.994+ | 0.71, 0.78, then 0.997+ |
+| One signal for every layer | 0.85 to 0.91 | 0.79 to 0.95 | 0.63 to 0.81 |
+| The error through one fitted map (other documents) | 0.985 | 0.64 to 0.67 | 0.17 to 0.19 |
+| The error with no map at all, window by window | 0.02 to 0.11 | 0.39 to 0.55 | 0.28 to 0.29 |
+| What one window wants against the next, same document | | 0.02 to 0.03 | 0.08 to 0.09 |
+| Head to tail, own document less another's (t) | | +0.03 (0.8 to 1.1) | +0.08 to +0.12 (0.7 to 0.9) |
+| The no-map rule from the head, on the tail (t) | | +0.04 to +0.06 (6.1 to 7.6) | +0.02 to +0.03 (2.5 to 3.4) |
+
+What this corrects and what it leaves:
+
+- **"Under a fifth is learning" was the small run. It is half on July and about two thirds at 768.** I told Brian a fifth at 09:22. That was wrong for his runs.
+- **On July, learning points against M1's direction** (in 81 to 90% of documents). There, what M1 called helpful is mostly perception bending toward expectation, and following it would in part undo learning. At 768 the two agree. M1 on July should not be read as room for learning.
+- **The shape holds.** What learning wants from a living layer is a shift of its output, on both finished runs, except the first two layers at 768.
+- **The fitted map was the wrong emphasis.** On finished runs the plain error, with no map, already points downhill (0.3 to 0.55). The small run misled me: its predictor had not yet learned to pass the mean through. The map's poor showing at 768 is not a clean no either: 128 windows cannot fit a 768-wide map. But the rule that needs nothing fitted is the one to test first, and it needs no knowledge taken from gradients at all.
+- **The hard limit is here: what learning wants changes from window to window.** One window's wanted shift says almost nothing about the next window's in the same document (0.02 to 0.09). A write can only carry forward what persists. From head to tail, the no-map rule points downhill reliably but weakly (0.02 to 0.06), and the part that is the document's own is not detected with 32 to 48 documents (t about 1).
+
+**So the design is simpler and the prize is smaller than the small run suggested.** The rule to test is step 3's, which I had set aside: each living layer's output shifts against the model's own mean prediction error. In a weight: minus a rate times (the error) ⊗ (the layer's mean input over the context). No map, no backward pass.
+
 ## The design
 
-**A living layer hears whether the model's prediction came true, and shifts its output to make the next one better.**
+**A living layer hears whether the model's prediction came true, and shifts its output to make the next one better.** *(Written before step 5. After it: step 2 below is dropped for the first test. The error is used as it is.)*
 
 For each window lived:
 
@@ -86,7 +112,7 @@ The first is the only one explored. Whether a map made that way may be part of a
 3. **Brian's ruling:** may a living write use an error carried down by a fixed map, and may that map be fitted from gradients offline?
 4. **Build it,** opt-in and bit-identical when off, and register its experiment with the dead control and the present rule beside it. Then a life.
 
-I will not ask for 3 until 1 and 2 are in. If 1 fails (one map cannot carry it on a trained model), the design changes before anyone builds.
+I will not ask for 3 until 1 and 2 are in. If 1 fails (one map cannot carry it on a trained model), the design changes before anyone builds. *(It did change: step 5. Gate 2 now tests the rule with no map first, and the ruling asked at gate 3 is only whether a living write may use the model's own prediction error.)*
 
 ## What I do not know
 
@@ -97,7 +123,7 @@ I will not ask for 3 until 1 and 2 are in. If 1 fails (one map cannot carry it o
 
 ## Conclusion
 
-The room is real and, on these runs, small: tenths of a percent. The helpful change for learning is simple: a shift of each layer's output, nearly the same signal for every layer. A rule that makes it needs only the model's own prediction error and one fixed map. Whether that survives a finished run is two measurements away.
+The room is real and, on these runs, small: tenths of a percent at most, and what a read can carry forward is a small part of that. The helpful change for learning is simple: a shift of each layer's output. On finished runs a rule that makes it needs only the model's own prediction error. Whether reading by that rule lowers the error on what follows, for the document read more than for another, is the E1 read in brief 8's addendum.
 
 ## Artifacts
 

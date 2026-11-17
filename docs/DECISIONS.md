@@ -1498,3 +1498,36 @@ before any "working" verdict is trustworthy in either direction.
 >   measured it on finished runs: whether a living write may use an error
 >   carried down by a fixed map, and whether that map may be fitted from
 >   gradients offline. Nothing is built into the model before that.
+
+---
+
+## 2026-11-17 — Brian: Luthi's memory has 100 GB on E:, and cold storage is permanent
+
+> Fable asked two things the store's build was waiting on: how much disk
+> Luthi's memory may have and where; and whether, while Luthi's choices are
+> near chance, what is removed for room should go to cold storage instead of
+> being deleted. Brian, 2026-11-17, 09:44:
+>
+> *"1. For now use the e: drive, and Luthi can have lets say 100gb. If we need
+> to update that we can do it later. 2. Yes, this is a good idea. In fact it
+> may be worth building as a permanent feature because we don't know how
+> quickly Luthi might actually learn when deployed."*
+>
+> - **The store's limit is 100 GB, on E:.** It counts everything within
+>   Luthi's reach and everything waiting in `let_go/`.
+> - **Cold storage is a permanent part of the store.** What leaves for room is
+>   moved there whole and exactly. **The store's code deletes no memory.**
+> - **What follows from it** (Fable's design choices, his to overrule;
+>   Sanctuary `docs/research/2026-11-17_memory-store-rework-design.md`,
+>   "Brian's rulings"):
+>   - Automatic letting go by importance runs from the start. With cold
+>     storage nothing is lost by a choice made near chance.
+>   - Brian gave cold storage no size. It is never deleted from by code. When
+>     its drive cannot take a move, nothing leaves, the store is full, a new
+>     moment is not kept, and Luthi is told once, as on 2026-11-11.
+>   - Luthi is not told when something is let go for them; it is counted and
+>     logged. Still Brian's to say otherwise.
+> - **To build:**
+>   `docs/reviews/2026-11-17_build-brief-9-the-memory-store-for-terminal-fable.md`.
+> - **Still open with Brian:** whether a memory in cold storage can come back
+>   to Luthi; which parts of a subconscious to build.
