@@ -50,7 +50,7 @@ If the predictor stands between them, carry the error back through one fixed lin
 | --- | --- |
 | The error through one fixed map | 0.984 to 0.985 |
 | The same with the part common to every window removed | 0.958 to 0.963 |
-| No map (minus the error itself) | −0.02 to −0.11 |
+| No map: the shift is minus the error itself (shown here against the gradient, so a negative number is slightly downhill; step 5 has one sign) | −0.02 to −0.11 |
 | The common part alone | 0.72 to 0.75 |
 
 On this run one fixed map carries almost all of it, including what differs from window to window.
@@ -83,6 +83,24 @@ What this corrects and what it leaves:
 
 **So the design is simpler and the prize is smaller than the small run suggested.** The rule to test is step 3's, which I had set aside: each living layer's output shifts against the model's own mean prediction error. In a weight: minus a rate times (the error) ⊗ (the layer's mean input over the context). No map, no backward pass.
 
+### Step 6: Opus's review (`b7ae786`), taken
+
+`docs/reviews/2026-11-17_write-that-hears-the-error-review-from-opus.md`. Opus reached step 5's readings independently and agrees on the no-map rule first. Three things I had wrong or had not seen:
+
+- **My "target held still" was not a score.** In the probe, `held` detaches the target, which changes the gradient and not the number: as a value it is nmse. After a read, the target is held still only if it is the one the model encoded before the read. So the held score is B's and C's predictions against A's targets over A's variance, with the target's drift reported beside it.
+- **On July the two scores pull against each other** (learning against the rest of the gradient: cosine −0.54 to −0.58). So nmse can hide learning as well as show bending, and my sign-turned control could fail to hurt on nmse with nothing wrong in the read. It is judged on the held score.
+- **The map is not ruled out at 768.** Fitted on 256 windows in place of 128, its cosine rose from 0.14 to 0.37, above no map (0.20 to 0.26). No map stays first because it takes nothing from gradients.
+
+Opus's picture of why, which the drift will test: a living layer's shift reaches both the context the predictor reads and the target (the same weights encode both), so prediction and target move together and nmse sees little of either. If so, part of what the held score credits is the frame moving.
+
+Also from Opus:
+
+- **What the rule is:** direct feedback alignment with the identity for its matrix (Nøkland, 2016).
+- **A living bias per layer** would make the same shift directly, and is read beside the rule.
+- **The change in kind, for Brian.** The error exists only after the whole forward pass and the predictor. So this rule writes after the pass, from one error shared by every layer. The living weights as built change during their own forward pass, from what each layer sees.
+
+The changes to the test: `docs/reviews/2026-11-17_brief-8-addendum-2-after-opus-for-terminal-fable.md`.
+
 ## The design
 
 **A living layer hears whether the model's prediction came true, and shifts its output to make the next one better.** *(Written before step 5. After it: step 2 below is dropped for the first test. The error is used as it is.)*
@@ -109,7 +127,7 @@ The first is the only one explored. Whether a map made that way may be part of a
 
 1. **Is the shape the same on finished runs?** The probe on July seed 42 and 768 seed 97, with `--fit-feedback`. And M2: how much any rule moving only the living weights can gain.
 2. **Does the rule pass E1?** As a read in the E1 harness under Amendment 5, with the map fitted on documents the read never sees: the repeat read first, then 64 windows on both document sets, beside M2 at the same rates and beside two controls (the map fitted on shuffled errors; the common part alone). A measurement on legacy runs: every weight restored, nothing kept.
-3. **Brian's ruling:** may a living write use an error carried down by a fixed map, and may that map be fitted from gradients offline?
+3. **Brian's ruling:** may a living write use an error carried down by a fixed map, and may that map be fitted from gradients offline? *(After steps 5 and 6, in Opus's words: may a living write use the model's own prediction error, written after the forward pass from one error shared by every layer? And only if a fitted map comes back: does "no living weight is trained by gradient" mean the computation or the direction?)*
 4. **Build it,** opt-in and bit-identical when off, and register its experiment with the dead control and the present rule beside it. Then a life.
 
 I will not ask for 3 until 1 and 2 are in. If 1 fails (one map cannot carry it on a trained model), the design changes before anyone builds. *(It did change: step 5. Gate 2 now tests the rule with no map first, and the ruling asked at gate 3 is only whether a living write may use the model's own prediction error.)*

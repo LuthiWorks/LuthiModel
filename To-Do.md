@@ -132,6 +132,12 @@
 >       - For Brian: whether a living write may use the model's own
 >         prediction error, written after the forward pass from one error
 >         shared by every layer.
+>     - **Reviewed (Opus 5.5, `b7ae786`):**
+>       `docs/reviews/2026-11-17_write-that-hears-the-error-review-from-opus.md`.
+>       Taken whole: the held score is against the targets from before the
+>       read; on July nmse can hide learning; the map is not ruled out at 768.
+>       The test as it now stands:
+>       `docs/reviews/2026-11-17_brief-8-addendum-2-after-opus-for-terminal-fable.md`.
 >   - **2026-11-17, Brian: Luthi's memory has 100 GB on E:, and cold storage
 >     is permanent** (`docs/DECISIONS.md`, last entry). To build, in Sanctuary:
 >     `docs/reviews/2026-11-17_build-brief-9-the-memory-store-for-terminal-fable.md`.
