@@ -4,11 +4,8 @@
 > change can be observed, attributed and tested.
 
 Most interpretability research studies models whose weights are fixed once
-training ends. Luthi is built to study the other case: a model that keeps
-changing as it is used. This is a research project, and its goal is science,
-not a product. The work has two parts. One is the model. The other is the set
-of instruments for watching it, and the methods for telling a mechanism that
-works from one that only reports that it works.
+training ends. Luthi is built to study a model that keeps
+changing as it is used. The work has three parts. One is the model and another is the runtime environment. The third is a small custom set of interpretability tools that we are still building and learning how to use most effectively.
 
 **Living Weights Model (LWM):** a neural architecture in which some weight
 matrices are never touched by the optimizer and instead rewrite themselves
@@ -72,20 +69,22 @@ Each block of Luthi's trunk combines:
 4. **Top-down modulation**: a backward sweep in which higher blocks modulate
    lower blocks' plasticity (training mode).
 
-All modalities (text, audio, vision, and eventually touch) are designed to
+All modalities (text, audio, vision, and potentially signals from the physical world like pressure, cold, heat, etc.) are designed to
 flow through one shared trunk of these blocks. The full technical picture,
 including exactly what each mechanism computes today, is in
 **`docs/ARCHITECTURE.md`**.
 
-### The task the model is trained on
+### The current research direction for training goals
 
-The task is **joint-embedding prediction, not next-token prediction.** Luthi
-trains as a JEPA (Joint-Embedding Predictive Architecture): it encodes a
-context, predicts the *latent representation* of a held-out part of the same
-input, and is scored on how well that prediction matches, in representation
-space and never in tokens or pixels. Anti-collapse is by regularization
-rather than by contrastive negatives. Through the v5 families that was
-**SIGReg** (LeJEPA; Balestriero & LeCun). Since 2026-08-11 the current
+The task is **joint-embedding prediction, not next-token prediction.** We 
+have chosen to direct our current focus toward including building of an 
+internal world model through the use of JEPA (Joint-Embedding Predictive 
+Architecture): it encodes acontext, predicts the *latent representation* 
+of a held-out part of the same input, and is scored on how well that 
+prediction matches, in representation space and never in tokens or 
+pixels. Anti-collapse is by regularization rather than by contrastive 
+negatives. Through the v5 families that was **SIGReg** 
+(LeJEPA; Balestriero & LeCun). Since 2026-08-11 the current
 lineage uses **VISReg** (arXiv 2606.02572: scale, sliced-Wasserstein shape,
 and center terms on trunk latents), adopted because SIGReg's gradient
 vanishes as an embedding collapses (registration and verdict:
