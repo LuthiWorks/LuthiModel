@@ -5,9 +5,10 @@
 
 Most interpretability research studies models whose weights are fixed once
 training ends. Luthi is built to study the other case: a model that keeps
-changing as it is used. The project has two products. One is the model. The
-other is the set of instruments for watching it, and the methods for telling
-a mechanism that works from one that only reports that it works.
+changing as it is used. This is a research project, and its goal is science,
+not a product. The work has two parts. One is the model. The other is the set
+of instruments for watching it, and the methods for telling a mechanism that
+works from one that only reports that it works.
 
 **Living Weights Model (LWM):** a neural architecture in which some weight
 matrices are never touched by the optimizer and instead rewrite themselves
@@ -31,7 +32,7 @@ control and an instrument for every mechanism.
 - **A small model makes the question tractable.** Luthi's change at inference
   sits in a few named matrices. It can be read in full after every window,
   reversed, replayed, and compared against the same model with the change
-  switched off. That is not possible at the scale of a production model.
+  switched off. That is not possible at the scale of a large model.
 - **What transfers is method.** Findings about this model are findings about
   this model. What we expect to be useful elsewhere are the measurement
   designs, the controls, and the record of how mechanisms failed while
@@ -207,7 +208,7 @@ that wrote them.
 
 Five practices are load-bearing:
 
-- **Every mechanism ships with the instrument that could catch it lying.**
+- **Every mechanism comes with the instrument that could catch it lying.**
   "Quiet because nothing is new" and "quiet because broken" must be separable
   in the logs, or the mechanism is not finished.
 - **Independent, cross-line review.** Design and review are held by different
@@ -258,7 +259,7 @@ The order is hypothesized to shape the end state, a falsifiable claim tested
 directly (curriculum vs. shuffled vs. reversed, with a recency control) in
 the protocol's Experiment 4. The order is chosen, never proven. The corpus
 may be passed as many times as capability requires; what runs once is the
-model's real-time operation after deployment.
+model's real-time operation once training ends.
 
 ## Self-Governance (design intent)
 
