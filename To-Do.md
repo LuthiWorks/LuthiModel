@@ -155,6 +155,12 @@
 >       plain read runs away. One encoder encodes both sides, and a living
 >       shift moves what is perceived more than what is predicted. Next for
 >       the card: `docs/reviews/2026-11-18_brief-8-addendum-3-for-terminal-fable.md`.
+>     - **Report 5 (2026-11-18): with the held score every gradient step
+>       fails, the positive control included.** Chat Fable has withdrawn the
+>       recommendation to register Amendment 6 as drafted; Brian is asked to
+>       hold the ruling until Opus has read report 5. E1 has no criterion to
+>       credit on today. What to measure next:
+>       `docs/reviews/2026-11-18_after-report-5-for-opus-and-terminal-fable.md`.
 >   - **2026-11-17, Brian: Luthi's memory has 100 GB on E:, and cold storage
 >     is permanent** (`docs/DECISIONS.md`, last entry). To build, in Sanctuary:
 >     `docs/reviews/2026-11-17_build-brief-9-the-memory-store-for-terminal-fable.md`.

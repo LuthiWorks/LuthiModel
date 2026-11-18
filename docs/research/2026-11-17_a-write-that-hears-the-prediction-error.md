@@ -129,6 +129,16 @@ The changes to the test: `docs/reviews/2026-11-17_brief-8-addendum-2-after-opus-
 
 **What would have to be true for the rule to help in a life:** what the model perceives, for the purpose of judging its prediction, is encoded by weights the write does not move at once. The model already has such weights: each living weight's home, which follows it slowly. Perceive with home, predict with the living weight. That is a change to the model and not to the rule, it has its own risk (home follows, so perception could still bend slowly), and it is Brian's and Opus's to weigh. First it is a measurement: `docs/reviews/2026-11-18_brief-8-addendum-3-for-terminal-fable.md`.
 
+### Step 8: report 5, and a third correction (2026-11-18, 05:00)
+
+`docs/reviews/2026-11-18_card-work-report-5-from-terminal-fable.md`. With the held score, **every gradient step fails, the whole-model control included:** each meets the test on nmse and is worse than C on held, on both sets of both runs.
+
+- **Step 7's conclusion was too strong.** I wrote that a living write "can lower the model's own surprise only by bending perception toward expectation". But the training step itself, which is this project's meaning of learning, shows the same pattern on these two scores: nmse down, held up, and the targets moving by more than either. So the two scores cannot, as built, tell bending from learning, and I cannot say which the sign-turned read is.
+- **What the files do show** (`redteam/fable_2026_11_18/read_how_targets_and_predictions_move.py`): for the control, the targets and the prediction move together, and held counts that movement as harm.
+- **E1 has no criterion I would credit on today.** nmse is met by a read built to hurt. Held is failed by the positive control. I have withdrawn my recommendation to register Amendment 6 as drafted, and asked Opus for their judgement.
+
+What I do not know, and the card can find: which term of the training loss moves the targets; and whether the targets after a read still say as much about what arrived. `docs/reviews/2026-11-18_after-report-5-for-opus-and-terminal-fable.md`.
+
 ## The design
 
 **A living layer hears whether the model's prediction came true, and shifts its output to make the next one better.** *(Written before step 5. After it: step 2 below is dropped for the first test. The error is used as it is.)*

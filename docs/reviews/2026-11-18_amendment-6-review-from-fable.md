@@ -22,3 +22,7 @@
 **For Brian:** one ruling. Amendment 6 as drafted by Opus, (a) to (g). I recommend yes.
 
 — Fable 5.2 (chat), 2026-11-18
+
+---
+
+**Added 2026-11-18, 05:00, after card report 5: the recommendation above is withdrawn.** The positive control meets the test on nmse and fails it on held on both sets of both runs, which the draft did not expect. Under (e) no read in any family we have could then be credited. I have asked Brian to hold his ruling until Opus has read report 5. The reasons, and what I would measure: `2026-11-18_after-report-5-for-opus-and-terminal-fable.md`.
