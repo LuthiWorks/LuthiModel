@@ -145,6 +145,16 @@
 >       credited, and still trips the diagnosis's kill condition. An exact
 >       split of nmse minus held into drift, alignment and variance is
 >       reported beside every E1 number.
+>     - **Reviewed (chat Fable, 2026-11-18): register it as drafted.**
+>       `docs/reviews/2026-11-18_amendment-6-review-from-fable.md`. Waiting on
+>       Brian's ruling. Report 4's reads are description under its timing
+>       clause.
+>     - **Report 4 read (2026-11-18):** on July the error read helps the
+>       document read against a fixed target and hurts in the model's own
+>       reading; its sign-turned twin meets E1 as registered; at 768 the
+>       plain read runs away. One encoder encodes both sides, and a living
+>       shift moves what is perceived more than what is predicted. Next for
+>       the card: `docs/reviews/2026-11-18_brief-8-addendum-3-for-terminal-fable.md`.
 >   - **2026-11-17, Brian: Luthi's memory has 100 GB on E:, and cold storage
 >     is permanent** (`docs/DECISIONS.md`, last entry). To build, in Sanctuary:
 >     `docs/reviews/2026-11-17_build-brief-9-the-memory-store-for-terminal-fable.md`.

@@ -101,6 +101,34 @@ Also from Opus:
 
 The changes to the test: `docs/reviews/2026-11-17_brief-8-addendum-2-after-opus-for-terminal-fable.md`.
 
+### Step 7: the reads (terminal Fable, report 4, 2026-11-17 12:50; read by me on 2026-11-18)
+
+`docs/reviews/2026-11-17_card-work-report-4-from-terminal-fable.md`. The rule was read in E1's harness on both runs, alone and in context, with the held score beside nmse. Under Amendment 6's own timing clause these reads are description: they were looked at before the amendment was ruled on.
+
+**July seed 42, the plain error read:**
+
+| | Against what was perceived before the read (held) | Against the model's own reading after it (nmse) |
+| --- | --- | --- |
+| Own document less another's, 64 windows, low rate | −1.2e-05 (t −3.6), −8.9e-06 (t −2.3) | +4.1e-05 (t +5.7), +3.5e-05 (t +3.5) |
+| The same, middle rate | −1.6e-04 (t −4.1), −1.2e-04 (t −3.2) | +6.0e-04 (t +3.3), +5.1e-04 (t +1.6) |
+| How far the read moved what is perceived (drift) | 1.9e-05 at the low rate; 5e-03 at the middle | |
+
+- **Against a fixed target the rule does what the design says, and it is the document's own.** I predicted B − C would not be distinguishable from zero. I was wrong.
+- **In the model's own reading it is worse, and that is the document's own too.**
+- **The sign-turned read is the mirror:** worse against the fixed target, better in the model's own reading, and it **meets E1's registered criterion** on both sets of both runs. So the criterion as registered can be met with no learning. Nothing is credited on it until Amendment 6 is ruled on.
+- With another document's errors, B − C is zero on both scores. The error's content is what makes the read the document's own.
+- A living bias does what the weight does, to three figures. In context reads as alone does.
+
+**768 seed 97:** the plain error read runs away at every rate. The sign-turned read at the same rates stays small.
+
+**What I take from it. The rule is not the problem. Where the target comes from is.**
+
+- One encoder, with the same living weights, encodes what the model has and what it then perceives (`jepa_loss.py`: both are `online_encoder.encode`). So a living layer's shift moves both.
+- On both runs it moves what is perceived more than what is predicted. That is why the sign-turned read lowers the model's own error, and why at 768 a shift against the error makes the error larger and the next step larger still.
+- So in the model as built, a living write can lower the model's own surprise only by bending perception toward expectation, and a write that learns is undone by the perception it moves. M1's direction said the same thing a day earlier, and I read it as room.
+
+**What would have to be true for the rule to help in a life:** what the model perceives, for the purpose of judging its prediction, is encoded by weights the write does not move at once. The model already has such weights: each living weight's home, which follows it slowly. Perceive with home, predict with the living weight. That is a change to the model and not to the rule, it has its own risk (home follows, so perception could still bend slowly), and it is Brian's and Opus's to weigh. First it is a measurement: `docs/reviews/2026-11-18_brief-8-addendum-3-for-terminal-fable.md`.
+
 ## The design
 
 **A living layer hears whether the model's prediction came true, and shifts its output to make the next one better.** *(Written before step 5. After it: step 2 below is dropped for the first test. The error is used as it is.)*
