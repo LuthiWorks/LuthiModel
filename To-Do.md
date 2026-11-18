@@ -210,6 +210,19 @@
 >       entry. From here the card's centred scores and guard values are
 >       reads under it. First: the made pull (the guard's own control), then
 >       the whole-model control on `nmse`, `centred` and the guard.
+>     - **Opus on the entry (2026-11-18): no objection to (e′) or the
+>       precisions; Amendment 7 drafted,** for chat Fable to review and Brian
+>       to rule, before E3 launches at the latest:
+>       `docs/reviews/2026-11-18_amendment-7-draft-from-opus.md`.
+>       - On made-up tensors the similarity guard cannot see the part of a
+>         pull that lies along the targets (a rescale). When the prediction
+>         resembles the targets, it sees the rest only at second order: t
+>         near 0 at λ 0.01.
+>       - Proposed: a guard on the targets' side, A's prediction scored on
+>         the read's targets. It sees a made pull at first order in every
+>         case tried, and moved frames do not fool it.
+>       - (e′)'s small-pull test moves to that guard.
+>       - Drafted without the made pull's results (`3cae5e7`).
 >   - **2026-11-17, Brian: Luthi's memory has 100 GB on E:, and cold storage
 >     is permanent** (`docs/DECISIONS.md`, last entry). To build, in Sanctuary:
 >     `docs/reviews/2026-11-17_build-brief-9-the-memory-store-for-terminal-fable.md`.
