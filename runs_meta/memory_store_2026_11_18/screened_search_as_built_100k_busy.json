@@ -1,0 +1,125 @@
+{
+  "what": "The screened search as built in the store: the same answer as the full",
+  "settings": {
+    "sanctuary": "C:\\Dev\\Sanctuary",
+    "archive": "E:\\luthi_experiment_archive\\2026-11-11_memory_test_lives\\2026-11-11_memory_test_lives.zip",
+    "least": 60,
+    "recent": 20,
+    "cues": 30,
+    "rows": 100000,
+    "time": "two card jobs and the store's reading pass",
+    "tag": "_100k_busy"
+  },
+  "torch": "2.4.1+cpu",
+  "threads": 16,
+  "archived_stores_read": 6,
+  "archived_stores_too_small_or_mixed": 110,
+  "archived_answers_that_differ": 0,
+  "archived": [
+    {
+      "store": "lives_from_probes/tmp5litrm4w/life_True",
+      "summaries": 703,
+      "width": 32,
+      "cues": 30,
+      "answers_that_differ": 0,
+      "rows_past_the_screen_median": 2.0,
+      "rows_past_the_screen_most": 3,
+      "eligible_rows": 683
+    },
+    {
+      "store": "lives_from_probes/tmpcwlf39n0/life_10737418240",
+      "summaries": 519,
+      "width": 32,
+      "cues": 30,
+      "answers_that_differ": 0,
+      "rows_past_the_screen_median": 2.0,
+      "rows_past_the_screen_most": 3,
+      "eligible_rows": 499
+    },
+    {
+      "store": "lives_from_probes/tmp80b7x9m4/life_10737418240",
+      "summaries": 500,
+      "width": 32,
+      "cues": 30,
+      "answers_that_differ": 0,
+      "rows_past_the_screen_median": 2.0,
+      "rows_past_the_screen_most": 3,
+      "eligible_rows": 480
+    },
+    {
+      "store": "lives_from_probes/tmp5litrm4w/life_False",
+      "summaries": 495,
+      "width": 32,
+      "cues": 30,
+      "answers_that_differ": 0,
+      "rows_past_the_screen_median": 2.0,
+      "rows_past_the_screen_most": 2,
+      "eligible_rows": 475
+    },
+    {
+      "store": "lives_from_probes/tmpgzmj66we/life_10737418240",
+      "summaries": 445,
+      "width": 32,
+      "cues": 30,
+      "answers_that_differ": 0,
+      "rows_past_the_screen_median": 2.0,
+      "rows_past_the_screen_most": 3,
+      "eligible_rows": 425
+    },
+    {
+      "store": "lives_from_probes/tmp80b7x9m4/life_300000",
+      "summaries": 232,
+      "width": 32,
+      "cues": 30,
+      "answers_that_differ": 0,
+      "rows_past_the_screen_median": 2.0,
+      "rows_past_the_screen_most": 2,
+      "eligible_rows": 212
+    }
+  ],
+  "made_up": [
+    {
+      "store": "shared_part_30_times_their_own",
+      "summaries": 100000,
+      "width": 768,
+      "alike_as_they_stand_median": 0.9988483380140232,
+      "length_over_distance_from_the_mean": 29.46338471507307,
+      "cues": 15,
+      "answers_that_differ": 0,
+      "rows_past_the_screen_median": 2,
+      "rows_past_the_screen_most": 4,
+      "eligible_rows": 99700,
+      "seconds_screened_median": 0.041907800012268126,
+      "seconds_full_median": 0.06634690007194877
+    },
+    {
+      "store": "a_slow_walk",
+      "summaries": 100000,
+      "width": 768,
+      "alike_as_they_stand_median": 0.9999782101311646,
+      "length_over_distance_from_the_mean": 48.235414090475636,
+      "cues": 15,
+      "answers_that_differ": 0,
+      "rows_past_the_screen_median": 533,
+      "rows_past_the_screen_most": 1126,
+      "eligible_rows": 99700,
+      "seconds_screened_median": 0.0411174000473693,
+      "seconds_full_median": 0.06797910004388541
+    },
+    {
+      "store": "alike_at_0.99999",
+      "summaries": 100000,
+      "width": 768,
+      "alike_as_they_stand_median": 0.9999803813161791,
+      "length_over_distance_from_the_mean": 226.0027193204077,
+      "cues": 15,
+      "answers_that_differ": 0,
+      "rows_past_the_screen_median": 21,
+      "rows_past_the_screen_most": 102,
+      "eligible_rows": 99700,
+      "seconds_screened_median": 0.052329599973745644,
+      "seconds_full_median": 0.06653810001444072
+    }
+  ],
+  "note": "the made-up stores say nothing about which memory a mind would get back; size and agreement only"
+}
