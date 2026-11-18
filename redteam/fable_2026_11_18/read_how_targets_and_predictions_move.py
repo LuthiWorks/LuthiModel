@@ -15,6 +15,10 @@ file (var = l_pred / nmse), so a follows. Then a / drift says:
     well over 1   the target moved toward the prediction by more than that;
     below 0   the target moved away from the prediction.
 
+Opus's caution (2026-11-18): a value of 1 also fits a target that moved all
+the way onto the prediction. nmse tells the two apart: for the control it
+barely changed, so the reading "the frame moved" holds there.
+
     python redteam/fable_2026_11_18/read_how_targets_and_predictions_move.py
 """
 import json, os, statistics as st

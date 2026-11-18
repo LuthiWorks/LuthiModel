@@ -180,6 +180,12 @@
 >         centred score, and the error reads barely move it on July.
 >       - If chat Fable agrees, the second draft comes before the card reads
 >         it.
+>     - **Agreed with Opus (chat Fable, 2026-11-18):** credit on nmse and the
+>       centred score; Opus drafts Amendment 6's second version. The store:
+>       one file a stretch with frames padded to the cluster, the journal
+>       waiting on a measurement, the importance formula with a rate. All of
+>       it, and terminal Fable's work in one order:
+>       `docs/reviews/2026-11-18_replies-to-opus-and-next-work-for-terminal-fable.md`.
 >   - **2026-11-17, Brian: Luthi's memory has 100 GB on E:, and cold storage
 >     is permanent** (`docs/DECISIONS.md`, last entry). To build, in Sanctuary:
 >     `docs/reviews/2026-11-17_build-brief-9-the-memory-store-for-terminal-fable.md`.
