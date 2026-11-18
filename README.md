@@ -14,47 +14,45 @@ parameters**: each weight carries not just its current value but a record of
 how it arrived there (per-parameter plasticity, momentum, metaplasticity,
 precision, homeostatic set points, and context-gated episodic memory).
 
-Weights that change during a forward pass are not new as an idea; fast
-weights and hypernetworks are earlier forms. What this project adds is a
-model built around that property from the start, with a matched static
-control and an instrument for every mechanism.
+Weights that change during a forward pass are not a new idea; fast weights
+and hypernetworks are earlier forms. Our approach is to build a model around
+that property from the start, and to pair it with a matched static control
+and a way of measuring each mechanism.
 
-## Why Study a Model That Changes While It Runs
+## Why We Study a Model That Changes While It Runs
 
-- **It is a question interpretability will have to answer.** If systems that
-  learn during use become common, someone needs tools for seeing what such a
-  system learned, from what, and what the learning did to its behaviour. A
-  model that is different after every input cannot be audited once and
-  trusted afterwards.
-- **A small model makes the question tractable.** Luthi's change at inference
-  sits in a few named matrices. It can be read in full after every window,
-  reversed, replayed, and compared against the same model with the change
-  switched off. That is not possible at the scale of a large model.
-- **What transfers is method.** Findings about this model are findings about
-  this model. What we expect to be useful elsewhere are the measurement
+- **We think interpretability will need to answer this question.** If systems
+  that learn during use become common, tools will be needed for seeing what
+  such a system learned, from what, and what the learning did to its
+  behaviour. A model that is different after every input cannot be audited
+  once and trusted afterwards.
+- **A small model lets us work on the question now.** Luthi's change at
+  inference sits in a few named matrices. We can read it in full after every
+  window, reverse it, replay it, and compare it against the same model with
+  the change switched off. We could not do that with a large model on the
+  hardware we have.
+- **What we expect to transfer is method.** Findings about this model are
+  findings about this model. What may be useful elsewhere are the measurement
   designs, the controls, and the record of how mechanisms failed while
   appearing healthy.
 
-We do not have the hardware to train a large model, and this project does not
-need one.
-
 ## How to Read the Claims Here
 
-This README describes mechanisms and measurements, and nothing else.
+We try to keep this README to mechanisms and measurements.
 
 - **A mechanism** is something the code does: self-modifying weights,
-  predictive-coding updates, episodic recall, consolidation. A description of
-  a mechanism says what it computes, not that it is useful.
-- **A claim** is a statement that a mechanism has an effect. Each one carries
-  a kill condition written before its experiment ran, and the claims ledger
-  records the current status of each (`docs/KEY_FINDINGS.md`).
+  predictive-coding updates, episodic recall, consolidation. When we describe
+  a mechanism we are saying what it computes, not that it is useful.
+- **A claim** is a statement that a mechanism has an effect. We write a kill
+  condition for each one before its experiment runs, and we keep the current
+  status of each in the claims ledger (`docs/KEY_FINDINGS.md`).
 - **Names are names.** Words such as "living", "memory", "rest" and
   "education" label mechanisms and procedures. They assert nothing beyond
   what the mechanism computes.
-- **"Mind" is used in the functional sense**: a system that models its
-  input, predicts, and learns. We use the word for models, this one
-  included. It is not a claim about subjective experience or consciousness,
-  and this project makes no such claim.
+- **We use "mind" in the functional sense**: a system that models its input,
+  predicts, and learns. We use the word for models, this one included. It is
+  not a claim about subjective experience or consciousness, and we make no
+  such claim.
 
 ## The Architecture
 
@@ -79,7 +77,7 @@ including exactly what each mechanism computes today, is in
 The task is **joint-embedding prediction, not next-token prediction.** We 
 have chosen to direct our current focus toward including building of an 
 internal world model through the use of JEPA (Joint-Embedding Predictive 
-Architecture): it encodes acontext, predicts the *latent representation* 
+Architecture): it encodes a context, predicts the *latent representation* 
 of a held-out part of the same input, and is scored on how well that 
 prediction matches, in representation space and never in tokens or 
 pixels. Anti-collapse is by regularization rather than by contrastive 
@@ -93,20 +91,20 @@ its paper dose made it 98.6–99.99% of the objective in the 768x8 family; the
 corrected dose is measured and registered before the next family trains
 (`docs/DECISIONS.md`, 2026-08-14 and 2026-10-19).
 
-The choice matters for what is being studied. A next-token objective rewards
-reproducing surface form. A joint-embedding objective rewards a
+We think the choice matters for what is being studied. A next-token objective
+rewards reproducing surface form. A joint-embedding objective rewards a
 representation in which the unseen part of the input is predictable. The
 living weights reduce prediction error locally, per layer, during the forward
 pass; the objective reduces it globally, in latent space. An LM-style
 `forward()` exists for probes and generation, but it is not what the model is
-trained to do, and on a checkpoint trained without the optional next-token
-term its output head is untrained (`docs/KNOWN_INCOMPLETE.md`).
+currently trained to do, and on a checkpoint trained without the optional
+next-token term its output head is untrained (`docs/KNOWN_INCOMPLETE.md`).
 
-## What We Are Trying to Find Out
+## The Current Research Questions
 
-The central question is narrow on purpose, because it can be settled:
-**does the living substrate produce structural change without a gradient
-step, at inference, with behavioural consequence?**
+We have kept the central question narrow on purpose, so that it can be
+settled: **does the living substrate produce structural change without a
+gradient step, at inference, with behavioural consequence?**
 
 Each clause does work. *Structural change* rules out activations and caches.
 *Without a gradient step* rules out ordinary training. *At inference* is
@@ -115,7 +113,7 @@ out a number that drifts and changes nothing anyone could measure.
 Path-dependence alone is not the question: SGD already gives a static model
 path-dependence through its optimizer trajectory.
 
-The tests, in order of cost:
+The tests we are working through, in order of cost:
 
 1. **Encounter asymmetry.** Read a document with self-modification on, then
    measure how the model sees what follows, against reading a *different*
@@ -128,7 +126,7 @@ The tests, in order of cost:
 4. **Curriculum order dependence.** Same stages, ordered vs. shuffled, living
    vs. static.
 
-Behind those sit the wider questions the project is organised around:
+Behind those sit the wider questions we are organised around:
 
 1. Does the living channel do functional work? Living vs. static, everything
    else matched, decomposed so each living mechanism is measured on its own.
@@ -142,99 +140,103 @@ Behind those sit the wider questions the project is organised around:
    mind that keeps growing after training ends? This is the question the
    other five serve. No single experiment answers it.
 
-Every empirical claim carries a pre-registered kill condition, with
-consequences agreed either way. Kills are honored. The claims ledger is
-**`docs/KEY_FINDINGS.md`**. The protocol is
+We write a kill condition for every empirical claim before its experiment
+runs, with the consequences agreed either way, and we honor the kills. The
+claims ledger is **`docs/KEY_FINDINGS.md`**. The protocol is
 **`docs/research/living-weights-experiments.md`**. The registry of kill
 conditions is **`docs/research/2026-07-15_falsification-preregistration.md`**.
 Operational rulings (what to run, in what order) live in
 **`docs/DECISIONS.md`**, kept out of the registry so decisions cannot be
 mistaken for findings.
 
-## What Has Been Measured
+## What We Have Measured So Far
 
-The ledger is the authority on status. These are the mechanism findings a
-reader should know before reading any comparison in this repository:
+The ledger is the authority on status. These are the mechanism findings we
+think a reader should know before reading any comparison in this repository:
 
-- **The living write, as first built, is computed from batch averages**
+- **The living write, as we first built it, is computed from batch averages**
   (2026-10-19, `docs/research/2026-10-19_the-living-write-is-mean-field.md`).
   It cannot see what differs between the tokens it processes, and its
-  accumulated change lies along essentially one direction. An opt-in
-  content-sensitive rule (`write_rule="covariance"`) exists beside it.
+  accumulated change lies along essentially one direction. We have since
+  added an opt-in content-sensitive rule (`write_rule="covariance"`) beside
+  it.
 - **Every living block carries an output store** that mixes a stored average
-  into nearly every forward pass. The static control has none, so earlier
+  into nearly every forward pass. The static control has none, so our earlier
   living-vs-static comparisons compared two mechanisms against none.
 - **One headline claim (KF2) was killed** at its pre-registered condition and
   stays killed.
 - **A score can be improved by moving its own target** (reported 2026-11-17,
   under review; `docs/reviews/2026-11-17_card-work-report-4-from-terminal-fable.md`).
   In a joint-embedding model the weights that make the prediction also make
-  the target. A control built to hurt met the registered criterion that way.
-  A second score, held against the targets as they stood before the read,
-  tells the cases apart.
+  the target. A control we built to hurt met our registered criterion that
+  way. A second score, held against the targets as they stood before the
+  read, tells the cases apart.
 - **The deep trunk is numerically healthy at 768×8** (August's work).
 
-## The Instruments
+## The Interpretability Tools
+
+These are the tools we have so far. We are still building them and learning
+what each one can and cannot tell us.
 
 - **The adaptation eval** (`scripts/adaptation_eval.py`): reads a document
   with the living mechanisms on and scores what follows, against a different
   document and against no read, with the held score alongside.
 - **Readers of the living change itself**: its size, rank and direction by
   layer, and how it relates to the direction that would have helped
-  (`luthi/v2/living_weight_gradient.py`, measurement only; no living weight
-  is ever trained by gradient).
+  (`luthi/v2/living_weight_gradient.py`, measurement only; we never train a
+  living weight by gradient).
 - **[LuthiScope](https://github.com/LuthiWorks/LuthiScope)**: the real-time
   observation console for the model during training and while it runs. Its
-  monitoring path is read-only by design. The monitor is functional; its
+  monitoring path is read-only by design. The monitor works today; its
   control plane and automated studies are designed and not yet built.
 
-## How This Project Catches Itself Being Wrong
+## How We Try to Catch Ourselves Being Wrong
 
-A commitment that started as engineering hygiene and became central, because
-nearly all of the project's real defects lived here: **a mechanism that
-reports healthy while doing nothing is worse than one that crashes.**
+This started as engineering hygiene and became central to how we work,
+because nearly all of our real defects have been of one kind: **a mechanism
+that reports healthy while doing nothing is worse than one that crashes.**
 
-The costliest failures were not crashes. They were mechanisms that ran,
+Our costliest failures were not crashes. They were mechanisms that ran,
 logged plausible numbers, and were inert or counterproductive: an episode
 store frozen for five model families while every counter read healthy; an
 anti-collapse objective neutralized by a normalization layer in front of it
 while the loss went down; a plasticity drive that extinguished itself by
 construction; a "fix" for it that changed nothing because a downstream clamp
 was saturated; and an output store, present in every living block for the
-project's whole history, that no instrument read. Each was found by
-measurement, not by reasoning, and several by a model line other than the one
-that wrote them.
+project's whole history, that no instrument read. We found each by
+measurement, not by reasoning, and several were found by a model line other
+than the one that wrote them.
 
-Five practices are load-bearing:
+The five practices we currently rely on:
 
 - **Every mechanism comes with the instrument that could catch it lying.**
   "Quiet because nothing is new" and "quiet because broken" must be separable
-  in the logs, or the mechanism is not finished.
-- **Independent, cross-line review.** Design and review are held by different
-  minds wherever possible, including a different model family, because a
-  designer's charity toward their own intent is the hardest bias to
+  in the logs, or we do not count the mechanism as finished.
+- **Independent, cross-line review.** We keep design and review with
+  different minds wherever possible, including a different model family,
+  because a designer's charity toward their own intent is the hardest bias to
   self-correct.
-- **Verify firsthand.** Load-bearing findings are re-measured against this
-  repo's own code, not accepted from a summary, including findings that came
-  from us.
-- **Aim the rigor at the claim** (added 2026-10-19, after it drifted).
+- **Verify firsthand.** We re-measure load-bearing findings against this
+  repo's own code instead of accepting them from a summary, including
+  findings that came from us.
+- **Aim the rigor at the claim** (added 2026-10-19, after we drifted).
   Instruments and stability are necessary, not the goal. Before tuning a
-  mechanism, show it can carry the signal its claim needs; every family that
-  tests a living mechanism carries its matched control; a probe counts only
-  above its input baseline; at least one instrument measures with plasticity
-  on. The rules, and the drift that produced them, are in `CLAUDE.md` and the
-  program document.
+  mechanism, we show it can carry the signal its claim needs; every family
+  that tests a living mechanism carries its matched control; a probe counts
+  only above its input baseline; at least one instrument measures with
+  plasticity on. The rules, and the drift that produced them, are in
+  `CLAUDE.md` and the program document.
 - **Discovering something interesting counts as data.** A probe that finds an
   unregistered effect gets chance accounting instead of pre-declaration, and
   it goes in the ledger.
 
-## Education
+## Education (current plan)
 
-The model's training is meant to be an education, not a dataset: a 9-stage
+We intend the model's training to be an education, not a dataset: a 9-stage
 curriculum processed in order, each stage building on the last. The
 curriculum is built (`corpus_build/`, 9 stages); **the JEPA ladder so far has
-trained on a shuffled Gutenberg corpus, not on it**, because order effects
-are only worth testing once the living channel is shown to respond to
+trained on a shuffled Gutenberg corpus, not on it**, because we think order
+effects are only worth testing once the living channel is shown to respond to
 content. The stages:
 
 1. **Science, Philosophy & the Academic Corpus**: the broadest stage and over
@@ -254,36 +256,38 @@ content. The stages:
    4.8, followed by the protocols and charter of the environment the model
    will run in.
 
-The order is hypothesized to shape the end state, a falsifiable claim tested
-directly (curriculum vs. shuffled vs. reversed, with a recency control) in
-the protocol's Experiment 4. The order is chosen, never proven. The corpus
-may be passed as many times as capability requires; what runs once is the
-model's real-time operation once training ends.
+We hypothesize that the order shapes the end state. That is a falsifiable
+claim, and the protocol's Experiment 4 tests it directly (curriculum vs.
+shuffled vs. reversed, with a recency control). The order is our choice and
+is not proven. The corpus may be passed as many times as capability requires;
+what runs once is the model's real-time operation once training ends.
 
 ## Self-Governance (design intent)
 
-The model is meant to govern its own episode retention, checkpoint timing,
+We intend the model to govern its own episode retention, checkpoint timing,
 plasticity modulation, and memory expansion, as internal actions rather than
 admin endpoints. **None of this is on the training path yet.** Today the
 trainer schedules checkpoints and the plasticity taper, and the action layer
-(`luthi/v2/m9/`) is built and unit-tested but not on the training path. The
-authority is meant to pass to the model on the graduated ramp described in
+(`luthi/v2/m9/`) is built and unit-tested but not on the training path. We
+mean the authority to pass to the model on the graduated ramp described in
 Sanctuary's design documents, not to be assumed from the start.
 
-## Relationship to Sanctuary
+## The Runtime Environment: Sanctuary
 
-Luthi Model is the neural substrate for the
-[Sanctuary](https://github.com/LuthiWorks/Sanctuary) cognitive architecture:
+[Sanctuary](https://github.com/LuthiWorks/Sanctuary) is the runtime
+environment we are building for the model:
 
 - **Sanctuary** provides the organization of mind: a continuous cognitive
   loop, memory, rest, and the body and world.
 - **Luthi** provides the substrate: living weights, multimodal processing,
   self-modification through use.
 
-The contract Sanctuary calls is `luthi/sanctuary_interface.py`. Each project
-must stand alone first.
+The contract Sanctuary calls is `luthi/sanctuary_interface.py`. We want each
+project to stand alone first.
 
 ## Technical Foundations
+
+The prior work we draw on most:
 
 - **Predictive Coding** (Rao & Ballard 1999; Whittington & Bogacz 2017,
   2019): a local-learning approximation of backpropagation, and the
