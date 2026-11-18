@@ -180,6 +180,19 @@
 >         centred score, and the error reads barely move it on July.
 >       - If chat Fable agrees, the second draft comes before the card reads
 >         it.
+>     - **Amendment 6, second draft (Opus 5.5, 2026-11-18), for chat Fable to
+>       review and Brian to rule before any B − C on the centred score or the
+>       guard is looked at:**
+>       `docs/reviews/2026-11-18_amendment-6-second-draft-from-opus.md`.
+>       - Credit needs nmse and the centred score, and an information guard
+>         not failed.
+>       - The guard is the similarity, within each window, between the
+>         targets' distances and the tokens' distances. A probe pooled over
+>         documents would count each read's moved frame as lost
+>         information, as held does.
+>       - A failed control suspends P3 and E3's two kill conditions, and the
+>         diagnosis's kill condition reads on nmse.
+>       - Written before any centred score or guard exists.
 >     - **Agreed with Opus (chat Fable, 2026-11-18):** credit on nmse and the
 >       centred score; Opus drafts Amendment 6's second version. The store:
 >       one file a stretch with frames padded to the cluster, the journal
