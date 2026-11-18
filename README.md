@@ -72,7 +72,7 @@ flow through one shared trunk of these blocks. The full technical picture,
 including exactly what each mechanism computes today, is in
 **`docs/ARCHITECTURE.md`**.
 
-### The current research direction for training goals
+## The Current Research Direction for Training Goals
 
 The task is **joint-embedding prediction, not next-token prediction.** We 
 have chosen to direct our current focus toward including building of an 
