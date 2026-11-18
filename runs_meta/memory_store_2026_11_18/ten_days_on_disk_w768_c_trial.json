@@ -1,0 +1,70 @@
+{
+  "what": "the memory store on E: at ten days' size, one file a stretch",
+  "settings": {
+    "sanctuary": "C:\\Dev\\Sanctuary",
+    "drive": "C:\\Dev",
+    "width": 768,
+    "window": 128,
+    "kept": 2000,
+    "days": 2,
+    "seed": 0,
+    "tag": "_trial"
+  },
+  "torch": "2.4.1+cpu",
+  "cluster_bytes": 4096,
+  "note": "random summaries; sizes and times only. Days two to ten are copies of day one's files.",
+  "day_one": {
+    "kept_moments": 2000,
+    "stretches": 421,
+    "kept_moments_a_stretch_mean": 4.750593824228028,
+    "seconds_a_keep": 0.002735395099967718,
+    "bytes_the_store_counts": 10044670,
+    "bytes_of_the_stretch_files": 9916416,
+    "bytes_a_kept_moment": 4958.208,
+    "stretch_files": 421,
+    "files_not_whole_clusters": 0,
+    "free_space_fell_by": 10768384,
+    "free_space_fell_by_more_than_the_file_sizes": 723714,
+    "that_a_file": 1706.872641509434,
+    "gb_a_day_by_free_space": 1.44415283203125,
+    "gb_a_day_by_file_sizes": 1.3470952212810516
+  },
+  "opening_day_one": {
+    "seconds_the_real_store": 0.18515250005293638,
+    "the_reading_pass_alone_before_it": {
+      "files": 421,
+      "records": 2000,
+      "seconds_listing": 0.000984500045888126,
+      "seconds": 1.62474330002442
+    },
+    "the_reading_pass_alone_after_it": {
+      "files": 421,
+      "records": 2000,
+      "seconds_listing": 0.0013071999419480562,
+      "seconds": 0.1298757999902591
+    },
+    "seconds_a_day_of_memories": 26.661960007622838
+  },
+  "at_all_days": {
+    "days": 2,
+    "stretch_files": 842,
+    "kept_moments": 4000,
+    "bytes_of_all_files": 19961086,
+    "gb_of_all_files": 0.018590210005640984,
+    "seconds_to_copy_the_other_days": 0.19598610000684857,
+    "seconds_listing_names_and_sizes": 0.0019087999826297164,
+    "seconds_measuring_the_folder_as_opening_does": 0.015596200013533235,
+    "free_space_fell_by": 20881408,
+    "free_space_fell_by_more_than_the_file_sizes": 920322,
+    "that_a_file": 1089.1384615384616
+  },
+  "reading_all_days_as_opening_does": {
+    "files": 842,
+    "records": 4000,
+    "seconds_listing": 0.0016555000329390168,
+    "seconds": 1.3879479999886826
+  },
+  "search_matrix_gb_at_all_days": 0.011444091796875,
+  "seconds_removing_everything": 0.1269892998971045,
+  "free_space_after_removal_minus_at_start": -1048576
+}

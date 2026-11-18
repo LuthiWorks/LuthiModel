@@ -1,0 +1,58 @@
+{
+  "what": "the memory store on C: (NTFS, 4096-byte clusters) at ten days' size, one file a stretch",
+  "partial": "the run was stopped by the harness for low memory at 08:27 on 2026-11-18, during the reading pass over all ten days. These are the lines it had printed. The reading pass at ten days, the removal time and the free space after removal are missing. Its scratch folder C:/Dev/luthi_store_measure_yup0pkma was left in place.",
+  "settings": {
+    "drive": "C:\\Dev",
+    "width": 768,
+    "window": 128,
+    "kept": 288000,
+    "days": 10,
+    "seed": 0
+  },
+  "note": "random summaries; sizes and times only. Days two to ten are copies of day one's files.",
+  "day_one": {
+    "kept_moments": 288000,
+    "stretches": 62346,
+    "kept_moments_a_stretch_mean": 4.619382157636416,
+    "seconds_a_keep": 0.002782375293749889,
+    "bytes_the_store_counts": 1435544902,
+    "bytes_of_the_stretch_files": 1435017216,
+    "bytes_a_kept_moment": 4982.698666666666,
+    "stretch_files": 62346,
+    "files_not_whole_clusters": 0,
+    "free_space_fell_by": 1715470336,
+    "free_space_fell_by_more_than_the_file_sizes": 279925434,
+    "that_a_file": 4489.653947938219,
+    "gb_a_day_by_free_space": 1.59765625,
+    "gb_a_day_by_file_sizes": 1.3369553741067648
+  },
+  "opening_day_one": {
+    "seconds_the_real_store": 25.166954400017858,
+    "the_reading_pass_alone_before_it": {
+      "files": 62346,
+      "records": 288000,
+      "seconds_listing": 0.1207921999739483,
+      "seconds": 232.60409779998008
+    },
+    "the_reading_pass_alone_after_it": {
+      "files": 62346,
+      "records": 288000,
+      "seconds_listing": 0.12032330001238734,
+      "seconds": 16.102699000039138
+    },
+    "seconds_a_day_of_memories": 25.166954400017858
+  },
+  "at_all_days": {
+    "days": 10,
+    "stretch_files": 623460,
+    "kept_moments": 2880000,
+    "bytes_of_all_files": 14350699846,
+    "gb_of_all_files": 13.365130728110671,
+    "seconds_to_copy_the_other_days": 333.47752529999707,
+    "seconds_listing_names_and_sizes": 2.055777700035833,
+    "seconds_measuring_the_folder_as_opening_does": 13.578149699955247,
+    "free_space_fell_by": 15450214400,
+    "free_space_fell_by_more_than_the_file_sizes": 1099514554,
+    "that_a_file": 1763.560233726781
+  }
+}

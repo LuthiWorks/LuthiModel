@@ -1,0 +1,64 @@
+{
+  "what": "the memory store on E: at ten days' size, one file a stretch",
+  "settings": {
+    "sanctuary": "C:\\Dev\\Sanctuary",
+    "drive": "E:\\",
+    "width": 768,
+    "window": 128,
+    "kept": 3000,
+    "days": 3,
+    "seed": 0,
+    "tag": "_trial"
+  },
+  "torch": "2.4.1+cpu",
+  "cluster_bytes": 262144,
+  "note": "random summaries; sizes and times only. Days two to ten are copies of day one's files.",
+  "day_one": {
+    "kept_moments": 3000,
+    "stretches": 631,
+    "kept_moments_a_stretch_mean": 4.754358161648177,
+    "seconds_a_keep": 0.012120714500003184,
+    "bytes_the_store_counts": 786624510,
+    "bytes_of_the_stretch_files": 786432000,
+    "bytes_a_kept_moment": 262144.0,
+    "stretch_files": 631,
+    "files_larger_than_their_records_clusters": 0,
+    "free_space_fell_by": 787218432,
+    "free_space_fell_by_more_than_the_file_sizes": 593922,
+    "that_a_file": 936.7854889589905,
+    "gb_a_day_by_free_space": 70.3828125,
+    "gb_a_day_by_file_sizes": 70.32971173524857
+  },
+  "opening_day_one": {
+    "seconds_the_real_store": 2.572036499972455,
+    "the_reading_pass_alone": {
+      "files": 631,
+      "records": 3000,
+      "seconds_listing": 0.0010362999746575952,
+      "seconds": 0.17467099998611957
+    },
+    "seconds_a_day_of_memories": 246.9155039973557
+  },
+  "at_all_days": {
+    "days": 3,
+    "stretch_files": 1893,
+    "kept_moments": 9000,
+    "bytes_of_all_files": 2359488510,
+    "gb_of_all_files": 2.1974449139088392,
+    "seconds_to_copy_the_other_days": 40.34039489994757,
+    "seconds_listing_names_and_sizes": 0.002890200004912913,
+    "seconds_measuring_the_folder_as_opening_does": 0.11336760001722723,
+    "free_space_fell_by": 2360082432,
+    "free_space_fell_by_more_than_the_file_sizes": 593922,
+    "that_a_file": 313.25
+  },
+  "reading_all_days_as_opening_does": {
+    "files": 1893,
+    "records": 9000,
+    "seconds_listing": 0.0027921999571844935,
+    "seconds": 4.9901975999819115
+  },
+  "search_matrix_gb_at_all_days": 0.02574920654296875,
+  "seconds_removing_everything": 2.524846800020896,
+  "free_space_after_removal_minus_at_start": 262144
+}
