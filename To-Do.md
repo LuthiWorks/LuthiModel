@@ -148,6 +148,13 @@
 >   - **2026-11-17, Brian: Luthi's memory has 100 GB on E:, and cold storage
 >     is permanent** (`docs/DECISIONS.md`, last entry). To build, in Sanctuary:
 >     `docs/reviews/2026-11-17_build-brief-9-the-memory-store-for-terminal-fable.md`.
+>     - **Built (terminal Fable, 2026-11-18):**
+>       `docs/reviews/2026-11-18_build-report-brief-9-from-terminal-fable.md`.
+>       Opening takes 21 minutes for each day of memories, and the exact
+>       search 0.19 to 0.28 s after one. The design seat's answers (a journal
+>       for opening; the search stays exact and is screened; the second
+>       importance formula), for Opus to review before they are built:
+>       `docs/reviews/2026-11-18_build-brief-10-opening-search-importance-for-terminal-fable.md`.
 >     - **Parts D and E reviewed (Opus 5.5, 2026-11-17):**
 >       `docs/reviews/2026-11-17_memory-store-cold-and-importance-review-from-opus.md`.
 >       - Before a life uses cold storage: two lives must not share a cold
