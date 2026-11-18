@@ -97,6 +97,9 @@ def main() -> int:
     ap.add_argument("--held-score", action="store_true",
                     help="also score B and C against arm A's targets over A's variance, "
                          "and report how far the read moved the targets")
+    ap.add_argument("--made-pull-only", action="store_true",
+                    help="make no read: score arm A and the guard's own control "
+                         "(Amendment 6 (e')) for each document. Needs --held-score.")
     ap.add_argument("--error-map-fit-windows", type=int, default=512,
                     help="held-out windows the map is fitted on; none is in a document "
                          "of either document set of this layout")
@@ -150,6 +153,7 @@ def main() -> int:
         read_by_error_map=maps, error_map_rate=args.read_by_error_map,
         error_map_in_context=args.error_map_in_context,
         held_score=args.held_score,
+        made_pull_only=args.made_pull_only,
     )
     res["run"] = {"arm": run.result["arm"], "seed": run.result["seed"],
                   "checkpoint": run.checkpoint.name, "global_step": run.global_step}
@@ -157,15 +161,23 @@ def main() -> int:
                         "n_score": args.score, "phase": args.doc_phase,
                         "holdout_windows": int(windows.shape[0])}
     s = res["summary"]
-    print(f"arm={run.result['arm']} seed={run.result['seed']} "
-          f"docs={s['n_docs']} phase={args.doc_phase} exact_null={s['exact_null']}")
-    for metric in ("nmse", "l_pred", "target_eff_rank") + (
-            ("held",) if args.held_score else ()):
-        m = s[metric]
-        print(f"  {metric:<16} A={m['A_mean']:.5f}  "
-              f"B-A={m['B_minus_A']['mean']:+.5f} (t={m['B_minus_A']['t']:+.2f})  "
-              f"C-A={m['C_minus_A']['mean']:+.5f} (t={m['C_minus_A']['t']:+.2f})  "
-              f"B-C={m['B_minus_C']['mean']:+.5f} (t={m['B_minus_C']['t']:+.2f})")
+    if args.held_score:
+        pull = s["made_pull"]
+        print(f"  made pull: guard as it is {pull['guard_as_is']['mean']:+.4f} (n={pull['guard_as_is']['n']})")
+        for size in sorted(k for k in pull if k != "guard_as_is"):
+            g, c = pull[size]["guard_pulled_minus_as_is"], pull[size]["centred_pulled_minus_as_is"]
+            print(f"    lambda {size}: guard {g['mean']:+.6f} (t={g['t']:+.2f}, n={g['n']})  "
+                  f"centred {c['mean']:+.6f}, fell in {pull[size]['centred_fell_in']} of {s['n_docs']}")
+    if not args.made_pull_only:
+        print(f"arm={run.result['arm']} seed={run.result['seed']} "
+              f"docs={s['n_docs']} phase={args.doc_phase} exact_null={s['exact_null']}")
+        for metric in ("nmse", "l_pred", "target_eff_rank") + (
+                ("held", "centred", "guard") if args.held_score else ()):
+            m = s[metric]
+            print(f"  {metric:<16} A={m['A_mean']:.5f}  "
+                  f"B-A={m['B_minus_A']['mean']:+.5f} (t={m['B_minus_A']['t']:+.2f})  "
+                  f"C-A={m['C_minus_A']['mean']:+.5f} (t={m['C_minus_A']['t']:+.2f})  "
+                  f"B-C={m['B_minus_C']['mean']:+.5f} (t={m['B_minus_C']['t']:+.2f})")
     default_name = ("adaptation_eval.json" if args.doc_phase == 0
                     else f"adaptation_eval_phase{args.doc_phase}.json")
     out = Path(args.out) if args.out else Path(args.run_dir) / default_name

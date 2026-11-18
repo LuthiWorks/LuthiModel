@@ -138,6 +138,93 @@ def test_the_four_numbers_the_centred_score_and_the_drifts_shift_share():
     assert b["drift_shift_share"] == pytest.approx(share, rel=1e-6) and 0.0 < share < 1.0
 
 
+def test_the_information_guard_is_the_correlation_of_distances_within_each_window():
+    # Amendment 6 (a). Checked against a plain computation, window by window.
+    gen = torch.Generator().manual_seed(4)
+    target, arrived_from = torch.randn(3, 5, 8, generator=gen), torch.randn(3, 5, 6, generator=gen)
+    arrived = ae._pair_distances(arrived_from)
+    assert arrived.shape == (3, 10) and arrived.dtype == torch.float64
+
+    def plain(t: torch.Tensor, e: torch.Tensor) -> float:
+        pairs = [(i, j) for i in range(t.shape[0]) for j in range(i + 1, t.shape[0])]
+        a = torch.tensor([float((t[i].double() - t[j].double()).norm()) for i, j in pairs], dtype=torch.float64)
+        b = torch.tensor([float((e[i].double() - e[j].double()).norm()) for i, j in pairs], dtype=torch.float64)
+        return float(torch.corrcoef(torch.stack([a, b]))[0, 1])
+
+    expected = sum(plain(target[w], arrived_from[w]) for w in range(3)) / 3
+    assert ae._guard(target, arrived) == pytest.approx(expected, rel=1e-9)
+    # A moved frame cannot move it: one shift a window, a rotation, a scale.
+    q, _ = torch.linalg.qr(torch.randn(8, 8, generator=gen))
+    moved = (target @ q) * 1.7 + torch.randn(3, 1, 8, generator=gen) * 5
+    assert ae._guard(moved, arrived) == pytest.approx(expected, abs=1e-5)
+    # Targets that are the embeddings themselves follow what arrived exactly.
+    assert ae._guard(arrived_from, arrived) == pytest.approx(1.0, abs=1e-9)
+    # Skipped where it is not defined; None when every window is.
+    assert ae._guard(target[:, :2], ae._pair_distances(arrived_from[:, :2])) is None, "fewer than three positions"
+    same = arrived_from.clone()
+    same[1] = same[1, :1]                                 # a window of one token repeated: no variance
+    assert ae._guard(target, ae._pair_distances(same)) == pytest.approx(
+        (plain(target[0], arrived_from[0]) + plain(target[2], arrived_from[2])) / 2, rel=1e-9)
+    assert ae._guard(target[1:2], ae._pair_distances(same)[1:2]) is None
+
+
+def test_the_made_pull_lowers_the_centred_score_and_is_scored_with_no_read():
+    # Amendment 6 (e'): T' = T + lambda (P - T) on arm A's own tensors.
+    docs = _docs()
+    res = adaptation_eval(_loss(), docs, n_read=2, held_score=True, made_pull_only=True)
+    assert set(res["per_doc"][0]) == {"doc", "A", "made_pull"} and res["settings"]["made_pull_only"] is True
+    for p in res["per_doc"]:
+        pull = p["made_pull"]
+        assert pull["centred"] == p["A"]["centred"] and pull["guard"] == p["A"]["guard"]
+        assert pull["0.3"]["centred"] != pull["centred"] != pull["0.01"]["centred"]
+    # Against a plain computation on the first document's tail.
+    from luthi.v2.plasticity import freeze_plasticity
+    lm, tail = _loss(), docs[0][2:]
+    with freeze_plasticity(lm.online_encoder), torch.no_grad():
+        r = lm.compute_modality_loss("text", {"text_tokens": tail})
+    predicted, target = r["predicted_target"], r["target_latents"][:, r["ctx_len"]:, :]
+    arrived = ae._pair_distances(lm.online_encoder.embedding.weight[tail[:, r["ctx_len"]:]])
+    for size in (0.3, 0.01):
+        pulled = target + size * (predicted - target)
+        got = res["per_doc"][0]["made_pull"][str(size)]
+        assert got["centred"] == pytest.approx(ae._centred(predicted, pulled), rel=1e-6)
+        assert got["guard"] == pytest.approx(ae._guard(pulled, arrived), rel=1e-6)
+    # The pull shrinks the difference by (1 - lambda) squared and also changes the pulled
+    # targets' own spread within a window, so the centred score need not fall: on this
+    # untrained model it does not. The count is reported for that reason.
+    summary = res["summary"]["made_pull"]
+    assert 0 <= summary["0.3"]["centred_fell_in"] <= len(docs)
+    assert summary["0.3"]["guard_pulled_minus_as_is"]["n"] == len(docs)
+    # No read was made: the model is as it was, to the bit.
+    lm = _loss()
+    before = {k: v.clone() for k, v in lm.state_dict().items()}
+    adaptation_eval(lm, docs, n_read=2, held_score=True, made_pull_only=True)
+    assert all(torch.equal(v, before[k]) for k, v in lm.state_dict().items())
+    with pytest.raises(ValueError, match="needs held_score"):
+        adaptation_eval(_loss(), docs, n_read=2, made_pull_only=True)
+    # And with reads, every document carries it, and the guard is summarised.
+    full = adaptation_eval(_loss(), docs, n_read=2, held_score=True)
+    assert all("made_pull" in p and "guard" in p["B"] for p in full["per_doc"])
+    assert set(full["summary"]["guard"]) == {"A_mean", "B_minus_A", "C_minus_A", "B_minus_C"}
+    assert full["summary"]["made_pull"]["0.3"]["guard_pulled_minus_as_is"]["n"] == len(docs)
+
+
+def test_the_guard_compares_with_arm_As_embeddings_whatever_a_read_does_to_the_table():
+    lm = _loss()
+    tail = _windows(2, seed=6)
+    a, ref = ae._score_held(lm, tail, None)
+    with torch.no_grad():
+        lm.online_encoder.embedding.weight.mul_(-3.0).add_(1.0)
+    arrived = ref["arrived"].clone()
+    b, _ = ae._score_held(lm, tail, ref)
+    assert torch.equal(ref["arrived"], arrived)
+    from luthi.v2.plasticity import freeze_plasticity
+    with freeze_plasticity(lm.online_encoder), torch.no_grad():
+        r = lm.compute_modality_loss("text", {"text_tokens": tail})
+    assert b["guard"] == pytest.approx(ae._guard(r["target_latents"][:, r["ctx_len"]:, :], arrived), rel=1e-9)
+    assert b["guard"] != a["guard"]
+
+
 def test_a_shift_of_either_side_cannot_move_the_centred_score_and_moves_the_others():
     # The arithmetic of ``centred`` alone, on made-up blocks: one shift for a whole window,
     # a different one for each window, added to the targets, to the prediction, or to both.

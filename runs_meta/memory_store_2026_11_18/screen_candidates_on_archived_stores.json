@@ -1,0 +1,97 @@
+{
+  "what": "How many rows does the screened search still compute exactly, on the",
+  "settings": {
+    "archive": "E:\\luthi_experiment_archive\\2026-11-11_memory_test_lives\\2026-11-11_memory_test_lives.zip",
+    "least": 60,
+    "recent": 20,
+    "cues": 30
+  },
+  "torch": "2.4.1+cpu",
+  "summary": {
+    "stores_read": 6,
+    "stores_too_small_or_mixed": 110,
+    "share_of_eligible_rows_left_raw_median_over_stores": 0.03861519607843137,
+    "share_of_eligible_rows_left_centred_median_over_stores": 0.03861519607843137,
+    "eligible_best_missed_in_any_store": 0
+  },
+  "stores": [
+    {
+      "store": "lives_from_probes/tmp5litrm4w/life_True",
+      "summaries": 703,
+      "width": 32,
+      "eligible": 683,
+      "alike_one_to_the_next_median": 0.9999868106078905,
+      "length_over_distance_from_the_mean_median": 2.9604284421211764,
+      "candidates_raw_median": 13.5,
+      "candidates_raw_most": 216,
+      "candidates_centred_median": 13.5,
+      "candidates_centred_most": 216,
+      "eligible_best_missed": 0
+    },
+    {
+      "store": "lives_from_probes/tmpcwlf39n0/life_10737418240",
+      "summaries": 519,
+      "width": 32,
+      "eligible": 499,
+      "alike_one_to_the_next_median": 0.9993321909967597,
+      "length_over_distance_from_the_mean_median": 1.2429410797385378,
+      "candidates_raw_median": 11.5,
+      "candidates_raw_most": 108,
+      "candidates_centred_median": 11.5,
+      "candidates_centred_most": 108,
+      "eligible_best_missed": 0
+    },
+    {
+      "store": "lives_from_probes/tmp80b7x9m4/life_10737418240",
+      "summaries": 500,
+      "width": 32,
+      "eligible": 480,
+      "alike_one_to_the_next_median": 0.9994222810735274,
+      "length_over_distance_from_the_mean_median": 1.248210176305541,
+      "candidates_raw_median": 19.0,
+      "candidates_raw_most": 102,
+      "candidates_centred_median": 19.0,
+      "candidates_centred_most": 102,
+      "eligible_best_missed": 0
+    },
+    {
+      "store": "lives_from_probes/tmp5litrm4w/life_False",
+      "summaries": 495,
+      "width": 32,
+      "eligible": 475,
+      "alike_one_to_the_next_median": 0.999480555138523,
+      "length_over_distance_from_the_mean_median": 1.2187101472056576,
+      "candidates_raw_median": 27.0,
+      "candidates_raw_most": 101,
+      "candidates_centred_median": 27.0,
+      "candidates_centred_most": 101,
+      "eligible_best_missed": 0
+    },
+    {
+      "store": "lives_from_probes/tmpgzmj66we/life_10737418240",
+      "summaries": 445,
+      "width": 32,
+      "eligible": 425,
+      "alike_one_to_the_next_median": 0.9993623502528544,
+      "length_over_distance_from_the_mean_median": 1.2318144386089245,
+      "candidates_raw_median": 16.0,
+      "candidates_raw_most": 105,
+      "candidates_centred_median": 16.0,
+      "candidates_centred_most": 105,
+      "eligible_best_missed": 0
+    },
+    {
+      "store": "lives_from_probes/tmp80b7x9m4/life_300000",
+      "summaries": 232,
+      "width": 32,
+      "eligible": 212,
+      "alike_one_to_the_next_median": 0.9994899238475004,
+      "length_over_distance_from_the_mean_median": 2.4343596586577205,
+      "candidates_raw_median": 10.0,
+      "candidates_raw_most": 84,
+      "candidates_centred_median": 10.0,
+      "candidates_centred_most": 84,
+      "eligible_best_missed": 0
+    }
+  ]
+}

@@ -193,31 +193,81 @@ def _score(loss_module: nn.Module, tail: torch.Tensor) -> dict:
     }
 
 
+MADE_PULLS = (0.3, 0.01)
+
+
+def _pair_distances(x: torch.Tensor) -> torch.Tensor:
+    """For each window of ``x`` ([n, positions, D]), the Euclidean distance
+    between every two of its positions: [n, positions * (positions - 1) / 2],
+    in 8-byte numbers."""
+    wide = x.detach().to(torch.float64)
+    first, second = torch.triu_indices(wide.shape[1], wide.shape[1], offset=1, device=wide.device)
+    return (wide[:, first, :] - wide[:, second, :]).pow(2).sum(dim=-1).sqrt()
+
+
+def _centred(predicted: torch.Tensor, target: torch.Tensor) -> float:
+    """Amendment 6 (a): each window's mean over its predicted positions is
+    removed from the prediction and from the targets, separately. One ratio:
+    the squared difference of what is left, summed over windows, positions
+    and dimensions, over the same sum of the squared centred targets."""
+    predicted_c = predicted - predicted.mean(dim=1, keepdim=True)
+    target_c = target - target.mean(dim=1, keepdim=True)
+    return float(((predicted_c - target_c).pow(2).mean()
+                  / target_c.pow(2).mean().clamp(min=1e-12)).item())
+
+
+def _guard(target: torch.Tensor, arrived: torch.Tensor) -> float | None:
+    """Amendment 6 (a), the information guard: for each window, the Pearson
+    correlation between the distances among its targets and the distances
+    among those tokens' input embeddings (``arrived``, from
+    ``_pair_distances`` of arm A's embeddings); then the mean over windows.
+    A window is skipped where the correlation is not defined: fewer than
+    three predicted positions, or no variance in either set of distances.
+    None when every window is skipped."""
+    if target.shape[1] < 3:
+        return None
+    among = _pair_distances(target)
+    there = arrived.to(among.device)
+    a = among - among.mean(dim=1, keepdim=True)
+    b = there - there.mean(dim=1, keepdim=True)
+    sa, sb = a.pow(2).sum(dim=1), b.pow(2).sum(dim=1)
+    defined = (sa > 0) & (sb > 0)
+    if not bool(defined.any()):
+        return None
+    r = (a * b).sum(dim=1)[defined] / (sa[defined] * sb[defined]).sqrt()
+    return float(r.mean().item())
+
+
 @torch.no_grad()
 def _score_held(loss_module: nn.Module, tail: torch.Tensor,
-                against: tuple[torch.Tensor, torch.Tensor, torch.Tensor] | None,
-                ) -> tuple[dict, tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
+                against: dict | None) -> tuple[dict, dict]:
     """``_score``, and beside it the score with the target held still.
 
-    ``against`` is arm A's ``(target block, its variance, prediction)``; None
-    for arm A itself, which then returns its own. ``held`` is the prediction
+    ``against`` is what arm A left for B and C: its target block, that
+    block's variance, its prediction, and the distances among the tail's
+    tokens in its embedding table. None for arm A itself, which then returns
+    its own. ``held`` is the prediction
     against those targets over that variance, and ``drift`` is this model's
     targets against them, over the same variance. For arm A every number is
     taken by the same arithmetic as for B and C, so that where a read changes
     nothing the three are bitwise equal.
 
-    Three more, each a description and not a criterion until an amendment
-    registers one (2026-11-18):
+    ``centred`` and ``guard`` are Amendment 6's second score and its
+    information guard (registered 2026-11-18; ``_centred``, ``_guard``).
+    The embeddings the guard compares with are arm A's, so that what arrived
+    is in one frame for every arm.
+
+    For arm A, ``against["made_pull"]`` also holds the guard's own control
+    (Amendment 6 (e')): with no read, T' = T + lambda (P - T) for each lambda
+    of ``MADE_PULLS``, and the centred score and the guard against T' beside
+    those against T.
+
+    Description, not criteria:
 
     ``old_on_new``: arm A's prediction against this model's targets, over this
     model's target variance. With A's score, ``held`` and ``nmse`` it makes
     the four: the prediction before or after the read, against the targets
     before or after, each over its own target's variance.
-
-    ``centred`` (Opus, 2026-11-18): in each window the window's mean over the
-    predicted positions is removed from the prediction and from the targets,
-    separately, and what is left is compared, over the targets' own variance
-    within windows. A shift of either side, or of both, cannot move it.
 
     ``drift_shift_share``: the share of the drift that is one shift for all of
     a window's positions. None where the targets did not move."""
@@ -236,11 +286,23 @@ def _score_held(loss_module: nn.Module, tail: torch.Tensor,
     var = float(var_t.item())
     predicted = r["predicted_target"]
     if against is None:
-        against = (target.clone(), var_t.clone(), predicted.clone())
-    held_target, held_var, held_predicted = against
+        table = getattr(loss_module.online_encoder, "embedding", None)
+        if not isinstance(table, nn.Embedding):
+            raise RuntimeError("the information guard needs the encoder's token embedding table "
+                               "(online_encoder.embedding); this encoder has none")
+        tokens = tail[:, r["ctx_len"]:].to(table.weight.device)
+        if tokens.shape[1] != target.shape[1]:
+            raise RuntimeError(f"{tokens.shape[1]} predicted tokens and {target.shape[1]} targets")
+        against = {"target": target.clone(), "var": var_t.clone(), "predicted": predicted.clone(),
+                   "arrived": _pair_distances(table.weight.detach()[tokens])}
+        against["made_pull"] = {
+            "centred": _centred(predicted, target), "guard": _guard(target, against["arrived"]),
+            **{str(pull): {"centred": _centred(predicted, target + pull * (predicted - target)),
+                           "guard": _guard(target + pull * (predicted - target), against["arrived"])}
+               for pull in MADE_PULLS},
+        }
+    held_target, held_var, held_predicted = against["target"], against["var"], against["predicted"]
     scale = held_var.clamp(min=1e-12)
-    predicted_c = predicted - predicted.mean(dim=1, keepdim=True)
-    target_c = target - target.mean(dim=1, keepdim=True)
     moved = target - held_target
     moved_sq = float(moved.pow(2).mean().item())
     score = {
@@ -250,8 +312,8 @@ def _score_held(loss_module: nn.Module, tail: torch.Tensor,
         "held": float(((predicted - held_target).pow(2).mean() / scale).item()),
         "drift": float((moved.pow(2).mean() / scale).item()),
         "old_on_new": float(((held_predicted - target).pow(2).mean() / var_t.clamp(min=1e-12)).item()),
-        "centred": float(((predicted_c - target_c).pow(2).mean()
-                          / target_c.pow(2).mean().clamp(min=1e-12)).item()),
+        "centred": _centred(predicted, target),
+        "guard": _guard(target, against["arrived"]),
         "drift_shift_share": (
             float(moved.mean(dim=1).pow(2).mean().item()) / moved_sq if moved_sq > 0.0 else None
         ),
@@ -459,6 +521,7 @@ def adaptation_eval(
     error_map_rate: float | None = None,
     error_map_in_context: bool = False,
     held_score: bool = False,
+    made_pull_only: bool = False,
 ) -> dict:
     """Run A / B / C (see module docstring) over ``documents``.
 
@@ -503,10 +566,15 @@ def adaptation_eval(
             (the write, the pull, consolidation, the stores, as the read
             switches leave them), then the rule's step is taken.
         held_score: add ``held`` and ``drift`` to every score (module
-            docstring).
+            docstring), and Amendment 6's ``centred`` and ``guard``.
+        made_pull_only: make no read. For each document score arm A and
+            the guard's own control (Amendment 6 (e'), ``_score_held``),
+            and return those. Needs ``held_score``.
 
     Returns ``{"per_doc": [...], "summary": {...}, "settings": {...}}``.
     """
+    if made_pull_only and not held_score:
+        raise ValueError("made_pull_only needs held_score: the made pull is part of that score")
     model = loss_module.online_encoder
     d = len(documents)
     if d < 2:
@@ -613,6 +681,9 @@ def adaptation_eval(
                 a, before_the_read = _score_held(loss_module, tail, None)
             else:
                 a = _score(loss_module, tail)
+            if made_pull_only:
+                per_doc.append({"doc": i, "A": a, "made_pull": before_the_read["made_pull"]})
+                continue
 
             def score() -> dict:
                 if held_score:
@@ -636,6 +707,7 @@ def adaptation_eval(
                 "doc": i,
                 "A": a, "B": b, "C": c,
                 "exact_null": (a == b == c),
+                **({"made_pull": before_the_read["made_pull"]} if held_score else {}),
             })
     finally:
         _restore(model, base, held)
@@ -646,8 +718,47 @@ def adaptation_eval(
         for m, decay in zip(living, prior_decays):
             m.homeostatic_decay = decay
 
+    def made_pull_summary() -> dict:
+        """Amendment 6 (e'): against the pulled targets less against the
+        targets as they are, paired over documents."""
+        out = {}
+        for pull in MADE_PULLS:
+            rows = [(p["made_pull"], p["made_pull"][str(pull)]) for p in per_doc]
+            both = [(as_is["guard"], pulled["guard"]) for as_is, pulled in rows
+                    if as_is["guard"] is not None and pulled["guard"] is not None]
+            out[str(pull)] = {
+                "guard_pulled_minus_as_is": _summ([pulled - as_is for as_is, pulled in both]),
+                "centred_pulled_minus_as_is": _summ([pulled["centred"] - as_is["centred"]
+                                                     for as_is, pulled in rows]),
+                "centred_fell_in": sum(1 for as_is, pulled in rows if pulled["centred"] < as_is["centred"]),
+            }
+        out["guard_as_is"] = _summ([p["made_pull"]["guard"] for p in per_doc
+                                    if p["made_pull"]["guard"] is not None])
+        return out
+
+    if made_pull_only:
+        return {
+            "per_doc": per_doc,
+            "summary": {"n_docs": d, "made_pull": made_pull_summary(),
+                        "nmse_A_mean": _summ([p["A"]["nmse"] for p in per_doc])["mean"],
+                        "centred_A_mean": _summ([p["A"]["centred"] for p in per_doc])["mean"]},
+            "settings": {"n_read": n_read, "n_score": int(documents[0].shape[0]) - n_read,
+                         "made_pull_only": True, "made_pulls": list(MADE_PULLS), "held_score": True},
+        }
+
     summary: dict = {"n_docs": d, "exact_null": all(p["exact_null"] for p in per_doc)}
     if held_score:
+        summary["made_pull"] = made_pull_summary()
+        # The information guard. A document where it is not defined in an arm
+        # is left out of that difference, and the count says how many remain.
+        def guard_less(x: str, y: str) -> dict:
+            return _summ([p[x]["guard"] - p[y]["guard"] for p in per_doc
+                          if p[x]["guard"] is not None and p[y]["guard"] is not None])
+        summary["guard"] = {
+            "A_mean": _summ([p["A"]["guard"] for p in per_doc if p["A"]["guard"] is not None])["mean"],
+            "B_minus_A": guard_less("B", "A"), "C_minus_A": guard_less("C", "A"),
+            "B_minus_C": guard_less("B", "C"),
+        }
         # How far a read moved the targets, in the held score's units.
         summary["drift"] = {"B": _summ([p["B"]["drift"] for p in per_doc]),
                             "C": _summ([p["C"]["drift"] for p in per_doc])}

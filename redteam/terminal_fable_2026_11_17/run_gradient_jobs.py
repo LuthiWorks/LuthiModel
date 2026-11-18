@@ -165,32 +165,46 @@ def m2_held() -> list[tuple[str, str, str, list[str]]]:
     return jobs
 
 
-def four_numbers() -> list[tuple[str, str, str, list[str]]]:
-    """The reads of reports 4 and 5 again, now that the held score carries the
-    centred score, the old prediction against the new targets, and the share
-    of the drift that is one shift for a window (chat Fable's order of
-    2026-11-18, item 1). The whole-model control first, then M2, then the
-    plain error read and the turned one at the low rate, on both runs and
-    both sets. Description only: no criterion on these is registered."""
+def made_pull() -> list[tuple[str, str, str, list[str]]]:
+    """Amendment 6 (e'), the guard's own control: no read; on arm A's own
+    tensors the targets are pulled toward the prediction by 0.3 and by 0.01,
+    and the guard and the centred score are taken against the pulled targets
+    and against the targets as they are. Both runs, both sets."""
+    return [(run, f"e1_read64_made_pull{suffix}", EVAL,
+             LAYOUT[run] + phase + ["--held-score", "--made-pull-only"])
+            for run in (JULY42, P97) for suffix, phase in PHASES]
+
+
+def amendment_6() -> list[tuple[str, str, str, list[str]]]:
+    """The reads of reports 4 and 5 again under Amendment 6 (registered
+    2026-11-18 08:49): nmse, the centred score and the information guard,
+    with the four numbers and the drift's shift share as description. The
+    whole-model control first, then M2, then the plain error read and the
+    turned one at the low rate, on both runs and both sets.
+
+    Two files named ``..._four`` were written by an earlier form of this plan
+    before the guard was built (the whole-model control on July, both sets,
+    at 08:26, before the amendment was entered). They have no guard and are
+    description."""
     gradient = ["--read-by-gradient", "1e-5", "--gradient-steps", "1", "--held-score"]
     jobs = []
     for what, more in (("gradient", []), ("living_gradient", ["--gradient-read-what", "living"])):
         for run in (JULY42, P97):
             for suffix, phase in PHASES:
-                jobs.append((run, f"e1_read64_{what}_1e-5_four{suffix}", EVAL,
+                jobs.append((run, f"e1_read64_{what}_1e-5_a6{suffix}", EVAL,
                              LAYOUT[run] + phase + gradient + more))
     for kind in ("error", "error_turned"):
         for run in (JULY42, P97):
             low = _error_rates(run)[0][1]
             for suffix, phase in PHASES:
-                jobs.append((run, f"e1_read64{suffix}_{kind}_low_four", EVAL,
+                jobs.append((run, f"e1_read64{suffix}_{kind}_low_a6", EVAL,
                              LAYOUT[run] + phase + ["--read-by-error-map", low, "--error-map-kind", kind,
                                                     "--held-score"]))
     return jobs
 
 
 PLANS = {"m1": m1, "m2": m2, "error_map": error_map, "error": error, "m2_held": m2_held,
-         "four_numbers": four_numbers}
+         "made_pull": made_pull, "amendment_6": amendment_6}
 
 
 def main() -> int:
