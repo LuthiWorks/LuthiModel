@@ -65,6 +65,8 @@ def test_a_dead_arm_is_still_an_exact_null_with_the_held_score_on():
     res = adaptation_eval(_dead(), _docs(), n_read=2, held_score=True)
     assert res["summary"]["exact_null"] is True
     assert all(p["B"]["drift"] == 0.0 and p["B"]["held"] == p["A"]["held"] for p in res["per_doc"])
+    assert all(p["B"]["drift_shift_share"] is None and p["A"]["drift_shift_share"] is None for p in res["per_doc"])
+    assert res["summary"]["drift_shift_share"]["B"]["n"] == 0, "no target moved, so there is no share to give"
 
 
 def test_the_held_score_holds_the_target_and_nmse_does_not():
@@ -94,6 +96,67 @@ def test_the_held_score_holds_the_target_and_nmse_does_not():
     assert b["drift"] == pytest.approx(drift, rel=1e-6) and drift > 0
     assert b["nmse"] == pytest.approx(ae._score(lm, tail)["nmse"], rel=1e-6)
     assert abs(b["held"] - b["nmse"]) > 1e-6
+
+
+def test_the_four_numbers_the_centred_score_and_the_drifts_shift_share():
+    # Description only until an amendment registers a criterion (2026-11-18).
+    lm = _loss()
+    tail = _windows(3, seed=6)
+    from luthi.v2.plasticity import freeze_plasticity
+
+    def frozen_pass() -> tuple[torch.Tensor, torch.Tensor]:
+        with freeze_plasticity(lm.online_encoder), torch.no_grad():
+            r = lm.compute_modality_loss("text", {"text_tokens": tail})
+        return r["predicted_target"].clone(), r["target_latents"][:, r["ctx_len"]:, :].clone()
+
+    def var(t: torch.Tensor) -> torch.Tensor:
+        return (t - t.mean(dim=(0, 1), keepdim=True)).pow(2).mean()
+
+    def centred(p: torch.Tensor, t: torch.Tensor) -> float:
+        p_c, t_c = p - p.mean(dim=1, keepdim=True), t - t.mean(dim=1, keepdim=True)
+        return float((p_c - t_c).pow(2).mean() / t_c.pow(2).mean())
+
+    a, ref = ae._score_held(lm, tail, None)
+    p_a, t_a = frozen_pass()
+    assert a["old_on_new"] == pytest.approx(a["held"], rel=1e-6) and a["held"] == pytest.approx(a["nmse"], rel=1e-5)
+    assert a["drift"] == 0.0 and a["drift_shift_share"] is None
+    assert a["centred"] == pytest.approx(centred(p_a, t_a), rel=1e-6)
+    for layer in living_layers(lm.online_encoder):
+        with torch.no_grad():
+            layer.weight.mul_(1.05)
+    b, _ = ae._score_held(lm, tail, ref)
+    p_b, t_b = frozen_pass()
+    # The four: the prediction before or after, against the targets before or after,
+    # each over its own target's variance.
+    assert b["held"] == pytest.approx(float((p_b - t_a).pow(2).mean() / var(t_a)), rel=1e-6)
+    assert b["old_on_new"] == pytest.approx(float((p_a - t_b).pow(2).mean() / var(t_b)), rel=1e-6)
+    assert b["nmse"] == pytest.approx(float((p_b - t_b).pow(2).mean() / var(t_b)), rel=1e-5)
+    assert len({round(x, 9) for x in (a["nmse"], b["held"], b["old_on_new"], b["nmse"])}) == 4
+    assert b["centred"] == pytest.approx(centred(p_b, t_b), rel=1e-6)
+    moved = t_b - t_a
+    share = float(moved.mean(dim=1).pow(2).mean() / moved.pow(2).mean())
+    assert b["drift_shift_share"] == pytest.approx(share, rel=1e-6) and 0.0 < share < 1.0
+
+
+def test_a_shift_of_either_side_cannot_move_the_centred_score_and_moves_the_others():
+    # The arithmetic of ``centred`` alone, on made-up blocks: one shift for a whole window,
+    # a different one for each window, added to the targets, to the prediction, or to both.
+    gen = torch.Generator().manual_seed(3)
+    p, t = torch.randn(4, 6, 8, generator=gen), torch.randn(4, 6, 8, generator=gen)
+    shift_t, shift_p = torch.randn(4, 1, 8, generator=gen) * 3, torch.randn(4, 1, 8, generator=gen) * 3
+
+    def centred(p: torch.Tensor, t: torch.Tensor) -> float:
+        p_c, t_c = p - p.mean(dim=1, keepdim=True), t - t.mean(dim=1, keepdim=True)
+        return float((p_c - t_c).pow(2).mean() / t_c.pow(2).mean())
+
+    def nmse(p: torch.Tensor, t: torch.Tensor) -> float:
+        return float((p - t).pow(2).mean() / (t - t.mean(dim=(0, 1), keepdim=True)).pow(2).mean())
+
+    base = centred(p, t)
+    for p2, t2 in ((p, t + shift_t), (p + shift_p, t), (p + shift_p, t + shift_t), (2 * p + shift_p, 2 * t)):
+        assert centred(p2, t2) == pytest.approx(base, rel=1e-5)
+        assert abs(nmse(p2, t2) - nmse(p, t)) > 0.1
+    assert centred(p + 0.5 * (t - p), t) < base * 0.3, "and it credits a prediction that learns the content"
 
 
 # ---- the kinds that need nothing fitted ----------------------------------

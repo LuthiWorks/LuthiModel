@@ -195,16 +195,32 @@ def _score(loss_module: nn.Module, tail: torch.Tensor) -> dict:
 
 @torch.no_grad()
 def _score_held(loss_module: nn.Module, tail: torch.Tensor,
-                against: tuple[torch.Tensor, torch.Tensor] | None,
-                ) -> tuple[dict, tuple[torch.Tensor, torch.Tensor]]:
+                against: tuple[torch.Tensor, torch.Tensor, torch.Tensor] | None,
+                ) -> tuple[dict, tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
     """``_score``, and beside it the score with the target held still.
 
-    ``against`` is arm A's ``(target block, its variance)``; None for arm A
-    itself, which then returns its own. ``held`` is the prediction against
-    those targets over that variance, and ``drift`` is this model's targets
-    against them, over the same variance. For arm A ``held`` is taken by the
-    same arithmetic as for B and C, so that where a read changes nothing the
-    three are bitwise equal."""
+    ``against`` is arm A's ``(target block, its variance, prediction)``; None
+    for arm A itself, which then returns its own. ``held`` is the prediction
+    against those targets over that variance, and ``drift`` is this model's
+    targets against them, over the same variance. For arm A every number is
+    taken by the same arithmetic as for B and C, so that where a read changes
+    nothing the three are bitwise equal.
+
+    Three more, each a description and not a criterion until an amendment
+    registers one (2026-11-18):
+
+    ``old_on_new``: arm A's prediction against this model's targets, over this
+    model's target variance. With A's score, ``held`` and ``nmse`` it makes
+    the four: the prediction before or after the read, against the targets
+    before or after, each over its own target's variance.
+
+    ``centred`` (Opus, 2026-11-18): in each window the window's mean over the
+    predicted positions is removed from the prediction and from the targets,
+    separately, and what is left is compared, over the targets' own variance
+    within windows. A shift of either side, or of both, cannot move it.
+
+    ``drift_shift_share``: the share of the drift that is one shift for all of
+    a window's positions. None where the targets did not move."""
     was_training = loss_module.training
     loss_module.eval()
     try:
@@ -218,16 +234,27 @@ def _score_held(loss_module: nn.Module, tail: torch.Tensor,
     centered = target - target.mean(dim=(0, 1), keepdim=True)
     var_t = centered.pow(2).mean()
     var = float(var_t.item())
+    predicted = r["predicted_target"]
     if against is None:
-        against = (target.clone(), var_t.clone())
-    held_target, held_var = against
+        against = (target.clone(), var_t.clone(), predicted.clone())
+    held_target, held_var, held_predicted = against
     scale = held_var.clamp(min=1e-12)
+    predicted_c = predicted - predicted.mean(dim=1, keepdim=True)
+    target_c = target - target.mean(dim=1, keepdim=True)
+    moved = target - held_target
+    moved_sq = float(moved.pow(2).mean().item())
     score = {
         "l_pred": l_pred,
         "nmse": l_pred / max(var, 1e-12),
         "target_eff_rank": _eff_rank(target),
-        "held": float(((r["predicted_target"] - held_target).pow(2).mean() / scale).item()),
-        "drift": float(((target - held_target).pow(2).mean() / scale).item()),
+        "held": float(((predicted - held_target).pow(2).mean() / scale).item()),
+        "drift": float((moved.pow(2).mean() / scale).item()),
+        "old_on_new": float(((held_predicted - target).pow(2).mean() / var_t.clamp(min=1e-12)).item()),
+        "centred": float(((predicted_c - target_c).pow(2).mean()
+                          / target_c.pow(2).mean().clamp(min=1e-12)).item()),
+        "drift_shift_share": (
+            float(moved.mean(dim=1).pow(2).mean().item()) / moved_sq if moved_sq > 0.0 else None
+        ),
     }
     return score, against
 
@@ -624,7 +651,15 @@ def adaptation_eval(
         # How far a read moved the targets, in the held score's units.
         summary["drift"] = {"B": _summ([p["B"]["drift"] for p in per_doc]),
                             "C": _summ([p["C"]["drift"] for p in per_doc])}
-    for metric in ("l_pred", "nmse", "target_eff_rank") + (("held",) if held_score else ()):
+        # The share of that movement that is one shift for a whole window,
+        # over the documents whose targets moved at all.
+        summary["drift_shift_share"] = {
+            arm: _summ([p[arm]["drift_shift_share"] for p in per_doc
+                        if p[arm]["drift_shift_share"] is not None])
+            for arm in ("B", "C")
+        }
+    more = ("held", "old_on_new", "centred") if held_score else ()
+    for metric in ("l_pred", "nmse", "target_eff_rank") + more:
         summary[metric] = {
             "A_mean": _summ([p["A"][metric] for p in per_doc])["mean"],
             "B_minus_A": _summ([p["B"][metric] - p["A"][metric] for p in per_doc]),

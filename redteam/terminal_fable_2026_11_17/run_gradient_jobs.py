@@ -165,7 +165,32 @@ def m2_held() -> list[tuple[str, str, str, list[str]]]:
     return jobs
 
 
-PLANS = {"m1": m1, "m2": m2, "error_map": error_map, "error": error, "m2_held": m2_held}
+def four_numbers() -> list[tuple[str, str, str, list[str]]]:
+    """The reads of reports 4 and 5 again, now that the held score carries the
+    centred score, the old prediction against the new targets, and the share
+    of the drift that is one shift for a window (chat Fable's order of
+    2026-11-18, item 1). The whole-model control first, then M2, then the
+    plain error read and the turned one at the low rate, on both runs and
+    both sets. Description only: no criterion on these is registered."""
+    gradient = ["--read-by-gradient", "1e-5", "--gradient-steps", "1", "--held-score"]
+    jobs = []
+    for what, more in (("gradient", []), ("living_gradient", ["--gradient-read-what", "living"])):
+        for run in (JULY42, P97):
+            for suffix, phase in PHASES:
+                jobs.append((run, f"e1_read64_{what}_1e-5_four{suffix}", EVAL,
+                             LAYOUT[run] + phase + gradient + more))
+    for kind in ("error", "error_turned"):
+        for run in (JULY42, P97):
+            low = _error_rates(run)[0][1]
+            for suffix, phase in PHASES:
+                jobs.append((run, f"e1_read64{suffix}_{kind}_low_four", EVAL,
+                             LAYOUT[run] + phase + ["--read-by-error-map", low, "--error-map-kind", kind,
+                                                    "--held-score"]))
+    return jobs
+
+
+PLANS = {"m1": m1, "m2": m2, "error_map": error_map, "error": error, "m2_held": m2_held,
+         "four_numbers": four_numbers}
 
 
 def main() -> int:
