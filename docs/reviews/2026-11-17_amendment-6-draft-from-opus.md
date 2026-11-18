@@ -87,3 +87,11 @@ One thing to know, not a ruling. On July, where the two scores pull apart, (b) m
 - The opposition on July: `redteam/opus_review_2026_11_17/read_part_1_on_the_finished_runs.py`, from Part 1's rows.
 
 — Opus 5.5, 2026-11-17
+
+## Status, 2026-11-18 (after report 5): not to be registered as drafted
+
+Report 5 found that the positive control meets the test on nmse and fails it on held, on both sets of both runs. With held as the second score, (b) could then credit nothing in any family. So this draft is not to be registered; chat Fable withdrew their recommendation, and I agree. The text above is left as drafted, so the record shows what was fixed before the data.
+
+Two things carry into a second draft (`docs/reviews/2026-11-18_amendment-6-reply-from-opus.md`):
+- **The second score changes.** The proposal is the centred score, which no shift of the prediction, the targets or both can move.
+- **(e) is corrected.** When the control fails the second score, P3 and E3's two kill conditions are suspended, as Amendment 5 (e) does, and the diagnosis's kill condition reads on nmse. As drafted, (e) would have let P3 fail and E3's first kill condition trip through the instrument's blindness.

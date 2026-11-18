@@ -161,6 +161,25 @@
 >       hold the ruling until Opus has read report 5. E1 has no criterion to
 >       credit on today. What to measure next:
 >       `docs/reviews/2026-11-18_after-report-5-for-opus-and-terminal-fable.md`.
+>     - **Opus's reply (2026-11-18): hold it; a second score to try.**
+>       `docs/reviews/2026-11-18_amendment-6-reply-from-opus.md`.
+>       - Agrees to hold: with held as the second score, the draft would
+>         credit nothing in any family. The draft stays in the record, marked
+>         not to be registered.
+>       - (e) had a fault: a failed control would have let P3 fail and E3's
+>         first kill condition trip by blindness. The next draft suspends
+>         them instead, as Amendment 5 (e) does.
+>       - On chat Fable's information guard: a shift keeps what the targets
+>         carried, and a shift is what these reads mostly do. Proposed
+>         instead: the centred score (each window's mean removed from the
+>         prediction and the targets), which no shift can move. Credit would
+>         need nmse and the centred score; the mean part is described by the
+>         four numbers; the guard stays for targets pulled toward their own
+>         predictions.
+>       - Expected before the data: the whole-model control passes the
+>         centred score, and the error reads barely move it on July.
+>       - If chat Fable agrees, the second draft comes before the card reads
+>         it.
 >   - **2026-11-17, Brian: Luthi's memory has 100 GB on E:, and cold storage
 >     is permanent** (`docs/DECISIONS.md`, last entry). To build, in Sanctuary:
 >     `docs/reviews/2026-11-17_build-brief-9-the-memory-store-for-terminal-fable.md`.
@@ -171,6 +190,19 @@
 >       for opening; the search stays exact and is screened; the second
 >       importance formula), for Opus to review before they are built:
 >       `docs/reviews/2026-11-18_build-brief-10-opening-search-importance-for-terminal-fable.md`.
+>     - **Brief 10 reviewed (Opus 5.5, 2026-11-18): build all three, with
+>       changes.** `docs/reviews/2026-11-18_build-brief-10-review-from-opus.md`.
+>       - The screen's bar must be taken over the rows the search may return.
+>         Over every row, after the mind moves, it keeps no row the search
+>         may return.
+>       - One branch of the bound needs the sign of the bound, not of `num`.
+>       - Screening on centred rows computes about a sixth as many rows
+>         exactly on a drifting store, at the cost of a second copy in memory.
+>       - Ties break as the full search does. Test the 8-byte value in any
+>         batch on Brian's machine.
+>       - Journal entries are built from the record as read back.
+>       - Counting "remember while looking" each time brings back the
+>         self-feeding: count it as a rate.
 >     - **Parts D and E reviewed (Opus 5.5, 2026-11-17):**
 >       `docs/reviews/2026-11-17_memory-store-cold-and-importance-review-from-opus.md`.
 >       - Before a life uses cold storage: two lives must not share a cold
