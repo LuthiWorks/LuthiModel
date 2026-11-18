@@ -222,6 +222,15 @@ def test_decode_action_reports_each_channel(runs, tmp_path, cache_env):
     assert set(decoded["attention_gates"]) == {"text", "audio", "vision"}
     assert all(0.0 <= g <= 1.0 for g in decoded["attention_gates"].values())
     assert 0.0 <= decoded["memory_salience"] <= 1.0
+    # The choice to remember is reported as it was decided (2026-11-18).
+    choice = decoded["memory_choice"]
+    assert set(choice) == {"activity", "band_threshold", "floor", "rest_activity", "rest_tolerance"}
+    passed = (
+        choice["activity"] >= choice["band_threshold"]
+        and choice["activity"] > choice["floor"]
+        and choice["activity"] > choice["rest_activity"] + choice["rest_tolerance"]
+    )
+    assert passed == decoded["active"]["memory"], "the report is the test that was applied"
     assert set(decoded["bands_armed"]) == {"text", "attention", "memory"}
 
 

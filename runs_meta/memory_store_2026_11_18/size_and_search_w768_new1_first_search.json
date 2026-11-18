@@ -1,0 +1,49 @@
+{
+  "what": "the reworked memory store's size a day and its exact search, brief 9",
+  "settings": {
+    "sanctuary": "C:\\Dev\\Sanctuary",
+    "width": 768,
+    "window": 128,
+    "new": 1,
+    "kept": 20000,
+    "searches": 20,
+    "seed": 0
+  },
+  "torch": "2.4.1+cpu",
+  "size": {
+    "kept_moments": 20002,
+    "memories": 4358,
+    "kept_moments_a_memory_mean": 4.589720055071133,
+    "record_bytes_median": 3552.0,
+    "record_bytes_mean": 3663.290620937906,
+    "bytes_as_file_sizes": 73664934,
+    "bytes_as_4096_clusters": 82325504,
+    "files": 20004,
+    "a_day": {
+      "kept_moments": 288000,
+      "gb_as_file_sizes": 0.9878249677845555,
+      "gb_as_4096_clusters": 1.1039606488569893,
+      "files": 288029,
+      "seconds_to_open_the_store": 1256.4860976298992
+    },
+    "seconds_a_keep": 0.0034280495550488587,
+    "seconds_to_open_this_store": 87.26470459997654
+  },
+  "search": {
+    "summaries": 288000,
+    "width": 768,
+    "matrix_gb": 0.823974609375,
+    "summaries_alike_as_they_stand_median": 0.9989560842514038,
+    "one_thread": {
+      "exact_8_byte_mean_removed_after_a_keep_seconds": 1.0376433999626897,
+      "exact_8_byte_mean_removed_no_keep_since_seconds": 0.43321930000092834,
+      "one_4_byte_product_over_unit_rows_seconds": 0.037240899924654514
+    },
+    "default_16_threads": {
+      "exact_8_byte_mean_removed_after_a_keep_seconds": 0.6635517000104301,
+      "exact_8_byte_mean_removed_no_keep_since_seconds": 0.3783490499481559,
+      "one_4_byte_product_over_unit_rows_seconds": 0.03706215001875535
+    }
+  },
+  "note": "random summaries; size and time only, nothing about which memory comes back"
+}

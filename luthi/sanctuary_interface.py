@@ -915,7 +915,11 @@ def decode_action(
     ``active`` per channel (``text``, ``attention``, ``memory``) by the
     activity-band test against the rest action; ``attention_gates`` per
     modality (``text``, ``audio``, ``vision``) in [0, 1];
-    ``memory_salience`` in [0, 1]; the legacy ``intensity`` per channel
+    ``memory_salience`` in [0, 1]; ``memory_choice``, the activity the choice
+    to remember was decided on and each bar it had to pass (``activity``,
+    ``band_threshold``, ``floor``, ``rest_activity``, ``rest_tolerance``; the
+    channel is active when the activity is above all three, and the band's
+    bar is minus infinity until it has warmed up); the legacy ``intensity`` per channel
     (reported only); and ``bands_armed`` per channel (a band that has not
     warmed up cannot call a channel silent).
 

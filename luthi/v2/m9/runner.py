@@ -1635,6 +1635,19 @@ class M9Trainer(JEPATrainer):
                 for i, name in enumerate(("text", "audio", "vision"))
             },
             "memory_salience": float(outs["memory"]["salience"][0].item()),
+            # The choice to remember, as it was decided: the activity read
+            # above and each bar it had to pass (``is_silent``). Reported so a
+            # host can record how strongly the mind chose. ``memory_salience``
+            # is a different number: it is read from the action and keeps its
+            # sign, and the choice is read from the predicted next state and
+            # does not (Opus's review of 2026-11-17, E1). Read only.
+            "memory_choice": {
+                "activity": float(activity["memory"][0].item()),
+                "band_threshold": float(self.activity_bands.silent_threshold("memory")),
+                "floor": float(self.activity_bands.config.absolute_silent_floor),
+                "rest_activity": float(rest_activity["memory"][0].item()),
+                "rest_tolerance": float(self.activity_bands.config.rest_tolerance),
+            },
             "intensity": {
                 m: float(outs[m]["intensity"][0].item())
                 for m in ("text", "attention", "memory")
