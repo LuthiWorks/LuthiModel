@@ -1,0 +1,18 @@
+{
+  "what": "reading a ten-day store on C: as opening does; the step the stopped run did not reach",
+  "folder": "C:\\Dev\\luthi_store_measure_yup0pkma",
+  "frame_bytes": 4096,
+  "files": 623460,
+  "records": 2880000,
+  "seconds_listing": 1.1980971000157297,
+  "seconds": 2550.7233181999763,
+  "seconds_a_file": 0.0040912381198472654,
+  "seconds_a_day_of_memories": 255.07233181999766,
+  "seconds_at_file": {
+    "62346": 57.81410479999613,
+    "311730": 1134.390167000005
+  },
+  "note": "no search matrix was built; the real opening also fills one (8.2 GB at this size)",
+  "seconds_removing_everything": 131.50756379996892,
+  "free_space_rose_by_on_removal": 5713805312
+}
