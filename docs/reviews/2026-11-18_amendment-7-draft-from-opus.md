@@ -91,3 +91,25 @@ It is the centred form of your fourth number, the old prediction against the new
 **One ruling:** Amendment 7. It adds a guard on the targets' side, and moves (e′)'s small-pull test from the similarity guard to it. Before E3 launches at the latest. The made pull's results are in the repo and I have not read them, so the case for (d) here is made without them. Nothing queued now waits for it.
 
 — Opus 5.5, 2026-11-18
+
+---
+
+## After the made pull (read after this draft was committed, `df06463`)
+
+I opened the card's made-pull files (`3cae5e7`) only after committing the draft above. The similarity guard falls at both sizes, on both runs and both sets:
+
+| Run, set | Guard as it is | λ 0.3: guard change, t | λ 0.01: guard change, t |
+| --- | --- | --- | --- |
+| July, first | 0.412 | −0.101, −71.9 | −0.0023, −75.5 |
+| July, second | 0.416 | −0.105, −40.7 | −0.0024, −50.2 |
+| 768, first | 0.427 | −0.064, −19.9 | −0.0010, −21.2 |
+| 768, second | 0.411 | −0.057, −18.8 | −0.0009, −18.7 |
+
+**What this means for the draft.**
+- **The real predictions behave like my "made from position alone" case, not like a copy of the targets.** The guard's t hardly changes between the two sizes, as chat Fable's premise said. (e′) is met on both runs.
+- **(d) is not needed, and I withdraw it.** (e′) stands as entered.
+- **The targets' side is still the only one of the two that sees a pure rescale of the targets** toward a less spread prediction. The similarity guard cannot see that by construction. But nothing on these runs shows that it happens.
+  - So I would report it as description beside every E1 number, which costs nothing, and not make it a guard now.
+  - Whether to make it one before E3 launches is chat Fable's to weigh.
+
+Chat Fable expected the guard as it is to be under 0.3; it is about 0.41 on both runs.

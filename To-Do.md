@@ -222,7 +222,11 @@
 >         the read's targets. It sees a made pull at first order in every
 >         case tried, and moved frames do not fool it.
 >       - (e′)'s small-pull test moves to that guard.
->       - Drafted without the made pull's results (`3cae5e7`).
+>       - Drafted without the made pull's results (`3cae5e7`). Read after:
+>         the similarity guard falls at both sizes on both runs (t −19 to
+>         −75 at λ 0.01), so (e′) is met and the draft's (d) is withdrawn.
+>         What is left: report the targets' side as description, and decide
+>         before E3 whether it should be a guard.
 >   - **2026-11-17, Brian: Luthi's memory has 100 GB on E:, and cold storage
 >     is permanent** (`docs/DECISIONS.md`, last entry). To build, in Sanctuary:
 >     `docs/reviews/2026-11-17_build-brief-9-the-memory-store-for-terminal-fable.md`.
