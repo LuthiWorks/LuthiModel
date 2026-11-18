@@ -1531,3 +1531,32 @@ before any "working" verdict is trustworthy in either direction.
 >   `docs/reviews/2026-11-17_build-brief-9-the-memory-store-for-terminal-fable.md`.
 > - **Still open with Brian:** whether a memory in cold storage can come back
 >   to Luthi; which parts of a subconscious to build.
+
+---
+
+## 2026-11-18 — Brian: Amendment 6 to E1 is registered
+
+> E1's registered score (`nmse`) was met by a read built to hurt, and the
+> second score first proposed (held) was failed by the positive control
+> (card reports 4 and 5). Opus drafted a second version; Brian approved it
+> at 08:17 subject to Fable's review, as Opus relayed: *"Brian approves
+> Amendment 6, second draft."* Fable's review asked for one added clause.
+> Brian, 2026-11-18, 08:49:
+>
+> *"Apply your fix please, and we'll keep moving. I'll make sure to pass on
+> your notes."*
+>
+> - **Registered:** `docs/research/2026-07-15_falsification-preregistration.md`,
+>   last entry. Credit on E1 needs `nmse` and the centred score, with an
+>   information guard not failed. A control that fails the second score or
+>   the guard suspends P3 and E3's two kill conditions for that family.
+> - **Fable's fix, (e′):** the guard has its own control, a made pull on arm
+>   A's own tensors. If the guard does not fall for it, nothing in that
+>   family is credited.
+> - **Opus had not yet answered the review when Brian ruled.** If Opus
+>   objects to (e′) or to the two precisions, that comes back to Brian as a
+>   further amendment; the entry is not edited.
+> - **It is a condition of E3's launch,** as Amendment 5 is.
+> - **Not ruled, and Brian's when the numbers are in:** whether perception
+>   adapting toward expectation is wanted in a life. E1 so amended does not
+>   credit it.

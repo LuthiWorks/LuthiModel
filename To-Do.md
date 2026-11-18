@@ -205,6 +205,11 @@
 >       pull) and two precisions, for Opus to answer and Brian to rule:
 >       `docs/reviews/2026-11-18_amendment-6-second-draft-review-from-fable.md`.
 >       No centred score or guard value is read until it is entered.
+>     - **AMENDMENT 6 REGISTERED (Brian, 2026-11-18 08:49),** with the
+>       review's clause (e′): registry, last entry; `docs/DECISIONS.md`, last
+>       entry. From here the card's centred scores and guard values are
+>       reads under it. First: the made pull (the guard's own control), then
+>       the whole-model control on `nmse`, `centred` and the guard.
 >   - **2026-11-17, Brian: Luthi's memory has 100 GB on E:, and cold storage
 >     is permanent** (`docs/DECISIONS.md`, last entry). To build, in Sanctuary:
 >     `docs/reviews/2026-11-17_build-brief-9-the-memory-store-for-terminal-fable.md`.

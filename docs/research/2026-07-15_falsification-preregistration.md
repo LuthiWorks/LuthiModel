@@ -1698,3 +1698,185 @@ is the entire point. Honor them after.
 > **Also ruled the same morning** (`docs/DECISIONS.md`): a measurement may
 > take a gradient with respect to a living weight, under three guards,
 > with nothing kept. No living weight is trained by gradient.
+
+---
+
+> # 2026-11-18 — AMENDMENT 6 to E1, registered by Brian's ruling
+>
+> Brian approved the second draft at 08:17, subject to Fable's review
+> (relayed by Opus: *"Brian approves Amendment 6, second draft"*), and at
+> 08:49 ruled on the reviewed text: *"Apply your fix please, and we'll keep
+> moving."* (`docs/DECISIONS.md`, last entry.) Drafted by Opus 5.5
+> (`docs/reviews/2026-11-18_amendment-6-second-draft-from-opus.md`),
+> reviewed by Fable 5.2
+> (`docs/reviews/2026-11-18_amendment-6-second-draft-review-from-fable.md`),
+> on measurements by the Fable instance on Brian's card (card reports 4 and
+> 5). Entered by Fable 5.2. Nothing frozen above is edited. Like Amendment
+> 5, **it is a condition of E3's launch.**
+>
+> The text is Opus's (a) to (g), with the review's one added clause, (e′),
+> and its two precisions, which are marked. Opus had not yet answered the
+> review when Brian ruled.
+>
+> **Timing.** Entered before any B − C on `centred`, or any value of the
+> guard, was looked at by the seat entering it. The card had been asked not
+> to read them. If any such read was looked at before this entry, it stays
+> description, and the amendment governs the next ones.
+>
+> **Why.**
+> - `nmse` is met by a read built to hurt: the sign-turned error read meets
+>   Amendment 5 (d) on both sets of both legacy runs (report 4).
+> - The held score, the first draft's second score, is failed by the
+>   positive control on both sets of both runs (report 5). It counts a
+>   moved frame as harm.
+> - What these reads mostly do is shift a window's outputs together. One
+>   encoder, with the same living weights, encodes the context and the
+>   targets.
+>
+> So the instrument must be blind to a shift and to a moved frame, and
+> still see two things: content learned, and perception pulled toward
+> expectation.
+>
+> | Kind of change, each in its pure form | nmse | centred | guard |
+> | --- | --- | --- | --- |
+> | The targets shift toward the prediction | credits it | blind | blind |
+> | The frame moves (shift, rotation, scale), and the prediction with it | blind | blind | blind |
+> | The prediction learns the content | credits it | credits it | passes |
+> | Each target is pulled toward its own prediction | credits it | credits it | fails |
+>
+> **(a) Beside every E1 number from registration on.**
+> - **`centred`, a score.** Take each window over its predicted positions.
+>   Remove the window's mean from the prediction and from the targets,
+>   separately. The score is the mean squared difference of what is left,
+>   over the targets' own within-window variance. Each arm uses its own
+>   prediction and its own targets. *Precision: it is one ratio a document,
+>   the sum over the tail's windows, predicted positions and dimensions of
+>   the squared centred difference, over the same sum of the squared
+>   centred targets (as built in `8fd954e`).*
+> - **`guard`, a guard.** For each window, the Pearson correlation between
+>   two sets of distances over the predicted positions: the pairwise
+>   Euclidean distances of the targets; and the pairwise Euclidean
+>   distances of those tokens' input embeddings, in A's embedding table, so
+>   that what arrived is in one frame for every arm. A document's guard is
+>   the mean over its windows. Higher means the targets follow what arrived
+>   more closely. *Precision: a window where the correlation is not defined
+>   is skipped: fewer than three predicted positions, or no variance in
+>   either set of distances. The guard's B − A is reported beside B − C, as
+>   description.*
+> - **Description, not criteria:**
+>   - held, drift and the gap's three parts. With P the read model's
+>     prediction, T_A and T_B the targets before and after the read, and
+>     D = T_B − T_A, exactly:
+>     nmse − held = drift − 2·mean((P − T_A)·D)/var_A + nmse·(1 − var_B/var_A);
+>   - the four numbers, each over its own targets' variance: A's score, A's
+>     prediction against B's targets, held, and nmse;
+>   - the share of the drift that is one shift for a window: Σ over windows
+>     of L·|mean over positions of D|², over Σ|D|², with L the number of
+>     predicted positions.
+>
+> **(b) Credit needs both scores and the guard.** Wherever E1's criterion
+> credits a mechanism or passes a read, three things are required:
+> - the test that applies there, met on `nmse`, as registered, with the
+>   effective-rank guard;
+> - the same test met on `centred`: the same t, the same count of
+>   documents, the same sets;
+> - the guard not failed. It fails if B's guard is below C's with t ≤ −2,
+>   paired over documents, on either set.
+>
+> This covers P3's credit to `lc768_cov`; the repeat read (Amendment 5
+> (f)); the positive control (Amendment 5 (e)); E3's second kill condition,
+> whose "neither meets" then reads with this meaning; and any read of a new
+> rule on legacy runs.
+>
+> **(c) Where a mechanism must not pass, either score counts.** For P3's
+> "`lc768_storeoff` in none", an arm that meets the test on `nmse` or on
+> `centred` has met it, whatever the guard says.
+>
+> **(d) The diagnosis's kill condition trips on either score,** each with
+> the effective-rank guard, whatever the information guard says. A result
+> on either score is document-specific change, even one that bends
+> perception. Tripping it does not credit the living channel; credit is
+> (b).
+>
+> **(e) The control decides whether `centred` and the guard can be used.**
+> The positive control is read on `nmse`, `centred` and the guard, on both
+> runs and both sets.
+> - If it fails the test on `nmse`: Amendment 5 (e), as registered. E1 is
+>   suspended for that family.
+> - If it meets `nmse` but fails `centred`, or fails the guard:
+>   - no read in that family is credited;
+>   - P3 and E3's two kill conditions are suspended for that family, as
+>     Amendment 5 (e) suspends E1. They need credit or its absence, and an
+>     instrument the control fails can give neither;
+>   - the diagnosis's kill condition is read on `nmse`, as registered.
+>
+> **(e′) The guard has its own control, a made pull** *(added in review)*.
+> In each family, on both sets, with no read: for each document take arm
+> A's own prediction P and targets T over the tail's predicted positions,
+> and form T′ = T + λ(P − T), for λ = 0.3 and λ = 0.01.
+> - `centred` against T′ must be below `centred` against T. It is by
+>   arithmetic; this checks the code.
+> - The guard on T′ must be below the guard on T with t ≤ −2, paired over
+>   documents, on both sets, at both λ.
+>
+> If the guard does not fall, it cannot see a pull in that family, and
+> (e)'s second branch applies: no read in that family is credited, P3 and
+> E3's two kill conditions are suspended for it, and the diagnosis's kill
+> condition is read on `nmse`. The made pull uses no read, so the timing
+> clause does not cover it, and it may be run at once.
+>
+> **(f) A disagreement is named, not credited.**
+> - `nmse` meets and `centred` does not: "document-specific change in the
+>   prediction's offset alone". The four numbers say which side moved
+>   toward which.
+> - `centred` meets and `nmse` does not: "document-specific change in
+>   content, with the offset moving the other way".
+> - Both meet and the guard fails: "document-specific change that took from
+>   what the targets carried".
+>
+> Each is entered with the four numbers, the drift's shift share and the
+> gap's parts, and each trips (d).
+>
+> **(g) Unchanged:** the thresholds; the effective-rank guard; Amendment 5
+> (c), which counts rungs on `nmse`, with `centred`'s count reported beside
+> it.
+>
+> **Chance accounting.**
+> - (b) cannot raise the chance of a false credit above either score's test
+>   alone.
+> - The guard can only block credit. By chance it fails on one set about
+>   2.5% of the time, so over two sets it blocks a true pass about 5% of
+>   the time.
+> - (e′) can only suspend.
+> - (d), either score, at most doubles the diagnosis's kill condition's
+>   chance per checkpoint, from about 0.07% to about 0.14%.
+> - Every report states how many reads were made on each score.
+>
+> **The principle.** Each condition is read at the scope of the claim it
+> tests. A claim that the living channel helps predict what follows needs
+> both scores and the guard. A claim that a mechanism does not pass is
+> broken by either score. A claim that the write cannot change anything
+> document-specific is refuted by either score.
+>
+> **Expected, written before any result** (the reviews hold each seat's
+> own words):
+> - Opus: the whole-model control meets `nmse` and `centred` on both runs
+>   and passes the guard; the turned error read meets `nmse` and not
+>   `centred`; the plain error read and M2 barely move `centred` on July;
+>   no read fails the guard at the low rate.
+> - Fable: the made pull lowers the guard at both sizes on July, less
+>   surely at 768; A's guard on the real runs is under 0.3.
+>
+> **Already done on legacy runs, and description only** (July seed 42 and
+> 768 seed 97; reports 4 and 5): on `nmse` the sign-turned error read, M2
+> and the whole-model control meet Amendment 5 (d); on held every gradient
+> step fails and the plain error read on July meets the test; at 768 the
+> plain error read runs away at every rate. The first draft of this
+> amendment (2026-11-17) was withdrawn on that evidence and was never
+> registered.
+>
+> **One thing known in advance.** With inputs this uniform, a rank-one
+> living write is a shift, and E1 so amended credits no shift. So the
+> living channel as built can be credited only through whatever part of its
+> change is not a shift. Whether perception adapting toward expectation is
+> wanted in a life is a separate question, and Brian's.
